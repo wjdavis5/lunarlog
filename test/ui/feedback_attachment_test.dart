@@ -303,5 +303,101 @@ void main() {
               'session the gate already closed');
       expect(find.byKey(const ValueKey('feedback-attachment-selected')), findsNothing);
     });
+
+    testWidgets('a stale AttachmentTooLargeException after the system-UI '
+        'deadline expires and re-locks the gate is discarded silently, not '
+        'shown as an error', (tester) async {
+      const windowDeadline = Duration(seconds: 90);
+      final source = FakeAttachmentSource()..hold = Completer<FeedbackAttachment?>();
+      FeedbackAttachment? received;
+      final g = await pumpGatedField(
+        tester,
+        source,
+        (a) => received = a,
+        systemUiDeadline: windowDeadline,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+      await tester.pump();
+      expect(source.pickCalls, 1, reason: 'the picker is now "open"');
+
+      // The window's own bound fires and re-locks the gate while the pick
+      // is still awaited, same as the successful-pick case above.
+      g.timers.fireWithDelay(windowDeadline);
+      expect(g.gateController.locked, isTrue);
+
+      // The platform now hands back a (stale) pre-read size rejection,
+      // after the gate already re-locked — the generation check in the
+      // catch clause must discard this the same way it discards a stale
+      // successful pick, before ever reaching `_rejectWith`.
+      source.hold!.completeError(const AttachmentTooLargeException());
+      await tester.pumpAndSettle();
+
+      expect(received, isNull, reason: 'onChanged must never fire for a stale rejection either');
+      expect(find.byKey(const ValueKey('feedback-attachment-error')), findsNothing,
+          reason: 'a stale exception belongs to a session the gate already '
+              'closed and must not surface as a fresh error on this screen');
+    });
+  });
+
+  group('disposed-state safety (Issue #617, LLA-009)', () {
+    testWidgets('a picker completion that resolves after this widget is '
+        'disposed (e.g. the operator navigated away) does not touch the '
+        'disposed State and never calls onChanged', (tester) async {
+      final source = FakeAttachmentSource()..hold = Completer<FeedbackAttachment?>();
+      final sentinel = _makeAttachment(); // proves onChanged is never called
+      FeedbackAttachment? received = sentinel;
+      await pumpField(tester, source, (a) => received = a);
+
+      await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+      await tester.pump();
+      expect(source.pickCalls, 1, reason: 'the picker is now "open"');
+
+      // Navigate away: replace the whole tree, disposing AttachmentField
+      // and its State while the pick above is still pending — no gate is
+      // involved, so nothing about the gate's generation changes; only
+      // `mounted` distinguishes this from the still-live case.
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      // The platform now hands back a valid, otherwise-storable pick, after
+      // disposal.
+      source.hold!.complete(_makeAttachment(filename: 'late.png'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull,
+          reason: 'the disposed continuation must never call setState or '
+              'read BuildContext after dispose');
+      expect(received, same(sentinel),
+          reason: 'onChanged must never fire for a pick that resolves '
+              'after this widget was disposed');
+    });
+
+    testWidgets('an AttachmentTooLargeException that resolves after '
+        'disposal does not touch the disposed State', (tester) async {
+      final source = FakeAttachmentSource()..hold = Completer<FeedbackAttachment?>();
+      FeedbackAttachment? received;
+      await pumpField(tester, source, (a) => received = a);
+
+      await tester.tap(find.byKey(const ValueKey('feedback-add-screenshot')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('feedback-attachment-consent-continue')));
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      source.hold!.completeError(const AttachmentTooLargeException());
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull,
+          reason: 'a disposed continuation catching AttachmentTooLargeException '
+              'must not call setState');
+      expect(received, isNull);
+    });
   });
 }

@@ -95,14 +95,45 @@ class SupabaseFeedbackService implements FeedbackService {
         );
 
     final updatedPaths = [...ticket.attachmentPaths, objectPath];
-    final row = await client
-        .from('feedback_tickets')
-        .update({'attachment_paths': updatedPaths, 'updated_at': DateTime.now().toUtc().toIso8601String()})
-        .eq('id', ticket.id)
-        .select()
-        .single();
+    try {
+      final row = await client
+          .from('feedback_tickets')
+          .update({'attachment_paths': updatedPaths, 'updated_at': DateTime.now().toUtc().toIso8601String()})
+          .eq('id', ticket.id)
+          .select()
+          .single();
 
-    return _ticketFromRow(row);
+      return _ticketFromRow(row);
+    } catch (patchError) {
+      await _reconcileOrphan(objectPath, patchError);
+      rethrow;
+    }
+  }
+
+  /// LLA-080: the object at [objectPath] just committed to Storage, but the
+  /// PATCH that was meant to record its path on the ticket then failed —
+  /// left alone, that object is an orphan (present in Storage, referenced
+  /// nowhere). Only cleaned up here when [patchError] proves the PATCH did
+  /// not commit: PostgREST wraps each request in its own transaction, so a
+  /// [PostgrestException] means the server rolled it back and the object is
+  /// a genuine, safe-to-delete orphan. Any other error (a `SocketException`,
+  /// a timeout, anything below the HTTP layer) leaves commit state
+  /// ambiguous — the PATCH may have actually succeeded server-side even
+  /// though this call never saw the response, so deleting the object here
+  /// could destroy a screenshot a ticket now legitimately references.
+  /// Ambiguous cases are left for the existing account-wide prefix cleanup
+  /// (delete-account) or a manual dashboard action to reconcile later, per
+  /// this migration's own comment on `attachment_paths`. The removal itself
+  /// is best-effort: its own failure must never mask [patchError], which is
+  /// what the caller (and R17's "ticket rides along, not lost" contract)
+  /// needs to see.
+  Future<void> _reconcileOrphan(String objectPath, Object patchError) async {
+    if (patchError is! PostgrestException) return;
+    try {
+      await client.storage.from(kFeedbackAttachmentsBucket).remove([objectPath]);
+    } catch (removeError) {
+      debugPrint('lunarlog feedback: orphan attachment cleanup failed (${removeError.runtimeType})');
+    }
   }
 
   String _extensionFor(String mimeType) => switch (mimeType) {

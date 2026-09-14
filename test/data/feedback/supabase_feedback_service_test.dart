@@ -371,6 +371,114 @@ void main() {
       await pumpEventQueue();
     });
 
+    test('LLA-080: a definite PATCH failure (PostgrestException) after a '
+        'successful upload removes the now-orphaned Storage object', () async {
+      String? deletedBucketPath;
+      List<Object?>? deletedPrefixes;
+      final client = makeClient((req) async {
+        if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'POST') {
+          return http.Response(jsonEncode(ticketRow(id: 't7')), 200);
+        }
+        if (req.url.path.startsWith('/storage/v1/object/feedback-attachments/$_uid/t7/') &&
+            req.method == 'POST') {
+          return http.Response(jsonEncode({'Key': req.url.path}), 200);
+        }
+        if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'PATCH') {
+          // A definite server-side rejection: PostgREST wraps the request in
+          // its own transaction, so this response means the PATCH did not
+          // commit and attachment_paths was never updated.
+          return http.Response(jsonEncode({'message': 'ticket update rejected', 'code': '23514'}), 400);
+        }
+        if (req.url.path == '/storage/v1/object/feedback-attachments' && req.method == 'DELETE') {
+          deletedBucketPath = req.url.path;
+          deletedPrefixes = (jsonDecode(req.body) as Map<String, dynamic>)['prefixes'] as List<Object?>;
+          return http.Response(jsonEncode(<Map<String, dynamic>>[]), 200);
+        }
+        if (req.url.path == '/functions/v1/feedback-notify') {
+          return http.Response('', 204);
+        }
+        fail('unexpected request: ${req.method} ${req.url}');
+      });
+      await _signIn(client);
+      final service = SupabaseFeedbackService(client: client);
+
+      try {
+        await service.submitTicket(
+          category: FeedbackCategory.bug,
+          message: 'orphan candidate',
+          replyEmail: 'a@example.com',
+          attachment: FeedbackAttachment(
+            bytes: List<int>.filled(10, 1),
+            mimeType: 'image/png',
+            filename: 'shot.png',
+          ),
+        );
+        fail('expected a FeedbackAttachmentUploadFailedFailure');
+      } on FeedbackAttachmentUploadFailedFailure catch (failure) {
+        expect(failure.ticket.id, 't7');
+      }
+
+      expect(deletedBucketPath, '/storage/v1/object/feedback-attachments',
+          reason: 'the orphaned object must be reconciled (removed) once the '
+              'PATCH is known not to have committed');
+      expect(deletedPrefixes, hasLength(1));
+      expect(deletedPrefixes!.single, startsWith('$_uid/t7/'));
+      await pumpEventQueue();
+    });
+
+    test('LLA-080: an ambiguous PATCH failure (network exception) after a '
+        'successful upload does NOT delete the object — commit state is '
+        'unknown, so a later reconciliation path must handle it instead',
+        () async {
+      var deleteCalled = false;
+      final client = makeClient((req) async {
+        if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'POST') {
+          return http.Response(jsonEncode(ticketRow(id: 't8')), 200);
+        }
+        if (req.url.path.startsWith('/storage/v1/object/feedback-attachments/$_uid/t8/') &&
+            req.method == 'POST') {
+          return http.Response(jsonEncode({'Key': req.url.path}), 200);
+        }
+        if (req.url.path == '/rest/v1/feedback_tickets' && req.method == 'PATCH') {
+          throw const SocketException('connection reset mid-request');
+        }
+        if (req.url.path == '/storage/v1/object/feedback-attachments' && req.method == 'DELETE') {
+          deleteCalled = true;
+          return http.Response(jsonEncode(<Map<String, dynamic>>[]), 200);
+        }
+        if (req.url.path == '/functions/v1/feedback-notify') {
+          return http.Response('', 204);
+        }
+        fail('unexpected request: ${req.method} ${req.url}');
+      });
+      await _signIn(client);
+      final service = SupabaseFeedbackService(client: client);
+
+      try {
+        await service.submitTicket(
+          category: FeedbackCategory.bug,
+          message: 'ambiguous commit',
+          replyEmail: 'a@example.com',
+          attachment: FeedbackAttachment(
+            bytes: List<int>.filled(10, 1),
+            mimeType: 'image/png',
+            filename: 'shot.png',
+          ),
+        );
+        fail('expected a FeedbackAttachmentUploadFailedFailure');
+      } on FeedbackAttachmentUploadFailedFailure catch (failure) {
+        expect(failure.ticket.id, 't8');
+        expect(failure.attachmentFailure, isA<FeedbackNetworkFailure>());
+      }
+
+      expect(deleteCalled, isFalse,
+          reason: 'a network-level PATCH failure leaves commit state '
+              'ambiguous (the PATCH may have actually succeeded server-side) '
+              '- deleting here could destroy a screenshot a ticket now '
+              'legitimately references');
+      await pumpEventQueue();
+    });
+
     test('a signed-out client rejects locally with FeedbackFailure.unauthorized', () async {
       final client = makeClient((req) async {
         fail('a signed-out submit must never reach the network: ${req.method} ${req.url}');
