@@ -1203,4 +1203,8 @@ class _EmptyProfilesRepository implements ProfilesRepository {
   Future<Profile?> setTrackingPreferences(
           String id, TrackingPreferences? preferences) =>
       throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<void> applyServerPurge(String id) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
 }

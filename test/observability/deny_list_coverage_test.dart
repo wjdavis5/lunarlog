@@ -176,6 +176,9 @@ const Map<String, String> _waivedKeys = {
   // Closed-set / bounded values — distinct from open free text.
   'relationship': 'closed-set relationship-to-creator enum, not free text',
   'source': "closed-set provenance enum ('manual'/'healthkit'/…), not content",
+  'p_source':
+      'closed-set import-source RPC parameter (issue #472, '
+          'delete_profile_data), same enum as the source column above',
   'role': 'closed-set guardian role enum, not free text',
   'status': 'closed-set invitation/guardian status enum, not free text',
   'unit': "closed-set unit enum ('celsius'/'kg'/…), not free text",

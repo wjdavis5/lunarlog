@@ -266,6 +266,10 @@ class _ManualProfilesRepository implements ProfilesRepository {
   @override
   Future<void> delete(String id) =>
       throw UnimplementedError('not exercised in the lifecycle tests');
+
+  @override
+  Future<void> applyServerPurge(String id) =>
+      throw UnimplementedError('not exercised in the lifecycle tests');
 }
 
 /// A watch stream that records whether it was ever subscribed to and

@@ -35,6 +35,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -80,6 +81,11 @@ class _StubPredictionConnectionService
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _StubProfileErasureService implements ProfileErasureService {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _StubAccountExportRemoteSource implements AccountExportRemoteSource {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -118,6 +124,7 @@ void main() {
     expect(deps.accountDeletionService, isNull);
     expect(deps.ownershipTransferService, isNull);
     expect(deps.predictionConnectionService, isNull);
+    expect(deps.profileErasureService, isNull);
     expect(deps.notificationPreferencesService, isNull);
     expect(deps.accountExportRemoteSource, isNull);
     expect(deps.reminderWindowUpsert, isNull);
@@ -208,6 +215,7 @@ void main() {
     final deletion = _StubAccountDeletionService();
     final transfer = _StubOwnershipTransferService();
     final predictionConnection = _StubPredictionConnectionService();
+    final profileErasure = _StubProfileErasureService();
     final preferences = FakeNotificationPreferencesService();
     final remoteSource = _StubAccountExportRemoteSource();
     final reminderUpsert = _StubReminderWindowRemote();
@@ -222,6 +230,7 @@ void main() {
       accountDeletionService: deletion,
       ownershipTransferService: transfer,
       predictionConnectionService: predictionConnection,
+      profileErasureService: profileErasure,
       notificationPreferencesService: preferences,
       accountExportRemoteSource: remoteSource,
       reminderWindowUpsert: reminderUpsert,
@@ -268,6 +277,7 @@ void main() {
     expect(context.read<OwnershipTransferService>(), same(transfer));
     expect(context.read<PredictionConnectionService>(),
         same(predictionConnection));
+    expect(context.read<ProfileErasureService>(), same(profileErasure));
     expect(context.read<NotificationPreferencesService>(),
         same(preferences));
     expect(context.read<AccountExportRemoteSource>(), same(remoteSource));

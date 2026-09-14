@@ -72,6 +72,9 @@ class FakeProfilesRepository implements ProfilesRepository {
 
   @override
   Stream<List<Profile>> watch() => Stream.value(profiles);
+
+  @override
+  Future<void> applyServerPurge(String id) => throw UnimplementedError();
 }
 
 /// A repository whose `list()` always throws — exercises `_load()`'s
@@ -118,6 +121,9 @@ class ThrowingProfilesRepository implements ProfilesRepository {
 
   @override
   Stream<List<Profile>> watch() => throw UnimplementedError();
+
+  @override
+  Future<void> applyServerPurge(String id) => throw UnimplementedError();
 }
 
 /// A binding whose `canBind` always allows but whose `bind` always denies

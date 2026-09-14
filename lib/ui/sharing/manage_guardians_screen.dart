@@ -25,6 +25,7 @@ import '../../domain/help/help_cards.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/notifications/notification_preferences_service.dart';
+import '../../domain/profiles/profile_erasure_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/sharing_service.dart';
@@ -52,6 +53,7 @@ class ManageGuardiansScreen extends StatefulWidget {
     this.activityRepository,
     this.predictionConnectionService,
     this.onPredictionConnectionChanged,
+    this.profileErasureService,
   });
 
   final Profile profile;
@@ -95,6 +97,12 @@ class ManageGuardiansScreen extends StatefulWidget {
   /// connection; at arming time there is nothing to publish to yet.
   final void Function(String profileId)? onPredictionConnectionChanged;
 
+  /// Issue #472: when present, a "Danger zone" section offers "Delete
+  /// profile permanently" to the profile's accepted `primary_guardian`
+  /// only — null (an unconfigured build) hides the section entirely, the
+  /// same null-gating discipline as [predictionConnectionService].
+  final ProfileErasureService? profileErasureService;
+
   /// Issue #373: how often the screen re-reads a still-pending connection
   /// to catch its redemption. Injectable so tests drive it in fake time.
   static const Duration pendingPollInterval = Duration(seconds: 15);
@@ -137,6 +145,17 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   final Set<String> _revokingUserIds = {};
   final Set<String> _changingRoleUserIds = {};
   final Set<String> _cancellingInviteIds = {};
+
+  /// Issue #472: true while "Delete profile permanently"'s RPC is in
+  /// flight, so a second tap (or the two double-confirmation dialogs
+  /// reopening) cannot fire a second call.
+  bool _deletingProfile = false;
+
+  /// Issue #472: honest, in-place failure copy for a failed delete
+  /// (`lib/ui/README.md`'s rule: a delete's own failure renders
+  /// `InlineError` right next to the control, not a `SnackBar`). Cleared
+  /// on the next attempt.
+  String? _deleteProfileError;
 
   @override
   void initState() {
@@ -283,6 +302,110 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     if (!mounted) return;
     await _loadPredictionConnection();
     widget.onPredictionConnectionChanged?.call(widget.profile.id);
+  }
+
+  /// Issue #472: "Delete profile permanently" — a double-confirmation flow
+  /// (each step names a different consequence, so the second tap is never
+  /// a reflexive re-click of the same dialog) ending in
+  /// [ProfileErasureService.deleteProfile]. Split into the two dialog
+  /// steps plus [_performDeleteProfile] (the CRAP-gate per-method
+  /// complexity cap, the same reason [_revoke] is split from
+  /// [_confirmRevoke]/[_performRevoke]).
+  Future<void> _deleteProfilePermanently() async {
+    final service = widget.profileErasureService;
+    if (service == null || _deletingProfile) return;
+    if (await _confirmDeleteProfileStep1() != true || !mounted) return;
+    if (await _confirmDeleteProfileStep2() != true || !mounted) return;
+    await _performDeleteProfile(service);
+  }
+
+  Future<bool?> _confirmDeleteProfileStep1() => showDialog<bool>(
+    context: context,
+    routeSettings: const RouteSettings(name: kRouteDeleteProfileDialog),
+    builder: (ctx) => AlertDialog(
+      title: Text('Delete ${widget.profile.displayName} permanently?'),
+      content: const SingleChildScrollView(
+        child: Text(
+          'This permanently erases every day entry, care note, and '
+          "visit-prep item on this profile, and removes every guardian's "
+          'access to it — including your own. Synced copies on every '
+          'device are erased too.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        DestructiveButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+
+  Future<bool?> _confirmDeleteProfileStep2() => showDialog<bool>(
+    context: context,
+    routeSettings:
+        const RouteSettings(name: kRouteDeleteProfileFinalConfirmDialog),
+    builder: (ctx) => AlertDialog(
+      title: const Text('Are you absolutely sure?'),
+      content: Text(
+        "${widget.profile.displayName}'s history will be gone "
+        'permanently, for every guardian on this profile. There is no '
+        'undo.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('Cancel'),
+        ),
+        DestructiveButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: const Text('Delete permanently'),
+        ),
+      ],
+    ),
+  );
+
+  /// The actual RPC + busy-state + error-surfacing (see
+  /// [_deleteProfilePermanently]'s doc comment for why this is split out).
+  /// Never removes anything locally itself — [ProfileErasureService
+  /// .deleteProfile] only applies the local wipe after its own server call
+  /// has already succeeded, so a failure here (including offline) leaves
+  /// this device's copy of the profile untouched.
+  Future<void> _performDeleteProfile(ProfileErasureService service) async {
+    setState(() {
+      _deletingProfile = true;
+      _deleteProfileError = null;
+    });
+    try {
+      await service.deleteProfile(profileId: widget.profile.id);
+      // Success: the profile is gone server-side and locally. This screen
+      // names a profile that no longer exists, so it must not stay open —
+      // the caller (profile picker / shared chip) already reacts to the
+      // profile vanishing from ProfilesRepository.watch() on its own.
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _deletingProfile = false;
+          _deleteProfileError = _deleteProfileErrorMessage(e);
+        });
+      }
+    }
+  }
+
+  String _deleteProfileErrorMessage(Object error) {
+    if (error is ProfileErasureNetworkFailure) {
+      return "Can't delete while offline. Check your connection and try "
+          'again.';
+    }
+    if (error is ProfileErasureUnauthorizedFailure) {
+      return 'You do not have permission for this action.';
+    }
+    return 'Failed to delete profile. Check connection and try again.';
   }
 
   void _loadPendingInvites() {
@@ -876,6 +999,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                 guardianList,
                 _pendingInvitesSection(rows, callerRole),
                 _predictionSection(rows, callerRole),
+                _dangerZoneSection(callerRole),
               ],
             ),
           );
@@ -1011,6 +1135,77 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
               onPressed: _revokePredictionConnection,
             )
           : null,
+    );
+  }
+
+  /// Issue #472: "Delete profile permanently" — hidden entirely when no
+  /// [ProfileErasureService] is configured (R26's null-gating discipline,
+  /// same shape as [_predictionSection]) or when the caller's accepted
+  /// role is not (or not yet known to be) `primary_guardian`. AC: "Non-
+  /// primary guardians (co_parent, caregiver, viewer) never see the
+  /// delete action" — `callerRole` starts null until the guardian rows
+  /// have synced (#13), so a not-yet-resolved caller also sees nothing
+  /// here, the safe default for an irreversible action (unlike
+  /// [_pendingInvitesSection]'s fail-open menu, which only ever exposes a
+  /// reversible cancel).
+  Widget _dangerZoneSection(GuardianRole? callerRole) {
+    final service = widget.profileErasureService;
+    if (service == null || callerRole != GuardianRole.primaryGuardian) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'Danger zone',
+            style: theme.textTheme.titleSmall
+                ?.copyWith(color: theme.colorScheme.error),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Permanently erases this profile and everything logged on it, '
+            'for every guardian. This cannot be undone.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: DestructiveButton.icon(
+              key: const ValueKey('delete-profile-permanently'),
+              onPressed:
+                  _deletingProfile ? null : _deleteProfilePermanently,
+              icon: _deletingProfile
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.onError,
+                      ),
+                    )
+                  : const Icon(Icons.delete_forever),
+              label: const Text('Delete profile permanently'),
+            ),
+          ),
+        ),
+        if (_deleteProfileError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: InlineError(
+              key: const ValueKey('delete-profile-error'),
+              message: _deleteProfileError!,
+            ),
+          ),
+      ],
     );
   }
 

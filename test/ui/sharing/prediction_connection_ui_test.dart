@@ -77,6 +77,9 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   PredictionConnectionFailure? acceptFailure;
   String? lastRevokedConnectionId;
   final List<String> revoked = [];
+  String? lastLeftConnectionId;
+  final List<String> left = [];
+  PredictionConnectionFailure? leaveFailure;
 
   @override
   Future<GeneratedPredictionInvite> createConnection({
@@ -146,6 +149,14 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   Future<void> revokeConnection({required String connectionId}) async {
     lastRevokedConnectionId = connectionId;
     revoked.add(connectionId);
+  }
+
+  @override
+  Future<void> leaveConnection({required String connectionId}) async {
+    final failure = leaveFailure;
+    if (failure != null) throw failure;
+    lastLeftConnectionId = connectionId;
+    left.add(connectionId);
   }
 
   // Issue #373: the app shell now starts the real publisher whenever this
@@ -513,6 +524,133 @@ void main() {
         reason: 'the calendar pushed on top of the list',
       );
     });
+
+    testWidgets(
+      'issue #462: "Stop receiving" calls leaveConnection and reloads the '
+      'list',
+      (tester) async {
+        final service = _FakePredictionConnectionService(
+          connections: [
+            IncomingPredictionConnection(
+              connectionId: 'conn-1',
+              profileId: 'p1',
+              acceptedAt: DateTime.utc(2026, 9, 1),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PredictionConnectionsScreen(service: service),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const ValueKey('stop-receiving-conn-1')),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('stop-receiving-conn-1')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Stop receiving these predictions?'),
+          findsOneWidget,
+        );
+
+        // After confirming, the next list load returns no connections — the
+        // recipient's own list shows the row is gone.
+        service.connections = const [];
+        await tester.tap(find.text('Stop receiving'));
+        await tester.pumpAndSettle();
+
+        expect(service.lastLeftConnectionId, 'conn-1');
+        expect(service.left, ['conn-1']);
+        expect(find.text('Stopped receiving predictions'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('prediction-connection-p1')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'issue #462: cancelling "Stop receiving" never calls leaveConnection',
+      (tester) async {
+        final service = _FakePredictionConnectionService(
+          connections: [
+            IncomingPredictionConnection(
+              connectionId: 'conn-1',
+              profileId: 'p1',
+              acceptedAt: DateTime.utc(2026, 9, 1),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PredictionConnectionsScreen(service: service),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('stop-receiving-conn-1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(service.left, isEmpty);
+        expect(
+          find.byKey(const ValueKey('prediction-connection-p1')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'issue #462: a failed "Stop receiving" surfaces an error and keeps '
+      'the connection listed',
+      (tester) async {
+        final service = _FakePredictionConnectionService(
+          connections: [
+            IncomingPredictionConnection(
+              connectionId: 'conn-1',
+              profileId: 'p1',
+              acceptedAt: DateTime.utc(2026, 9, 1),
+            ),
+          ],
+        );
+        service.leaveFailure = const PredictionConnectionFailure.network();
+
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PredictionConnectionsScreen(service: service),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const ValueKey('stop-receiving-conn-1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Stop receiving'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Could not stop receiving. Check connection.'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('prediction-connection-p1')),
+          findsOneWidget,
+          reason: 'a failed leave must not remove the row from the list',
+        );
+      },
+    );
 
     testWidgets('manual code entry redeems and opens the calendar', (
       tester,

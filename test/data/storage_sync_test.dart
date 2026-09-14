@@ -2596,6 +2596,62 @@ void main() {
     );
   });
 
+  group('applyLocalProfilePurge (issue #472)', () {
+    test('tombstones the profile and cascades exactly like a deleted_profiles '
+        'pull or a guardian revocation — the same wipe, applied immediately '
+        'rather than waiting for the next sync cycle', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'Purged Locally',
+        isMinor: false,
+      );
+      final entry = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+      );
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+      );
+      await storage.upsertCareNote(profileId: p.id, body: 'note');
+
+      await storage.applyLocalProfilePurge(p.id);
+
+      expect(await storage.getProfile(p.id), isNull);
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      expect(await storage.getObservationsForProfile(p.id), isEmpty);
+      expect(await storage.getCareNotesForProfile(p.id), isEmpty);
+      expect(
+        await storage.dirtyCount(),
+        0,
+        reason: 'the wipe must never be pushed back — the server already '
+            'knows (this call only ever follows a server RPC that has '
+            'already succeeded)',
+      );
+    });
+
+    test('a profile never held locally is a harmless no-op', () async {
+      await storage.applyLocalProfilePurge('never-held');
+      expect(await storage.getProfile('never-held'), isNull);
+    });
+
+    test('is idempotent — a second call after the row is already gone '
+        'touches nothing further', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'Purged Twice',
+        isMinor: false,
+      );
+      await storage.applyLocalProfilePurge(p.id);
+      await storage.applyLocalProfilePurge(p.id);
+      expect(await storage.getProfile(p.id), isNull);
+      expect(await storage.dirtyCount(), 0);
+    });
+  });
+
   group('bumpLocalRevForRetry (issue #568)', () {
     test('bumps local_rev and re-marks dirty on every pushable table, '
         'content untouched, and is a harmless no-op on the two pull-only '

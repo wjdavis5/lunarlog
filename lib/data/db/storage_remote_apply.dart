@@ -582,6 +582,20 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   Future<void> _applyDeletedProfile(RemoteDeletedProfileRow remote) =>
       _tombstoneRevokedSharedProfile(remote.profileId, remote.deletedAt);
 
+  /// Issue #472: the local half of `ProfilesRepository.applyServerPurge` —
+  /// applies the SAME tombstone wipe [_applyDeletedProfile] applies for a
+  /// server-delivered `deleted_profiles` row, but immediately, right after
+  /// the caller's own `delete_profile_data()` RPC call succeeds, rather
+  /// than waiting for the next sync pull to notice. This is deliberately
+  /// not a new/parallel wipe: it is the exact same
+  /// [_tombstoneRevokedSharedProfile] call [_applyDeletedProfile] and
+  /// guardian-revocation ([_applyProfileGuardian]'s R5 cascade) both use,
+  /// so local state converges identically no matter which path notices the
+  /// purge first — a later delivery of the real `deleted_profiles` row (or
+  /// another device's own local purge) re-applies the same wipe harmlessly.
+  Future<void> applyLocalProfilePurge(String profileId) =>
+      _tombstoneRevokedSharedProfile(profileId, _now());
+
   Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
       {required bool onlyExisting}) async {
     final local = await _dayEntryOrNull(remote.id);

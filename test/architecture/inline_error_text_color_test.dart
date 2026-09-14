@@ -77,6 +77,12 @@ const Set<String> _allowedExceptions = {
   // role a TextFormField's own `errorText` plays), not an operation
   // failure with anything to retry.
   'lib/ui/profiles/first_run_screen.dart',
+  // Issue #472: the "Danger zone" section heading above "Delete profile
+  // permanently" -- the same destructive-action red label convention as
+  // account_section.dart's "Delete account" tile above, not a failure
+  // message; the delete's own failure renders through InlineError right
+  // below the button.
+  'lib/ui/sharing/manage_guardians_screen.dart',
 };
 
 void main() {

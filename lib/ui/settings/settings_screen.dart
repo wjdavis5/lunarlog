@@ -19,6 +19,7 @@ import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -99,7 +100,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: [
-          const YourDataSection(),
+          YourDataSection(
+            profileErasureService:
+                Provider.of<ProfileErasureService?>(context, listen: false),
+          ),
           // Issue #126: owned and shared-with-you profiles, each routing
           // to its Manage Guardians screen. Self-hiding when sharing is
           // unavailable, so unconfigured builds render exactly as before.

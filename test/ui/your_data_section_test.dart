@@ -24,9 +24,11 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
+import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
@@ -237,6 +239,7 @@ Future<void> _pump(
   bool? showExport,
   ExportAccountCollaborator? exportAccount,
   AuthController? auth,
+  ProfileErasureService? profileErasureService,
 }) async {
   addTearDown(profiles.dispose);
   final resolvedDayEntries = dayEntries ?? FakeDayEntriesRepository();
@@ -269,6 +272,7 @@ Future<void> _pump(
           body: YourDataSection(
             showExport: showExport,
             exportAccount: exportAccount,
+            profileErasureService: profileErasureService,
           ),
         ),
       ),
@@ -546,4 +550,127 @@ void main() {
       expect(find.byKey(const ValueKey('import-pick-button')), findsOneWidget);
     });
   });
+
+  group('Purge imported data (Issue #472)', () {
+    testWidgets('no ProfileErasureService configured: the tile is absent',
+        (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(tester, profiles: profiles);
+
+      expect(key('your-data-purge-imported'), findsNothing);
+    });
+
+    testWidgets('a configured service with a profile: the tile renders',
+        (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      await _pump(
+        tester,
+        profiles: profiles,
+        profileErasureService: _FakeProfileErasureService(),
+      );
+
+      expect(key('your-data-purge-imported'), findsOneWidget);
+    });
+
+    testWidgets('no profiles yet: the tile is absent even with a configured '
+        'service (nothing to pick from)', (tester) async {
+      final profiles = FakeProfilesRepository();
+      await _pump(
+        tester,
+        profiles: profiles,
+        profileErasureService: _FakeProfileErasureService(),
+      );
+
+      expect(key('your-data-purge-imported'), findsNothing);
+    });
+
+    testWidgets(
+      'picking a profile and source calls purgeImportedData with that '
+      'exact selection and shows a confirmation',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService();
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        expect(find.text('Purge imported data'), findsWidgets);
+
+        // Default selections: the first profile, the first source.
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+
+        expect(service.purgedProfileId, 'p1');
+        expect(service.purgedSource, PurgeableImportSource.values.first);
+        expect(
+          find.textContaining('Purged'),
+          findsOneWidget,
+          reason: 'a snack bar confirms which source was purged',
+        );
+      },
+    );
+
+    testWidgets('cancelling the dialog never calls purgeImportedData',
+        (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      final service = _FakeProfileErasureService();
+      await _pump(tester, profiles: profiles, profileErasureService: service);
+
+      await tester.tap(key('your-data-purge-imported'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(service.purgeCalls, 0);
+    });
+
+    testWidgets('a failed purge surfaces honest error copy', (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1')]);
+      final service = _FakeProfileErasureService()
+        ..purgeError = const ProfileErasureFailure.unauthorized();
+      await _pump(tester, profiles: profiles, profileErasureService: service);
+
+      await tester.tap(key('your-data-purge-imported'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+      await tester.pumpAndSettle();
+
+      expect(service.purgeCalls, 1);
+      expect(
+        find.text(
+          "Only that profile's primary guardian can purge its data.",
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+}
+
+/// A scripted [ProfileErasureService] fake for the "Purge imported data"
+/// tests above; [deleteProfile] is not exercised by this file.
+class _FakeProfileErasureService implements ProfileErasureService {
+  String? purgedProfileId;
+  PurgeableImportSource? purgedSource;
+  int purgeCalls = 0;
+  Object? purgeError;
+
+  @override
+  Future<void> deleteProfile({required String profileId}) =>
+      throw UnimplementedError('not exercised by this test file');
+
+  @override
+  Future<void> purgeImportedData({
+    required String profileId,
+    required PurgeableImportSource source,
+  }) async {
+    purgeCalls++;
+    final error = purgeError;
+    if (error != null) throw error;
+    purgedProfileId = profileId;
+    purgedSource = source;
+  }
 }

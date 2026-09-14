@@ -116,6 +116,10 @@ class _StubPredictionService implements PredictionConnectionService {
       throw UnimplementedError();
 
   @override
+  Future<void> leaveConnection({required String connectionId}) =>
+      throw UnimplementedError();
+
+  @override
   Future<ActivePredictionConnection?> getActiveConnection({required String profileId}) async =>
       null;
 
