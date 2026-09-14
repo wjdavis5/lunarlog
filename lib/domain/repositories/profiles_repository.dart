@@ -68,8 +68,12 @@ abstract interface class ProfilesRepository {
   /// must never restamp or clobber a co-guardian's curated document, and
   /// this write marks the row dirty so the document syncs (AC1/AC6).
   /// Returns the updated profile, or null when [id] is unknown or
-  /// tombstoned. [preferences.toJsonText]'s null (nothing to store) and
-  /// an empty document are accepted as the same "clear" instruction.
+  /// tombstoned. A null [preferences] and an empty document are the same
+  /// "clear" instruction; both propagate to co-guardians as an explicitly
+  /// empty document (`{}`), which resolves to defaults on every device.
+  /// (A local null is never emitted as a wire null — the codec's
+  /// emit-only-when-non-null rule — so the empty document is the only
+  /// shape a clear can take on the wire.)
   /// Throws [ArgumentError] when the document does not serialize to a
   /// JSON object (it always does from a well-formed
   /// [TrackingPreferences]; the check guards programmatic misuse).

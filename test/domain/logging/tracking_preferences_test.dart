@@ -61,12 +61,19 @@ void main() {
     test('keeps unknown category keys for the round trip but does not '
         'resolve them', () {
       final doc = TrackingPreferences.fromJsonText(
-          '{"sex_life": {"enabled": true, "sort_order": 4}, '
+          '{"not_a_category": {"enabled": true, "sort_order": 4}, '
           '"feelings": {"enabled": false, "sort_order": 0}}');
-      expect(doc!.entries, containsPair('sex_life', pref(true, 4)));
-      // Not a TagCategory in this build yet (lands with #253): the entry
-      // survives, and resolution ignores it (sex_life is not in the enum).
+      expect(doc!.entries, containsPair('not_a_category', pref(true, 4)));
+      // A wire name no build knows (the newer-client case): the entry
+      // survives the round trip, and the resolver never surfaces it.
       expect(doc.entries, hasLength(2));
+      final resolved = resolveTrackingCategories(
+        defaultOrder: TagCategory.values,
+        preferences: doc,
+      );
+      expect(resolved.length, TagCategory.values.length - 1,
+          reason: 'the unknown key resolves to nothing; the document\'s own '
+              'disabled feelings entry is the one hidden category');
     });
 
     test('drops malformed entries instead of failing the document', () {
@@ -88,8 +95,12 @@ void main() {
   });
 
   group('TrackingPreferences.toJsonText', () {
-    test('empty document serializes to null (nothing to store)', () {
-      expect(const TrackingPreferences.empty().toJsonText(), isNull);
+    test('empty document serializes to {} (the only shape a clear can take '
+        'on the wire: null is never emitted)', () {
+      expect(const TrackingPreferences.empty().toJsonText(), '{}');
+      expect(TrackingPreferences.fromJsonText('{}'),
+          const TrackingPreferences.empty(),
+          reason: 'an empty document parses back to the all-defaults state');
     });
 
     test('round-trips through its own text form', () {
@@ -142,9 +153,9 @@ void main() {
       for (final category in TagCategory.values) {
         expect(defaultTrackingEnabled(category, isMinor: false), isTrue,
             reason: 'every current category defaults enabled for an adult');
-        // `partying` is the one current category in the minor-hidden set
-        // (`sex_life` arrives with #253); everything else defaults enabled
-        // for a minor too.
+        // `partying`/`sex_life` are the current categories in the
+        // minor-hidden set; everything else defaults enabled for a minor
+        // too.
         expect(
             defaultTrackingEnabled(category, isMinor: true),
             !kMinorDefaultHiddenTrackingCategories
@@ -157,13 +168,22 @@ void main() {
         () {
       final doc = TrackingPreferences.fromJsonText(
           '{"partying": {"enabled": true, "sort_order": 0}}');
-      // partying is not in the enum yet, so the visible effect is pinned
-      // indirectly: the stored entry exists and is honored by the
-      // resolver for any category that IS in the enum. Use a proxy: the
-      // rule is keyed by wire name, and the resolver reads it only for
-      // absent entries — proven with feelings via the disabled-default case
-      // below plus the set-membership check above.
-      expect(doc!.entries['partying'], pref(true, 0));
+      // partying IS in the enum today, so the AC4 override is asserted
+      // directly: the explicit entry surfaces the category on a minor
+      // profile, while the same resolution with no document omits it.
+      final withEntry = resolveTrackingCategories(
+        defaultOrder: TagCategory.values,
+        preferences: doc,
+        isMinor: true,
+      );
+      expect(withEntry, contains(TagCategory.partying),
+          reason: 'the explicit enable wins over the minor default (AC4)');
+      final without = resolveTrackingCategories(
+        defaultOrder: TagCategory.values,
+        isMinor: true,
+      );
+      expect(without, isNot(contains(TagCategory.partying)),
+          reason: 'absent the explicit entry, the minor default hides it');
     });
 
     test('an explicit disable on an adult profile hides the category',

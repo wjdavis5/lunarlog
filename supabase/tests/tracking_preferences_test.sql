@@ -12,7 +12,7 @@
 -- sync_push_test.sql / guardian_sync_push_test.sql remain the
 -- characterization suite for everything else sync_push does.
 begin;
-select plan(29);
+select plan(35);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -25,6 +25,10 @@ create function pg_temp.resolved_profile(n text, p_id text) returns jsonb langua
 select tests.create_supabase_user('mom');
 select tests.create_supabase_user('dad');
 select tests.create_supabase_user('doctor');
+select tests.create_supabase_user('sitter');
+
+create function pg_temp.token(n int) returns text language sql as
+  $$ select md5(n::text || 'tracking-prefs') || md5('tracking-prefs' || n::text) $$;
 
 -- ---------------------------------------------------------------------------
 -- 1. is_valid_tracking_preferences: shape only, category keys free text.
@@ -233,16 +237,55 @@ select is(
   jsonb_build_array(jsonb_build_object('id', tests.ulid(920), 'rejected', true)),
   'a malformed document lands the profile row in rejected'
 );
+
 select is(
   (select tracking_preferences from public.profiles where id = tests.ulid(920)),
   null,
   'the rejected push left the stored document (still null) untouched'
 );
 
+-- An explicitly EMPTY document is the client-expressible clear (#378 review
+-- finding: the codec never emits a null key, so a deliberate clear rides the
+-- wire as '{}'): it stores as-is and resolves to defaults on every device.
+insert into r select 'empty_doc_prefs', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(920), 'display_name', 'Juno Renamed', 'is_minor', true,
+    'updated_at', '2026-09-01T13:30:00Z',
+    'tracking_preferences', '{}'::jsonb
+  )),
+  '[]'::jsonb);
+select is(
+  (select tracking_preferences from public.profiles where id = tests.ulid(920)),
+  '{}'::jsonb,
+  'an explicit empty document stores verbatim (the client-expressible clear)'
+);
+
+
 -- ---------------------------------------------------------------------------
 -- 4. Role gates: curation rides the profile-metadata ladder. Dad (co_parent)
 -- may curate (proven above); a viewer may not; a caregiver may not.
 -- ---------------------------------------------------------------------------
+-- The ladder's lower rungs are exercised with REAL memberships (the sweep's
+-- review caught a version of this that used an unroled user and so only ever
+-- proved the not-a-guardian gate):
+select tests.authenticate_as('mom');
+select ok(
+  public.create_guardian_invitation(tests.ulid(920), 'viewer', 'Doc', pg_temp.token(701), 48)
+    is not null,
+  'Mom invites Doc as a viewer');
+select ok(
+  public.create_guardian_invitation(tests.ulid(920), 'caregiver', 'Sitter', pg_temp.token(702), 48)
+    is not null,
+  'Mom invites Sitter as a caregiver');
+select tests.authenticate_as('doctor');
+select ok(
+  public.accept_guardian_invitation(pg_temp.token(701)) is not null,
+  'Doc accepts the viewer seat');
+select tests.authenticate_as('sitter');
+select ok(
+  public.accept_guardian_invitation(pg_temp.token(702)) is not null,
+  'Sitter accepts the caregiver seat');
+
 select tests.authenticate_as('doctor');
 insert into r select 'viewer_prefs', public.sync_push(
   jsonb_build_array(jsonb_build_object(
@@ -255,6 +298,20 @@ select is(
   (select r.v -> 'rejected' from r where r.name = 'viewer_prefs'),
   jsonb_build_array(jsonb_build_object('id', tests.ulid(920), 'rejected', true)),
   'a viewer''s curation push is rejected like any profile-metadata edit'
+);
+
+select tests.authenticate_as('sitter');
+insert into r select 'caregiver_prefs', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(920), 'display_name', 'Juno Renamed', 'is_minor', true,
+    'updated_at', '2026-09-01T15:30:00Z',
+    'tracking_preferences', '{"mood": {"enabled": true, "sort_order": 0}}'::jsonb
+  )),
+  '[]'::jsonb);
+select is(
+  (select r.v -> 'rejected' from r where r.name = 'caregiver_prefs'),
+  jsonb_build_array(jsonb_build_object('id', tests.ulid(920), 'rejected', true)),
+  'a caregiver''s curation push is rejected too (the ladder writes entries, not metadata)'
 );
 
 -- ---------------------------------------------------------------------------

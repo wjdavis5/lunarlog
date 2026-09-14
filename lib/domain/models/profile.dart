@@ -201,7 +201,6 @@ class Profile {
       other.archivedAt == archivedAt &&
       other.deletedAt == deletedAt &&
       _sameSubjectMetadata(other) &&
-      _sameProfileCuration(other) &&
       _sameMeasurementUnits(other);
 
   /// Split from [_sameProfileDetails] (the [Observation]

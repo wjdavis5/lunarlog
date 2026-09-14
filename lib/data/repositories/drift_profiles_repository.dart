@@ -129,11 +129,16 @@ class DriftProfilesRepository implements ProfilesRepository {
   Future<void> delete(String id) => _storage.softDeleteProfile(id);
 
   @override
+  // A null clear is expressed as the explicitly empty document: null would
+  // be omitted by the codec (never emitted onto the wire), so the clear
+  // could never propagate — '{}' is non-null, syncs, and resolves to
+  // defaults on every device.
   Future<domain.Profile?> setTrackingPreferences(
     String id,
     TrackingPreferences? preferences,
   ) =>
       _storage
-          .setTrackingPreferences(id, preferences?.toJsonText())
+          .setTrackingPreferences(
+              id, (preferences ?? const TrackingPreferences.empty()).toJsonText())
           .then((row) => row == null ? null : profileToDomain(row));
 }

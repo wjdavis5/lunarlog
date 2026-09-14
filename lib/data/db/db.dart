@@ -145,11 +145,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   per-profile display-unit preferences for numeric measurements).
   ///   Presentation only: each `observations` row keeps the unit it was
   ///   entered/imported in; the client converts at read time.
-  @override
-  int get schemaVersion => 17;
   /// * 17 — `tracking_preferences` on `profiles` (Issue #259, the synced
   ///   curated-tracking-categories document: which categories the day
   ///   sheet surfaces and in what order, shared by every guardian).
+  @override
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -329,9 +329,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV11(m, from);
     // Issue #220's v12 step, same shape again.
     await _upgradeToV12(m, from);
-    // Issue #296's and Issue #255's v13 columns, one step block (both
-    // bumps are v13 — main's #376 and this branch's #255 landed as
-    // competing v13s, woven into a single upgrade step).
+    // Issue #296's v13 step, same shape again.
     await _upgradeToV13(m, from);
     // Issue #186's v14 step, same shape again.
     await _upgradeToV14(m, from);

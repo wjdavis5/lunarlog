@@ -329,10 +329,10 @@ class _DaySheetState extends State<DaySheet> {
   /// the profile's curated set and order first, then the uncurated
   /// remainder in the mode's default order, with the minor-visibility
   /// default applied to categories the document never mentions (AC4).
-  /// Computed in [didChangeDependencies]/build time — it depends only on
-  /// the widget inputs and the mode copy, so it is recomputed on rebuild;
-  /// a sync that changes the document rebuilds the sheet through the
-  /// profile watch in the shells above.
+  /// Resolved once per sheet session (`late final`): the sheet is a modal
+  /// route whose State is not recreated by a shell rebuild, so a document
+  /// change arriving while the sheet is open applies the next time the
+  /// sheet opens. (The `mode` copy getter above IS rebuilt per access.)
   late final List<TagCategory> _categoriesInOrder = resolveTrackingCategories(
     defaultOrder: _copy.categoriesInOrder,
     preferences: widget.trackingPreferences,

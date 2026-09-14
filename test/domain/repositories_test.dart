@@ -187,7 +187,10 @@ void main() {
       expect(updated.updatedAt.isAfter(created.updatedAt), isTrue);
 
       expect((await profiles.setTrackingPreferences(created.id, null))!
-          .trackingPreferences, isNull);
+          .trackingPreferences, const TrackingPreferences.empty(),
+          reason: 'a null clear is expressed as the explicitly empty document '
+              '(non-null, so it actually propagates to co-guardians); it '
+              'resolves to defaults on every device');
       expect(await profiles.setTrackingPreferences('01JPROFILEUNKNOWN000000000', null),
           isNull,
           reason: 'unknown id: nothing to curate');

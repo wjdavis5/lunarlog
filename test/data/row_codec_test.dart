@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:drift/native.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/sync/conflict_rules.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
@@ -256,6 +257,26 @@ void main() {
         'co-guardian\u2019s curated document with an explicit null', () {
       final json = encodeProfile(makeProfile());
       expect(json.keys, isNot(contains('tracking_preferences')));
+    });
+
+    test('encode emits an explicitly-cleared document as {} — the '
+        'composition the clear path depends on (Issue #259 review): '
+        'a cleared profile must NOT be wire-indistinguishable from '
+        'never-customized', () async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final p = await db.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await db.storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": false, "sort_order": 1}}');
+      final cleared = await db.storage.setTrackingPreferences(p.id, null);
+      expect(cleared!.trackingPreferences, '{}',
+          reason: 'the clear is stored as the empty document');
+      final json = encodeProfile(cleared);
+      expect(json['tracking_preferences'], isNotNull,
+          reason: 'the key IS emitted (non-null), so the server stores the '
+              'clear instead of preserving the stale document');
+      expect(json['tracking_preferences'], isA<Map>());
+      expect((json['tracking_preferences'] as Map), isEmpty);
     });
 
     test('encode emits the decoded JSON object, not a doubly-encoded '

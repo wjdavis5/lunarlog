@@ -52,12 +52,13 @@
 --   2. `grant update (tracking_preferences)` -- additive column-list
 --      grant (KTD15); the table-level select grant already covers
 --      reading it.
---   3. `sync_push`: create-or-replaced from its latest body (the
---      PR #377-woven definition in
---      20260910110000_numeric_measurement_units.sql -- #376's
---      transferred_to_user_id tolerance plus #255's bbt_unit/weight_unit
---      keys, containment guards, and source-scoped observations dedup;
---      this file sorts after it per Migration Flow item 7), copied
+--   3. `sync_push`: create-or-replaced from its latest body (main's
+--      current definition in
+--      20260914020000_numeric_measurement_units.sql -- #376's
+--      transferred_to_user_id tolerance, #255's bbt_unit/weight_unit
+--      keys, containment guards, and source-scoped observations dedup,
+--      plus #643's same-date observation reparenting; this file sorts
+--      after it per Migration Flow item 7), copied
 --      verbatim with only the profiles section touched: the key joins
 --      the allowlist, is parsed with the `nullif(...,
 --      'null'::jsonb)` collapse (observations.raw's lesson),
@@ -68,24 +69,18 @@
 --      Same 7-argument signature, so CREATE OR REPLACE works in place --
 --      exactly one sync_push afterwards.
 --
--- Filename ordering (AGENTS.md Migration Flow step 7): originally
--- authored as 20260909210000_profile_tracking_preferences.sql in
--- parallel with #376's migration of the same timestamp; renamed to
--- 20260909220000 during the #378 merge integration with #376, then
--- renamed again to 20260910120000 because main's
--- 20260909220000_prediction_connections_minor_gate.sql had claimed that
--- prefix and #377's units migration took 20260910110000_ -- it now
--- sorts after everything on main (its sync_push body is carried forward
--- from the #377-woven definition, not from 20260909160000).
-
--- Filename ordering (AGENTS.md Migration Flow item 7): renamed from an
--- original `20260910120000_` prefix to sort after everything main gained
--- through `20260914020000` (#255's units migration). The `sync_push` body
--- below is carried forward from
--- 20260914020000_numeric_measurement_units.sql (main's current definition,
--- including #255's source-scoped dedup and #643's observation
--- reparenting) other than the #259 additions called out inline; the
--- signature is unchanged, so a plain create-or-replace applies.
+-- Filename ordering (AGENTS.md Migration Flow item 7): authored as
+-- 20260909210000_ in parallel with #376's same-timestamped migration,
+-- renamed 20260909220000_ then 20260910120000_ as main claimed those
+-- prefixes, and finally renamed to 20260915000000_ when the merge sweep
+-- rebased this branch onto a main that had reached 20260914020000
+-- (#255's units migration) -- this file sorts after everything on main
+-- at merge time, and its sync_push body is carried forward from
+-- 20260914020000_numeric_measurement_units.sql (main's current
+-- definition, including #255's source-scoped dedup and #643's
+-- observation reparenting) other than the #259 additions called out
+-- inline; the signature is unchanged, so a plain create-or-replace
+-- applies.
 
 -- ---------------------------------------------------------------------------
 -- 1. New column + shape CHECK
@@ -133,9 +128,8 @@ grant update (tracking_preferences) on table public.profiles to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3. sync_push: extend the profile key allowlist and the insert/update
--- paths. Full function body carried forward verbatim from the
--- PR #377-woven definition in
--- 20260910110000_numeric_measurement_units.sql (whose own carried
+-- paths. Full function body carried forward verbatim from
+-- 20260914020000_numeric_measurement_units.sql (whose own carried
 -- sections - #296's transferred_to_user_id tolerated-but-never-read key
 -- and #255's bbt_unit/weight_unit keys, containment guards, and
 -- source-scoped observations dedup included - are kept exactly as

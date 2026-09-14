@@ -498,7 +498,6 @@ RemoteProfileRow decodeProfile(JsonRow json) {
 String? _decodeTrackingPreferencesFromWire(JsonRow json, _Reader r) {
   final value = json['tracking_preferences'];
   if (value == null) return null;
-  if (value is Map<String, dynamic>) return jsonEncode(value);
   if (value is Map) return jsonEncode(value);
   r._fail(RowCodecErrorKind.invalidTrackingPreferences,
       'tracking_preferences');

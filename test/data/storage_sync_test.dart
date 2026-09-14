@@ -846,7 +846,9 @@ void main() {
 
       final cleared =
           await storage.setTrackingPreferences(p.id, null);
-      expect(cleared!.trackingPreferences, isNull);
+      expect(cleared!.trackingPreferences, '{}',
+          reason: 'a clear is stored as the explicitly empty document — '
+              'null would be omitted by the codec and could never propagate');
       expect(cleared.dirty, isTrue);
       expect(cleared.localRev, revBefore + 2);
     });

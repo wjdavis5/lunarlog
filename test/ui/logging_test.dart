@@ -3629,6 +3629,47 @@ group('tracking preferences read path (Issue #259)', () {
         reason: 'every curated taxonomy option plus the spotting and PMS toggles');
   });
 
+  testWidgets('a minor profile with an absent document never renders the '
+      'minor-hidden categories (AC4 client half, widget level)', (tester) async {
+    final db = await pumpSheetWithPrefs(tester, isMinor: true);
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final partyingLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+    final sexLifeLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.sexLife);
+    expect(headers, isNot(contains(partyingLabel)),
+        reason: 'partying defaults hidden on a minor profile');
+    expect(headers, isNot(contains(sexLifeLabel)),
+        reason: 'sex_life defaults hidden on a minor profile');
+    expect(
+        headers.skip(2).length,
+        TagCategory.values
+            .where((c) =>
+                !kMinorDefaultHiddenTrackingCategories.contains(c.wireName))
+            .length,
+        reason: 'exactly the minor-hidden set is removed');
+  });
+
+  testWidgets('a minor profile with an explicit enable renders the '
+      'category (AC4 override end-to-end at the widget level)',
+      (tester) async {
+    final db = await pumpSheetWithPrefs(
+      tester,
+      isMinor: true,
+      trackingPreferences: TrackingPreferences.fromJsonText(
+          '{"partying": {"enabled": true, "sort_order": 0}}'),
+    );
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final partyingLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+    expect(headers, contains(partyingLabel),
+        reason: 'the stored explicit enable wins over the minor default');
+  });
+
   testWidgets('already-logged tags in a disabled category are never '
       'deleted: they round-trip through autosave untouched (AC3)',
       (tester) async {

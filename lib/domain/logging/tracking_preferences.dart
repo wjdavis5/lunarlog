@@ -19,9 +19,11 @@
 /// (global assumption #2, cited by #251 (TM-4b) and #253 (TM-4d)):
 /// [kMinorDefaultHiddenTrackingCategories] lists the categories that
 /// default to *disabled* on an `isMinor` profile, while staying enabled —
-/// and enabling — for everyone else. The categories themselves do not
-/// exist in [TagCategory] yet (their issues own the vocabulary); the rule
-/// is keyed by wire name so it is already in force the moment they land.
+/// and enabling — for everyone else. Both are live [TagCategory] members
+/// today (they landed with #251/#252/#253 while this branch was in
+/// flight); the rule stays keyed by wire name so any FUTURE category
+/// joining the set is covered the moment it is named, before its enum
+/// member exists.
 /// Like every default here it is a default only: a `primary_guardian` can
 /// enable a hidden category explicitly (the stored entry then wins), and
 /// the server never enforces or even knows the rule — the preference is
@@ -131,9 +133,14 @@ class TrackingPreferences {
   }
 
   /// The JSON-text form stored locally and (as a decoded object) on the
-  /// wire. Null when there is nothing to store.
-  String? toJsonText() {
-    if (_entries.isEmpty) return null;
+  /// wire. `'{}'` when there is nothing to store: an explicitly empty
+  /// document is a deliberate "clear to defaults" and MUST stay
+  /// distinguishable from null (never customized / not pulled) — null is
+  /// never emitted onto the wire (the codec's emit-only-when-non-null rule
+  /// protects a co-guardian's document from a device that simply has not
+  /// pulled yet), so only the empty document can carry a clear.
+  String toJsonText() {
+    if (_entries.isEmpty) return '{}';
     return jsonEncode({
       for (final entry in _entries.entries)
         entry.key: {

@@ -378,13 +378,19 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// the row is not held locally or is tombstoned (curating a deleted
   /// profile is meaningless). Throws [ArgumentError] when [jsonText] is
   /// not null and not a JSON object — the same shape rule the server's
-  /// `profiles_tracking_preferences_check` enforces, applied here so the
-  /// row never goes dirty into a push that can only be rejected.
+  /// `profiles_tracking_preferences_check` enforces — a weaker, fail-fast
+  /// object-ness check only (the server's CHECK remains the real shape
+  /// enforcement: per-entry `enabled` boolean, `sort_order` integer in
+  /// [0, 1000], key length bounds). A null [jsonText] is stored as the
+  /// explicitly empty document `'{}'`: a clear must be non-null to survive
+  /// the codec's emit-only-when-non-null rule and actually propagate.
   Future<Profile?> setTrackingPreferences(
     String profileId,
     String? jsonText,
   ) async {
-    if (jsonText != null) {
+    jsonText ??= '{}';
+    final String stored = jsonText;
+    if (jsonText.isNotEmpty) {
       final Object? decoded;
       try {
         decoded = jsonDecode(jsonText);
@@ -402,7 +408,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       if (existing == null || existing.deletedAt != null) return null;
       await (db.update(db.profiles)..where((t) => t.id.equals(profileId)))
           .write(ProfilesCompanion(
-        trackingPreferences: Value(jsonText),
+        trackingPreferences: Value(stored),
         updatedAt: Value(_afterStored(_now(), existing.updatedAt)),
         dirty: const Value(true),
         localRev: Value(existing.localRev + 1),

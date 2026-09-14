@@ -141,6 +141,9 @@ final Map<String, TagCategory> _categoryByWireName = {
 /// does not know (a document written by a newer client with a category
 /// this build has not adopted yet round-trips but never resolves — see
 /// `TrackingPreferences` in `lib/domain/logging/tracking_preferences.dart`).
+/// Its production consumer is #234's picker UI (today it is exercised by the
+/// tracking-preferences domain tests, which is deliberate: the round-trip
+/// guarantee is pinned before the picker lands).
 TagCategory? categoryFromWireName(String name) => _categoryByWireName[name];
 
 class TagCode {
