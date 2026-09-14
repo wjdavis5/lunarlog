@@ -466,10 +466,45 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     );
   }
 
+  /// Re-validates ownership/profile authority against the CURRENT stored
+  /// binding, signed-in session, and guardian rows — never [facts], which
+  /// was captured once when the pass began (Issue #620, LLA-023): a batch
+  /// can span many individual platform writes, and a pass suspended
+  /// mid-batch (the OS backgrounds the app between calls) can resume after
+  /// an ownership transfer or a profile edit changed who may write here.
+  /// Reusing `HealthSyncBinding.canWrite` — the same recheck every guarded
+  /// port call already performs — means a resolved profile whose ownership
+  /// or minor status changed denies exactly the way a fresh call would.
+  /// Returns the refusal to cancel the rest of the pass with, or null when
+  /// authority still holds.
+  Future<HealthPlatformResult?> _authorityDrift(HealthGuardFacts facts) async {
+    final profile = await _profiles.findById(facts.profile.id);
+    if (profile == null) {
+      // The profile row itself vanished mid-pass (deleted, or its device
+      // no longer has it) — no HealthSyncCheck reason fits "the thing we
+      // were writing to is gone", so this is a platform-level failure
+      // rather than a guard refusal.
+      return const HealthPlatformResult.failed(
+        'bound profile no longer resolves mid-pass',
+      );
+    }
+    final recheck = await _binding.canWrite(
+      profile: profile,
+      signedInUserId: _signedInUserId(),
+      ownerUserId: ownerUserIdFor(await _guardiansForProfile(profile.id)),
+      minorBindingAllowed: _minorBindingAllowed,
+    );
+    return recheck.isAllowed ? null : HealthPlatformResult.refused(recheck);
+  }
+
   /// Sends the per-day flow/marker writes to the port. Keeps writing after
   /// a failure (one bad day must not hide the others), remembering the
   /// first failure and leaving the cursor — the next pass retries the batch
   /// rather than half-skipping (see the class doc's forward-only note).
+  /// Stops outright, rather than skipping just the one day, the moment
+  /// [_authorityDrift] detects the pass's authority has changed underneath
+  /// it (Issue #620, LLA-023) — a drift found on day N means every day
+  /// after N is written under the same now-invalid authority too.
   Future<
       ({
         int written,
@@ -483,6 +518,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     HealthPlatformResult? failure;
     DateTime? newest;
     for (final write in pending) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
       final current = newest;
       if (current == null || write.updatedAt.isAfter(current)) {
         newest = write.updatedAt;
@@ -536,6 +576,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// metadata instead (#193) — is a graceful skip, never a pass-blocking
   /// failure (on Android a genuinely missing Health Connect surfaces as
   /// `unavailable` on the per-day writes above, which already blocks).
+  /// Stops outright on the same mid-pass authority drift
+  /// [_writeFlowRecords] guards against (Issue #620, LLA-023).
   Future<
       ({
         int written,
@@ -549,6 +591,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     HealthPlatformResult? failure;
     DateTime? newest;
     for (final period in pendingPeriods) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
       if (newest == null || period.updatedAt.isAfter(newest)) {
         newest = period.updatedAt;
       }

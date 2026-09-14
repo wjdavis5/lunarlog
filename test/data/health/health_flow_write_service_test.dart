@@ -51,6 +51,19 @@ ProfileGuardian _ownerRow() => ProfileGuardian(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
+/// The accepted `primary_guardian` row after an ownership transfer away
+/// from [_ownerId] — used by the mid-pass authority-drift regression
+/// (Issue #620, LLA-023) to simulate a transfer completing between two of
+/// the same pass's writes.
+ProfileGuardian _transferredRow() => ProfileGuardian(
+      id: 'g2',
+      profileId: _profileId,
+      userId: 'new-owner',
+      role: GuardianRole.primaryGuardian,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+
 DayEntry _entry(
   String isoDay,
   FlowLevel flow,
@@ -163,6 +176,23 @@ class _FakeProfiles implements ProfilesRepository {
 
   @override
   Future<Profile?> findById(String id) async => profile;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
+}
+
+/// A [ProfilesRepository] whose [findById] answer is driven by a callback
+/// invoked on every call — for the mid-pass authority-drift regression
+/// (Issue #620, LLA-023) that needs the profile lookup to change its
+/// answer partway through a single sync pass.
+class _FlakyProfiles implements ProfilesRepository {
+  _FlakyProfiles({required this.onFind});
+
+  final Profile? Function() onFind;
+
+  @override
+  Future<Profile?> findById(String id) async => onFind();
 
   @override
   dynamic noSuchMethod(Invocation invocation) =>
@@ -839,6 +869,105 @@ void main() {
 
       expect(report.blocked, isA<HealthPlatformPermissionDenied>());
       // The cursor does not advance (blocked), so the next pass retries.
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
+    });
+  });
+
+  group('mid-pass authority drift (issue #620, LLA-023)', () {
+    test(
+        'ownership transferred away between two writes cancels the rest of '
+        'the pass instead of writing the second day under the stale owner',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      // `guardiansForProfile` is consulted once to resolve the pass's
+      // starting facts, then again before each write's fresh recheck
+      // (Issue #620, LLA-023). The first two calls (pass start, first
+      // write's recheck) still see the original owner; from the third
+      // call on — the SECOND write's recheck — ownership has moved to a
+      // different account, simulating a transfer that completed while
+      // the pass was suspended between platform calls.
+      var guardianCalls = 0;
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        guardiansForProfile: (_) async {
+          guardianCalls++;
+          return guardianCalls <= 2 ? [_ownerRow()] : [_transferredRow()];
+        },
+        signedInUserId: () => _ownerId,
+        now: () => clock,
+      );
+
+      final report = await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(1),
+          reason: 'the second write must be cancelled once the recheck '
+              'observes the ownership change, not sent under stale facts');
+      expect(
+          platform.flowWrites.single.date, LocalDate.fromIso('2026-06-02'));
+      expect(report.blocked, isA<HealthPlatformRefused>());
+      expect((report.blocked! as HealthPlatformRefused).check,
+          HealthSyncCheck.notOwner);
+      // A blocked pass never advances the cursor: the whole batch,
+      // including the day that DID get written before the drift was
+      // observed, is retried by the next pass under fresh facts.
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
+    });
+
+    test(
+        'the bound profile being deleted mid-pass cancels the rest of the '
+        'pass', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      var findCalls = 0;
+      final flakyProfiles = _FlakyProfiles(
+        onFind: () {
+          findCalls++;
+          // Call 1 is the pass's own `_resolveBound`; call 2 is the first
+          // write's recheck — both still resolve. From call 3 on (the
+          // second write's recheck) the profile row is gone.
+          return findCalls <= 2 ? _profile() : null;
+        },
+      );
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: flakyProfiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        guardiansForProfile: (_) async => [_ownerRow()],
+        signedInUserId: () => _ownerId,
+        now: () => clock,
+      );
+
+      final report = await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(1));
+      expect(report.blocked, isA<HealthPlatformFailed>());
       expect(await settings.get(_cursorKey),
           '${grant.millisecondsSinceEpoch}');
     });

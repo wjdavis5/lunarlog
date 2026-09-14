@@ -80,10 +80,18 @@ class HealthSyncBinding {
   }
 
   /// Reactive variant of [boundProfileId] — emits the current value and
-  /// again on every change.
+  /// again on every change. `.distinct()` is load-bearing, not cosmetic
+  /// (Issue #620, LLA-017): the underlying settings watch can reemit an
+  /// unchanged raw value (a table-level Drift invalidation from an
+  /// unrelated write, e.g. the health-flow cursor), and normalization
+  /// alone can also turn two distinct raw values (`null` and `''`) into
+  /// the same bound id — either way, a consumer that treats every
+  /// emission as a binding change (unbind, then rebind) must never see
+  /// one for a value that has not actually changed.
   Stream<String?> watchBoundProfileId() => _settings
       .watch(SettingsKeys.healthStoreProfileId)
-      .map(_normalize);
+      .map(_normalize)
+      .distinct();
 
   static String? _normalize(String? value) =>
       (value == null || value.isEmpty) ? null : value;

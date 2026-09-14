@@ -8,9 +8,13 @@ library;
 
 import 'dart:async';
 
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/data/db/db.dart' hide DayEntry;
+import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart'
     show LocalHealthFlowWriteCoordinator;
+import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -45,6 +49,41 @@ class _RecordingService implements HealthFlowWriteService {
     unboundCalls++;
     // Mirror the real service's cursor clear so rebind tests can observe
     // the sequencing through the settings store.
+    await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
+  }
+}
+
+/// Mirrors the real service's forward-only cursor stamp (see
+/// `health_flow_write_service.dart`'s `syncNow`): every successful pass
+/// writes a DIFFERENT settings key than the binding itself. Against a real
+/// Drift-backed settings store this is exactly the write that (pre-#620
+/// fix) reemits the binding's unchanged value through the coarse,
+/// table-scoped invalidation `storage_settings_watch_test.dart` pins.
+class _CursorStampingService implements HealthFlowWriteService {
+  _CursorStampingService(this._settings);
+
+  final SettingsStore _settings;
+
+  int syncCalls = 0;
+  int unboundCalls = 0;
+  final Completer<void> _firstSync = Completer<void>();
+
+  Future<void> get firstSync => _firstSync.future;
+
+  @override
+  Future<HealthFlowSyncReport> syncNow() async {
+    syncCalls++;
+    await _settings.set(
+      SettingsKeys.healthSyncWrittenThroughMs,
+      '${1000 + syncCalls}',
+    );
+    if (!_firstSync.isCompleted) _firstSync.complete();
+    return const HealthFlowSyncReport(bound: true);
+  }
+
+  @override
+  Future<void> onUnbound() async {
+    unboundCalls++;
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
   }
 }
@@ -191,6 +230,43 @@ void main() {
     await dayEntries.emit(const []);
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(service.syncCalls, greaterThan(syncsBeforeReplace));
+  });
+
+  test(
+      'an unchanged binding emission from a real Drift settings watch does '
+      'not unbind/rebind (issue #620, LLA-017)', () async {
+    // Real Drift-backed settings, not the fake: the fake's watch is
+    // per-key and can never reproduce the table-level invalidation this
+    // regression guards against (see `storage_settings_watch_test.dart`).
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final storage = LunarLogStorage(db);
+    final driftSettings = DriftSettingsStore(storage);
+    final driftDayEntries = _FakeDayEntries();
+    final driftService = _CursorStampingService(driftSettings);
+    final driftCoordinator = LocalHealthFlowWriteCoordinator(
+      binding: HealthSyncBinding(driftSettings),
+      dayEntries: driftDayEntries,
+      service: driftService,
+      debounce: const Duration(milliseconds: 10),
+    );
+    addTearDown(driftCoordinator.dispose);
+
+    await driftSettings.set(_bindingKey, 'p1');
+    driftCoordinator.start();
+
+    await driftDayEntries.emit(const []);
+    await driftService.firstSync;
+
+    // Let the cursor-stamp write's table-level invalidation propagate
+    // through the real binding watch, plus a couple of debounce windows,
+    // so any self-sustaining loop would have visibly run away by now.
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    expect(driftService.unboundCalls, 0,
+        reason: 'an unchanged binding emission must never retire the '
+            'cursor via the unbind path');
+    expect(await driftSettings.get(_bindingKey), 'p1');
   });
 
   test('a throwing pass never kills the subscription', () async {
