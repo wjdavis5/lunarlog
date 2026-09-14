@@ -26,13 +26,21 @@ name: Supabase migrate
 # supabase/** push (a new migration, another function) must not fail purely
 # because a signing key or FCM service-account value hasn't been
 # provisioned yet -- migrations still get pushed and every function still
-# gets its code deployed either way. The Apple check hard-fails just the
-# delete-account secret-set/deploy steps (that function cannot revoke an
-# Apple identity without them -- Issue #17 KTD3). The push-dispatch check is
-# softer: it warns and skips only the `supabase secrets set` step, because
-# push-dispatch is already live in production with secrets set out-of-band
-# (issue #163 / D-19), so a CI run without those secrets configured yet
-# should not be treated as a deploy failure.
+# gets its code deployed either way. Issue #513: the Apple check used to
+# hard-fail the delete-account secret-set/deploy steps whenever any of the
+# four GitHub secrets was unset, even though delete-account has been live in
+# production since v231 with its Apple secrets already set directly on the
+# Supabase project -- every run failed. It now fails closed only when a
+# name is missing from BOTH the GitHub `production` secrets AND the
+# project's own secrets (via `supabase secrets list` +
+# .github/scripts/check-apple-secrets.sh); when the GitHub secrets are
+# partial or absent but the project already has all four, it reuses the
+# project's existing values instead of failing (that function still cannot
+# revoke an Apple identity without them either way -- Issue #17 KTD3). The
+# push-dispatch check is softer: it warns and skips only the `supabase
+# secrets set` step, because push-dispatch is already live in production
+# with secrets set out-of-band (issue #163 / D-19), so a CI run without
+# those secrets configured yet should not be treated as a deploy failure.
 #
 # The "Reconcile Realtime publication" step re-invokes
 # public.reconcile_realtime_publication() after every push (Issue #77 / PR
@@ -314,13 +322,50 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Check Apple secrets (account-deletion deploy only)
+        # Issue #513: the old version of this step hard-failed the whole
+        # job whenever any of the four GitHub `production` environment
+        # Apple secrets was unset -- but delete-account has been live in
+        # production since v231 (deployed out-of-band) with its Apple
+        # secrets already set directly on the Supabase project, so every
+        # run failed here regardless of whether migrations or the other
+        # three functions had anything to deploy. This never overwrites a
+        # working project secret with a missing GitHub one: it only ever
+        # reuses what is already confirmed present on the project, or fails
+        # closed naming exactly what's missing from both places.
+        #
+        # All four GitHub secrets set: unchanged behaviour, no project API
+        # call needed -- `check-apple-secrets.sh` returns `mode=set` from
+        # its env-var check alone. Otherwise, `supabase secrets list
+        # --output json` (names + digests only, confirmed against the
+        # pinned CLI's own source at tag v2.116.0 -- see the script's own
+        # header) is piped into the same script, which returns `mode=reuse`
+        # only if all four names already exist on the project, or fails
+        # with an `::error::` naming exactly which are missing from both
+        # the GitHub secrets and the project. The name-parsing/presence
+        # logic itself lives in .github/scripts/check-apple-secrets.sh
+        # (unit tested: .github/scripts/tests/check-apple-secrets.test.sh),
+        # not inline here, so it is covered by the release-guards /
+        # release-guards-macos CI jobs the same way the other
+        # .github/scripts/*.sh helpers are.
+        id: apple_secrets
         run: |
-          if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then
-            echo "::error::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment. The delete-account function needs all four to revoke an Apple identity on deletion (Issue #17 KTD3) - add them (Environment secrets) and re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from. This only blocks deploying delete-account - migrations for unrelated supabase/** changes already pushed successfully above."
-            exit 1
+          set -euo pipefail
+          if [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_CLIENT_ID:-}" ] && [ -n "${APPLE_PRIVATE_KEY:-}" ]; then
+            mode_line="$(bash .github/scripts/check-apple-secrets.sh < /dev/null)"
+          else
+            mode_line="$(supabase secrets list --output json --project-ref "$SUPABASE_PROJECT_REF" | bash .github/scripts/check-apple-secrets.sh)"
+          fi
+          echo "$mode_line" >> "$GITHUB_OUTPUT"
+          if [ "$mode_line" = "mode=reuse" ]; then
+            echo "::notice::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment, but all four already exist on the Supabase project (checked via \`supabase secrets list\`) -- reusing the existing project secrets as-is rather than overwriting them from a partial GitHub-secret set. Add the missing GitHub secrets if you want CI to manage them going forward; see AGENTS.md's 'Config & Credential Locations' for where each value comes from."
           fi
 
       - name: Set delete-account function secrets
+        # Only runs when all four GitHub secrets were present above
+        # (mode=set) -- skipped on mode=reuse so a partial GitHub-secret set
+        # can never overwrite the project's own good Apple secrets with
+        # empty/missing values.
+        if: steps.apple_secrets.outputs.mode == 'set'
         run: |
           supabase secrets set \
             APPLE_TEAM_ID="$APPLE_TEAM_ID" \
