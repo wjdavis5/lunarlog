@@ -161,7 +161,11 @@ site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+# Issue #266: 600 (10 minutes), the documented production posture
+# (docs/ops/supabase-go-live.md's "Supabase Auth" checklist) rather than the
+# 1-hour stock default -- "Sign out everywhere" revokes sessions, not
+# tokens, so this bounds how long another device keeps access.
+jwt_expiry = 600
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -172,15 +176,41 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# Issue #266: closed once the household's accounts exist
+# (docs/ops/supabase-go-live.md's "Sign-ups closed once the household's
+# accounts exist" item) -- the documented production posture is closed
+# sign-up, not the stock-template's open default. Reopening for a new
+# household member's onboarding is a deliberate, temporary dashboard-side
+# action per that doc, not something this committed default should assume.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
-enable_manual_linking = false
+# Issue #266: ON in production -- the account section's "Add Google"/"Add
+# Apple" actions call linkIdentityWithIdToken, which the server refuses
+# while this is off (docs/ops/supabase-go-live.md), so the stock
+# template's `false` silently breaks that flow rather than merely leaving
+# a test feature off.
+enable_manual_linking = true
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Issue #266: 12, matching the client's own kMinPasswordLength
+# (lib/ui/l10n/auth_failure_copy.dart) -- the two must agree per
+# docs/ops/supabase-go-live.md, or the server could reject a password the
+# client already accepted as strong enough.
+minimum_password_length = 12
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
+# Issue #266 review round 1: left empty (the stock default), not a
+# complexity requirement -- the client only enforces
+# minimum_password_length above (kMinPasswordLength = 12 in
+# lib/ui/l10n/auth_failure_copy.dart; sign_in_screen.dart and
+# password_recovery_screen.dart check length only, no complexity rule). A
+# non-empty value here would let the server reject a password the client
+# already accepted as strong enough, surfacing as a confusing auth
+# failure. Adding real complexity requirements needs a coordinated
+# client+server change (client-side validation/copy plus this setting
+# together) and should be its own issue, not a silent server-only change
+# here.
 password_requirements = ""
 
 # Configure passkey sign-ins.
@@ -222,15 +252,25 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Issue #266: ON in production -- the app depends on it (signUp returns a
+# user and no session, and the status tile shows "Waiting for email
+# confirmation"; docs/ops/supabase-go-live.md), so the stock template's
+# `false` leaves that whole flow unexercised locally by default.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
-otp_length = 6
+# Issue #266: 8, the documented production posture
+# (docs/ops/supabase-go-live.md's Social logins/passwordless checklist,
+# "#2 AS4") rather than the stock 6-digit default.
+otp_length = 8
 # Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+# Issue #266: 600 (10 minutes) -- governs every emailed link (confirmation,
+# recovery, email change, magic link); docs/ops/supabase-go-live.md "#2
+# AS5" rather than the stock 1-hour default.
+otp_expiry = 600
 
 # Use a production-ready SMTP server
 # [auth.email.smtp]
