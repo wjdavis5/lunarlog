@@ -52,6 +52,29 @@ OPS_WORKFLOWS = {
 }
 
 
+def is_trusted_source(repo: str, head_repository: str, head_branch: str) -> bool:
+    """True only when the workflow_run's code actually came from this
+    repository's own `main` (LLA-114) -- not a fork whose own default
+    branch happens to also be named "main".
+
+    The workflow's `branches: [main]` trigger filter matches on
+    `head_branch` alone, and `head_branch` is attacker-controlled: a
+    contributor's fork almost always has its own branch named "main" (a
+    fork's default branch keeps the upstream default's name), so a PR
+    opened straight from that branch produces a `workflow_run` whose
+    `head_branch` is "main" even though the code -- and the failure -- has
+    nothing to do with this repository's real main. `head_repository` is
+    the repo the run's code actually came from, which differs from `repo`
+    for exactly that fork-PR shape; requiring the two to match is what
+    actually rules a fork out. `head_branch` is re-checked here too,
+    redundantly with the workflow trigger's own filter, so this one
+    function is a complete, independently testable gate rather than
+    something that silently relies on the YAML filter never drifting out
+    of sync with it.
+    """
+    return bool(repo) and bool(head_repository) and repo == head_repository and head_branch == "main"
+
+
 def short_sha(head_sha: str) -> str:
     return (head_sha or "")[:7]
 
@@ -119,10 +142,26 @@ def main() -> int:
     head_sha = os.environ.get("HEAD_SHA")
     run_url = os.environ.get("RUN_URL")
     repo = os.environ.get("GITHUB_REPOSITORY")
+    head_repository = os.environ.get("HEAD_REPOSITORY")
+    head_branch = os.environ.get("HEAD_BRANCH")
     workflow_name = os.environ.get("WORKFLOW_NAME") or "CI"
-    if not (run_id and head_sha and run_url and repo):
-        print("error: RUN_ID, HEAD_SHA, RUN_URL, GITHUB_REPOSITORY are required", file=sys.stderr)
+    if not (run_id and head_sha and run_url and repo and head_repository and head_branch):
+        print(
+            "error: RUN_ID, HEAD_SHA, RUN_URL, GITHUB_REPOSITORY, HEAD_REPOSITORY, "
+            "HEAD_BRANCH are required",
+            file=sys.stderr,
+        )
         return 2
+
+    # LLA-114: never let a fork's identically-named branch pose as this
+    # repository's own main failing -- see is_trusted_source's docstring.
+    if not is_trusted_source(repo, head_repository, head_branch):
+        print(
+            f"skipping: workflow_run's code came from '{head_repository}' "
+            f"branch '{head_branch}', not {repo}'s own main; not filing an "
+            "issue (LLA-114)."
+        )
+        return 0
 
     try:
         jobs_payload = json.loads(

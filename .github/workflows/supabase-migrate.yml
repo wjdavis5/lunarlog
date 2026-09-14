@@ -73,6 +73,18 @@ name: Supabase migrate
 # would fail every run until all three land. TODO(#163 follow-up): tighten
 # to --fail-on warn once #158, #194, and leaked-password protection are
 # done.
+#
+# LLA-111: "run LAST" used to also mean "run only if everything before them
+# succeeded" -- GitHub Actions' default per-step `if:`. That silently
+# skipped both checks whenever any earlier step in the job failed (a
+# push-dispatch/Apple secret not configured yet, a function deploy
+# hiccup) -- exactly the case where independent verification of what did
+# make it live matters most, on a run that's already red for an unrelated
+# reason -- and skipped the advisor gate a second way whenever the drift
+# check itself found something and failed. Both steps now carry
+# `if: always() && steps.link.outcome == 'success'`, independent of each
+# other and of every step in between: they run whenever `supabase link`
+# itself succeeded, regardless of what happened after it.
 
 on:
   push:
@@ -166,6 +178,14 @@ jobs:
         # change should never ship through the unattended path. Apply it
         # by hand (a manual `supabase db push` or `psql` session) after
         # reviewing it directly.
+        #
+        # LLA-109: the scan itself now lives in the statement-aware, unit-
+        # tested .github/scripts/check-destructive-sql.sh (the release-
+        # guards CI job runs its truth table on every PR) rather than a
+        # single line-based `grep -E` here -- see that script's header for
+        # exactly which false negatives (a statement split across lines)
+        # and false positives (ALTER PUBLICATION ... DROP TABLE, a comment
+        # mentioning "drop table") it fixes.
         run: |
           set -euo pipefail
 
@@ -183,8 +203,9 @@ jobs:
               continue # already applied in production; not part of this push
             fi
             checked=$((checked + 1))
-            if grep -EinH '(^|[^[:alnum:]_])drop[[:space:]]+(table|column)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])alter[[:space:]]+table\b.*\btype\b' "$f"; then
-              echo "::error::$f is not yet applied to production and contains a DROP or ALTER ... TYPE statement -- potentially destructive against a non-empty table. Blocked from the unattended push above."
+            if ! reason="$(bash .github/scripts/check-destructive-sql.sh < "$f")"; then
+              echo "::error::$f is not yet applied to production and contains a destructive statement -- potentially destructive against a non-empty table. Blocked from the unattended push above."
+              echo "$reason"
               hit=1
             fi
           done
@@ -198,6 +219,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
+    permissions:
+      # contents: read is needed for actions/checkout; deployments: write
+      # is LLA-110's addition -- see "Record delete-account deployment
+      # evidence" below. Job-level permissions replace the workflow-level
+      # default entirely for this job, so both must be listed explicitly.
+      contents: read
+      deployments: write
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -234,6 +262,7 @@ jobs:
           fi
 
       - name: Link project
+        id: link
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Push migrations
@@ -303,6 +332,52 @@ jobs:
       - name: Deploy delete-account function
         run: supabase functions deploy delete-account --project-ref "$SUPABASE_PROJECT_REF"
 
+      - name: Record delete-account deployment evidence
+        # LLA-110: migration-gate.yml (the release-time gate ios-release.yml
+        # and play-store-release.yml both run) used to compare only
+        # *migration versions* between this repo and production -- it had
+        # no way to know whether the Edge Function a client build actually
+        # depends on (delete-account, issue #17 U2/U7 -- required for App
+        # Store guideline 5.1.1(v)) was itself deployed successfully and
+        # matches what this commit's source expects. A migration push can
+        # succeed while the very next step here (Apple secrets missing, a
+        # function deploy failure) leaves delete-account absent or stale in
+        # production, and the old gate would still see "all migrations
+        # applied" and wave the release through regardless.
+        #
+        # This step runs only once "Deploy delete-account function" above
+        # has actually succeeded (the default per-step `if:`), and records
+        # a content hash of the exact source this commit just deployed as a
+        # GitHub Deployment (native to the platform already in use here,
+        # not a bespoke tracking system) against a dedicated
+        # "edge-delete-account" environment. migration-gate.yml (LLA-110)
+        # later reads the most recent one back and compares its hash
+        # against whatever supabase/functions/delete-account looks like at
+        # release time -- on the same commit or a later one -- so drift
+        # between what's live and what a release build expects is caught
+        # even between deploys, the same "fail closed" posture the
+        # migration-version comparison already has.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          hash="$(bash .github/scripts/edge-function-hash.sh supabase/functions/delete-account)"
+
+          # A single-line here-string (<<<), not a heredoc: a heredoc's
+          # closing delimiter must sit completely unindented at the very
+          # start of its line, which is impossible to write inside an
+          # indented YAML `run: |` block without also ending the block
+          # scalar itself early -- see the check-destructive-sql /
+          # extract-marketing-version workflow-YAML gotcha this repo's own
+          # tooling instructions call out.
+          create_payload="$(printf '{"ref":"%s","environment":"edge-delete-account","auto_merge":false,"required_contexts":[],"description":"delete-account Edge Function deploy","payload":{"function":"delete-account","source_sha256":"%s"}}' "${{ github.sha }}" "$hash")"
+          deployment_id="$(gh api "repos/${{ github.repository }}/deployments" --input - --jq .id <<< "$create_payload")"
+
+          status_payload="$(printf '{"state":"success","description":"supabase functions deploy delete-account succeeded (source sha256 %s)"}' "$hash")"
+          gh api "repos/${{ github.repository }}/deployments/$deployment_id/statuses" --input - >/dev/null <<< "$status_payload"
+
+          echo "Recorded delete-account deployment evidence: source sha256 $hash (deployment id $deployment_id)."
+
       - name: Check for schema drift
         # Issue #163 / D-19: catches a schema change made out-of-band (a
         # Studio edit, a manual `psql`, or a migration applied outside this
@@ -314,6 +389,18 @@ jobs:
         # can never block one -- putting it earlier would risk failing an
         # unrelated function deploy over a drift finding that has nothing
         # to do with it.
+        #
+        # LLA-111: `if:` used to be the GitHub Actions default -- run only
+        # when every preceding step in the job succeeded. That meant an
+        # unrelated failure anywhere above (push-dispatch or Apple secrets
+        # not configured yet, a function deploy hiccup) silently skipped
+        # this drift check even though the migration push itself, and
+        # whatever DID deploy, already went live -- exactly the change this
+        # step exists to independently verify, left unverified on a run
+        # that's already red for an unrelated reason. It now runs whenever
+        # `supabase link` itself succeeded (steps.link.outcome, set above),
+        # independent of every step in between.
+        if: always() && steps.link.outcome == 'success'
         run: |
           diff_output="$(supabase db diff --linked --schema public)"
           if [ -n "$diff_output" ]; then
@@ -342,4 +429,14 @@ jobs:
         # would turn a false positive into a blocked function deploy.
         # TODO(#163 follow-up): tighten to --fail-on warn once #158, #194,
         # and leaked-password protection are done.
+        #
+        # LLA-111: independently gated the same way as "Check for schema
+        # drift" right above, and deliberately NOT conditioned on that
+        # step's own outcome -- a drift finding failing that step used to
+        # skip this one by the same default-success-only `if:` rule, so a
+        # run that already caught a drift problem would tell you nothing
+        # about the advisor findings on that same now-confirmed-drifted
+        # database. Both post-deploy checks now run independently of each
+        # other, gated only on `supabase link` having succeeded.
+        if: always() && steps.link.outcome == 'success'
         run: supabase db advisors --linked --type security --fail-on error --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"

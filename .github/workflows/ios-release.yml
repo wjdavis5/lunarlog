@@ -92,6 +92,13 @@ jobs:
     # a client shipped against a missing schema is not).
     name: Verify Supabase migrations are applied
     uses: ./.github/workflows/migration-gate.yml
+    # LLA-110: deployments:read (beyond this workflow's top-level
+    # contents:read/checks:read default) is what lets the reusable
+    # workflow's "Verify delete-account Edge Function deployment evidence"
+    # step read back the GitHub Deployment supabase-migrate.yml recorded.
+    permissions:
+      contents: read
+      deployments: read
     secrets: inherit
 
   release-gate:

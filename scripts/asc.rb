@@ -34,10 +34,22 @@ def env
 end
 
 def private_key_path
-  candidates = Dir[File.expand_path('~/Downloads/AuthKey_*.p8')] +
-               Dir[File.expand_path('~/.appstoreconnect/private_keys/AuthKey_*.p8')] +
-               Dir[File.join(repo_root, 'AuthKey_*.p8')]
-  candidates.first or abort('no AuthKey_*.p8 found in ~/Downloads or ~/.appstoreconnect/private_keys')
+  # LLA-116: this used to glob AuthKey_*.p8 and take the *first* match
+  # across all three directories -- with more than one Apple Developer team
+  # key ever downloaded to ~/Downloads (a stale one from another project, a
+  # re-download), whichever sorted first would silently win even when it
+  # wasn't the key ASC_KEY_ID actually names, so the JWT would be signed
+  # with keyA but claim `kid: keyB` -- an authentication failure. Search for
+  # the exact configured key's filename instead of a wildcard.
+  key_id = env.fetch('ASC_KEY_ID')
+  candidates = [
+    File.expand_path("~/Downloads/AuthKey_#{key_id}.p8"),
+    File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8"),
+    File.join(repo_root, "AuthKey_#{key_id}.p8"),
+  ]
+  candidates.find { |path| File.exist?(path) } or
+    abort("no AuthKey_#{key_id}.p8 found in ~/Downloads, ~/.appstoreconnect/private_keys, " \
+          "or #{repo_root} (configured ASC_KEY_ID=#{key_id})")
 end
 
 def jwt

@@ -70,6 +70,14 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-ci-gate.test.sh
 
+      - name: Run check-destructive-sql tests
+        if: always()
+        run: bash .github/scripts/tests/check-destructive-sql.test.sh
+
+      - name: Run edge-function-hash tests
+        if: always()
+        run: bash .github/scripts/tests/edge-function-hash.test.sh
+
       - name: Run tool/coord tests
         if: always()
         run: python3 -m unittest discover -s tool/coord/tests
@@ -174,6 +182,14 @@ jobs:
       - name: Run check-ci-gate tests
         if: always()
         run: bash .github/scripts/tests/check-ci-gate.test.sh
+
+      - name: Run check-destructive-sql tests
+        if: always()
+        run: bash .github/scripts/tests/check-destructive-sql.test.sh
+
+      - name: Run edge-function-hash tests
+        if: always()
+        run: bash .github/scripts/tests/edge-function-hash.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that

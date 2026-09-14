@@ -28,6 +28,7 @@ import 'dart:io';
 
 import 'quality/coverage_filter.dart';
 import 'quality/coverage_gate.dart';
+import 'quality/coverage_inventory.dart';
 import 'quality/crap_gate.dart';
 import 'quality/lcov_merge.dart';
 
@@ -127,7 +128,36 @@ Future<void> main(List<String> args) async {
     exit(1);
   }
 
-  final filtered = filteredCoverageFromFile(lcovFile);
+  final Map<String, FileCoverage> filtered;
+  try {
+    filtered = filteredCoverageFromFile(lcovFile);
+  } on Object catch (e) {
+    // LLA-106: an unreadable/corrupt lcov.info must fail the gate the same
+    // way a missing one does above, not crash into an ambiguous non-zero
+    // exit with no explanation of what went wrong.
+    // ignore: avoid_print
+    print('[quality_gate] coverage/lcov.info could not be read: $e');
+    exit(1);
+  }
+
+  // LLA-106: a file with scoreable code that lcov has no record for at all
+  // (never loaded during the run) must fail the gate rather than silently
+  // dropping out of both gates' denominators -- an empty/blank lcov.info
+  // fails here too, since then every non-trivial file reads as "missing".
+  final missingEvidence = missingCoverageEvidence(filtered);
+  if (missingEvidence.isNotEmpty) {
+    // ignore: avoid_print
+    print(
+      '[quality_gate] FAIL: ${missingEvidence.length} file(s) with '
+      'executable code have no coverage evidence in coverage/lcov.info '
+      '(never loaded during the test run, or dropped from a merged shard):',
+    );
+    for (final path in missingEvidence) {
+      // ignore: avoid_print
+      print('[quality_gate]   $path');
+    }
+    exit(1);
+  }
 
   final coverageResult = evaluateCoverageGate(filtered);
   printCoverageReport(coverageResult);
