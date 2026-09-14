@@ -257,6 +257,20 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _unitsUnconfirmedMeta = const VerificationMeta(
+    'unitsUnconfirmed',
+  );
+  @override
+  late final GeneratedColumn<bool> unitsUnconfirmed = GeneratedColumn<bool>(
+    'units_unconfirmed',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("units_unconfirmed" IN (0, 1))',
+    ),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -281,6 +295,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     bbtUnit,
     weightUnit,
     accessRevokedAt,
+    unitsUnconfirmed,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -460,6 +475,15 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         ),
       );
     }
+    if (data.containsKey('units_unconfirmed')) {
+      context.handle(
+        _unitsUnconfirmedMeta,
+        unitsUnconfirmed.isAcceptableOrUnknown(
+          data['units_unconfirmed']!,
+          _unitsUnconfirmedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -556,6 +580,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
       accessRevokedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}access_revoked_at'],
+      ),
+      unitsUnconfirmed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}units_unconfirmed'],
       ),
     );
   }
@@ -679,6 +707,35 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// unconditionally — and clears it back to null the moment one lands, so
   /// normal per-id LWW resumes from the restored value.
   final DateTime? accessRevokedAt;
+
+  /// Device-local, never synced (Issue #637, LLA-039). Nullable, like
+  /// [accessRevokedAt] just above, specifically so every existing direct
+  /// `Profile(...)` test fixture keeps compiling without passing this
+  /// field (a non-nullable-with-default `BoolColumn` still generates a
+  /// *required* Dart constructor parameter — nullable is the column shape
+  /// that does not). Null or `false` for a row this device has confirmed
+  /// against a real server value at least once — a fresh local row (never
+  /// set, so implicitly null) and every remote apply of this row
+  /// (`_applyProfile` always clears it back to null on write, win or
+  /// lose). `true` for every row the v20 migration found already on the
+  /// device: [bbtUnit]/[weightUnit] were added at v16 with a local
+  /// default (`celsius`/`kg`), so an old client upgrading through that
+  /// version backfills every existing profile with that default whether
+  /// or not the server already held a real, different preference — and
+  /// since a migration never marks a row `dirty`, the row's own
+  /// `updated_at` is untouched, so the two values silently diverge with
+  /// nothing to say so. If the row later becomes dirty for an unrelated
+  /// edit before the next pull ever delivers the server's real value, an
+  /// ordinary push would carry the still-default `bbt_unit`/`weight_unit`
+  /// as if it were real data and clobber the server's stored preference.
+  /// `row_codec.dart`'s `encodeProfile` omits both keys while this is
+  /// `true` — safe, since `sync_push`'s update path already applies a
+  /// `? 'bbt_unit'`/`? 'weight_unit'` containment guard for an absent key
+  /// (the same guard [trackingPreferences] already relies on) — so an
+  /// otherwise-legitimate push of the rest of the row never touches
+  /// either preference until this device has actually seen the server's
+  /// value for them.
+  final bool? unitsUnconfirmed;
   const Profile({
     required this.id,
     required this.displayName,
@@ -702,6 +759,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     required this.bbtUnit,
     required this.weightUnit,
     this.accessRevokedAt,
+    this.unitsUnconfirmed,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -752,6 +810,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     if (!nullToAbsent || accessRevokedAt != null) {
       map['access_revoked_at'] = Variable<DateTime>(accessRevokedAt);
     }
+    if (!nullToAbsent || unitsUnconfirmed != null) {
+      map['units_unconfirmed'] = Variable<bool>(unitsUnconfirmed);
+    }
     return map;
   }
 
@@ -801,6 +862,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       accessRevokedAt: accessRevokedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(accessRevokedAt),
+      unitsUnconfirmed: unitsUnconfirmed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(unitsUnconfirmed),
     );
   }
 
@@ -840,6 +904,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       bbtUnit: serializer.fromJson<String>(json['bbtUnit']),
       weightUnit: serializer.fromJson<String>(json['weightUnit']),
       accessRevokedAt: serializer.fromJson<DateTime?>(json['accessRevokedAt']),
+      unitsUnconfirmed: serializer.fromJson<bool?>(json['unitsUnconfirmed']),
     );
   }
   @override
@@ -870,6 +935,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'bbtUnit': serializer.toJson<String>(bbtUnit),
       'weightUnit': serializer.toJson<String>(weightUnit),
       'accessRevokedAt': serializer.toJson<DateTime?>(accessRevokedAt),
+      'unitsUnconfirmed': serializer.toJson<bool?>(unitsUnconfirmed),
     };
   }
 
@@ -896,6 +962,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     String? bbtUnit,
     String? weightUnit,
     Value<DateTime?> accessRevokedAt = const Value.absent(),
+    Value<bool?> unitsUnconfirmed = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
     displayName: displayName ?? this.displayName,
@@ -933,6 +1000,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     accessRevokedAt: accessRevokedAt.present
         ? accessRevokedAt.value
         : this.accessRevokedAt,
+    unitsUnconfirmed: unitsUnconfirmed.present
+        ? unitsUnconfirmed.value
+        : this.unitsUnconfirmed,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -980,6 +1050,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       accessRevokedAt: data.accessRevokedAt.present
           ? data.accessRevokedAt.value
           : this.accessRevokedAt,
+      unitsUnconfirmed: data.unitsUnconfirmed.present
+          ? data.unitsUnconfirmed.value
+          : this.unitsUnconfirmed,
     );
   }
 
@@ -1007,7 +1080,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('trackingPreferences: $trackingPreferences, ')
           ..write('bbtUnit: $bbtUnit, ')
           ..write('weightUnit: $weightUnit, ')
-          ..write('accessRevokedAt: $accessRevokedAt')
+          ..write('accessRevokedAt: $accessRevokedAt, ')
+          ..write('unitsUnconfirmed: $unitsUnconfirmed')
           ..write(')'))
         .toString();
   }
@@ -1036,6 +1110,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     bbtUnit,
     weightUnit,
     accessRevokedAt,
+    unitsUnconfirmed,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1062,7 +1137,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.trackingPreferences == this.trackingPreferences &&
           other.bbtUnit == this.bbtUnit &&
           other.weightUnit == this.weightUnit &&
-          other.accessRevokedAt == this.accessRevokedAt);
+          other.accessRevokedAt == this.accessRevokedAt &&
+          other.unitsUnconfirmed == this.unitsUnconfirmed);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -1088,6 +1164,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<String> bbtUnit;
   final Value<String> weightUnit;
   final Value<DateTime?> accessRevokedAt;
+  final Value<bool?> unitsUnconfirmed;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
@@ -1112,6 +1189,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.bbtUnit = const Value.absent(),
     this.weightUnit = const Value.absent(),
     this.accessRevokedAt = const Value.absent(),
+    this.unitsUnconfirmed = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -1137,6 +1215,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.bbtUnit = const Value.absent(),
     this.weightUnit = const Value.absent(),
     this.accessRevokedAt = const Value.absent(),
+    this.unitsUnconfirmed = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        displayName = Value(displayName),
@@ -1166,6 +1245,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<String>? bbtUnit,
     Expression<String>? weightUnit,
     Expression<DateTime>? accessRevokedAt,
+    Expression<bool>? unitsUnconfirmed,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1195,6 +1275,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (bbtUnit != null) 'bbt_unit': bbtUnit,
       if (weightUnit != null) 'weight_unit': weightUnit,
       if (accessRevokedAt != null) 'access_revoked_at': accessRevokedAt,
+      if (unitsUnconfirmed != null) 'units_unconfirmed': unitsUnconfirmed,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1222,6 +1303,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<String>? bbtUnit,
     Value<String>? weightUnit,
     Value<DateTime?>? accessRevokedAt,
+    Value<bool?>? unitsUnconfirmed,
     Value<int>? rowid,
   }) {
     return ProfilesCompanion(
@@ -1249,6 +1331,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       bbtUnit: bbtUnit ?? this.bbtUnit,
       weightUnit: weightUnit ?? this.weightUnit,
       accessRevokedAt: accessRevokedAt ?? this.accessRevokedAt,
+      unitsUnconfirmed: unitsUnconfirmed ?? this.unitsUnconfirmed,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1328,6 +1411,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (accessRevokedAt.present) {
       map['access_revoked_at'] = Variable<DateTime>(accessRevokedAt.value);
     }
+    if (unitsUnconfirmed.present) {
+      map['units_unconfirmed'] = Variable<bool>(unitsUnconfirmed.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1359,6 +1445,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('bbtUnit: $bbtUnit, ')
           ..write('weightUnit: $weightUnit, ')
           ..write('accessRevokedAt: $accessRevokedAt, ')
+          ..write('unitsUnconfirmed: $unitsUnconfirmed, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1454,6 +1541,20 @@ class $DayEntriesTable extends DayEntries
       'CHECK ("pms" IN (0, 1))',
     ),
     defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _pmsUnconfirmedMeta = const VerificationMeta(
+    'pmsUnconfirmed',
+  );
+  @override
+  late final GeneratedColumn<bool> pmsUnconfirmed = GeneratedColumn<bool>(
+    'pms_unconfirmed',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("pms_unconfirmed" IN (0, 1))',
+    ),
   );
   static const VerificationMeta _updatedAtMeta = const VerificationMeta(
     'updatedAt',
@@ -1566,6 +1667,7 @@ class $DayEntriesTable extends DayEntries
     tags,
     note,
     pms,
+    pmsUnconfirmed,
     updatedAt,
     deletedAt,
     dirty,
@@ -1624,6 +1726,15 @@ class $DayEntriesTable extends DayEntries
       context.handle(
         _pmsMeta,
         pms.isAcceptableOrUnknown(data['pms']!, _pmsMeta),
+      );
+    }
+    if (data.containsKey('pms_unconfirmed')) {
+      context.handle(
+        _pmsUnconfirmedMeta,
+        pmsUnconfirmed.isAcceptableOrUnknown(
+          data['pms_unconfirmed']!,
+          _pmsUnconfirmedMeta,
+        ),
       );
     }
     if (data.containsKey('updated_at')) {
@@ -1733,6 +1844,10 @@ class $DayEntriesTable extends DayEntries
         DriftSqlType.bool,
         data['${effectivePrefix}pms'],
       )!,
+      pmsUnconfirmed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}pms_unconfirmed'],
+      ),
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
@@ -1809,6 +1924,23 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
   /// already-stored marker. Logged PMS days feed the 6-cycle PMS averages
   /// and the predicted PMS band (`lib/domain/prediction/pms.dart`).
   final bool pms;
+
+  /// Device-local, never synced (Issue #637, LLA-039) — the same
+  /// unconfirmed-default guard as [Profiles.unitsUnconfirmed] (see its
+  /// doc comment for why this is nullable rather than
+  /// non-nullable-with-default), for [pms]: `pms` was added at v12 with a
+  /// local default (`false`), so an old client upgrading through that
+  /// version backfills every existing day entry with `false` whether or
+  /// not the server already held `true` for it, and a migration never
+  /// marks a row dirty, so nothing about the row's own `updated_at`
+  /// reveals the divergence. Null or `false` for a row this device has
+  /// confirmed against a real server value at least once (never set on a
+  /// fresh local row, and cleared back to null on every remote apply of
+  /// this row); `true` for every row the v20 migration found already on
+  /// the device. `row_codec.dart`'s `encodeDayEntry` omits the `pms` key
+  /// while this is `true` — safe, since `sync_push`'s update path already
+  /// applies a `? 'pms'` containment guard for an absent key.
+  final bool? pmsUnconfirmed;
   final DateTime updatedAt;
   final DateTime? deletedAt;
 
@@ -1848,6 +1980,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     required this.tags,
     this.note,
     required this.pms,
+    this.pmsUnconfirmed,
     required this.updatedAt,
     this.deletedAt,
     required this.dirty,
@@ -1879,6 +2012,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       map['note'] = Variable<String>(note);
     }
     map['pms'] = Variable<bool>(pms);
+    if (!nullToAbsent || pmsUnconfirmed != null) {
+      map['pms_unconfirmed'] = Variable<bool>(pmsUnconfirmed);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
@@ -1911,6 +2047,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       tags: Value(tags),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       pms: Value(pms),
+      pmsUnconfirmed: pmsUnconfirmed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pmsUnconfirmed),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1947,6 +2086,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       tags: serializer.fromJson<List<String>>(json['tags']),
       note: serializer.fromJson<String?>(json['note']),
       pms: serializer.fromJson<bool>(json['pms']),
+      pmsUnconfirmed: serializer.fromJson<bool?>(json['pmsUnconfirmed']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
@@ -1972,6 +2112,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       'tags': serializer.toJson<List<String>>(tags),
       'note': serializer.toJson<String?>(note),
       'pms': serializer.toJson<bool>(pms),
+      'pmsUnconfirmed': serializer.toJson<bool?>(pmsUnconfirmed),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'dirty': serializer.toJson<bool>(dirty),
@@ -1993,6 +2134,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     List<String>? tags,
     Value<String?> note = const Value.absent(),
     bool? pms,
+    Value<bool?> pmsUnconfirmed = const Value.absent(),
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
     bool? dirty,
@@ -2011,6 +2153,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     tags: tags ?? this.tags,
     note: note.present ? note.value : this.note,
     pms: pms ?? this.pms,
+    pmsUnconfirmed: pmsUnconfirmed.present
+        ? pmsUnconfirmed.value
+        : this.pmsUnconfirmed,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     dirty: dirty ?? this.dirty,
@@ -2035,6 +2180,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       tags: data.tags.present ? data.tags.value : this.tags,
       note: data.note.present ? data.note.value : this.note,
       pms: data.pms.present ? data.pms.value : this.pms,
+      pmsUnconfirmed: data.pmsUnconfirmed.present
+          ? data.pmsUnconfirmed.value
+          : this.pmsUnconfirmed,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
@@ -2062,6 +2210,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           ..write('tags: $tags, ')
           ..write('note: $note, ')
           ..write('pms: $pms, ')
+          ..write('pmsUnconfirmed: $pmsUnconfirmed, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
@@ -2085,6 +2234,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     tags,
     note,
     pms,
+    pmsUnconfirmed,
     updatedAt,
     deletedAt,
     dirty,
@@ -2107,6 +2257,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           other.tags == this.tags &&
           other.note == this.note &&
           other.pms == this.pms &&
+          other.pmsUnconfirmed == this.pmsUnconfirmed &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.dirty == this.dirty &&
@@ -2127,6 +2278,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
   final Value<List<String>> tags;
   final Value<String?> note;
   final Value<bool> pms;
+  final Value<bool?> pmsUnconfirmed;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
   final Value<bool> dirty;
@@ -2146,6 +2298,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
     this.pms = const Value.absent(),
+    this.pmsUnconfirmed = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -2166,6 +2319,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
     this.pms = const Value.absent(),
+    this.pmsUnconfirmed = const Value.absent(),
     required DateTime updatedAt,
     this.deletedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -2191,6 +2345,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Expression<String>? tags,
     Expression<String>? note,
     Expression<bool>? pms,
+    Expression<bool>? pmsUnconfirmed,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
     Expression<bool>? dirty,
@@ -2211,6 +2366,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       if (tags != null) 'tags': tags,
       if (note != null) 'note': note,
       if (pms != null) 'pms': pms,
+      if (pmsUnconfirmed != null) 'pms_unconfirmed': pmsUnconfirmed,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (dirty != null) 'dirty': dirty,
@@ -2234,6 +2390,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Value<List<String>>? tags,
     Value<String?>? note,
     Value<bool>? pms,
+    Value<bool?>? pmsUnconfirmed,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
     Value<bool>? dirty,
@@ -2254,6 +2411,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       tags: tags ?? this.tags,
       note: note ?? this.note,
       pms: pms ?? this.pms,
+      pmsUnconfirmed: pmsUnconfirmed ?? this.pmsUnconfirmed,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       dirty: dirty ?? this.dirty,
@@ -2297,6 +2455,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     }
     if (pms.present) {
       map['pms'] = Variable<bool>(pms.value);
+    }
+    if (pmsUnconfirmed.present) {
+      map['pms_unconfirmed'] = Variable<bool>(pmsUnconfirmed.value);
     }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
@@ -2344,6 +2505,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
           ..write('tags: $tags, ')
           ..write('note: $note, ')
           ..write('pms: $pms, ')
+          ..write('pmsUnconfirmed: $pmsUnconfirmed, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('dirty: $dirty, ')
@@ -7435,6 +7597,17 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorDeletedProfilesMeta =
+      const VerificationMeta('cursorDeletedProfiles');
+  @override
+  late final GeneratedColumn<int> cursorDeletedProfiles = GeneratedColumn<int>(
+    'cursor_deleted_profiles',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -7492,6 +7665,7 @@ class $SyncStateTable extends SyncState
     cursorCareNotes,
     cursorVisitPrepItems,
     cursorProfileGuardians,
+    cursorDeletedProfiles,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -7599,6 +7773,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_deleted_profiles')) {
+      context.handle(
+        _cursorDeletedProfilesMeta,
+        cursorDeletedProfiles.isAcceptableOrUnknown(
+          data['cursor_deleted_profiles']!,
+          _cursorDeletedProfilesMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -7685,6 +7868,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_profile_guardians'],
       )!,
+      cursorDeletedProfiles: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_deleted_profiles'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -7751,11 +7938,18 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// paged from version 0 every cycle (see the sync engine's
   /// `_startingCursor`, pre-#525) — every 15-minute tick forced a full
   /// sequential scan of the global `profile_guardians` table plus one
-  /// `is_profile_guardian()` RLS check per scanned row. `deletedProfiles`
-  /// (issue #522) deliberately still has no cursor column of its own (same
-  /// known-perf tradeoff, out of this issue's scope — see
-  /// `SyncTable.deletedProfiles`'s doc comment).
+  /// `is_profile_guardian()` RLS check per scanned row.
   final int cursorProfileGuardians;
+
+  /// Issue #597: the `deleted_profiles` pull cursor, same shape as
+  /// [cursorProfileGuardians] — same fix, same table shape (pull-only, a
+  /// server-owned `server_version` already exists and is already indexed
+  /// server-side). Before this column existed, `deletedProfiles` paged
+  /// from version 0 every cycle (see the sync engine's `_startingCursor`,
+  /// pre-#597), same tradeoff #525 closed for `profileGuardians` — this
+  /// table stayed small enough for a full scan to be cheap at the time,
+  /// but the same per-cycle full-scan cost applies as it grows.
+  final int cursorDeletedProfiles;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -7777,6 +7971,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorCareNotes,
     required this.cursorVisitPrepItems,
     required this.cursorProfileGuardians,
+    required this.cursorDeletedProfiles,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -7798,6 +7993,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_care_notes'] = Variable<int>(cursorCareNotes);
     map['cursor_visit_prep_items'] = Variable<int>(cursorVisitPrepItems);
     map['cursor_profile_guardians'] = Variable<int>(cursorProfileGuardians);
+    map['cursor_deleted_profiles'] = Variable<int>(cursorDeletedProfiles);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -7828,6 +8024,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorCareNotes: Value(cursorCareNotes),
       cursorVisitPrepItems: Value(cursorVisitPrepItems),
       cursorProfileGuardians: Value(cursorProfileGuardians),
+      cursorDeletedProfiles: Value(cursorDeletedProfiles),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -7866,6 +8063,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileGuardians: serializer.fromJson<int>(
         json['cursorProfileGuardians'],
       ),
+      cursorDeletedProfiles: serializer.fromJson<int>(
+        json['cursorDeletedProfiles'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -7889,6 +8089,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorCareNotes': serializer.toJson<int>(cursorCareNotes),
       'cursorVisitPrepItems': serializer.toJson<int>(cursorVisitPrepItems),
       'cursorProfileGuardians': serializer.toJson<int>(cursorProfileGuardians),
+      'cursorDeletedProfiles': serializer.toJson<int>(cursorDeletedProfiles),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -7908,6 +8109,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorCareNotes,
     int? cursorVisitPrepItems,
     int? cursorProfileGuardians,
+    int? cursorDeletedProfiles,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -7925,6 +8127,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorVisitPrepItems: cursorVisitPrepItems ?? this.cursorVisitPrepItems,
     cursorProfileGuardians:
         cursorProfileGuardians ?? this.cursorProfileGuardians,
+    cursorDeletedProfiles: cursorDeletedProfiles ?? this.cursorDeletedProfiles,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -7965,6 +8168,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileGuardians: data.cursorProfileGuardians.present
           ? data.cursorProfileGuardians.value
           : this.cursorProfileGuardians,
+      cursorDeletedProfiles: data.cursorDeletedProfiles.present
+          ? data.cursorDeletedProfiles.value
+          : this.cursorDeletedProfiles,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -7992,6 +8198,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorCareNotes: $cursorCareNotes, ')
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
+          ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -8013,6 +8220,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorCareNotes,
     cursorVisitPrepItems,
     cursorProfileGuardians,
+    cursorDeletedProfiles,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -8033,6 +8241,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorCareNotes == this.cursorCareNotes &&
           other.cursorVisitPrepItems == this.cursorVisitPrepItems &&
           other.cursorProfileGuardians == this.cursorProfileGuardians &&
+          other.cursorDeletedProfiles == this.cursorDeletedProfiles &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -8051,6 +8260,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorCareNotes;
   final Value<int> cursorVisitPrepItems;
   final Value<int> cursorProfileGuardians;
+  final Value<int> cursorDeletedProfiles;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -8067,6 +8277,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorCareNotes = const Value.absent(),
     this.cursorVisitPrepItems = const Value.absent(),
     this.cursorProfileGuardians = const Value.absent(),
+    this.cursorDeletedProfiles = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -8084,6 +8295,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorCareNotes = const Value.absent(),
     this.cursorVisitPrepItems = const Value.absent(),
     this.cursorProfileGuardians = const Value.absent(),
+    this.cursorDeletedProfiles = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -8101,6 +8313,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorCareNotes,
     Expression<int>? cursorVisitPrepItems,
     Expression<int>? cursorProfileGuardians,
+    Expression<int>? cursorDeletedProfiles,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -8122,6 +8335,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         'cursor_visit_prep_items': cursorVisitPrepItems,
       if (cursorProfileGuardians != null)
         'cursor_profile_guardians': cursorProfileGuardians,
+      if (cursorDeletedProfiles != null)
+        'cursor_deleted_profiles': cursorDeletedProfiles,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -8142,6 +8357,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorCareNotes,
     Value<int>? cursorVisitPrepItems,
     Value<int>? cursorProfileGuardians,
+    Value<int>? cursorDeletedProfiles,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -8160,6 +8376,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
       cursorVisitPrepItems: cursorVisitPrepItems ?? this.cursorVisitPrepItems,
       cursorProfileGuardians:
           cursorProfileGuardians ?? this.cursorProfileGuardians,
+      cursorDeletedProfiles:
+          cursorDeletedProfiles ?? this.cursorDeletedProfiles,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -8207,6 +8425,11 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorProfileGuardians.value,
       );
     }
+    if (cursorDeletedProfiles.present) {
+      map['cursor_deleted_profiles'] = Variable<int>(
+        cursorDeletedProfiles.value,
+      );
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -8236,6 +8459,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorCareNotes: $cursorCareNotes, ')
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
+          ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -8593,6 +8817,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<String> bbtUnit,
   Value<String> weightUnit,
   Value<DateTime?> accessRevokedAt,
+  Value<bool?> unitsUnconfirmed,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -8618,6 +8843,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String> bbtUnit,
   Value<String> weightUnit,
   Value<DateTime?> accessRevokedAt,
+  Value<bool?> unitsUnconfirmed,
   Value<int> rowid,
 });
 
@@ -8875,6 +9101,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<DateTime> get accessRevokedAt => $composableBuilder(
     column: $table.accessRevokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get unitsUnconfirmed => $composableBuilder(
+    column: $table.unitsUnconfirmed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9172,6 +9403,11 @@ class $$ProfilesTableOrderingComposer
     column: $table.accessRevokedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get unitsUnconfirmed => $composableBuilder(
+    column: $table.unitsUnconfirmed,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -9268,6 +9504,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get accessRevokedAt => $composableBuilder(
     column: $table.accessRevokedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get unitsUnconfirmed => $composableBuilder(
+    column: $table.unitsUnconfirmed,
     builder: (column) => column,
   );
 
@@ -9505,6 +9746,7 @@ class $$ProfilesTableTableManager
                 Value<String> bbtUnit = const Value.absent(),
                 Value<String> weightUnit = const Value.absent(),
                 Value<DateTime?> accessRevokedAt = const Value.absent(),
+                Value<bool?> unitsUnconfirmed = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
@@ -9529,6 +9771,7 @@ class $$ProfilesTableTableManager
                 bbtUnit: bbtUnit,
                 weightUnit: weightUnit,
                 accessRevokedAt: accessRevokedAt,
+                unitsUnconfirmed: unitsUnconfirmed,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9555,6 +9798,7 @@ class $$ProfilesTableTableManager
                 Value<String> bbtUnit = const Value.absent(),
                 Value<String> weightUnit = const Value.absent(),
                 Value<DateTime?> accessRevokedAt = const Value.absent(),
+                Value<bool?> unitsUnconfirmed = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
@@ -9579,6 +9823,7 @@ class $$ProfilesTableTableManager
                 bbtUnit: bbtUnit,
                 weightUnit: weightUnit,
                 accessRevokedAt: accessRevokedAt,
+                unitsUnconfirmed: unitsUnconfirmed,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -9799,6 +10044,7 @@ typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   Value<List<String>> tags,
   Value<String?> note,
   Value<bool> pms,
+  Value<bool?> pmsUnconfirmed,
   required DateTime updatedAt,
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
@@ -9819,6 +10065,7 @@ typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
   Value<List<String>> tags,
   Value<String?> note,
   Value<bool> pms,
+  Value<bool?> pmsUnconfirmed,
   Value<DateTime> updatedAt,
   Value<DateTime?> deletedAt,
   Value<bool> dirty,
@@ -9915,6 +10162,11 @@ class $$DayEntriesTableFilterComposer
 
   ColumnFilters<bool> get pms => $composableBuilder(
     column: $table.pms,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get pmsUnconfirmed => $composableBuilder(
+    column: $table.pmsUnconfirmed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10056,6 +10308,11 @@ class $$DayEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get pmsUnconfirmed => $composableBuilder(
+    column: $table.pmsUnconfirmed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -10154,6 +10411,11 @@ class $$DayEntriesTableAnnotationComposer
 
   GeneratedColumn<bool> get pms =>
       $composableBuilder(column: $table.pms, builder: (column) => column);
+
+  GeneratedColumn<bool> get pmsUnconfirmed => $composableBuilder(
+    column: $table.pmsUnconfirmed,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -10271,6 +10533,7 @@ class $$DayEntriesTableTableManager
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<bool> pms = const Value.absent(),
+                Value<bool?> pmsUnconfirmed = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -10290,6 +10553,7 @@ class $$DayEntriesTableTableManager
                 tags: tags,
                 note: note,
                 pms: pms,
+                pmsUnconfirmed: pmsUnconfirmed,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 dirty: dirty,
@@ -10311,6 +10575,7 @@ class $$DayEntriesTableTableManager
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
                 Value<bool> pms = const Value.absent(),
+                Value<bool?> pmsUnconfirmed = const Value.absent(),
                 required DateTime updatedAt,
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -10330,6 +10595,7 @@ class $$DayEntriesTableTableManager
                 tags: tags,
                 note: note,
                 pms: pms,
+                pmsUnconfirmed: pmsUnconfirmed,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
                 dirty: dirty,
@@ -13524,6 +13790,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorCareNotes,
   Value<int> cursorVisitPrepItems,
   Value<int> cursorProfileGuardians,
+  Value<int> cursorDeletedProfiles,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13541,6 +13808,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorCareNotes,
   Value<int> cursorVisitPrepItems,
   Value<int> cursorProfileGuardians,
+  Value<int> cursorDeletedProfiles,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13608,6 +13876,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorProfileGuardians => $composableBuilder(
     column: $table.cursorProfileGuardians,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorDeletedProfiles => $composableBuilder(
+    column: $table.cursorDeletedProfiles,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13696,6 +13969,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorDeletedProfiles => $composableBuilder(
+    column: $table.cursorDeletedProfiles,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -13777,6 +14055,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorDeletedProfiles => $composableBuilder(
+    column: $table.cursorDeletedProfiles,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -13838,6 +14121,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorCareNotes = const Value.absent(),
                 Value<int> cursorVisitPrepItems = const Value.absent(),
                 Value<int> cursorProfileGuardians = const Value.absent(),
+                Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -13854,6 +14138,7 @@ class $$SyncStateTableTableManager
                 cursorCareNotes: cursorCareNotes,
                 cursorVisitPrepItems: cursorVisitPrepItems,
                 cursorProfileGuardians: cursorProfileGuardians,
+                cursorDeletedProfiles: cursorDeletedProfiles,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -13872,6 +14157,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorCareNotes = const Value.absent(),
                 Value<int> cursorVisitPrepItems = const Value.absent(),
                 Value<int> cursorProfileGuardians = const Value.absent(),
+                Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -13888,6 +14174,7 @@ class $$SyncStateTableTableManager
                 cursorCareNotes: cursorCareNotes,
                 cursorVisitPrepItems: cursorVisitPrepItems,
                 cursorProfileGuardians: cursorProfileGuardians,
+                cursorDeletedProfiles: cursorDeletedProfiles,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,

@@ -12,7 +12,8 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart'
     show RemoteDeletedProfileRow, RemoteProfileGuardianRow;
-import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry;
+import 'package:lunarlog/data/sync/row_codec.dart'
+    show encodeDayEntry, encodeProfile;
 
 class FixedClock {
   FixedClock(this.now);
@@ -741,9 +742,16 @@ void main() {
       );
       final liveAfter = await liveFor(p.id, '2026-09-01');
       expect(liveAfter.single.id, remoteId);
+      // Issue #663 (LLA-038 mirror): `revived` (tags []) absorbs
+      // `lateRemote`'s own default tags (`['remote']`), so the survivor's
+      // stamp — and therefore the tombstone's, "the local winner's
+      // timestamp" — is bumped 1ms strictly past `revived.updatedAt`, not
+      // left tied to it.
+      expect(liveAfter.single.tags, ['remote']);
+      final bumped = revived.updatedAt.add(const Duration(milliseconds: 1));
       final remoteLoser = await entryById(p.id, lateRemote);
-      expect(remoteLoser.deletedAt, revived.updatedAt);
-      expect(remoteLoser.updatedAt, revived.updatedAt);
+      expect(remoteLoser.deletedAt, bumped);
+      expect(remoteLoser.updatedAt, bumped);
       expect(remoteLoser.dirty, isFalse);
       expect(
         remoteLoser.flow,
@@ -754,19 +762,25 @@ void main() {
             'to FlowLevel.medium, which must not survive as a tombstone',
       );
 
-      // Equal timestamps: smaller ULID wins.
+      // Equal timestamps: smaller ULID wins. Tied against the survivor's
+      // real, current stamp (`bumped`, issue #663 above) — not the stale
+      // pre-bump `revived.updatedAt`, which the live row has already
+      // moved strictly past.
       const smallest = '01J00000000000000000000000';
       await storage.applyRemoteDayEntry(
         remoteEntry(
           smallest,
           profileId: p.id,
           localDate: '2026-09-01',
-          updatedAt: revived.updatedAt,
+          updatedAt: bumped,
         ),
       );
       expect((await liveFor(p.id, '2026-09-01')).single.id, smallest);
       final tied = await entryById(p.id, remoteId);
-      expect(tied.deletedAt, revived.updatedAt);
+      expect(tied.deletedAt, bumped,
+          reason: 'both sides already carry identical tags ([\'remote\']), '
+              'so this remote survivor gains nothing new and is not '
+              'itself bumped past its own incoming stamp (#662\'s rule)');
       expect(tied.dirty, isTrue);
     });
 
@@ -930,6 +944,242 @@ void main() {
         isTrue,
       );
       expect((await profileById(p.id)).trackingPreferences, isNull);
+    });
+  });
+
+  group('issue #637, LLA-039: unconfirmed post-upgrade defaults are never '
+      'pushed over a real remote value', () {
+    test('a profile marked unconfirmed (simulating the v12/v16 backfill) '
+        'omits bbt_unit/weight_unit from its push payload while dirty for '
+        'a reason that never touches the storage API\'s write paths '
+        '(e.g. a sync retry re-marking dirty); a remote apply confirms it '
+        'and the fields push again', () async {
+      // A profile that already synced normally, then simulate what
+      // `_upgradeToV16`'s backfill does to every row that predates the
+      // column (db.dart; storage exposes no public API for this — it is
+      // migration-only bookkeeping) — and simulate becoming dirty again
+      // through something other than the storage API's own write paths
+      // (bumpLocalRevForRetry: a rejected push retried, content
+      // untouched), since every real local write path now clears the
+      // marker itself (issue #637 review, bug 1).
+      final p = await storage.upsertProfile(
+          displayName: 'P', isMinor: false, bbtUnit: 'fahrenheit');
+      await storage.markPushed(
+          table: SyncTable.profiles,
+          id: p.id,
+          localRevAtPush: p.localRev);
+      await (db.update(db.profiles)..where((t) => t.id.equals(p.id)))
+          .write(const ProfilesCompanion(unitsUnconfirmed: Value(true)));
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.profiles, id: p.id);
+
+      final dirty = await profileById(p.id);
+      expect(dirty.dirty, isTrue);
+      final payload = encodeProfile(dirty);
+      expect(payload, isNot(contains('bbt_unit')),
+          reason: 'still unconfirmed: must not push the possibly-stale '
+              'default over whatever the server actually has');
+      expect(payload, isNot(contains('weight_unit')));
+      expect(payload['display_name'], 'P',
+          reason: 'the rest of the row still pushes normally — only the '
+              'two unconfirmed preferences are withheld');
+
+      // A pull delivers the server's real (different) value: the remote
+      // apply confirms the row regardless of who wins the per-id rule
+      // here (a fresh insert-from-remote always confirms).
+      const remoteId2 = '01J0000000000000000000003A';
+      await storage.applyRemoteProfile(RemoteProfileRow(
+        id: remoteId2,
+        displayName: 'Remote',
+        isMinor: false,
+        sortOrder: 0,
+        archivedAt: null,
+        createdAt: t0,
+        updatedAt: t0,
+        deletedAt: null,
+        bbtUnit: 'celsius',
+        weightUnit: 'kg',
+      ));
+      final confirmed = (await storage.getProfiles())
+          .firstWhere((row) => row.id == remoteId2);
+      expect(encodeProfile(confirmed), contains('bbt_unit'),
+          reason: 'once confirmed by a real remote delivery, the '
+              'preference pushes again like any other column');
+    });
+
+    test('bug 3 (issue #637 review round 2): a profile edit that leaves '
+        'bbt_unit/weight_unit unchanged — upsertProfile\'s full-row write '
+        'merely carrying the still-unconfirmed value through, e.g. a '
+        'display-name-only edit — must NOT clear unitsUnconfirmed, or '
+        'the unrelated edit\'s own push would clobber the server\'s real '
+        'preference (the residual LLA-039 clobber bug 1\'s original '
+        'unconditional clear reintroduced)', () async {
+      final p = await storage.upsertProfile(
+          displayName: 'P', isMinor: false, bbtUnit: 'fahrenheit');
+      await (db.update(db.profiles)..where((t) => t.id.equals(p.id)))
+          .write(const ProfilesCompanion(unitsUnconfirmed: Value(true)));
+
+      // upsertProfile is a full-row write, so bbtUnit/weightUnit ride
+      // along on every call — but this edit only actually changes
+      // displayName; the preference values are unchanged.
+      final edited = await storage.upsertProfile(
+        id: p.id,
+        displayName: 'P renamed',
+        isMinor: false,
+        bbtUnit: 'fahrenheit',
+      );
+      expect(edited.dirty, isTrue);
+      expect(edited.unitsUnconfirmed, isTrue,
+          reason: 'bug 3: an edit that does not actually change bbt_unit/'
+              'weight_unit must leave the marker alone');
+      final payload = encodeProfile(edited);
+      expect(payload, isNot(contains('bbt_unit')),
+          reason: 'still unconfirmed: the unrelated edit must not push '
+              'the possibly-stale bbt_unit/weight_unit over the '
+              'server\'s real value');
+      expect(payload, isNot(contains('weight_unit')));
+      expect(payload['display_name'], 'P renamed',
+          reason: 'the real edit still pushes normally');
+    });
+
+    test('bug 3 (issue #637 review round 2): a profile edit that '
+        'actually changes bbt_unit clears unitsUnconfirmed, so the new '
+        'preference pushes on that very edit', () async {
+      final p = await storage.upsertProfile(
+          displayName: 'P', isMinor: false, bbtUnit: 'fahrenheit');
+      await (db.update(db.profiles)..where((t) => t.id.equals(p.id)))
+          .write(const ProfilesCompanion(unitsUnconfirmed: Value(true)));
+
+      final edited = await storage.upsertProfile(
+        id: p.id,
+        displayName: 'P',
+        isMinor: false,
+        bbtUnit: 'celsius',
+      );
+      expect(edited.dirty, isTrue);
+      expect(edited.unitsUnconfirmed, isNot(true),
+          reason: 'a write that actually changes bbt_unit must confirm it');
+      final payload = encodeProfile(edited);
+      expect(payload, contains('bbt_unit'),
+          reason: 'the newly-set preference must push on this very edit');
+      expect(payload['bbt_unit'], 'celsius');
+      expect(payload['weight_unit'], 'kg');
+    });
+
+    test('a day entry marked unconfirmed (simulating the v12 backfill) '
+        'omits pms from its push payload while dirty for a reason that '
+        'never touches the storage API\'s write paths; a remote apply '
+        'confirms it and pms pushes again', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-09-19',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        pms: true,
+      );
+      await storage.markPushed(
+          table: SyncTable.dayEntries, id: e.id, localRevAtPush: e.localRev);
+      await (db.update(db.dayEntries)..where((t) => t.id.equals(e.id)))
+          .write(const DayEntriesCompanion(pmsUnconfirmed: Value(true)));
+      await storage.bumpLocalRevForRetry(
+          table: SyncTable.dayEntries, id: e.id);
+
+      final dirty = await entryById(p.id, e.id);
+      expect(dirty.dirty, isTrue);
+      final payload = encodeDayEntry(dirty);
+      expect(payload, isNot(contains('pms')),
+          reason: 'still unconfirmed: must not push the possibly-stale '
+              'default over whatever the server actually has');
+      expect(payload['flow'], 'medium',
+          reason: 'the rest of the row still pushes normally — only pms '
+              'is withheld');
+
+      await storage.applyRemoteDayEntry(remoteEntry(
+        e.id,
+        profileId: p.id,
+        localDate: '2026-09-19',
+        pms: false,
+        updatedAt: dirty.updatedAt.add(const Duration(minutes: 1)),
+      ));
+      final confirmed = await entryById(p.id, e.id);
+      expect(encodeDayEntry(confirmed), contains('pms'),
+          reason: 'once confirmed by a real remote delivery, pms pushes '
+              'again like any other column');
+    });
+
+    test('bug 3 (issue #637 review round 2): a day-entry edit that leaves '
+        'pms unchanged — a note-only edit, upsertDayEntry\'s full-row '
+        'write merely carrying the still-unconfirmed pms through — must '
+        'NOT clear pmsUnconfirmed, or the unrelated edit\'s own push '
+        'would clobber the server\'s real pms (the residual LLA-039 '
+        'clobber the coordinator\'s round-2 review flagged: DaySheet '
+        'saving a note edit while pms rides along at its stale default)',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-09-20',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        pms: true,
+      );
+      await (db.update(db.dayEntries)..where((t) => t.id.equals(e.id)))
+          .write(const DayEntriesCompanion(pmsUnconfirmed: Value(true)));
+
+      // upsertDayEntry is a full-row write, so pms rides along on every
+      // call — but this edit only actually changes note; pms is
+      // unchanged.
+      final edited = await storage.upsertDayEntry(
+        id: e.id,
+        profileId: p.id,
+        localDate: '2026-09-20',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        note: 'a note',
+        pms: true,
+      );
+      expect(edited.dirty, isTrue);
+      expect(edited.pmsUnconfirmed, isTrue,
+          reason: 'bug 3: an edit that does not actually change pms must '
+              'leave the marker alone');
+      final payload = encodeDayEntry(edited);
+      expect(payload, isNot(contains('pms')),
+          reason: 'still unconfirmed: the unrelated (note) edit must not '
+              'push the possibly-stale pms over the server\'s real value');
+      expect(payload['note'], 'a note',
+          reason: 'the real edit still pushes normally');
+    });
+
+    test('bug 3 (issue #637 review round 2): a day-entry edit that '
+        'actually changes pms clears pmsUnconfirmed, so pms pushes on '
+        'that very edit', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-09-21',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        pms: true,
+      );
+      await (db.update(db.dayEntries)..where((t) => t.id.equals(e.id)))
+          .write(const DayEntriesCompanion(pmsUnconfirmed: Value(true)));
+
+      final edited = await storage.upsertDayEntry(
+        id: e.id,
+        profileId: p.id,
+        localDate: '2026-09-21',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        pms: false,
+      );
+      expect(edited.dirty, isTrue);
+      expect(edited.pmsUnconfirmed, isNot(true),
+          reason: 'a write that actually changes pms must confirm it');
+      final payload = encodeDayEntry(edited);
+      expect(payload, contains('pms'),
+          reason: 'the newly-set pms must push on this very edit');
+      expect(payload['pms'], false);
     });
   });
 
@@ -1098,6 +1348,107 @@ void main() {
       expect(afterReplay.dirty, isTrue,
           reason: 'the pending merge must still be queued for push after '
               'the replay');
+    });
+
+    test('issue #663 (LLA-038 mirror of #662): a local row that wins the '
+        'same-date rule and absorbs a remote loser\'s tags is stamped '
+        'strictly after the incoming remote timestamp, never tied to it',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      // A "clean pulled copy" (issue #663's own precondition): applied from
+      // remote, so dirty = false and updated_at is exactly what the server
+      // already stores for this row's id — not a fresh local write.
+      final localId = '01J0000000000000000000002A';
+      final t0 = DateTime.utc(2026, 9, 17, 10);
+      await storage.applyRemoteDayEntry(remoteEntry(
+        localId,
+        profileId: p.id,
+        localDate: '2026-09-17',
+        tags: const ['cramps'],
+        updatedAt: t0,
+      ));
+      final local = await entryById(p.id, localId);
+      expect(local.dirty, isFalse);
+      expect(local.updatedAt, t0);
+
+      // A remote loser for the same date, older, carrying a different tag.
+      const remoteId = '01J0000000000000000000002B';
+      final older = t0.subtract(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(
+        remoteId,
+        profileId: p.id,
+        localDate: '2026-09-17',
+        tags: const ['heavy_flow'],
+        updatedAt: older,
+      ));
+
+      final winner = await entryById(p.id, localId);
+      expect(winner.tags, unorderedEquals(['cramps', 'heavy_flow']));
+      expect(winner.dirty, isTrue, reason: 'the merge must be pushed');
+      expect(winner.localRev, local.localRev + 1);
+      expect(winner.updatedAt, t0.add(const Duration(milliseconds: 1)),
+          reason: 'issue #663: a local survivor that absorbs new tags must '
+              'be stamped strictly after its own prior (server-known) '
+              'timestamp, never left tied to it — the same rule #662 '
+              'already applies to a remote survivor');
+
+      final loser = await entryById(p.id, remoteId);
+      expect(loser.deletedAt, isNotNull);
+      expect(loser.tags, isEmpty);
+    });
+
+    test('issue #663: without a strictly-after stamp, a local survivor\'s '
+        'absorbed tags would be lost to a later ordinary pull of its own '
+        'id still holding the server\'s pre-merge value — the bumped '
+        'stamp makes that pull lose instead', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final localId = '01J0000000000000000000002C';
+      final t0 = DateTime.utc(2026, 9, 18, 10);
+      await storage.applyRemoteDayEntry(remoteEntry(
+        localId,
+        profileId: p.id,
+        localDate: '2026-09-18',
+        tags: const ['cramps'],
+        updatedAt: t0,
+      ));
+
+      const remoteLoserId = '01J0000000000000000000002D';
+      final older = t0.subtract(const Duration(minutes: 5));
+      await storage.applyRemoteDayEntry(remoteEntry(
+        remoteLoserId,
+        profileId: p.id,
+        localDate: '2026-09-18',
+        tags: const ['heavy_flow'],
+        updatedAt: older,
+      ));
+      final merged = await entryById(p.id, localId);
+      expect(merged.tags, unorderedEquals(['cramps', 'heavy_flow']));
+      expect(merged.updatedAt, t0.add(const Duration(milliseconds: 1)));
+
+      // The merge was never (yet) accepted by the server: a later ordinary
+      // pull page still redelivers `localId` at the server's old, pre-merge
+      // value (updated_at = t0, tags = ['cramps']). Pre-#663, `merged`'s
+      // stored stamp would still have been exactly t0 too — a tie, and
+      // KTD5 says the remote copy wins ties — silently overwriting the
+      // union with the server's bare tags and clearing dirty. With the
+      // strictly-after stamp, this delivery is now strictly OLDER than
+      // what is stored locally and must lose outright.
+      final applied = await storage.applyRemoteDayEntry(remoteEntry(
+        localId,
+        profileId: p.id,
+        localDate: '2026-09-18',
+        tags: const ['cramps'],
+        updatedAt: t0,
+      ));
+      expect(applied, isFalse,
+          reason: 'the server\'s stale pre-merge copy must lose to the '
+              'already-merged, strictly-newer local row');
+
+      final afterPull = await entryById(p.id, localId);
+      expect(afterPull.tags, unorderedEquals(['cramps', 'heavy_flow']),
+          reason: 'the tag union must survive a pull of the pre-merge value');
+      expect(afterPull.dirty, isTrue,
+          reason: 'the pending merge must still be queued for push');
     });
 
     test('a remote tombstone for a date with a live local row never '
@@ -2105,8 +2456,8 @@ void main() {
     });
 
     test(
-      'applying it through applyRemotePage advances no cursor — '
-      'issue #522 pages from version 0 every cycle, like profileGuardians',
+      'issue #597: applying it through applyRemotePage persists its own '
+      'cursor, independent of every other table\'s',
       () async {
         final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
         await storage.applyRemotePage(
@@ -2114,12 +2465,16 @@ void main() {
           rows: [RemoteDeletedProfileRow(profileId: p.id, deletedAt: t0)],
           newCursor: 999,
         );
+        final state = await storage.readSyncState();
+        expect(state.cursorDeletedProfiles, 999,
+            reason: 'issue #597: deletedProfiles now persists a real pull '
+                'cursor, the same fix #525 already applied to '
+                'profileGuardians');
         expect(
-          (await storage.readSyncState()).cursorProfiles,
+          state.cursorProfiles,
           0,
-          reason:
-              'deletedProfiles has no persisted cursor of its own and '
-              'must not repurpose cursorProfiles either',
+          reason: 'deletedProfiles\' cursor must not bleed into another '
+              'table\'s',
         );
         expect(await storage.getProfile(p.id), isNull);
       },

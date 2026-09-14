@@ -42,20 +42,24 @@ import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:lunarlog/data/db/tables.dart' show FlowLevel;
+import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry, encodeProfile;
 
 import 'generated_migrations/schema.dart';
+import 'generated_migrations/schema_v18.dart' as v18;
+import 'generated_migrations/schema_v7.dart' as v7;
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
-/// dump. A mismatch here is caught by the `schema version is 19` assertion
+/// dump. A mismatch here is caught by the `schema version is 20` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 19;
+const int _kCurrentSchemaVersion = 20;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -479,5 +483,155 @@ void main() {
             'profiles.access_revoked_at (Issue #635, LLA-041)',
       );
     });
+
+    test(
+        'upgrading from v$fromVersion adds pms_unconfirmed to day_entries, '
+        'units_unconfirmed to profiles, and cursor_deleted_profiles to '
+        'sync_state (Issue #637 LLA-039, Issue #597)', () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+
+      final dayEntryColumns =
+          await db.customSelect("PRAGMA table_info('day_entries')").get();
+      expect(
+        dayEntryColumns.map((row) => row.data['name'] as String),
+        contains('pms_unconfirmed'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'day_entries.pms_unconfirmed (Issue #637, LLA-039)',
+      );
+
+      final profileColumns =
+          await db.customSelect("PRAGMA table_info('profiles')").get();
+      expect(
+        profileColumns.map((row) => row.data['name'] as String),
+        contains('units_unconfirmed'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'profiles.units_unconfirmed (Issue #637, LLA-039)',
+      );
+
+      final syncStateColumns =
+          await db.customSelect("PRAGMA table_info('sync_state')").get();
+      expect(
+        syncStateColumns.map((row) => row.data['name'] as String),
+        contains('cursor_deleted_profiles'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'sync_state.cursor_deleted_profiles (Issue #597)',
+      );
+    });
   }
+
+  group('issue #637 review, bug 2: the unconfirmed backfill is gated to '
+      'devices genuinely crossing v12/v16, not every device at v20', () {
+    test('a device already past v16 (v18) before this journey began gets '
+        'NO unitsUnconfirmed/pmsUnconfirmed marker at all — a dirty row '
+        'and a clean row both push their real bbt_unit/weight_unit/pms '
+        'values normally', () async {
+      final schema = await verifier.schemaAt(18);
+      final seedDb = v18.DatabaseAtV18(schema.newConnection());
+      // A dirty row (the exact LLA-039 precondition: dirty for an
+      // unrelated reason) and a clean row, both with real, non-default
+      // preference values a genuine v16+ device would actually have.
+      await seedDb.customStatement(
+        "INSERT INTO profiles (id, display_name, is_minor, created_at, "
+        "updated_at, bbt_unit, weight_unit, dirty) VALUES "
+        "('01J000000000000000000000D1', 'Dirty', 0, "
+        "'2026-01-01T00:00:00.000000Z', '2026-01-01T00:00:00.000000Z', "
+        "'fahrenheit', 'lb', 1)",
+      );
+      await seedDb.customStatement(
+        "INSERT INTO profiles (id, display_name, is_minor, created_at, "
+        "updated_at, bbt_unit, weight_unit, dirty) VALUES "
+        "('01J000000000000000000000C1', 'Clean', 0, "
+        "'2026-01-01T00:00:00.000000Z', '2026-01-01T00:00:00.000000Z', "
+        "'fahrenheit', 'lb', 0)",
+      );
+      await seedDb.customStatement(
+        "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, "
+        "updated_at, pms, dirty, source) VALUES "
+        "('01J000000000000000000000E1', '01J000000000000000000000D1', "
+        "'2026-01-02', 'UTC', 'medium', '2026-01-01T00:00:00.000000Z', "
+        "1, 1, 'manual')",
+      );
+      await seedDb.close();
+
+      final testedDb = LunarLogDatabase(schema.newConnection());
+      addTearDown(testedDb.close);
+      await verifier.migrateAndValidate(testedDb, _kCurrentSchemaVersion);
+
+      final profiles = await testedDb.storage.getProfiles();
+      final dirtyProfile =
+          profiles.firstWhere((p) => p.id == '01J000000000000000000000D1');
+      final cleanProfile =
+          profiles.firstWhere((p) => p.id == '01J000000000000000000000C1');
+      expect(dirtyProfile.unitsUnconfirmed, isNot(true),
+          reason: 'a device already past v16 must never get the marker — '
+              'its bbt_unit/weight_unit are real, synced data');
+      expect(cleanProfile.unitsUnconfirmed, isNot(true));
+
+      final dirtyPayload = encodeProfile(dirtyProfile);
+      expect(dirtyPayload['bbt_unit'], 'fahrenheit',
+          reason: 'the dirty row\'s real preference must push, not be '
+              'withheld behind a marker it never should have gotten');
+      expect(dirtyPayload['weight_unit'], 'lb');
+      expect(encodeProfile(cleanProfile)['bbt_unit'], 'fahrenheit');
+
+      final entry = (await testedDb.storage.getDayEntries(
+              profileId: '01J000000000000000000000D1'))
+          .single;
+      expect(entry.pmsUnconfirmed, isNot(true));
+      expect(encodeDayEntry(entry)['pms'], true,
+          reason: 'the dirty entry\'s real pms must push too');
+    });
+
+    test('a device upgrading from before pms/bbt_unit/weight_unit existed '
+        '(v7) marks only the rows already on the device — a fresh local '
+        'row created after the upgrade is never marked', () async {
+      final schema = await verifier.schemaAt(7);
+      final seedDb = v7.DatabaseAtV7(schema.newConnection());
+      await seedDb.customStatement(
+        "INSERT INTO profiles (id, display_name, is_minor, created_at, "
+        "updated_at) VALUES ('01J000000000000000000000P1', 'Old', 0, "
+        "'2026-01-01T00:00:00.000000Z', '2026-01-01T00:00:00.000000Z')",
+      );
+      await seedDb.customStatement(
+        "INSERT INTO day_entries (id, profile_id, local_date, tz, flow, "
+        "updated_at, source) VALUES ('01J000000000000000000000Q1', "
+        "'01J000000000000000000000P1', '2026-01-02', 'UTC', 'medium', "
+        "'2026-01-01T00:00:00.000000Z', 'manual')",
+      );
+      await seedDb.close();
+
+      final testedDb = LunarLogDatabase(schema.newConnection());
+      addTearDown(testedDb.close);
+      await verifier.migrateAndValidate(testedDb, _kCurrentSchemaVersion);
+
+      final oldProfile =
+          await testedDb.storage.getProfile('01J000000000000000000000P1');
+      expect(oldProfile!.unitsUnconfirmed, isTrue,
+          reason: 'a row that predates v16 must be marked — its '
+              'bbt_unit/weight_unit are a migration default, not real data');
+      final oldEntry = (await testedDb.storage
+              .getDayEntries(profileId: '01J000000000000000000000P1'))
+          .single;
+      expect(oldEntry.pmsUnconfirmed, isTrue,
+          reason: 'a row that predates v12 must be marked — its pms is a '
+              'migration default, not real data');
+
+      // A fresh local row created after the upgrade completes — never
+      // marked, because it never went through the v12/v16 backfill.
+      final freshProfile = await testedDb.storage.upsertProfile(
+          displayName: 'New', isMinor: false, bbtUnit: 'celsius');
+      expect(freshProfile.unitsUnconfirmed, isNot(true));
+      final freshEntry = await testedDb.storage.upsertDayEntry(
+        profileId: freshProfile.id,
+        localDate: '2026-01-03',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+      expect(freshEntry.pmsUnconfirmed, isNot(true));
+    });
+  });
 }

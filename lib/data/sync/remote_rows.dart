@@ -16,12 +16,13 @@ import '../db/tables.dart';
 /// Issue #188, Issue #128).
 ///
 /// [deletedProfiles] (issue #522) is pull-only, like [profileGuardians]: a
-/// row here is never pushed and, like [profileGuardians], pages from
-/// version 0 every cycle rather than through a persisted cursor of its own
-/// (the same known-perf tradeoff #525 tracks for [profileGuardians] — the
-/// table is expected to be small, since it only ever holds a purged
-/// profile's id, so a full scan is cheap; a persisted cursor is future
-/// work, not this issue's scope).
+/// row here is never pushed. It now pages from a persisted cursor too
+/// (issue #597, `sync_state.cursor_deleted_profiles`) — the same fix #525
+/// already applied to [profileGuardians], for the same reason: the table
+/// was expected to stay small enough that paging from version 0 every
+/// cycle was cheap, but nothing bounds its growth, and the server already
+/// carries a `server_version` column and index for it
+/// (`20260913013000_deleted_profiles_tombstone_purge.sql`).
 enum SyncTable {
   profiles,
   dayEntries,

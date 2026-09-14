@@ -134,10 +134,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         // Issue #525: profileGuardians now has a persisted cursor too.
         SyncTable.profileGuardians =>
           SyncStateCompanion(cursorProfileGuardians: Value(newCursor)),
-        // Issue #522: no persisted cursor — see SyncTable.deletedProfiles's
-        // doc comment.
+        // Issue #597: deletedProfiles now has a persisted cursor too.
         SyncTable.deletedProfiles =>
-          const SyncStateCompanion(),
+          SyncStateCompanion(cursorDeletedProfiles: Value(newCursor)),
       },
     );
   }
@@ -316,6 +315,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             lastPeriodStart: Value(remote.lastPeriodStart),
             typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
             typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
+            // Issue #637, LLA-039: a fresh local row from a genuine remote
+            // delivery has, by definition, just been confirmed against the
+            // server's real bbt_unit/weight_unit.
+            unitsUnconfirmed: const Value(false),
           ));
       return true;
     }
@@ -345,6 +348,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         // marker (if any) is cleared and ordinary per-id LWW resumes for
         // whatever comes next.
         accessRevokedAt: const Value(null),
+        // Issue #637, LLA-039: this write is a genuine remote delivery
+        // (the per-id rule already said remote beats — or bypasses — the
+        // local copy), so bbt_unit/weight_unit above are the server's real
+        // values now, confirmed.
+        unitsUnconfirmed: const Value(false),
       ),
     );
     return true;
@@ -617,6 +625,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             source: Value(remote.source),
             sourceId: Value(remote.sourceId),
             importId: Value(remote.importId),
+            // Issue #637, LLA-039: a fresh local row from a genuine remote
+            // delivery has, by definition, just been confirmed against the
+            // server's real pms.
+            pmsUnconfirmed: const Value(false),
           ));
       return true;
     }
@@ -638,6 +650,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       source: Value(remote.source),
       sourceId: Value(remote.sourceId),
       importId: Value(remote.importId),
+      // Issue #637, LLA-039: this write is a genuine remote delivery (the
+      // per-id rule already said remote beats the local copy, or this is
+      // the same-date resolver's outcome), so `pms` above is the server's
+      // real value now, confirmed.
+      pmsUnconfirmed: const Value(false),
     ));
     return true;
   }
@@ -1302,13 +1319,34 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           winnerFlow: other.flow,
           loserEntryId: remote.id,
         );
+        final mergedOtherTags = mergeTags(other.tags, tags);
+        // Issue #663 (LLA-038 mirror of the sibling branch's #662 fix
+        // above): stamp the local survivor strictly after the incoming
+        // remote loser's timestamp whenever it actually absorbs new tags.
+        // `other`'s own write below never otherwise touches `updated_at`,
+        // so a previously unmodified pulled copy (its stamp already tied
+        // to what the server stores for `other`'s own id) would stay tied
+        // even after gaining tags here. Untied, two failure modes match
+        // the sibling branch exactly: (1) a later ordinary pull of
+        // `other`'s own id — the merge never having reached the server —
+        // ties `remoteWinsById`, and remote wins ties, so the union just
+        // written is silently overwritten by the server's bare tags with
+        // `dirty` cleared; (2) `sync_push`'s day_entries acceptance rule
+        // only takes a row strictly newer than what it already has
+        // stored, so an equal-timestamp push of the merged tags is
+        // declined forever.
+        final otherGainedTags = !_tagsEqual(mergedOtherTags, other.tags);
+        final otherUpdatedAt = otherGainedTags
+            ? other.updatedAt.toUtc().add(const Duration(milliseconds: 1))
+            : other.updatedAt.toUtc();
         await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
             .write(DayEntriesCompanion(
-          tags: Value(mergeTags(other.tags, tags)),
+          tags: Value(mergedOtherTags),
+          updatedAt: Value(otherUpdatedAt),
           dirty: const Value(true),
           localRev: Value(other.localRev + 1),
         ));
-        updatedAt = other.updatedAt.toUtc();
+        updatedAt = otherUpdatedAt;
         deletedAt = updatedAt;
       }
     }

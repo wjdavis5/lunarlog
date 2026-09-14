@@ -585,6 +585,39 @@ void main() {
               'from version 0 every cycle');
     });
 
+    test('issue #597: deletedProfiles pages from its own persisted cursor, '
+        'not from 0, on the second cycle onward', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final pA = ulidN(1);
+      rig.transport.scriptPage(SyncTable.profiles, [
+        remoteProfile(pA, updatedAt: t0, serverVersion: 1),
+      ]);
+      rig.transport.scriptPage(SyncTable.deletedProfiles, [
+        RemoteDeletedProfileRow(
+            profileId: ulidN(2), deletedAt: t0, serverVersion: 70),
+      ]);
+      await rig.start();
+      expect((await rig.state()).cursorDeletedProfiles, 70);
+
+      // A second cycle: the deletedProfiles pull must start from the
+      // persisted cursor (70), not re-scan the whole table from 0 — the
+      // same perf fix issue #525 already applied to profileGuardians.
+      rig.transport.pulls.clear();
+      rig.transport.scriptPage(SyncTable.profiles, const []);
+      rig.transport.scriptPage(SyncTable.deletedProfiles, const []);
+      await rig.sync();
+
+      final deletedProfilesCalls = rig.transport.pulls
+          .where((c) => c.table == SyncTable.deletedProfiles)
+          .toList();
+      expect(deletedProfilesCalls, hasLength(1));
+      expect(deletedProfilesCalls.single.afterVersion, 70,
+          reason: 'must resume from the persisted cursor, not re-scan '
+              'from version 0 every cycle');
+    });
+
     group('issue #521: cursor watermark clamp and lookback fallback', () {
       test('a watermark below a page\'s max version holds the cursor there '
           'instead of skipping past it; a later cycle with an advanced '

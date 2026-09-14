@@ -26,6 +26,7 @@ void main() {
     String mode = 'standard',
     String bbtUnit = 'celsius',
     String weightUnit = 'kg',
+    bool? unitsUnconfirmed,
     int? birthYear,
     String? relationship,
     DateTime? transferredAt,
@@ -41,6 +42,7 @@ void main() {
         mode: mode,
         bbtUnit: bbtUnit,
         weightUnit: weightUnit,
+        unitsUnconfirmed: unitsUnconfirmed,
         sortOrder: 3,
         archivedAt: archivedAt,
         createdAt: micro,
@@ -61,6 +63,7 @@ void main() {
     List<String> tags = const ['cramps', 'headache'],
     String? note = 'a note',
     bool pms = false,
+    bool? pmsUnconfirmed,
     DateTime? deletedAt,
     FlowLevel flow = FlowLevel.medium,
     String source = 'manual',
@@ -76,6 +79,7 @@ void main() {
         tags: tags,
         note: note,
         pms: pms,
+        pmsUnconfirmed: pmsUnconfirmed,
         updatedAt: micro,
         deletedAt: deletedAt,
         dirty: true,
@@ -224,6 +228,40 @@ void main() {
           reason: 'an unrecognised value degrades to the default');
       expect(decoded.weightUnit, 'kg',
           reason: 'an absent key falls back to the default');
+    });
+
+    test('issue #637, LLA-039: encode omits bbt_unit/weight_unit while '
+        'unitsUnconfirmed is true — an upgrade-backfilled default is never '
+        'pushed as if it were real data', () {
+      final json = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+        unitsUnconfirmed: true,
+      ));
+      expect(json, isNot(contains('bbt_unit')));
+      expect(json, isNot(contains('weight_unit')));
+      // Every other field still pushes — only the two unconfirmed
+      // preferences are withheld, not the whole row.
+      expect(json['display_name'], 'Kid');
+    });
+
+    test(
+        'issue #637, LLA-039: encode includes bbt_unit/weight_unit again '
+        'once unitsUnconfirmed is false or unset', () {
+      final confirmedFalse = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+        unitsUnconfirmed: false,
+      ));
+      expect(confirmedFalse['bbt_unit'], 'fahrenheit');
+      expect(confirmedFalse['weight_unit'], 'lb');
+
+      final neverSet = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      ));
+      expect(neverSet['bbt_unit'], 'fahrenheit');
+      expect(neverSet['weight_unit'], 'lb');
     });
 
     test('a pre-#218 payload without the fact keys decodes to nulls, and a '
@@ -563,6 +601,25 @@ void main() {
       // decodes to false rather than failing the pull.
       final stripped = {...json}..remove('pms');
       expect(decodeDayEntry(stripped).pms, false);
+    });
+
+    test('issue #637, LLA-039: encode omits pms while pmsUnconfirmed is '
+        'true — an upgrade-backfilled default is never pushed as if it '
+        'were real data', () {
+      final json = encodeDayEntry(makeEntry(pms: true, pmsUnconfirmed: true));
+      expect(json, isNot(contains('pms')));
+      // Every other field still pushes — only pms is withheld.
+      expect(json['note'], 'a note');
+    });
+
+    test('issue #637, LLA-039: encode includes pms again once '
+        'pmsUnconfirmed is false or unset', () {
+      final confirmedFalse =
+          encodeDayEntry(makeEntry(pms: true, pmsUnconfirmed: false));
+      expect(confirmedFalse['pms'], true);
+
+      final neverSet = encodeDayEntry(makeEntry(pms: true));
+      expect(neverSet['pms'], true);
     });
 
     test(
