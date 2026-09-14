@@ -98,6 +98,90 @@ void _validateTags(List<String> tags) {
   }
 }
 
+/// Issue #649 (CRAP-gate split): the document-level half of
+/// [_validateTrackingPreferences] — the client-only entry-count bound that
+/// mirrors nothing server-side (`kMaxTrackingPreferencesEntries`).
+void _checkEntryCount(Map<String, dynamic> decoded) {
+  if (decoded.length > kMaxTrackingPreferencesEntries) {
+    throw ArgumentError.value(decoded.length, 'jsonText',
+        'tracking preferences must have at most $kMaxTrackingPreferencesEntries entries');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// key-length rule (`key = '' or length(key) > 64`).
+void _checkKey(String key) {
+  if (key.isEmpty || key.length > kMaxTrackingPreferencesKeyLength) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference keys must be 1-$kMaxTrackingPreferencesKeyLength characters');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `jsonb_typeof(value) <> 'object'` and unknown-key checks.
+void _checkEntryShape(String key, Object? value) {
+  if (value is! Map) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference "$key" must be an object');
+  }
+  for (final entryKey in value.keys) {
+    if (entryKey != 'enabled' && entryKey != 'sort_order') {
+      throw ArgumentError.value(key, 'jsonText',
+          'tracking preference "$key" carries an unknown key "$entryKey"');
+    }
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `jsonb_typeof(value -> 'enabled') is distinct from 'boolean'` check.
+/// [value] is already known to be a [Map] — [_checkEntryShape] ran first.
+void _checkEnabled(String key, Map value) {
+  if (value['enabled'] is! bool) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference "$key" must have a boolean "enabled"');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `sort_order` regex/upper-bound checks (non-negative integer, <= 1000).
+/// [value] is already known to be a [Map] — [_checkEntryShape] ran first.
+void _checkSortOrder(String key, Map value) {
+  final sortOrder = value['sort_order'];
+  if (sortOrder is! int ||
+      sortOrder < kMinTrackingPreferencesSortOrder ||
+      sortOrder > kMaxTrackingPreferencesSortOrder) {
+    throw ArgumentError.value(
+        key,
+        'jsonText',
+        'tracking preference "$key" must have an integer "sort_order" in '
+        '[$kMinTrackingPreferencesSortOrder, $kMaxTrackingPreferencesSortOrder]');
+  }
+}
+
+/// Issue #649: mirrors `is_valid_tracking_preferences`
+/// (`profiles_tracking_preferences_check`,
+/// `supabase/migrations/20260915000000_profile_tracking_preferences.sql`)
+/// exactly, plus the client-only entry-count bound that CHECK does not
+/// (yet) enforce (`kMaxTrackingPreferencesEntries`). [decoded] is the
+/// already-JSON-decoded document (an object — the caller has already
+/// handled the null/empty-text "clear" case before this runs). A document
+/// that would fail the server's CHECK is rejected here first, so it never
+/// stores locally, goes dirty, and wedges the profile's sync row on every
+/// push thereafter. Pure orchestration (CRAP-gate split): each rule lives
+/// in its own small `_checkX` helper above.
+void _validateTrackingPreferences(Map<String, dynamic> decoded) {
+  _checkEntryCount(decoded);
+  for (final mapEntry in decoded.entries) {
+    final key = mapEntry.key;
+    _checkKey(key);
+    final value = mapEntry.value;
+    _checkEntryShape(key, value);
+    final entry = value as Map;
+    _checkEnabled(key, entry);
+    _checkSortOrder(key, entry);
+  }
+}
+
 /// Issue #240: mirrors the server's `observations` CHECK constraints
 /// (`supabase/migrations/20260908160000_observations.sql`). `category`/
 /// `code` are bounded but never validated against a closed set — see
@@ -423,11 +507,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// strictly after the stored value like every local write. No-op when
   /// the row is not held locally or is tombstoned (curating a deleted
   /// profile is meaningless). Throws [ArgumentError] when [jsonText] is
-  /// not null and not a JSON object — the same shape rule the server's
-  /// `profiles_tracking_preferences_check` enforces — a weaker, fail-fast
-  /// object-ness check only (the server's CHECK remains the real shape
-  /// enforcement: per-entry `enabled` boolean, `sort_order` integer in
-  /// [0, 1000], key length bounds). A null [jsonText] is stored as the
+  /// not null and not a JSON object, or when it fails
+  /// [_validateTrackingPreferences] (Issue #649: mirrors the server's
+  /// `profiles_tracking_preferences_check`/`is_valid_tracking_preferences`
+  /// exactly — per-entry boolean `enabled`, integer `sort_order` in
+  /// [0, 1000], 1-64 char keys, no extra keys — plus a client-only
+  /// entry-count bound that CHECK does not enforce). A document that
+  /// would fail the server's CHECK is rejected here first, so it never
+  /// stores locally, goes dirty, and wedges the profile's entire sync row
+  /// on every push. A null [jsonText] is stored as the
   /// explicitly empty document `'{}'`: a clear must be non-null to survive
   /// the codec's emit-only-when-non-null rule and actually propagate.
   Future<Profile?> setTrackingPreferences(
@@ -448,6 +536,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         throw ArgumentError.value(jsonText, 'jsonText',
             'tracking preferences must be a JSON object');
       }
+      _validateTrackingPreferences(decoded);
     }
     return db.transaction(() async {
       final existing = await _profileOrNull(profileId);

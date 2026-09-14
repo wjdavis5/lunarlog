@@ -273,21 +273,23 @@ void main() {
       );
     });
 
-    test('issue #529: strips confidence_tier even when the projection '
-        'carries one, so a tiered publish never trips '
-        "prediction_projections' server-side allowlist", () async {
+    test('issue #593: sends confidence_tier unmodified when the projection '
+        'carries one, now that prediction_projections\' server-side '
+        'allowlist accepts it', () async {
       final client = makeClient((req) async {
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         final projection = body['p_projection'] as Map<String, dynamic>;
         expect(
           projection.keys.toSet(),
-          PredictionProjection.allowedKeys.toSet(),
-          reason: 'confidence_tier is not in the server allowlist yet '
-              '(20260909200000_prediction_connections.sql) - sending it '
-              'would fail the payload_keys_check CHECK constraint',
+          {
+            ...PredictionProjection.allowedKeys,
+            PredictionProjection.confidenceTierKey,
+          },
+          reason: 'confidence_tier joined the server allowlist in '
+              '20260915140000_prediction_projection_confidence_tier.sql '
+              '(issue #593) - no strip needed any more',
         );
-        expect(projection.containsKey(PredictionProjection.confidenceTierKey),
-            isFalse);
+        expect(projection[PredictionProjection.confidenceTierKey], 'high');
         return http.Response('null', 204);
       });
 

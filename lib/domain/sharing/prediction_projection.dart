@@ -14,19 +14,16 @@
 /// tier, carried so the recipient's calendar can show it alongside the
 /// disclaimers rather than presenting an undated estimate with no
 /// reliability framing. It is nullable end to end (an absent key
-/// deserializes to `null`, never a default tier) for two reasons: (1)
-/// backwards compatibility with a payload published before this field
-/// existed, and (2) that migration's `prediction_projections_payload_keys_
-/// check` CHECK constraint and `enforce_prediction_projection_payload()`
-/// trigger allowlist only the five original keys and reject anything
-/// else — widening that allowlist needs its own migration (out of scope
-/// here), so [PredictionProjectionPublisher]'s wire call strips this key
-/// before it ever reaches `upsert_prediction_projection`. Until that
-/// follow-up migration lands, [confidenceTier] round-trips through this
-/// model's own [toJson]/[fromJson] (and is covered by unit tests here)
-/// but never actually reaches a recipient's device — see
+/// deserializes to `null`, never a default tier) for backwards
+/// compatibility with a payload published before this field existed.
+/// Issue #593 widened `prediction_projections_payload_keys_check` and
+/// `enforce_prediction_projection_payload()`
+/// (`supabase/migrations/20260915140000_prediction_projection_confidence_
+/// tier.sql`) to allowlist [confidenceTierKey] as an optional,
+/// nullable, enum-checked key alongside the original five, so
+/// [confidenceTier] now round-trips all the way to a recipient's device —
 /// `lib/data/sharing/supabase_prediction_connection_service.dart`'s
-/// `publishProjection` for the strip and its own comment.
+/// `publishProjection` ships this model's full [toJson] unmodified.
 ///
 /// The builder reads the sharer's own [ActivePrediction] (issue #213's
 /// engine — the only implementation of the algorithm) and derives:
@@ -94,9 +91,10 @@ class PredictionProjection {
   /// crosses the wire in production.
   final CycleConfidence? confidenceTier;
 
-  /// The server's key allowlist, in wire order. Deliberately unchanged by
-  /// [confidenceTier] (issue #529) — see that field's doc comment; it is
-  /// not part of what the server currently accepts.
+  /// The server's derived-phase key allowlist, in wire order.
+  /// [confidenceTierKey] is allowlisted too (Issue #593) but held
+  /// separately below since it is optional/nullable rather than one of
+  /// these five always-present derived-phase arrays.
   static const List<String> allowedKeys = [
     'generated_at',
     'period_days',
@@ -105,19 +103,19 @@ class PredictionProjection {
     'pms_days',
   ];
 
-  /// The wire key for [confidenceTier] when present. Held separately from
-  /// [allowedKeys] because the server does not (yet) allowlist it.
+  /// The wire key for [confidenceTier] when present (Issue #593: an
+  /// allowlisted, optional, nullable, enum-checked key alongside
+  /// [allowedKeys] — see `enforce_prediction_projection_payload()` in
+  /// `supabase/migrations/20260915140000_prediction_projection_confidence_
+  /// tier.sql`).
   static const String confidenceTierKey = 'confidence_tier';
 
-  /// This model's own wire form: the five allowlisted keys plus
-  /// [confidenceTierKey] when [confidenceTier] is non-null (omitted, not
-  /// null, when absent — the same "absent means unknown" convention the
-  /// rest of this payload already uses). Dates are `yyyy-MM-dd`.
-  ///
-  /// Callers that publish to `upsert_prediction_projection` must strip
-  /// [confidenceTierKey] first — see the library doc comment — this
-  /// method is the full domain-level shape, not the current wire
-  /// contract that specific RPC accepts.
+  /// This model's own wire form, and the full contract
+  /// `upsert_prediction_projection` accepts (Issue #593): the five
+  /// allowlisted keys plus [confidenceTierKey] when [confidenceTier] is
+  /// non-null (omitted, not null, when absent — the same "absent means
+  /// unknown" convention the rest of this payload already uses). Dates
+  /// are `yyyy-MM-dd`.
   Map<String, Object?> toJson() => {
         'generated_at': generatedAt.iso,
         'period_days': [for (final d in periodDays) d.iso],

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart'
     show
         ApplyInterceptor,
@@ -10,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart'
     show RemoteDeletedProfileRow, RemoteProfileGuardianRow;
 import 'package:lunarlog/data/sync/row_codec.dart'
@@ -915,6 +918,118 @@ void main() {
         isNull,
         reason: 'curating a deleted profile is meaningless');
       expect(tombstoned.trackingPreferences, isNull);
+    });
+
+    test('setTrackingPreferences mirrors the server CHECK exactly (Issue '
+        '#649): a document a well-formed client would never construct is '
+        'rejected locally instead of poisoning the sync row on push',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+
+      // An entry's value must itself be an object, not merely present.
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": "not-an-object"}'),
+        throwsArgumentError,
+      );
+      // An entry carrying any key besides enabled/sort_order.
+      expect(
+        () => storage.setTrackingPreferences(p.id,
+            '{"mood": {"enabled": true, "sort_order": 0, "extra": 1}}'),
+        throwsArgumentError,
+      );
+      // enabled must be a boolean, not merely truthy.
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": "yes", "sort_order": 0}}'),
+        throwsArgumentError,
+      );
+      // enabled is required, not just optional-and-defaulted.
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"sort_order": 0}}'),
+        throwsArgumentError,
+      );
+      // sort_order must be present ...
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": true}}'),
+        throwsArgumentError,
+      );
+      // ... an integer (the server's ^[0-9]{1,4}$ regex rejects a decimal
+      // on the wire) ...
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": true, "sort_order": 1.5}}'),
+        throwsArgumentError,
+      );
+      // ... never negative (no leading '-' in that regex) ...
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": true, "sort_order": -1}}'),
+        throwsArgumentError,
+      );
+      // ... and at most 1000.
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"mood": {"enabled": true, "sort_order": 1001}}'),
+        throwsArgumentError,
+      );
+      // Exactly 1000 and exactly 0 are both in bounds.
+      final atUpperBound = await storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": true, "sort_order": 1000}}');
+      expect(atUpperBound!.trackingPreferences,
+          '{"mood": {"enabled": true, "sort_order": 1000}}');
+
+      // A key that is empty, or over the server's 64-char bound.
+      expect(
+        () => storage.setTrackingPreferences(
+            p.id, '{"": {"enabled": true, "sort_order": 0}}'),
+        throwsArgumentError,
+      );
+      final tooLongKey = 'x' * (kMaxTrackingPreferencesKeyLength + 1);
+      expect(
+        () => storage.setTrackingPreferences(p.id,
+            jsonEncode({tooLongKey: {'enabled': true, 'sort_order': 0}})),
+        throwsArgumentError,
+      );
+      // Exactly at the 64-char bound is in bounds.
+      final maxLengthKey = 'x' * kMaxTrackingPreferencesKeyLength;
+      final atKeyBound = await storage.setTrackingPreferences(p.id,
+          jsonEncode({maxLengthKey: {'enabled': true, 'sort_order': 0}}));
+      expect(atKeyBound, isNotNull);
+
+      // A valid document never rejected: the happy path stays open.
+      final ok = await storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": false, "sort_order": 3}}');
+      expect(ok!.trackingPreferences,
+          '{"mood": {"enabled": false, "sort_order": 3}}');
+    });
+
+    test('setTrackingPreferences bounds the document’s entry count '
+        '(Issue #649): a client-only bound the server CHECK does not '
+        '(yet) enforce, so a runaway document fails fast locally', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+
+      final tooMany = jsonEncode({
+        for (var i = 0; i < kMaxTrackingPreferencesEntries + 1; i++)
+          'category$i': {'enabled': true, 'sort_order': 0},
+      });
+      expect(
+        () => storage.setTrackingPreferences(p.id, tooMany),
+        throwsArgumentError,
+      );
+
+      // Exactly at the bound is accepted.
+      final atBound = jsonEncode({
+        for (var i = 0; i < kMaxTrackingPreferencesEntries; i++)
+          'category$i': {'enabled': true, 'sort_order': 0},
+      });
+      final updated = await storage.setTrackingPreferences(p.id, atBound);
+      expect(updated, isNotNull);
+      final decoded =
+          jsonDecode(updated!.trackingPreferences!) as Map<String, dynamic>;
+      expect(decoded.length, kMaxTrackingPreferencesEntries);
     });
 
     test('a newer remote profile carrying a document applies it; the '

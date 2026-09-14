@@ -234,18 +234,14 @@ class SupabasePredictionConnectionService
     required PredictionProjection projection,
   }) async {
     try {
-      // Issue #529: [PredictionProjection.toJson] may carry
-      // [PredictionProjection.confidenceTierKey], but
-      // `prediction_projections_payload_keys_check` and
+      // Issue #593: `prediction_projections_payload_keys_check` and
       // `enforce_prediction_projection_payload()`
-      // (20260909200000_prediction_connections.sql) allowlist only
-      // [PredictionProjection.allowedKeys] and reject anything else — an
-      // unstripped tier would fail every publish. Widening that
-      // server-side allowlist is a separate migration (out of scope
-      // here); strip the key so this RPC keeps sending exactly the
-      // payload the server accepts today.
-      final payload = projection.toJson()
-        ..remove(PredictionProjection.confidenceTierKey);
+      // (20260909200000_prediction_connections.sql, widened by
+      // 20260915140000_prediction_projection_confidence_tier.sql) now
+      // allowlist [PredictionProjection.confidenceTierKey] too (an
+      // optional, nullable, enum-checked key), so [PredictionProjection
+      // .toJson]'s full wire form ships unmodified — no strip needed.
+      final payload = projection.toJson();
       await client.rpc<dynamic>(
         'upsert_prediction_projection',
         params: {
