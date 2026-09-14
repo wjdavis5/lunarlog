@@ -38,6 +38,7 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -164,14 +165,36 @@ Future<LunarLogDatabase> pumpCalendar(
 /// Pumps [DaySheet] as a real `showModalBottomSheet` over a host page
 /// (the shape every production push site uses), with the text scale and
 /// entry state this pass varies.
+///
+/// [viewInsets] simulates an on-screen keyboard (issue #642, LLA-012):
+/// widget tests cannot raise a real keyboard, so a caller that wants that
+/// scenario passes an explicit bottom inset the same way a real keyboard
+/// would report one through `MediaQuery`.
+///
+/// [buildExisting], when given, fully controls the sheet's `existing` day
+/// entry and lets a caller seed real `observations` rows against it (issue
+/// #642, LLA-011's spotting/pain-intensity fixtures need a day entry that
+/// genuinely exists in [db], not just a value handed straight to the
+/// widget, since [ObservationsRepository] rows are looked up by that id
+/// against the real store) — receives the real [entries]/[observations]
+/// repositories and [profile] id, returns the entry to render. Omitted,
+/// this falls back to the previous fixed "seeded" entry (never actually
+/// written to [entries]; fine for every test that never seeds
+/// observations against it).
 Future<LunarLogDatabase> pumpDaySheet(
   WidgetTester tester, {
   double textScale = 1.0,
   Size physicalSize = const Size(390, 844),
+  EdgeInsets viewInsets = EdgeInsets.zero,
   bool readOnly = false,
   List<ProfileGuardian> guardians = const [],
   String? currentUserId,
   DayEntry? existing,
+  Future<DayEntry> Function(
+    DriftDayEntriesRepository entries,
+    DriftObservationsRepository observations,
+    String profileId,
+  )? buildExisting,
 }) async {
   tester.view.physicalSize = physicalSize;
   tester.view.devicePixelRatio = 1.0;
@@ -184,6 +207,19 @@ Future<LunarLogDatabase> pumpDaySheet(
   final entries = DriftDayEntriesRepository(db.storage);
   final observations = DriftObservationsRepository(db.storage);
   final sheetDate = LocalDate(2026, 8, 29);
+  final resolvedExisting = buildExisting != null
+      ? await buildExisting(entries, observations, profile.id)
+      : existing ??
+          DayEntry(
+            id: 'seeded',
+            profileId: profile.id,
+            localDate: sheetDate,
+            tz: 'America/Chicago',
+            flow: FlowLevel.none,
+            tags: const ['cramps'],
+            note: 'existing note',
+            updatedAt: DateTime.utc(2026, 1, 1),
+          );
 
   await tester.pumpWidget(
     MultiProvider(
@@ -195,9 +231,10 @@ Future<LunarLogDatabase> pumpDaySheet(
         supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightTheme,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+            viewInsets: viewInsets,
+          ),
           child: child!,
         ),
         home: Builder(
@@ -213,17 +250,7 @@ Future<LunarLogDatabase> pumpDaySheet(
                     profileId: profile.id,
                     date: sheetDate,
                     today: kToday,
-                    existing: existing ??
-                        DayEntry(
-                          id: 'seeded',
-                          profileId: profile.id,
-                          localDate: sheetDate,
-                          tz: 'America/Chicago',
-                          flow: FlowLevel.none,
-                          tags: const ['cramps'],
-                          note: 'existing note',
-                          updatedAt: DateTime.utc(2026, 1, 1),
-                        ),
+                    existing: resolvedExisting,
                     readOnly: readOnly,
                     guardians: guardians,
                     currentUserId: currentUserId,
@@ -690,6 +717,154 @@ void main() {
         await db.close();
       });
     }
+
+    /// Seeds a day entry with real backing rows (via [buildExisting] —
+    /// [pumpDaySheet]'s own default "seeded" entry is never actually
+    /// written to storage) plus a spotting observation and a graded pain
+    /// observation, both attached to that entry.
+    Future<DayEntry> seedSpottingAndPain(
+      DriftDayEntriesRepository entries,
+      DriftObservationsRepository observations,
+      String profileId,
+    ) async {
+      final saved = await entries.save(
+        DayEntry(
+          id: '',
+          profileId: profileId,
+          localDate: LocalDate(2026, 8, 29),
+          tz: 'America/Chicago',
+          flow: FlowLevel.none,
+          tags: const ['cramps'],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+      await observations.save(
+        Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: profileId,
+          localDate: saved.localDate,
+          tz: saved.tz,
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+      await observations.save(
+        Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: profileId,
+          localDate: saved.localDate,
+          tz: saved.tz,
+          category: 'pain',
+          code: 'cramps',
+          intensity: 4,
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      );
+      return saved;
+    }
+
+    group('spotting and pain intensity in the read-only view (issue #642, '
+        'LLA-011)', () {
+      testWidgets('a viewer (an accepted, non-owning guardian) sees both',
+          (tester) async {
+        final db = await pumpDaySheet(
+          tester,
+          readOnly: true,
+          currentUserId: 'user-viewer',
+          guardians: [
+            _guardian('g-1', 'user-viewer', GuardianRole.viewer, 'Grandma'),
+          ],
+          buildExisting: seedSpottingAndPain,
+        );
+
+        expect(
+          find.byKey(const ValueKey('day-sheet-spotting-value')),
+          findsOneWidget,
+          reason: 'a spotting-only day must not read as "not bleeding" to '
+              'a viewer',
+        );
+        expect(
+          find.byKey(const ValueKey('day-sheet-pain-intensity-cramps')),
+          findsOneWidget,
+          reason: 'a caregiver-alert-worthy pain grade must be visible to '
+              'a viewer, not only the person who logged it',
+        );
+        expect(find.text('Cramps: 4'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+
+      testWidgets(
+          'an archived owner (read-only with no matching guardian row) '
+          'sees both too', (tester) async {
+        final db = await pumpDaySheet(
+          tester,
+          readOnly: true,
+          buildExisting: seedSpottingAndPain,
+        );
+
+        expect(
+          find.byKey(const ValueKey('day-sheet-spotting-value')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('day-sheet-pain-intensity-cramps')),
+          findsOneWidget,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+
+      testWidgets('neither renders, and no loading/error copy lingers, for '
+          'a day with no spotting or graded pain', (tester) async {
+        final db = await pumpDaySheet(tester, readOnly: true);
+
+        expect(
+          find.byKey(const ValueKey('day-sheet-spotting-value')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('day-sheet-child-observations-loading')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('day-sheet-child-observations-error')),
+          findsNothing,
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+    });
+
+    group('bounded scrolling and a keyboard inset (issue #642, LLA-012)', () {
+      for (final ro in [true, false]) {
+        testWidgets(
+            '${ro ? "read-only" : "editable"} day sheet renders with no '
+            'overflow at 320×568, 200% text scale, and a keyboard-sized '
+            'bottom inset', (tester) async {
+          final db = await pumpDaySheet(
+            tester,
+            readOnly: ro,
+            textScale: 2.0,
+            physicalSize: const Size(320, 568),
+            viewInsets: const EdgeInsets.only(bottom: 260),
+            buildExisting: ro ? seedSpottingAndPain : null,
+          );
+
+          expect(tester.takeException(), isNull);
+          expect(find.byType(DaySheet), findsOneWidget);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+          await db.close();
+        });
+      }
+    });
   });
 
   group('overview semantics (#138)', () {

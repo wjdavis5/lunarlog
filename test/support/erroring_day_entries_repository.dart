@@ -63,6 +63,10 @@ class ErroringDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<bool> hasAnyEntries(String profileId) =>
       _inner.hasAnyEntries(profileId);
+
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      _inner.watchHasAnyEntries(profileId);
 }
 
 /// The same decorator for [ActivityFeedRepository] (issue #543's

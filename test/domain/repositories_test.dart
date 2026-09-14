@@ -523,6 +523,54 @@ void main() {
       });
     });
 
+    group('watchHasAnyEntries (issue #642, LLA-010)', () {
+      test('emits false immediately for a profile with no day entries',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        await expectLater(
+          dayEntries.watchHasAnyEntries(profile.id),
+          emits(isFalse),
+        );
+      });
+
+      test('re-emits true once a live entry is saved for the profile',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final values = <bool>[];
+        final sub = dayEntries.watchHasAnyEntries(profile.id).listen(values.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(values, [false]);
+
+        await dayEntries.save(entryFor(profile.id, LocalDate(2026, 8, 1)));
+        await pumpEventQueue();
+        expect(values, [false, true]);
+      });
+
+      test('re-emits false once that last entry is tombstoned', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final date = LocalDate(2026, 8, 2);
+        await dayEntries.save(entryFor(profile.id, date));
+        final values = <bool>[];
+        final sub = dayEntries.watchHasAnyEntries(profile.id).listen(values.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(values, [true]);
+
+        await dayEntries.delete(profile.id, date);
+        await pumpEventQueue();
+        expect(values, [true, false]);
+      });
+
+      test('never leaks another profile\'s entries (R3 isolation)', () async {
+        final a = await profiles.create(displayName: 'A', isMinor: false);
+        final b = await profiles.create(displayName: 'B', isMinor: false);
+        await dayEntries.save(entryFor(a.id, LocalDate(2026, 8, 3)));
+        await expectLater(dayEntries.watchHasAnyEntries(a.id), emits(isTrue));
+        await expectLater(dayEntries.watchHasAnyEntries(b.id), emits(isFalse));
+      });
+    });
+
     test(
         'unknown tag codes are preserved, not rejected, at the repository '
         'boundary (#237)', () async {

@@ -155,7 +155,12 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               const SizedBox(width: 8),
-              Text('Loading invite details…', style: textTheme.bodySmall),
+              // Issue #642, LLA-012: `Flexible`, not a bare `Text` — at
+              // 200% text scaling on a 320dp-wide screen this copy
+              // overflows the row horizontally without it.
+              Flexible(
+                child: Text('Loading invite details…', style: textTheme.bodySmall),
+              ),
             ],
           ),
         _PreviewState.error => Text(
@@ -171,74 +176,107 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
         _PreviewState.ready => null,
       };
 
+  /// Issue #642, LLA-012: the title row's [Text] is wrapped in [Expanded]
+  /// (was a bare [Row] child) so a long localization or 200% text scaling
+  /// wraps to a second line instead of overflowing horizontally past the
+  /// leading icon.
+  Widget _titleRow(ThemeData theme) => Row(
+        children: [
+          Icon(Icons.family_restroom, size: 28, color: theme.colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('Join Shared Profile', style: theme.textTheme.titleLarge),
+          ),
+        ],
+      );
+
+  /// Issue #642, LLA-012: [Wrap], not a fixed [Row] — at 320×568 with 200%
+  /// text scaling, "Decline" plus "Accept & Sync" (plus the loading
+  /// spinner it turns into) can exceed the sheet's width; a `Wrap` flows
+  /// the second action to its own line instead of overflowing
+  /// horizontally, and still reads as one right-aligned action row at
+  /// ordinary sizes.
+  Widget _actionsRow() => Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton(
+            key: const ValueKey('accept-invite-decline'),
+            onPressed: _loading ? null : () => Navigator.of(context).pop(),
+            child: const Text('Decline'),
+          ),
+          FilledButton(
+            key: const ValueKey('accept-invite-accept'),
+            onPressed: _loading ? null : _accept,
+            child: _loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Accept & Sync'),
+          ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final previewStatus = _buildPreviewStatus(theme.textTheme);
 
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      // Issue #642, LLA-012: bounded via `ConstrainedBox` +
+      // `SingleChildScrollView` (was an unbounded `Column`, relying on the
+      // modal route's own sizing to never overflow) — a long invite
+      // preview line, an inline error, and the keyboard inset together
+      // could exceed the available height on a small screen or with large
+      // text scaling, with nothing to scroll.
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.family_restroom, size: 28, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text('Join Shared Profile', style: theme.textTheme.titleLarge),
+                _titleRow(theme),
+                const SizedBox(height: 12),
+                if (previewStatus != null) ...[
+                  previewStatus,
+                  const SizedBox(height: 8),
+                ],
+                _buildIntro(context, theme.textTheme),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameController,
+                  enabled: !_loading,
+                  decoration: const InputDecoration(
+                    labelText: 'Your display name (e.g. Dad, Mom, Grandma)',
+                    hintText: 'Shows when you log entries',
+                  ),
+                ),
+                if (_error != null)
+                  // No onRetry: the Join button right below is the retry
+                  // affordance. No leading SizedBox either -- InlineError
+                  // already carries its own vertical padding, and this
+                  // sheet's tight modal height has no room for both plus a
+                  // TextButton row.
+                  InlineError(message: _error!),
+                const SizedBox(height: 20),
+                _actionsRow(),
               ],
             ),
-            const SizedBox(height: 12),
-            if (previewStatus != null) ...[
-              previewStatus,
-              const SizedBox(height: 8),
-            ],
-            _buildIntro(context, theme.textTheme),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _nameController,
-              enabled: !_loading,
-              decoration: const InputDecoration(
-                labelText: 'Your display name (e.g. Dad, Mom, Grandma)',
-                hintText: 'Shows when you log entries',
-              ),
-            ),
-            if (_error != null)
-              // No onRetry: the Join button right below is the retry
-              // affordance. No leading SizedBox either -- InlineError
-              // already carries its own vertical padding, and this
-              // sheet's tight modal height has no room for both plus a
-              // TextButton row.
-              InlineError(message: _error!),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Decline'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _loading ? null : _accept,
-                  child: _loading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Accept & Sync'),
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

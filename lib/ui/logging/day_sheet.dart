@@ -300,6 +300,44 @@ class _DaySheetState extends State<DaySheet> {
   /// deliberate act on the selector below the Pain chips.
   final Map<String, int?> _painIntensity = {};
 
+  /// Issue #642, LLA-011: whether [_loadExistingSpotting] and
+  /// [_loadExistingPainIntensity] have both settled (succeeded or failed)
+  /// — only [_readOnlyBody] surfaces this. The editable UI's own spotting
+  /// toggle/intensity selectors need no loading affordance: they simply
+  /// start unset and update once the load resolves, which reads fine as
+  /// "nothing chosen yet"; the read-only view has no such natural "empty"
+  /// state to fall back on, so it shows a small loading row instead until
+  /// both loaders settle. Starts `true` only when there is an [existing]
+  /// entry to load child observations for — see [initState].
+  bool _childObservationsLoading = false;
+
+  /// Set by either loader's `catch` (issue #642, LLA-011) — the read-only
+  /// body then shows [AppLocalizations.daySheetChildObservationsError]
+  /// instead of silently omitting spotting/pain-intensity, the same "say
+  /// something went wrong" discipline every other repository-backed read
+  /// in this file uses.
+  bool _childObservationsLoadFailed = false;
+
+  /// How many of [_loadExistingSpotting]/[_loadExistingPainIntensity] are
+  /// still outstanding; [_childObservationsLoading] clears once this
+  /// reaches zero. Both loaders always run together (see [initState]), so
+  /// this only ever starts at 2 or 0.
+  int _childObservationsLoadsPending = 0;
+
+  /// Marks one of the two child-observation loaders settled (issue #642,
+  /// LLA-011): flips [_childObservationsLoadFailed] on [failed], and
+  /// clears [_childObservationsLoading] once both have reported in. Must
+  /// be called from inside a `setState` (or while unmounted, where no
+  /// rebuild is needed) — it does not call `setState` itself, matching
+  /// every other private mutator in this file.
+  void _childObservationLoadSettled({bool failed = false}) {
+    if (failed) _childObservationsLoadFailed = true;
+    _childObservationsLoadsPending--;
+    if (_childObservationsLoadsPending <= 0) {
+      _childObservationsLoading = false;
+    }
+  }
+
   /// Issue #220: the first-class PMS marker, tracked straight off the
   /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
   /// not a child row).
@@ -382,6 +420,8 @@ class _DaySheetState extends State<DaySheet> {
     // for the seeded value itself.
     _noteController.addListener(_markDirty);
     if (existing != null) {
+      _childObservationsLoading = true;
+      _childObservationsLoadsPending = 2;
       unawaited(_loadExistingSpotting(existing.id));
       unawaited(_loadExistingPainIntensity(existing.id));
     }
@@ -653,16 +693,27 @@ class _DaySheetState extends State<DaySheet> {
   /// .listForProfile, which decoded every observation and every day entry
   /// the profile has ever logged just to answer this one-day question.
   Future<void> _loadExistingSpotting(String dayEntryId) async {
-    final observations = await Provider.of<ObservationsRepository>(
-      context,
-      listen: false,
-    ).listForDayEntryWithLegacyAlias(dayEntryId);
-    if (!mounted) return;
-    if (observations.any((o) => o.category == 'spotting')) {
+    try {
+      final observations = await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntryWithLegacyAlias(dayEntryId);
+      if (!mounted) return;
       setState(() {
-        _spotting = true;
-        _hadSpottingOnLoad = true;
+        if (observations.any((o) => o.category == 'spotting')) {
+          _spotting = true;
+          _hadSpottingOnLoad = true;
+        }
+        _childObservationLoadSettled();
       });
+    } catch (error, stackTrace) {
+      // Issue #642, LLA-011: previously unhandled — a failure here left
+      // the editable toggle silently unset (a tolerable default) but the
+      // read-only view had no signal at all that anything had gone
+      // wrong, rather than a genuine "no spotting logged" fact.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      if (!mounted) return;
+      setState(() => _childObservationLoadSettled(failed: true));
     }
   }
 
@@ -673,24 +724,30 @@ class _DaySheetState extends State<DaySheet> {
   /// touched it. When several live rows carry the same code (possible in
   /// imported data; local writes resolve one row per code), the highest
   /// grade wins — the severity reading a caregiver alert would act on.
+  ///
+  /// Issue #642 review (CRAP gate): the decode/merge itself is
+  /// [gradedPainIntensitiesFrom] (`day_sheet_reconciliation.dart`, pure,
+  /// its own unit tests) — this method stays the thin impure shell around
+  /// it (the repository fetch, the mount check, and the
+  /// setState/error handling every other loader here uses).
   Future<void> _loadExistingPainIntensity(String dayEntryId) async {
-    final painRows = [
-      for (final o in await Provider.of<ObservationsRepository>(
+    try {
+      final observations = await Provider.of<ObservationsRepository>(
         context,
         listen: false,
-      ).listForDayEntry(dayEntryId))
-        if (o.category == 'pain' && o.code != null && o.intensity != null) o,
-    ];
-    if (!mounted || painRows.isEmpty) return;
-    setState(() {
-      for (final o in painRows) {
-        final code = o.code!;
-        final current = _painIntensity[code];
-        if (current == null || o.intensity! > current) {
-          _painIntensity[code] = o.intensity;
-        }
-      }
-    });
+      ).listForDayEntry(dayEntryId);
+      if (!mounted) return;
+      setState(() {
+        _painIntensity.addAll(gradedPainIntensitiesFrom(observations));
+        _childObservationLoadSettled();
+      });
+    } catch (error, stackTrace) {
+      // Issue #642, LLA-011: see the matching catch in
+      // [_loadExistingSpotting] — same reasoning.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      if (!mounted) return;
+      setState(() => _childObservationLoadSettled(failed: true));
+    }
   }
 
   /// Fetches the target day entry's already-persisted observation rows and
@@ -1470,107 +1527,217 @@ class _DaySheetState extends State<DaySheet> {
         : guardianRoleReadOnlyReason(AppLocalizations.of(context), role);
   }
 
+  /// Issue #642, LLA-012: bounded via [SingleChildScrollView] — before this
+  /// fix, a long note, several tag chips, or (once LLA-011 lands alongside
+  /// this) spotting/graded-pain-intensity lines could exceed
+  /// [_sheetShell]'s `maxHeight` with nothing to scroll, overflowing off
+  /// the bottom of a small or heavily text-scaled screen. Mirrors the
+  /// editable body's own `SingleChildScrollView` (`_editableBody`); unlike
+  /// that body, the read-only view has no pinned bottom area sharing space
+  /// with it, so it needs no enclosing `Flexible`/`Column` — this scroll
+  /// view can be [_sheetShell]'s child directly. A `SingleChildScrollView`
+  /// shrink-wraps to its child's actual height when that height already
+  /// fits, so a short read-only day (little or no content) renders exactly
+  /// as tall as before this fix — it only starts scrolling once content
+  /// would otherwise overflow.
   Widget _readOnlyBody() {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final reason = _readOnlyReason;
     final existing = widget.existing;
     if (existing == null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: LLSpace.space5),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (reason != null) ...[
-              Text(reason, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: LLSpace.space1),
+      return SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: LLSpace.space5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (reason != null) ...[
+                Text(reason, style: theme.textTheme.bodyMedium),
+                const SizedBox(height: LLSpace.space1),
+              ],
+              Text(
+                AppLocalizations.of(context).daySheetNoEntry,
+                style: theme.textTheme.bodyMedium,
+              ),
             ],
-            Text(
-              AppLocalizations.of(context).daySheetNoEntry,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ],
+          ),
         ),
       );
     }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (reason != null) ...[
-          Text(
-            reason,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: LLSpace.space2),
-        ],
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            // #138: heading flag mirrors the editable sheet's date title.
-            Semantics(
-              header: true,
-              child: Text(
-                key: const ValueKey('day-sheet-date-title'),
-                daySheetDateLabel(existing.localDate, widget.today),
-                style: theme.textTheme.titleMedium,
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (reason != null) ...[
+            Text(
+              reason,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            CaregiverAttributionBadge(
-              loggedByUserId: existing.loggedByUserId,
-              lastModifiedByUserId: existing.lastModifiedByUserId,
-              currentUserId: widget.currentUserId,
-              guardians: widget.guardians,
-              source: existing.source.toDb(),
+            const SizedBox(height: LLSpace.space2),
+          ],
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // #138: heading flag mirrors the editable sheet's date title.
+              Semantics(
+                header: true,
+                child: Text(
+                  key: const ValueKey('day-sheet-date-title'),
+                  daySheetDateLabel(existing.localDate, widget.today),
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              CaregiverAttributionBadge(
+                loggedByUserId: existing.loggedByUserId,
+                lastModifiedByUserId: existing.lastModifiedByUserId,
+                currentUserId: widget.currentUserId,
+                guardians: widget.guardians,
+                source: existing.source.toDb(),
+              ),
+            ],
+          ),
+          const SizedBox(height: LLSpace.space3),
+          Text(
+            AppLocalizations.of(context).daySheetFlowLabel,
+            style: theme.textTheme.labelMedium,
+          ),
+          Text(
+            localizedFlowLabel(existing.flow, l10n),
+            style: theme.textTheme.titleSmall,
+          ),
+          // Issue #220: the read-only view names the PMS marker too, so a
+          // viewer (or a reviewing guardian) sees the phase even though the
+          // toggle itself is disabled here.
+          if (existing.pms) ...[
+            const SizedBox(height: LLSpace.space3),
+            Text(l10n.daySheetPmsGroup, style: theme.textTheme.labelMedium),
+            Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
+          ],
+          // Issue #642, LLA-011.
+          ..._readOnlyChildObservationsSection(theme, l10n),
+          if (existing.tags.isNotEmpty) ...[
+            const SizedBox(height: LLSpace.space3),
+            Text(
+              AppLocalizations.of(context).daySheetTagsLabel,
+              style: theme.textTheme.labelMedium,
+            ),
+            Wrap(
+              spacing: LLSpace.space2,
+              runSpacing: LLSpace.space1,
+              children: [
+                for (final code in existing.tags)
+                  Chip(label: Text(tagByCode(code)?.display ?? code)),
+              ],
+            ),
+          ],
+          const SizedBox(height: LLSpace.space3),
+          Text(
+            AppLocalizations.of(context).daySheetNoteLabel,
+            style: theme.textTheme.labelMedium,
+          ),
+          Text(
+            (existing.note == null || existing.note!.isEmpty)
+                ? AppLocalizations.of(context).daySheetNoNote
+                : existing.note!,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Issue #642, LLA-011: the read-only body's own rendering of spotting
+  /// and graded pain intensity — both child `observations` rows the
+  /// pre-#642 view silently omitted (it only ever read fields on the
+  /// [DayEntry] itself), so a spotting-only day read as "not bleeding" to
+  /// a viewer or an archived owner, and a caregiver-alert-worthy pain
+  /// grade (`intensity >= 4`) was invisible to them too. Split out of
+  /// [_readOnlyBody] to keep that method under the CRAP gate, mirroring
+  /// this file's other `_readOnlyBody`-adjacent split points.
+  ///
+  /// Loading/error semantics: a small progress row while
+  /// [_childObservationsLoading] (both loaders — [_loadExistingSpotting],
+  /// [_loadExistingPainIntensity] — always run together, see [initState]),
+  /// failure copy on [_childObservationsLoadFailed], otherwise the
+  /// spotting marker (if set) and one line per graded pain code — reusing
+  /// [_spotting]/[_painIntensity], the same state fields the editable
+  /// chips below read, since both loaders run unconditionally whenever
+  /// [DaySheet.existing] is non-null (editable or read-only alike).
+  List<Widget> _readOnlyChildObservationsSection(
+    ThemeData theme,
+    AppLocalizations l10n,
+  ) {
+    if (_childObservationsLoading) {
+      return [
+        const SizedBox(height: LLSpace.space3),
+        Row(
+          key: const ValueKey('day-sheet-child-observations-loading'),
+          children: [
+            const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: LLSpace.space2),
+            // Issue #642, LLA-012: `Flexible`, not a bare `Text` (which
+            // would leave the `Row` unbounded) — this copy is long enough
+            // that 200% text scaling on a 320dp-wide screen overflows the
+            // row horizontally without it; the row is short-lived (only
+            // shown until both child-observation loaders settle) but a
+            // transient frame can still overflow and fail a test/trip
+            // `FlutterError.onError` in production.
+            Flexible(
+              child: Text(
+                l10n.daySheetChildObservationsLoading,
+                style: theme.textTheme.bodySmall,
+              ),
             ),
           ],
         ),
+      ];
+    }
+    if (_childObservationsLoadFailed) {
+      // Issue #555 guard: a retryable in-place failure renders InlineError
+      // (the only widget that wraps its message in `Semantics(liveRegion:
+      // true, ...)`), never a bare red `Text` — no `onRetry` here since
+      // there is no isolated retry affordance for just this section; the
+      // operator's own next visit to this day re-attempts the load.
+      return [
         const SizedBox(height: LLSpace.space3),
-        Text(
-          AppLocalizations.of(context).daySheetFlowLabel,
-          style: theme.textTheme.labelMedium,
+        InlineError(
+          key: const ValueKey('day-sheet-child-observations-error'),
+          message: l10n.daySheetChildObservationsError,
         ),
+      ];
+    }
+    final gradedPain = [
+      for (final entry in _painIntensity.entries)
+        if (entry.value != null) (code: entry.key, level: entry.value!),
+    ];
+    return [
+      if (_spotting) ...[
+        const SizedBox(height: LLSpace.space3),
+        Text(l10n.daySheetSpottingGroup, style: theme.textTheme.labelMedium),
         Text(
-          localizedFlowLabel(existing.flow, l10n),
+          l10n.flowLevelSpotting,
+          key: const ValueKey('day-sheet-spotting-value'),
           style: theme.textTheme.titleSmall,
         ),
-        // Issue #220: the read-only view names the PMS marker too, so a
-        // viewer (or a reviewing guardian) sees the phase even though the
-        // toggle itself is disabled here.
-        if (existing.pms) ...[
-          const SizedBox(height: LLSpace.space3),
-          Text(l10n.daySheetPmsGroup, style: theme.textTheme.labelMedium),
-          Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
-        ],
-        if (existing.tags.isNotEmpty) ...[
-          const SizedBox(height: LLSpace.space3),
-          Text(
-            AppLocalizations.of(context).daySheetTagsLabel,
-            style: theme.textTheme.labelMedium,
-          ),
-          Wrap(
-            spacing: LLSpace.space2,
-            runSpacing: LLSpace.space1,
-            children: [
-              for (final code in existing.tags)
-                Chip(label: Text(tagByCode(code)?.display ?? code)),
-            ],
-          ),
-        ],
-        const SizedBox(height: LLSpace.space3),
-        Text(
-          AppLocalizations.of(context).daySheetNoteLabel,
-          style: theme.textTheme.labelMedium,
-        ),
-        Text(
-          (existing.note == null || existing.note!.isEmpty)
-              ? AppLocalizations.of(context).daySheetNoNote
-              : existing.note!,
-        ),
       ],
-    );
+      if (gradedPain.isNotEmpty) ...[
+        const SizedBox(height: LLSpace.space3),
+        Text(l10n.daySheetIntensityGroup, style: theme.textTheme.labelMedium),
+        for (final row in gradedPain)
+          Text(
+            '${tagByCode(row.code)?.display ?? row.code}: ${row.level}',
+            key: ValueKey('day-sheet-pain-intensity-${row.code}'),
+            style: theme.textTheme.titleSmall,
+          ),
+      ],
+    ];
   }
 }

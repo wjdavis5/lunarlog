@@ -69,6 +69,10 @@ class _YieldingDayEntriesRepository implements DayEntriesRepository {
       _inner.hasAnyEntries(profileId);
 
   @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      _inner.watchHasAnyEntries(profileId);
+
+  @override
   Stream<List<DayEntry>> watchForProfile(String profileId,
           {LocalDate? from, LocalDate? to}) =>
       _inner.watchForProfile(profileId, from: from, to: to);

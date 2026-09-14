@@ -124,6 +124,10 @@ class _GatedDayEntriesRepository implements DayEntriesRepository {
   Future<bool> hasAnyEntries(String profileId) async => !deleted && _saved != null;
 
   @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      Stream.value(_saved != null);
+
+  @override
   Stream<List<DayEntry>> watchForProfile(
     String profileId, {
     LocalDate? from,

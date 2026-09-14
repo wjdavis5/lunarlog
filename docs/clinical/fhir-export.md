@@ -298,15 +298,23 @@ time or randomness.
 
 ## v1 scope and what a future pass would add
 
-- **No date range yet.** `buildFhirDocumentBundle` is already per-profile
-  and takes whatever `dayEntries`/`observations` the caller passes in, so
-  a date-ranged export is a caller-side change, not a builder change —
-  but `ClinicalExportTile` (the UI) always passes the profile's whole
-  history today, with no range UI. That is the next piece of this epic's
-  UI work, not this issue's scope. (Profile *selection* itself — as
-  opposed to date range — is no longer v1-scoped-out: #157 review fix
-  added a chooser for several live profiles, and archived profiles are
-  excluded; see `lib/ui/settings/clinical_export_tile.dart`'s own doc
+- **Date range (Issue #459).** `buildFhirDocumentBundle` is per-profile and
+  takes whatever `dayEntries`/`observations` the caller passes in — a
+  date-ranged export is a caller-side change, not a builder change.
+  `ClinicalExportTile` now asks for a range (see
+  `lib/ui/settings/export_range_picker_sheet.dart` and
+  `lib/domain/export/fhir_export_range.dart`) after the profile choice and
+  before the Bundle is built: presets for the last 3/6/12 completed
+  cycles (derived via `lib/domain/episodes/episodes.dart`, the same
+  episode model the history list and predictions use), the last 12
+  months, everything, or a custom start/end — defaulting to the last 6
+  completed cycles. Only the raw flow/symptom entries embedded in the
+  document are narrowed to the chosen range; the cycle-length/last-
+  menstrual-period statistics are always computed from the profile's full
+  history, independent of the chosen range. (Profile *selection* itself —
+  as opposed to date range — was already not v1-scoped-out: #157 review
+  fix added a chooser for several live profiles, and archived profiles
+  are excluded; see `lib/ui/settings/clinical_export_tile.dart`'s own doc
   comment.)
 - **Validating against IPS.** Once the HL7 FHIR validator is run against
   this Bundle shape for a specific IPS package version and it passes,

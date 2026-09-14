@@ -88,6 +88,22 @@ mixin LunarLogStorageQueries {
     return row != null;
   }
 
+  /// Reactive variant of [hasAnyEntries] (issue #642, LLA-010): the same
+  /// bounded `LIMIT 1` existence check, re-run on every write or tombstone
+  /// affecting [profileId]'s day entries via Drift's own query-invalidation
+  /// (table-level, like every other `.watch()` in this file) rather than by
+  /// piggy-backing on some other table's stream re-emitting. Never emits the
+  /// entries themselves — only whether the row exists — so it stays cheap
+  /// however large the profile's history grows.
+  Stream<bool> watchHasAnyEntries(String profileId) {
+    final query = db.selectOnly(db.dayEntries)
+      ..addColumns([db.dayEntries.id])
+      ..where(db.dayEntries.profileId.equals(profileId) &
+          db.dayEntries.deletedAt.isNull())
+      ..limit(1);
+    return query.watchSingleOrNull().map((row) => row != null);
+  }
+
   /// The live day entry for (profileId, localDate), or null when that date
   /// holds no entry — including when its only row is a tombstone, which
   /// [getDayEntries] excludes for UI reads too. Scoped to the one

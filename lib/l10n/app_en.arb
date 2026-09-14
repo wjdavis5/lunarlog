@@ -365,6 +365,18 @@
   "@daySheetTagsLabel": {
     "description": "Heading above the tag chips in the read-only day sheet."
   },
+  "daySheetSpottingGroup": "Spotting",
+  "@daySheetSpottingGroup": {
+    "description": "Issue #642, LLA-011: heading above the spotting marker in the read-only day sheet, mirroring daySheetPmsGroup's own label+value shape (the value line reuses flowLevelSpotting, the same 'Spotting' string the editable chip already shows)."
+  },
+  "daySheetChildObservationsLoading": "Loading additional details…",
+  "@daySheetChildObservationsLoading": {
+    "description": "Issue #642, LLA-011: shown in the read-only day sheet while spotting/pain-intensity (child `observations` rows, not on the day entry itself) are still loading."
+  },
+  "daySheetChildObservationsError": "Could not load additional details.",
+  "@daySheetChildObservationsError": {
+    "description": "Issue #642, LLA-011: shown in the read-only day sheet when loading spotting/pain-intensity (child `observations` rows) fails. No exception detail, matching this file's other failure copy."
+  },
   "daySheetNoNote": "No note",
   "@daySheetNoNote": {
     "description": "Placeholder shown for an empty note in the read-only day sheet."

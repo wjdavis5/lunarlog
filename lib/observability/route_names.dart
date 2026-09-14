@@ -157,6 +157,11 @@ const String kRouteCycleLiteracyLibraryScreen = 'CycleLiteracyLibraryScreen';
 /// `lib/ui/content/cycle_literacy_article_sheet.dart` (Issue #239) — cycle literacy article sheet.
 const String kRouteCycleLiteracyArticleSheet = 'CycleLiteracyArticleSheet';
 
+/// `lib/ui/settings/export_range_picker_sheet.dart` (Issue #459) — the
+/// clinical (FHIR) export's date-range picker, opened between the profile
+/// choice and the Bundle build.
+const String kRouteExportRangePickerSheet = 'ExportRangePickerSheet';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -196,5 +201,6 @@ const Set<String> kSentryRouteNames = {
   kRouteHelpCardSheet,
   kRouteCycleLiteracyLibraryScreen,
   kRouteCycleLiteracyArticleSheet,
+  kRouteExportRangePickerSheet,
 };
 

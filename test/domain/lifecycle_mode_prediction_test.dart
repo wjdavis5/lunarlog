@@ -65,6 +65,10 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<bool> hasAnyEntries(String profileId) async =>
       currentEntries.isNotEmpty;
+
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      throw UnimplementedError();
 }
 
 /// Three completed, regular cycles (four episode starts) — enough for an

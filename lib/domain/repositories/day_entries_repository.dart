@@ -35,6 +35,15 @@ abstract interface class DayEntriesRepository {
   /// that only need to know the profile has *some* history, not what it is.
   Future<bool> hasAnyEntries(String profileId);
 
+  /// Reactive variant of [hasAnyEntries] (issue #642, LLA-010): a bounded
+  /// existence signal — never the entries themselves — that re-emits on
+  /// every write or tombstone affecting [profileId]'s day entries. Callers
+  /// (the export tiles) that need to know *whether entries exist* should
+  /// observe this directly rather than deriving it from some other stream's
+  /// re-emissions (e.g. the profiles stream, which does not tick just
+  /// because a day entry was logged).
+  Stream<bool> watchHasAnyEntries(String profileId);
+
   /// Reactive variant of [listForProfile]; emits again on every write or
   /// tombstone affecting that profile (tombstoned rows excluded).
   ///

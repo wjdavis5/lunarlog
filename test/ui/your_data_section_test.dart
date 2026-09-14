@@ -89,6 +89,10 @@ class FakeDayEntriesRepository implements DayEntriesRepository {
       (entriesByProfile[profileId] ?? const []).isNotEmpty;
 
   @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      Stream.value((entriesByProfile[profileId] ?? const []).isNotEmpty);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
