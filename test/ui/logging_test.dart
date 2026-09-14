@@ -3622,8 +3622,11 @@ group('tracking preferences read path (Issue #259)', () {
         careModeCopyFor(ProfileMode.standard).categoryLabel(category),
     ];
     expect(headers.skip(2).toList(), expected);
-    expect(find.byType(FilterChip), findsNWidgets(67 + 2),
-        reason: '67 curated chips plus the spotting and PMS toggles');
+    // Derived, not hardcoded: the taxonomy grows as categories land
+    // (#251 added nine while this branch was in flight) — the sheet must
+    // render exactly one chip per curated option plus the two toggles.
+    expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2),
+        reason: 'every curated taxonomy option plus the spotting and PMS toggles');
   });
 
   testWidgets('already-logged tags in a disabled category are never '

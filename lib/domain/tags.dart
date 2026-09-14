@@ -115,6 +115,18 @@ const Map<TagCategory, String> _kCategoryWireNames = {
   TagCategory.meditation: 'meditation',
   TagCategory.pms: 'pms',
   TagCategory.partying: 'partying',
+  // #251's events-and-care / fertility categories (landed on main while
+  // #259 was in flight): same snake_case convention as `clue_option_map`
+  // and the taxonomy comments above.
+  TagCategory.collectionMethod: 'collection_method',
+  TagCategory.exercise: 'exercise',
+  TagCategory.appointments: 'appointments',
+  TagCategory.medication: 'medication',
+  TagCategory.ailments: 'ailments',
+  TagCategory.supplements: 'supplements',
+  TagCategory.sexLife: 'sex_life',
+  TagCategory.discharge: 'discharge',
+  TagCategory.tests: 'tests',
 };
 
 extension TagCategoryWireName on TagCategory {

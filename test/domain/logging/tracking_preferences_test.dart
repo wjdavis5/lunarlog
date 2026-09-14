@@ -34,10 +34,12 @@ void main() {
       // `partying` is a current category since #251 landed (it is in the
       // minor-hidden default set); it resolves like any other wire name.
       expect(categoryFromWireName('partying'), TagCategory.partying);
-      // `sex_life` has no TagCategory member yet (#253) - it round-trips
-      // as a document key but never resolves, exactly like a category a
-      // newer client knows and this build does not.
-      expect(categoryFromWireName('sex_life'), isNull);
+      // `sex_life` is a current category too (main gained it while this
+      // branch was in flight): it now resolves like any other. A wire
+      // name no build knows (`not_a_category`) still round-trips as a
+      // document key but never resolves, exactly like a category a newer
+      // client knows and this build does not.
+      expect(categoryFromWireName('sex_life'), TagCategory.sexLife);
       expect(categoryFromWireName('not_a_category'), isNull);
     });
   });

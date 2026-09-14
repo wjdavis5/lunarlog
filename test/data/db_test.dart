@@ -2149,7 +2149,7 @@ void main() {
           reason: 'a local tombstone carries no payload, the marker included');
     });
 
-    test('a v7 fixture upgrades to v14 by adding the tracking-preferences '
+    test('a v7 fixture upgrades to v17 by adding the tracking-preferences '
         'document column (Issue #259), preserving every row, and the '
         'upgraded database immediately curates and reads a document',
         () async {
@@ -2158,7 +2158,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 14);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'profiles'), containsAll(['tracking_preferences']));
       // The new column is nullable with no default: every already-stored
       // row reads as never-customized (the all-defaults state).
