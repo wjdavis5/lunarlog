@@ -127,4 +127,12 @@ abstract final class SettingsKeys {
   /// converge on the same result.
   static const String cycleOverridesMigratedFromOmissionList =
       'cycle_overrides_migrated_from_omission_list';
+
+  /// Per-profile "recently used tags" (Issue #234), as the JSON document
+  /// `encodeTagRecents` produces: profile id -> most-recent-first taxonomy
+  /// codes, capped per profile (`kTagRecentsCap`). Backs
+  /// `CategoryPicker`'s "Recent" row. Device-local **by design** — a
+  /// per-device logging-UI shortlist, not health data — and never synced,
+  /// the same posture as [reminderConfigs].
+  static const String tagRecents = 'tag_recents';
 }

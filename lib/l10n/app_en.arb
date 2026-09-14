@@ -353,6 +353,22 @@
   "@daySheetUnverifiedPin": {
     "description": "Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them."
   },
+  "daySheetTagSearchHint": "Search",
+  "@daySheetTagSearchHint": {
+    "description": "Issue #234: visible hint text in CategoryPicker's search field above the tag chip grid."
+  },
+  "daySheetTagSearchSemanticsLabel": "Search tags",
+  "@daySheetTagSearchSemanticsLabel": {
+    "description": "Issue #234: screen-reader label for CategoryPicker's search field (distinct from the shorter visible hint)."
+  },
+  "daySheetTagSearchClearTooltip": "Clear search",
+  "@daySheetTagSearchClearTooltip": {
+    "description": "Issue #234: tooltip/semantics for the button that clears CategoryPicker's search text."
+  },
+  "daySheetTagRecentLabel": "Recent",
+  "@daySheetTagRecentLabel": {
+    "description": "Issue #234: heading above CategoryPicker's Recent row, seeded from the profile's most-used tags."
+  },
   "daySheetNoEntry": "No entry for this day.",
   "@daySheetNoEntry": {
     "description": "Read-only day sheet body when the day has no entry."

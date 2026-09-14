@@ -287,6 +287,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetUnverifiedPin => 'Unverified — pin before shipping';
 
   @override
+  String get daySheetTagSearchHint => 'Search';
+
+  @override
+  String get daySheetTagSearchSemanticsLabel => 'Search tags';
+
+  @override
+  String get daySheetTagSearchClearTooltip => 'Clear search';
+
+  @override
+  String get daySheetTagRecentLabel => 'Recent';
+
+  @override
   String get daySheetNoEntry => 'No entry for this day.';
 
   @override

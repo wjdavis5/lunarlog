@@ -175,10 +175,10 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 108 —
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 113 —
 /// #152's A3-45 pass over the original 17, plus issue #249's 28, issue
-/// #251's 22, issue #252's 19, and issue #253's 22 new codes as explicit
-/// local decisions; see docs/clinical/terminology.md).
+/// #251's 22, issue #252's 19, issue #253's 22, and issue #456's 5 new
+/// codes as explicit local decisions; see docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -883,6 +883,40 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
     system: kSystemLunarlogLocal,
     code: 'pregnancy_positive',
     display: 'Pregnancy · positive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+
+  // Issue #456's five attested hot_flashes/Clue-Perimenopause codes. Same
+  // rule as every block above: no SNOMED CT concept fetch-verified in
+  // this pass, so each carries the lunarlog local coding only.
+  'hot_flashes': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'hot_flashes',
+    display: 'Hot flash',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'night_sweats': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'night_sweats',
+    display: 'Night sweats',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'brain_fog': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'brain_fog',
+    display: 'Brain fog',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'hrt': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'hrt',
+    display: 'HRT',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'vaginal_dryness': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'vaginal_dryness',
+    display: 'Vaginal dryness',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
 };

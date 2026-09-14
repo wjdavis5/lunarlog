@@ -859,11 +859,12 @@ void main() {
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget);
       }
-      // The ten option-set-unverified categories (five from issue #249,
-      // three from issue #251: pms, meditation, leisure; two from issue
-      // #252: appointments, supplements) render the pin-first caption
-      // where their chips would go, and ship no chips.
-      expect(find.text('Unverified — pin before shipping'), findsNWidgets(10));
+      // The nine option-set-unverified categories (four from issue #249 —
+      // hotFlashes left this set under issue #456; three from issue #251:
+      // pms, meditation, leisure; two from issue #252: appointments,
+      // supplements) render the pin-first caption where their chips would
+      // go, and ship no chips.
+      expect(find.text('Unverified — pin before shipping'), findsNWidgets(9));
 
       await tester.tap(find.text('Headache'));
       await tester.pump();
@@ -3901,6 +3902,70 @@ void main() {
       await disposeLogging(tester, h);
     });
   });
+
+group('CategoryPicker integration (Issue #234)', () {
+  testWidgets('the search field filters the taxonomy grid in the real '
+      'day sheet', (tester) async {
+    final h = await pumpLogging(tester);
+
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('category-picker-search')),
+      'headache',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Headache'), findsOneWidget);
+    expect(find.text('Cramps'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('category-picker-search-clear')));
+    await tester.pumpAndSettle();
+    expect(find.text('Cramps'), findsOneWidget);
+    await dismissDaySheet(tester);
+    await disposeLogging(tester, h);
+  });
+
+  testWidgets('picking a tag seeds the Recent row, and it survives '
+      'reopening the sheet (device-local, per profile)', (tester) async {
+    final h = await pumpLogging(tester);
+
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+    await tester.pumpAndSettle();
+    expect(find.text('Recent'), findsNothing,
+        reason: 'nothing recorded yet for this profile');
+
+    // Acne (skin category): no other widget on the sheet ever renders its
+    // display string as a side effect of selection, unlike a pain code
+    // (which also grows an intensity-selector row labelled with its own
+    // display name once selected).
+    await tester.tap(find.text('Acne'));
+    await pumpAutosave(tester);
+    // Acne is now selected, so it does not also show in the Recent row on
+    // this same open (it already renders, selected, in Skin).
+    expect(find.text('Recent'), findsNothing);
+
+    await tester.tap(find.text('Acne'));
+    await pumpAutosave(tester);
+    await dismissDaySheet(tester);
+
+    // Reopen a different day: Acne is no longer selected there, so its
+    // Recent-row shortcut becomes visible.
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-29')));
+    await tester.pumpAndSettle();
+    expect(find.text('Recent'), findsOneWidget);
+    expect(find.text('Acne'), findsNWidgets(2));
+
+    await tester.tap(find.text('Acne').first);
+    await pumpAutosave(tester);
+    final saved = await h.entries.find(h.profile.id, LocalDate(2026, 8, 29));
+    expect(saved!.tags, contains('acne'));
+
+    await dismissDaySheet(tester);
+    await disposeLogging(tester, h);
+  });
+});
 
 group('tracking preferences read path (Issue #259)', () {
   final curatedDoc = TrackingPreferences({

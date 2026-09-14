@@ -62,6 +62,8 @@ import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
+import 'package:lunarlog/domain/logging/tag_recents.dart';
+import 'package:lunarlog/domain/logging/tag_recents_store.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -72,6 +74,7 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -81,8 +84,10 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart'
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/components/intensity_selector.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
@@ -476,6 +481,15 @@ class _DaySheetState extends State<DaySheet> {
   /// autosaved.
   final Set<String> _sessionSelectedTags = {};
 
+  /// Issue #234: this profile's "recently used tags" (device-local, per
+  /// profile — `lib/domain/logging/tag_recents.dart`), backing
+  /// [CategoryPicker]'s Recent row. Most-recent-first; loaded once per
+  /// sheet session by [_loadTagRecents] and updated optimistically by
+  /// [_toggleTag] via [withRecordedTagUse] the moment a tag is picked, so
+  /// the row reflects the pick immediately rather than waiting on the
+  /// settings-store round trip.
+  List<String> _tagRecents = const [];
+
   @override
   void initState() {
     super.initState();
@@ -509,6 +523,9 @@ class _DaySheetState extends State<DaySheet> {
       unawaited(_loadExistingPainIntensity(existing.id));
       unawaited(_loadExistingMeasurements(existing.id));
     }
+    // Issue #234: the read-only sheet never builds CategoryPicker, so it
+    // has no Recent row to seed.
+    if (!widget.readOnly) unawaited(_loadTagRecents());
   }
 
   @override
@@ -1382,6 +1399,7 @@ class _DaySheetState extends State<DaySheet> {
     final tag = tagByCode(code);
     final singleSelect =
         tag != null && kSingleSelectTagCategories.contains(tag.category);
+    var added = false;
     setState(() {
       if (_tags.contains(code)) {
         _tags.remove(code);
@@ -1399,9 +1417,53 @@ class _DaySheetState extends State<DaySheet> {
         }
         _tags.add(code);
         _sessionSelectedTags.add(code);
+        added = true;
       }
     });
     _markDirty();
+    // Issue #234: a pick (never a removal) is what "recently used" means —
+    // deselecting a tag says nothing about it being a good future shortcut.
+    if (added) _recordTagRecentUse(code);
+  }
+
+  /// Issue #234: optimistically moves [code] to the front of this
+  /// profile's Recent row (immediate UI feedback via
+  /// [withRecordedTagUse]), then persists the change through the
+  /// device-local [TagRecentsStore] — best-effort, never syncing and never
+  /// affecting the day entry's own autosave (see that store's own doc for
+  /// the persistence posture).
+  void _recordTagRecentUse(String code) {
+    setState(() => _tagRecents = withRecordedTagUse(_tagRecents, code));
+    unawaited(_persistTagRecentUse(code));
+  }
+
+  Future<void> _persistTagRecentUse(String code) async {
+    final settings = Provider.of<SettingsStore?>(context, listen: false);
+    if (settings == null) return;
+    try {
+      await TagRecentsStore(settings).recordUse(widget.profileId, code);
+    } catch (error, stackTrace) {
+      // Best-effort UX convenience: a failed write here must never surface
+      // as a save error or block logging, only silently lose this pick's
+      // contribution to the shortlist.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    }
+  }
+
+  /// Issue #234: seeds [_tagRecents] once per sheet session from the
+  /// device-local store. Best-effort, matching every other local-only read
+  /// in this file — a failure leaves the Recent row simply empty rather
+  /// than surfacing an error.
+  Future<void> _loadTagRecents() async {
+    final settings = Provider.of<SettingsStore?>(context, listen: false);
+    if (settings == null) return;
+    try {
+      final recents = await TagRecentsStore(settings).load(widget.profileId);
+      if (!mounted) return;
+      setState(() => _tagRecents = recents);
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    }
   }
 
   /// Issue #256: records [code]'s intensity choice ([value], or `null` to
@@ -1458,44 +1520,20 @@ class _DaySheetState extends State<DaySheet> {
             ),
           ),
           Expanded(
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 2,
-              children: [
-                for (final level in kGradedIntensities)
-                  groupedChipSemantics(
-                    group: group,
-                    label: '${tag.display} $level',
-                    selected: current == level,
-                    onTap: _busy || current == level
-                        ? null
-                        : () => _setPainIntensity(tag.code, level),
-                    child: ChoiceChip(
-                      key: ValueKey('pain-intensity-${tag.code}-$level'),
-                      label: Text('$level'),
-                      selected: current == level,
-                      onSelected: _busy
-                          ? null
-                          : (_) => _setPainIntensity(tag.code, level),
-                    ),
-                  ),
-                groupedChipSemantics(
-                  group: group,
-                  label: '${tag.display} ${l10n.daySheetIntensityClear}',
-                  selected: false,
-                  onTap: _busy || current == null
-                      ? null
-                      : () => _setPainIntensity(tag.code, null),
-                  child: FilterChip(
-                    key: ValueKey('pain-intensity-${tag.code}-clear'),
-                    label: Text(l10n.daySheetIntensityClear),
-                    selected: false,
-                    onSelected: _busy
-                        ? null
-                        : (_) => _setPainIntensity(tag.code, null),
-                  ),
-                ),
-              ],
+            // Issue #234: the reusable graded-intensity control
+            // (`lib/ui/components/intensity_selector.dart`) over the same
+            // 1-5 `_painIntensity` state — same keys
+            // (`pain-intensity-<code>-<level>`/`-clear` via [keyPrefix]),
+            // same semantics text, same busy-guard, so this swap changes
+            // no observable behaviour, only where the chip row is defined.
+            child: IntensitySelector(
+              groupLabel: group,
+              itemLabel: tag.display,
+              value: current,
+              enabled: !_busy,
+              clearLabel: l10n.daySheetIntensityClear,
+              keyPrefix: 'pain-intensity-${tag.code}',
+              onChanged: (value) => _setPainIntensity(tag.code, value),
             ),
           ),
         ],
@@ -1638,38 +1676,24 @@ class _DaySheetState extends State<DaySheet> {
                 // (resolved above) replace the mode's default list; an
                 // entry's already-logged tags for a disabled category stay
                 // in [_tags] and round-trip through autosave untouched
-                // (AC3) — they are simply not rendered here.
-                for (final category in _categoriesInOrder) ...[
-                  _sectionHeading(theme, _copy.categoryLabel(category)),
-                  // Issue #249: a category whose Clue option set is not
-                  // yet attested (`kUnverifiedTagCategories`) carries no
-                  // taxonomy codes, so where its chips would go the sheet
-                  // renders the "unverified — pin before shipping" caption
-                  // instead of inventing options.
-                  if (kUnverifiedTagCategories.contains(category))
-                    _unverifiedCategoryNote(theme)
-                  else
-                    Wrap(
-                      spacing: LLSpace.space2,
-                      runSpacing: LLSpace.space1,
-                      children: [
-                        for (final tag in kTagTaxonomy)
-                          if (tag.category == category)
-                            groupedChipSemantics(
-                              group: _copy.categoryLabel(category),
-                              label: tag.display,
-                              selected: _tags.contains(tag.code),
-                              onTap: _busy ? null : () => _toggleTag(tag.code),
-                              child: FilterChip(
-                                label: Text(tag.display),
-                                selected: _tags.contains(tag.code),
-                                onSelected: _busy
-                                    ? null
-                                    : (selected) => _toggleTag(tag.code),
-                              ),
-                            ),
-                      ],
-                    ),
+                // (AC3) — they are simply not rendered here. Issue #234:
+                // the previous per-category heading+Wrap loop (still the
+                // shape read-only/other consumers never touch) is now
+                // `CategoryPicker` — search, a Recent row, and collapsible
+                // sections over the same [_categoriesInOrder] and the same
+                // [_toggleTag]/[kUnverifiedTagCategories] rules.
+                CategoryPicker(
+                  categories: _categoriesInOrder,
+                  categoryLabel: _copy.categoryLabel,
+                  selected: _tags,
+                  onToggle: _toggleTag,
+                  recentCodes: _tagRecents,
+                  enabled: !_busy,
+                  searchHint: l10n.daySheetTagSearchHint,
+                  searchSemanticsLabel: l10n.daySheetTagSearchSemanticsLabel,
+                  clearSearchTooltip: l10n.daySheetTagSearchClearTooltip,
+                  recentLabel: l10n.daySheetTagRecentLabel,
+                  unverifiedNote: l10n.daySheetUnverifiedPin,
                   // Issue #256: the pain category's graded intensity
                   // selectors — one row per pain code that is either
                   // chip-selected or already carries an intensity for the
@@ -1678,10 +1702,13 @@ class _DaySheetState extends State<DaySheet> {
                   // selected). AC: "at least the pain category exposes a
                   // graded intensity input in the day sheet"; the reusable
                   // IntensitySelector component is issue #234.
-                  if (category == TagCategory.pain)
-                    for (final tag in _painIntensitySelectors)
-                      _painIntensityRow(l10n, theme, tag),
-                ],
+                  trailingBuilder: (category) => category == TagCategory.pain
+                      ? [
+                          for (final tag in _painIntensitySelectors)
+                            _painIntensityRow(l10n, theme, tag),
+                        ]
+                      : const [],
+                ),
                 // Issue #457: BBT/weight, standalone like the PMS toggle —
                 // neither is a `TagCategory` (they are numeric, not
                 // chip-selected options), so this section sits outside the
@@ -1859,21 +1886,6 @@ class _DaySheetState extends State<DaySheet> {
       ],
     ),
   ];
-
-  /// Issue #249: the caption an option-set-unverified category
-  /// (`kUnverifiedTagCategories`) renders where its chips would go. The
-  /// category is real and its heading is surfaced (the taxonomy and picker
-  /// framework exist), but no code ships until a real Clue export pins the
-  /// option set — a placeholder chip would be an invented health assertion.
-  Widget _unverifiedCategoryNote(ThemeData theme) => Padding(
-    padding: const EdgeInsets.only(top: 2, bottom: LLSpace.space1),
-    child: Text(
-      AppLocalizations.of(context).daySheetUnverifiedPin,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    ),
-  );
 
   /// R13 copy: when the caller's own accepted role is the reason this sheet
   /// is read-only (not an archived profile - the two reasons are additive,

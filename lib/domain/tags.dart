@@ -7,8 +7,11 @@
 /// option-set-unverified `pms`, `meditation`, `leisure`), and Issue #252
 /// (the events-and-care categories — `collection_method`, `exercise`,
 /// `medication`, `ailments`, plus the option-set-unverified
-/// `appointments` and `supplements`), and Issue #253 (the sensitive and
-/// fertility categories — `sex_life`, `discharge`, `tests`).
+/// `appointments` and `supplements`), Issue #253 (the sensitive and
+/// fertility categories — `sex_life`, `discharge`, `tests`), and Issue
+/// #456 (the five attested `hot_flashes`/Clue-Perimenopause options —
+/// see [kTagTaxonomy]'s own `hot_flashes` block for what remains
+/// unattested).
 ///
 /// Codes are stable identifiers (stored on day entries); [TagCode.display]
 /// is the default UI string. **The code-stability rule (Issues #249,
@@ -230,6 +233,34 @@ const List<TagCode> kTagTaxonomy = [
   TagCode('salty', TagCategory.cravings, 'Salty'),
   TagCode('carbs', TagCategory.cravings, 'Carbs'),
   TagCode('chocolate', TagCategory.cravings, 'Chocolate'),
+  // hot_flashes — Issue #456: Clue's own category is named "Hot
+  // flashes/perimenopause" (`docs/import/clue-mapping.md`'s "no export
+  // type" list) and, per Clue's help center, gained "14 brand-new
+  // tracking options" when Clue Perimenopause launched
+  // (support.helloclue.com/hc/en-us/articles/13059487439261,
+  // helloclue.com/articles/menopause/introducing-clue-perimenopause).
+  // Only five of those fourteen are named in any source this pass could
+  // reach — `hot flashes, night sweats, brain fog, HRT and vaginal
+  // dryness` — so only those five ship as codes; the remaining ~9 are
+  // unattested and deliberately not invented, the same "no invented
+  // placeholder" discipline `kUnverifiedTagCategories` documents above.
+  // `hotFlashes` still leaves `kUnverifiedTagCategories` (it is no longer
+  // a zero-code category) so the day sheet renders these five as real
+  // chips rather than the "unverified" caption; `hot_flashes` itself was
+  // already surfaced in every mode's `categoriesInOrder`
+  // (`care_modes.dart`) before this issue, per #196's requirement. The
+  // code's display is qualified to the singular "Hot flash" (an episode
+  // logged that day) — the bare plural "Hot flashes" is already the
+  // category heading (`care_modes.dart`'s `categoryLabels`), and this flat
+  // day-entry tag namespace already qualifies exactly this kind of
+  // code/heading collision elsewhere (the library doc comment's
+  // `great_digestion`/`great_stool` precedent; medication's `pain` code
+  // reads "Pain (medication)" for the same reason).
+  TagCode('hot_flashes', TagCategory.hotFlashes, 'Hot flash'),
+  TagCode('night_sweats', TagCategory.hotFlashes, 'Night sweats'),
+  TagCode('brain_fog', TagCategory.hotFlashes, 'Brain fog'),
+  TagCode('hrt', TagCategory.hotFlashes, 'HRT'),
+  TagCode('vaginal_dryness', TagCategory.hotFlashes, 'Vaginal dryness'),
   // body — dizziness is the one pre-existing physical code Issue #249
   // does not re-parent; it keeps its category and code.
   TagCode('dizziness', TagCategory.body, 'Dizziness'),
@@ -381,11 +412,14 @@ const List<TagCode> kTagTaxonomy = [
 /// shipping" instead of inventing options, until a real Clue export pins
 /// each set. `pms` the *presence* marker is deliberately separate: it
 /// rides `day_entries.pms` (issue #220) outside this taxonomy, exactly as
-/// Clue separates the PMS phase from the PMS option set.
+/// Clue separates the PMS phase from the PMS option set. `hotFlashes`
+/// left this list under Issue #456, once five of its fourteen attested
+/// Clue Perimenopause options (`hot_flashes`, `night_sweats`, `brain_fog`,
+/// `hrt`, `vaginal_dryness`) had real, named sources — see the taxonomy
+/// entries' own doc comment for what remains unattested.
 const List<TagCategory> kUnverifiedTagCategories = [
   TagCategory.sleepQuality,
   TagCategory.breastsChest,
-  TagCategory.hotFlashes,
   TagCategory.urine,
   TagCategory.vulvaVagina,
   TagCategory.pms,

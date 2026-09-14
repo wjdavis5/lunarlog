@@ -176,16 +176,16 @@ void main() {
       }
     });
 
-    test('row count matches taxonomy size exactly (108, issue #253)', () {
-      expect(kTagClinicalCodes, hasLength(108));
-      expect(kTagTaxonomy, hasLength(108));
+    test('row count matches taxonomy size exactly (113, issue #456)', () {
+      expect(kTagClinicalCodes, hasLength(113));
+      expect(kTagTaxonomy, hasLength(113));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '108 tags', () {
+        '113 tags', () {
       const snomed = 'http://snomed.info/sct';
       const local =
           'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
@@ -351,6 +351,14 @@ void main() {
           'pregnancy_positive',
           'Pregnancy · positive',
         ),
+        // issue #456's 5 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #456 section).
+        'hot_flashes': (local, 'hot_flashes', 'Hot flash'),
+        'night_sweats': (local, 'night_sweats', 'Night sweats'),
+        'brain_fog': (local, 'brain_fog', 'Brain fog'),
+        'hrt': (local, 'hrt', 'HRT'),
+        'vaginal_dryness': (local, 'vaginal_dryness', 'Vaginal dryness'),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());
