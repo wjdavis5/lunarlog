@@ -30,13 +30,15 @@ name: Supabase migrate
 # hard-fail the delete-account secret-set/deploy steps whenever any of the
 # four GitHub secrets was unset, even though delete-account has been live in
 # production since v231 with its Apple secrets already set directly on the
-# Supabase project -- every run failed. It now fails closed only when a
-# name is missing from BOTH the GitHub `production` secrets AND the
-# project's own secrets (via `supabase secrets list` +
-# .github/scripts/check-apple-secrets.sh); when the GitHub secrets are
-# partial or absent but the project already has all four, it reuses the
-# project's existing values instead of failing (that function still cannot
-# revoke an Apple identity without them either way -- Issue #17 KTD3). The
+# Supabase project -- every run failed. It now reuses the project's existing
+# values when the GitHub secrets are partial or absent but the project
+# already has all four (via `supabase secrets list` +
+# .github/scripts/check-apple-secrets.sh). When a name is missing from BOTH
+# places, it warns (`mode=missing`), skips only the secret-set step, and
+# still deploys delete-account and records its evidence. This used to be a
+# hard failure, but no Apple credentials exist yet, so every run on main
+# failed. delete-account's Apple revocation fails closed at runtime without
+# them (Issue #17 KTD3), so a current deploy is never worse than stale code. The
 # push-dispatch check is softer: it warns and skips only the `supabase
 # secrets set` step, because push-dispatch is already live in production
 # with secrets set out-of-band (issue #163 / D-19), so a CI run without
@@ -363,8 +365,9 @@ jobs:
         # run failed here regardless of whether migrations or the other
         # three functions had anything to deploy. This never overwrites a
         # working project secret with a missing GitHub one: it only ever
-        # reuses what is already confirmed present on the project, or fails
-        # closed naming exactly what's missing from both places.
+        # reuses what is already confirmed present on the project, or (names
+        # missing from both places) warns with `mode=missing` and lets the
+        # deploy proceed without a secret-set.
         #
         # All four GitHub secrets set: unchanged behaviour, no project API
         # call needed -- `check-apple-secrets.sh` returns `mode=set` from
@@ -372,9 +375,10 @@ jobs:
         # --output json` (names + digests only, confirmed against the
         # pinned CLI's own source at tag v2.116.0 -- see the script's own
         # header) is piped into the same script, which returns `mode=reuse`
-        # only if all four names already exist on the project, or fails
-        # with an `::error::` naming exactly which are missing from both
-        # the GitHub secrets and the project. The name-parsing/presence
+        # only if all four names already exist on the project, or
+        # `mode=missing` with a `::warning::` naming exactly which are
+        # missing from both places (malformed `secrets list` output still
+        # fails). The name-parsing/presence
         # logic itself lives in .github/scripts/check-apple-secrets.sh
         # (unit tested: .github/scripts/tests/check-apple-secrets.test.sh),
         # not inline here, so it is covered by the release-guards /
