@@ -263,7 +263,13 @@ select is((select count(*) from pg_policies
 -- category (backs profiles_tracking_preferences_check; no table access,
 -- IMMUTABLE, must stay executable by any writer for the CHECK to
 -- evaluate - revoking from PUBLIC would break every authenticated
--- profile write).
+-- profile write). Issue #303 adds `is_valid_flow_level(text)` in the same
+-- category (backs the new flow_level domain's own CHECK, plus sync_push's
+-- and bulk_import_entries's validation; no table access, IMMUTABLE, must
+-- stay executable by any writer for the domain's CHECK to evaluate on an
+-- ordinary INSERT/UPDATE - revoking from PUBLIC would break every
+-- authenticated day_entries write, exactly like is_valid_tracking_preferences
+-- above).
 -- ---------------------------------------------------------------------------
 select is(
   (select count(*)
@@ -277,7 +283,7 @@ select is(
       and p.oid::regprocedure::text
             not in ('is_valid_tags_array(jsonb)', 'merge_tag_arrays(jsonb,jsonb)',
                     'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)',
-                    'is_valid_tracking_preferences(jsonb)')),
+                    'is_valid_tracking_preferences(jsonb)', 'is_valid_flow_level(text)')),
   0::bigint,
   'anon holds no EXECUTE on any public function outside the documented pure-helper allow-list');
 

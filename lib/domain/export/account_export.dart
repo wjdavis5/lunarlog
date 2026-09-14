@@ -19,10 +19,18 @@
 /// [buildAccountExport]'s local-only document with whatever
 /// `public.export_account_data()` returns (guardian memberships,
 /// invitations, ownership-transfer history, notification preferences,
-/// registered devices, missed-entry alert state, feedback tickets, and
-/// reminder windows - none of which the local Drift store holds), merged
-/// under a `server` key by [mergeAccountExport] without altering this
-/// file's own `profiles`/`dayEntries` shape at all. The sign-in gate on
+/// registered devices, missed-entry alert state, feedback tickets,
+/// reminder windows, and (Issue #292) the caller's `public.settings`
+/// key/value rows - none of which the local Drift store holds, since
+/// `public.settings` has no local mirror at all today (issue #101: it is
+/// provisioned but not yet written by the app)), merged under a `server`
+/// key by [mergeAccountExport] without altering this file's own
+/// `profiles`/`dayEntries` shape at all - a right-of-access field this
+/// file's own build functions never need their own code path for: once
+/// `export_account_data()` carries `settings`, the merge already nests it
+/// in without a schema-version bump (this document's `schemaVersion`
+/// versions the local `profiles[]`/`dayEntries[]` shape, not the
+/// opaque merged server document). The sign-in gate on
 /// "Export my data" itself is unchanged by this issue (that ungating is
 /// #222) - only the *local* half of export is meant to ever run signed
 /// out, and [buildMergedAccountExport] already treats a null

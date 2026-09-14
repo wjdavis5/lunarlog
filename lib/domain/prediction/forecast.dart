@@ -2,14 +2,30 @@
 /// functions behind the twelve-month calendar's predicted bleed bands,
 /// first-cycle numerals, and fixed-offset badges.
 ///
-/// INTERIM SEAM (issue #213): #213 owns rebuilding the prediction engine to
-/// emit a `forecast: List<PredictedCycle>` directly. Until it lands, this
-/// module derives the forward cycles minimally by chaining the mean cycle
-/// length off [ActivePrediction.estimatedNextStart] — a single-purpose
-/// derivation isolated here so #213 replaces [deriveForecast] alone and the
-/// calendar keeps consuming [ForecastCycle]s either way. Never persisted,
-/// never triggered by writes: pure recompute per stream emission, matching
-/// `prediction.dart`'s posture.
+/// Issue #300: [deriveForecast] is now a thin adapter over
+/// [ActivePrediction.forecast] — the prediction engine
+/// (`prediction.dart`'s `_buildForecast`) is the *only* place the
+/// confidence-degradation and spread-widening curve is computed. Before
+/// this issue, this module re-derived its own forward cycles by chaining
+/// the mean cycle length off [ActivePrediction.estimatedNextStart] with an
+/// independent (and slightly different — linear spread growth, tier
+/// stepping down unconditionally after cycle 0) curve, so the calendar's
+/// predicted bands and the overview's headline estimate/tier could
+/// disagree for the same profile even though both ultimately trace back to
+/// the same [ActivePrediction]. [deriveForecast] now only re-indexes the
+/// engine's 1-based [PredictedCycle.cycleIndex] to the 0-based
+/// [ForecastCycle.index] the calendar keys off, truncates the engine's
+/// fixed-length forecast to the navigable horizon (never extends past what
+/// the engine already computed), and layers on the one thing the engine
+/// deliberately does not compute itself — each cycle's own fertile window
+/// (issue #143, see below) — since `prediction.dart` stays intentionally
+/// unaware of `fertile_window.dart`'s back-calculation (that file's own doc
+/// comment: a *sibling* module, not a second derivation folded into the
+/// engine). `cycles.first.start == prediction.estimatedNextStart` and
+/// `cycles.first.tier == prediction.tier` always hold now, by construction
+/// (the #299 invariant `prediction.dart` already documents on
+/// `ActivePrediction.tier`/`.forecast`), which is what makes the calendar's
+/// first predicted cycle and the overview's headline estimate agree.
 ///
 /// Everything emits days strictly after "today" only (past stays factual —
 /// a logged day always renders as logged, KTD3).
@@ -25,31 +41,15 @@
 library;
 
 import '../models/local_date.dart';
-import 'cycle_history.dart';
 import 'fertile_window.dart';
 import 'pms.dart' show PmsEstimate;
-import 'prediction.dart' show ActivePrediction, PredictionBasis;
+import 'prediction.dart'
+    show ActivePrediction, CycleConfidence, PredictedCycle, PredictionBasis;
 
 /// The forward calendar navigates this many months past the current one
 /// (R1). Forecast cycles are derived far enough to cover the end of that
 /// month, so every navigable month carries bands even for short cycles.
 const int kForecastHorizonMonths = 12;
-
-/// Defensive bound on the derived cycle count so a degenerate (zero-day)
-/// mean could never loop unbounded. Unreachable in practice: the shortest
-/// valid cycle is 15 days and the horizon spans at most ~13 months, so at
-/// most ~32 cycles are ever needed.
-const int kForecastMaxCycles = 32;
-
-/// PROVISIONAL (pending #213's calibration): each cycle further out widens
-/// the reported spread by this many days — uncertainty compounds the
-/// further out you look.
-const int kForecastSpreadGrowthPerCycle = 1;
-
-/// PROVISIONAL: bleed length used when the history view carries no mean
-/// episode length (unreachable with an [ActivePrediction], defensive
-/// only).
-const int kDefaultPredictedPeriodDays = 4;
 
 /// PMS badges (Issue #220) are data-driven, not fixed-offset: they cover
 /// the [PmsEstimate] band (`prediction.dart`'s 6-cycle onset/length
@@ -200,32 +200,38 @@ class ForecastDayCell {
       'tier: ${tier.name}, fertileTier: ${fertileTier?.name})';
 }
 
-/// Steps a confidence tier down one level for every cycle past the first
-/// (KTD4): `high` degrades to `learning`; `learning` and `irregular`
-/// already read as rough and stay put.
-CycleConfidence degradeForecastTier(CycleConfidence tier) =>
-    tier == CycleConfidence.high ? CycleConfidence.learning : tier;
-
-/// Derives the forward forecast: cycles chained off the active estimate by
-/// the (rounded) mean cycle length, until a cycle's start passes the end of
-/// the navigable horizon (today's month + [horizonMonths]).
+/// Derives the calendar's forward forecast from [ActivePrediction.forecast]
+/// (issue #300) — a thin adapter, not a second derivation. Every
+/// [PredictedCycle] up to the navigable horizon (today's month +
+/// [horizonMonths]) becomes one [ForecastCycle]; the engine's own fixed
+/// [PredictedCycle] count (`kPredictionWindowCycles` in `prediction.dart`)
+/// is never extended past, only truncated early once a cycle's start
+/// passes [horizonEnd] — so an unusually short mean cycle length may cover
+/// less than the full navigable horizon, where the pre-#300 chaining loop
+/// (bounded only by a defensive `kForecastMaxCycles` guard) always filled
+/// it; see this file's library doc comment for why that trade-off is the
+/// point, not a regression (one confidence-degradation curve, computed
+/// once, by the engine).
 ///
-/// The first cycle anchors at [ActivePrediction.estimatedNextStart] — skip
-/// advancement (#132's `kSkipAdvanceCycles`) is already folded into that
-/// date, so a skipped cycle moves the whole forecast with the estimate.
+/// [PredictedCycle.cycleIndex] is 1-based (1 = the next cycle); this
+/// function re-indexes it to the 0-based [ForecastCycle.index] the
+/// calendar keys off (index 0's numerals walk the whole cycle, not just
+/// its band — see [_markCycleDays]), so `cycles.first.start ==
+/// prediction.estimatedNextStart` and `cycles.first.tier ==
+/// prediction.tier` continue to hold exactly as before.
+///
+/// [ForecastCycle.lengthDays] (the chaining step numerals count across on
+/// the first cycle) is [ActivePrediction.meanCycleLengthDays] rounded —
+/// the same constant step every [PredictedCycle] in the engine's forecast
+/// already advances by (`prediction.dart`'s `_buildForecast`), so this is
+/// not itself a derivation, only reading a value the engine already
+/// computed.
 List<ForecastCycle> deriveForecast({
   required ActivePrediction prediction,
-  required CycleHistoryView history,
   required LocalDate today,
   int horizonMonths = kForecastHorizonMonths,
 }) {
-  final step = prediction.meanCycleLengthDays.round();
-  if (step <= 0) return const [];
-  final periodLength =
-      (history.meanPeriodLengthDays?.round() ?? kDefaultPredictedPeriodDays)
-          .clamp(1, step);
-  final baseTier = history.confidence ?? CycleConfidence.learning;
-  final baseSpread = history.variationDays ?? 0;
+  final lengthDays = prediction.meanCycleLengthDays.round();
   final horizonEnd = _endOfHorizonMonth(today, horizonMonths);
 
   // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
@@ -235,29 +241,27 @@ List<ForecastCycle> deriveForecast({
       prediction.basis == PredictionBasis.regimenSchedule;
 
   final cycles = <ForecastCycle>[];
-  var start = prediction.estimatedNextStart;
-  while (!start.isAfter(horizonEnd) && cycles.length < kForecastMaxCycles) {
-    final index = cycles.length;
-    final tier = index == 0 ? baseTier : degradeForecastTier(baseTier);
+  for (final predicted in prediction.forecast) {
+    if (predicted.start.isAfter(horizonEnd)) break;
+    final index = predicted.cycleIndex - 1;
     cycles.add(
       ForecastCycle(
         index: index,
-        start: start,
-        lengthDays: step,
-        periodLengthDays: periodLength,
-        spreadDays: baseSpread + index * kForecastSpreadGrowthPerCycle,
-        tier: tier,
+        start: predicted.start,
+        lengthDays: lengthDays,
+        periodLengthDays: predicted.estimatedPeriodLengthDays,
+        spreadDays: predicted.spreadDays.round(),
+        tier: predicted.tier,
         // Issue #143: each cycle's own fertile window precedes *that*
         // cycle's predicted period start, at that cycle's own (already
-        // degrading) tier — the same [fertileWindowFor] core
-        // [estimateFertileWindow] uses for the live estimate, so the two
-        // call sites can never drift onto different formulas.
+        // degrading, engine-computed) tier — the same [fertileWindowFor]
+        // core [estimateFertileWindow] uses for the live estimate, so the
+        // two call sites can never drift onto different formulas.
         fertileWindow: suppressFertileWindow
             ? null
-            : fertileWindowFor(start: start, tier: tier),
+            : fertileWindowFor(start: predicted.start, tier: predicted.tier),
       ),
     );
-    start = start.addDays(step);
   }
   return List.unmodifiable(cycles);
 }

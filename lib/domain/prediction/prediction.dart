@@ -129,8 +129,11 @@ const int kMaxOpenCycleDays = 60;
 /// Fallback bleed length used only when the period-length window carries
 /// no episodes at all (see `computePrediction`'s use, below) — unreachable
 /// with an [ActivePrediction] today, kept so that case reads as an honest,
-/// named fallback rather than an unexplained `1`. Mirrors `forecast.dart`'s
-/// own `kDefaultPredictedPeriodDays`.
+/// named fallback rather than an unexplained `1`. Issue #300: this is now
+/// the *only* such named fallback — `forecast.dart`'s former
+/// `kDefaultPredictedPeriodDays` (its own bleed-length fallback for a
+/// pre-#300 `CycleHistoryView` that carried no mean episode length) was
+/// retired along with the rest of that file's duplicate derivation.
 const int kDefaultPeriodLengthDays = 4;
 
 /// Late means today is more than this many days past the estimate.
@@ -1147,8 +1150,7 @@ _MeanPeriodLength _meanPeriodLength({
   // only from the averages), but a silent `.clamp(1, ...)` on a fake 0.0
   // mean would read as "the app estimated a 1-day period" rather than "no
   // data" if that ever changed. kDefaultPeriodLengthDays names the
-  // fallback honestly instead (mirrors forecast.dart's own
-  // kDefaultPredictedPeriodDays).
+  // fallback honestly instead.
   final maxPeriodLengthDays = meanCycleDays <= 0 ? 1 : meanCycleDays;
   final periodLengthDays = periodWindow.isEmpty
       ? kDefaultPeriodLengthDays.clamp(1, maxPeriodLengthDays)

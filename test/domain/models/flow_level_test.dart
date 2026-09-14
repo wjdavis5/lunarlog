@@ -36,6 +36,30 @@ void main() {
     });
   });
 
+  group('flow_level SQL domain guard (Issue #303)', () {
+    test('the wire-string set matches the SQL flow_level domain\'s '
+        'allow-list exactly -- keep this literal list in sync with '
+        'supabase/migrations/20260915130000_data_consistency_bundle.sql\'s '
+        'is_valid_flow_level()/flow_level domain; '
+        'supabase/tests/flow_level_domain_test.sql pins the SQL side of '
+        'the identical list, so an edit to either without the other '
+        'breaks one suite or the other rather than drifting silently', () {
+      const sqlFlowLevelValues = {
+        'none',
+        'spotting',
+        'not_bleeding',
+        'light',
+        'medium',
+        'heavy',
+        'super_heavy',
+      };
+      expect(
+        FlowLevel.values.map((v) => v.toDb()).toSet(),
+        sqlFlowLevelValues,
+      );
+    });
+  });
+
   group('isBleed', () {
     test('every real bleed level (including superHeavy) is a bleed day', () {
       expect(isBleed(FlowLevel.light), isTrue);

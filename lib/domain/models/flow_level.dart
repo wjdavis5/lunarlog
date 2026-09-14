@@ -23,13 +23,18 @@
 ///   itself) -- [spotting] only exists so `fromDb`/`FlowLevelConverter`
 ///   never throw on an old row or an old peer's sync payload.
 ///
-/// [toDb]/[fromDb] are the server wire strings (`day_entries.flow`'s
-/// CHECK, `sync_push`'s flow allow-list) -- mirrors
+/// [toDb]/[fromDb] are the server wire strings -- mirrors
 /// `lib/domain/models/day_entry.dart`'s `DayEntrySource.toDb`/`fromDb`
-/// pattern. Issue #303 (deferred, not done here -- see that issue) would
-/// make the allowed-values list a single SQL domain instead of the three
-/// hand-kept copies (this enum, the `day_entries` CHECK, `sync_push`'s
-/// inline list) this migration still edits by hand.
+/// pattern. Issue #303 collapsed the SQL-side allow-list (this enum's own
+/// server mirror) into a single `public.flow_level` domain, backed by
+/// `public.is_valid_flow_level()`, that `day_entries.flow`'s column type,
+/// `sync_push`, and `bulk_import_entries` all now validate against --
+/// see `supabase/migrations/20260915130000_data_consistency_bundle.sql`.
+/// This enum stays the client mirror, kept in step by a guard test
+/// ([FlowLevel]'s own `test/domain/models/flow_level_test.dart`) pinned
+/// against the identical literal list `supabase/tests/
+/// flow_level_domain_test.sql` pins on the SQL side, so the two can drift
+/// apart only by breaking one suite or the other, never silently.
 library;
 
 enum FlowLevel {
@@ -53,8 +58,10 @@ enum FlowLevel {
   superHeavy;
 
   /// The raw string stored on the row and sent over the wire -- matches
-  /// `day_entries.flow`'s CHECK constraint and `sync_push`'s flow
-  /// allow-list (`supabase/migrations/20260908200000_flow_model.sql`).
+  /// the `public.flow_level` domain's allow-list (Issue #303,
+  /// `supabase/migrations/20260915130000_data_consistency_bundle.sql`),
+  /// which `day_entries.flow`'s column type, `sync_push`, and
+  /// `bulk_import_entries` all now share.
   String toDb() => switch (this) {
         FlowLevel.none => 'none',
         // ignore: deprecated_member_use_from_same_package

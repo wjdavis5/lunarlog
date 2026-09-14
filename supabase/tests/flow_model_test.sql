@@ -52,12 +52,16 @@ select is((select display_name from public.profiles where id = tests.ulid(24700)
 -- 1. day_entries_flow_check: super_heavy/not_bleeding accepted, garbage
 --    still rejected, every previously-accepted value still accepted.
 -- ---------------------------------------------------------------------------
+-- Issue #303: day_entries_flow_check was collapsed into the flow_level
+-- domain (20260915130000_data_consistency_bundle.sql) -- the domain, not
+-- this table CHECK, is now what enforces the allow-list this section's
+-- own raw-insert assertions below exercise; flow_level_domain_test.sql
+-- covers the domain itself.
 select is(
-  (select count(*) from pg_catalog.pg_constraint
-    where conrelid = 'public.day_entries'::regclass
-      and conname = 'day_entries_flow_check'),
-  1::bigint,
-  'day_entries_flow_check exists on public.day_entries');
+  (select domain_name from information_schema.columns
+    where table_schema = 'public' and table_name = 'day_entries' and column_name = 'flow'),
+  'flow_level',
+  'day_entries.flow is the flow_level domain (Issue #303), not a plain text CHECK');
 
 select tests.clear_authentication();
 insert into public.day_entries
