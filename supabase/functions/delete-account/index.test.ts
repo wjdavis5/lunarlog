@@ -563,6 +563,57 @@ Deno.test(
   },
 );
 
+// ---------------------------------------------------------------------------
+// #17 P1 round 2 fix (Step 7): the final rehome pass is documented
+// best-effort - it must never block the irreversible deleteUser step below
+// it, only log and proceed.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "a rehomeStrayDayEntries failure (RPC-reported error) is logged but does not block deletion - " +
+    "deleteUser still runs and the call still succeeds with 200 ok:true",
+  async () => {
+    const { deps, calls } = fakeDeps({ rehomeError: { message: "some stray rows could not be rehomed" } });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.ok, true, "the account must still be deleted end to end despite the rehome failure");
+    assertEquals(
+      calls,
+      [
+        "getUser",
+        "listAttachmentPaths:user-1",
+        "clearAttachmentPaths:user-1",
+        "deleteAccountData",
+        "rehomeStrayDayEntries",
+        "deleteUser",
+      ],
+      "deleteUser must still run right after the failed rehome pass, not be skipped",
+    );
+  },
+);
+
+Deno.test(
+  "rehomeStrayDayEntries throwing (not just returning an error) is also swallowed - deletion still completes",
+  async () => {
+    const deps = fakeDeps().deps;
+    const throwingDeps: DeleteAccountDeps = {
+      ...deps,
+      rehomeStrayDayEntries: async () => {
+        throw new Error("network blip");
+      },
+    };
+
+    const response = await handleDeleteAccount(postRequest(), throwingDeps);
+
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.ok, true, "a thrown (not just returned) rehome failure must not block deletion either");
+  },
+);
+
 Deno.test("happy path (no apple identity): succeeds end to end with 200 ok:true", async () => {
   const { deps } = fakeDeps({ listResult: { ok: true, paths: ["user-1/t1/a.png"] } });
 
