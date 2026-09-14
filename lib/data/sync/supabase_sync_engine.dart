@@ -1208,12 +1208,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// [_pullTable]'s persisted-cursor lookup. Split out so [_pullTable]'s
   /// branch count stays under the CRAP gate as tables are added (Issue
   /// #188 added two cases; Issue #128 two more). Issue #525:
-  /// `profileGuardians` now reads a real persisted cursor too, instead of
+  /// `profileGuardians` reads a real persisted cursor too, instead of
   /// always starting at 0 (schema v3's original, un-cursored shape) — every
   /// cycle used to force a full sequential scan of the global
-  /// `profile_guardians` table. `deletedProfiles` (issue #522) is the one
-  /// remaining table that deliberately still has no cursor column — see
-  /// its own doc comment.
+  /// `profile_guardians` table. Issue #597 applies the identical fix to
+  /// `deletedProfiles`, the one table #525 deliberately left un-cursored.
   int _startingCursor(SyncTable table, SyncStateRow state) => switch (table) {
         SyncTable.profiles => state.cursorProfiles,
         SyncTable.dayEntries => state.cursorDayEntries,
@@ -1223,8 +1222,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         SyncTable.careNotes => state.cursorCareNotes,
         SyncTable.visitPrepItems => state.cursorVisitPrepItems,
         SyncTable.profileGuardians => state.cursorProfileGuardians,
-        // Issue #522: no persisted cursor, same as profileGuardians above.
-        SyncTable.deletedProfiles => 0,
+        // Issue #597: deletedProfiles now has a persisted cursor too.
+        SyncTable.deletedProfiles => state.cursorDeletedProfiles,
       };
 
   /// A page of [table] hit a [RetryableSyncApplyError]. Only profileGuardians

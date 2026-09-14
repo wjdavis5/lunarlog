@@ -212,6 +212,36 @@ class Profiles extends Table {
   DateTimeColumn get accessRevokedAt =>
       dateTime().named('access_revoked_at').nullable()();
 
+  /// Device-local, never synced (Issue #637, LLA-039). Nullable, like
+  /// [accessRevokedAt] just above, specifically so every existing direct
+  /// `Profile(...)` test fixture keeps compiling without passing this
+  /// field (a non-nullable-with-default `BoolColumn` still generates a
+  /// *required* Dart constructor parameter — nullable is the column shape
+  /// that does not). Null or `false` for a row this device has confirmed
+  /// against a real server value at least once — a fresh local row (never
+  /// set, so implicitly null) and every remote apply of this row
+  /// (`_applyProfile` always clears it back to null on write, win or
+  /// lose). `true` for every row the v20 migration found already on the
+  /// device: [bbtUnit]/[weightUnit] were added at v16 with a local
+  /// default (`celsius`/`kg`), so an old client upgrading through that
+  /// version backfills every existing profile with that default whether
+  /// or not the server already held a real, different preference — and
+  /// since a migration never marks a row `dirty`, the row's own
+  /// `updated_at` is untouched, so the two values silently diverge with
+  /// nothing to say so. If the row later becomes dirty for an unrelated
+  /// edit before the next pull ever delivers the server's real value, an
+  /// ordinary push would carry the still-default `bbt_unit`/`weight_unit`
+  /// as if it were real data and clobber the server's stored preference.
+  /// `row_codec.dart`'s `encodeProfile` omits both keys while this is
+  /// `true` — safe, since `sync_push`'s update path already applies a
+  /// `? 'bbt_unit'`/`? 'weight_unit'` containment guard for an absent key
+  /// (the same guard [trackingPreferences] already relies on) — so an
+  /// otherwise-legitimate push of the rest of the row never touches
+  /// either preference until this device has actually seen the server's
+  /// value for them.
+  BoolColumn get unitsUnconfirmed =>
+      boolean().named('units_unconfirmed').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -247,6 +277,24 @@ class DayEntries extends Table {
   /// already-stored marker. Logged PMS days feed the 6-cycle PMS averages
   /// and the predicted PMS band (`lib/domain/prediction/pms.dart`).
   BoolColumn get pms => boolean().withDefault(const Constant(false))();
+
+  /// Device-local, never synced (Issue #637, LLA-039) — the same
+  /// unconfirmed-default guard as [Profiles.unitsUnconfirmed] (see its
+  /// doc comment for why this is nullable rather than
+  /// non-nullable-with-default), for [pms]: `pms` was added at v12 with a
+  /// local default (`false`), so an old client upgrading through that
+  /// version backfills every existing day entry with `false` whether or
+  /// not the server already held `true` for it, and a migration never
+  /// marks a row dirty, so nothing about the row's own `updated_at`
+  /// reveals the divergence. Null or `false` for a row this device has
+  /// confirmed against a real server value at least once (never set on a
+  /// fresh local row, and cleared back to null on every remote apply of
+  /// this row); `true` for every row the v20 migration found already on
+  /// the device. `row_codec.dart`'s `encodeDayEntry` omits the `pms` key
+  /// while this is `true` — safe, since `sync_push`'s update path already
+  /// applies a `? 'pms'` containment guard for an absent key.
+  BoolColumn get pmsUnconfirmed =>
+      boolean().named('pms_unconfirmed').nullable()();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
 
@@ -706,12 +754,20 @@ class SyncState extends Table {
   /// paged from version 0 every cycle (see the sync engine's
   /// `_startingCursor`, pre-#525) — every 15-minute tick forced a full
   /// sequential scan of the global `profile_guardians` table plus one
-  /// `is_profile_guardian()` RLS check per scanned row. `deletedProfiles`
-  /// (issue #522) deliberately still has no cursor column of its own (same
-  /// known-perf tradeoff, out of this issue's scope — see
-  /// `SyncTable.deletedProfiles`'s doc comment).
+  /// `is_profile_guardian()` RLS check per scanned row.
   IntColumn get cursorProfileGuardians =>
       integer().named('cursor_profile_guardians').withDefault(const Constant(0))();
+
+  /// Issue #597: the `deleted_profiles` pull cursor, same shape as
+  /// [cursorProfileGuardians] — same fix, same table shape (pull-only, a
+  /// server-owned `server_version` already exists and is already indexed
+  /// server-side). Before this column existed, `deletedProfiles` paged
+  /// from version 0 every cycle (see the sync engine's `_startingCursor`,
+  /// pre-#597), same tradeoff #525 closed for `profileGuardians` — this
+  /// table stayed small enough for a full scan to be cheap at the time,
+  /// but the same per-cycle full-scan cost applies as it grows.
+  IntColumn get cursorDeletedProfiles =>
+      integer().named('cursor_deleted_profiles').withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();

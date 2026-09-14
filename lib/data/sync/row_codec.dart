@@ -36,7 +36,14 @@
 ///   default, an absent or unrecognised value normalises to the column
 ///   default (`celsius`/`kg`) — presentation-only, never a security field.
 ///   An `observations` value's own `unit` is untouched by this: the
-///   preference decides rendering only.
+///   preference decides rendering only. Pushed ONLY while
+///   `Profiles.unitsUnconfirmed` is false (Issue #637, LLA-039) — the same
+///   emit-only-when-confirmed shape as `tracking_preferences` above, so an
+///   upgrade's local default never clobbers a real server value before a
+///   pull hydrates it.
+/// * `day_entries.pms` (Issue #220) gets the same LLA-039 treatment via
+///   `DayEntries.pmsUnconfirmed`: pushed only once this device has
+///   confirmed it against a real server value.
 /// * `observations.category`/`code` (Issue #240) are free text and
 ///   deliberately NOT validated against a closed set here — unlike
 ///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
@@ -220,11 +227,20 @@ JsonRow encodeProfile(Profile row) {
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
     'mode': row.mode,
-    // Issue #255: already the raw `toDb()` string on the drift row (the
-    // enum normalisation happens in `mappers.dart`/`decodeProfile`, never
-    // here).
-    'bbt_unit': row.bbtUnit,
-    'weight_unit': row.weightUnit,
+    // Issue #255 / #637 LLA-039: already the raw `toDb()` string on the
+    // drift row (the enum normalisation happens in
+    // `mappers.dart`/`decodeProfile`, never here) — but emitted ONLY once
+    // this device has confirmed it against a real server value at least
+    // once (`Profiles.unitsUnconfirmed`'s doc comment). An upgrade
+    // backfills both columns with a local default that may not match what
+    // the server already has; the key's absence leaves the server's
+    // stored value alone (its `?` containment guard, the same backstop
+    // `trackingPreferences` below relies on) until a pull actually
+    // confirms this device's copy.
+    if (row.unitsUnconfirmed != true) ...{
+      'bbt_unit': row.bbtUnit,
+      'weight_unit': row.weightUnit,
+    },
     'birth_year': row.birthYear,
     'relationship': row.relationship,
     'last_period_start': row.lastPeriodStart,
@@ -267,10 +283,14 @@ JsonRow encodeDayEntry(DayEntry row) {
     'flow': row.flow.toDb(),
     'tags': List<String>.of(row.tags),
     'note': row.note,
-    // Issue #220: the first-class PMS marker rides the payload like any
-    // other day-level field; the server's sync_push update path guards it
-    // with `v_row ? 'pms'`, so always emitting the key is safe.
-    'pms': row.pms,
+    // Issue #220 / #637 LLA-039: the first-class PMS marker rides the
+    // payload like any other day-level field, emitted ONLY once this
+    // device has confirmed it against a real server value at least once
+    // (`DayEntries.pmsUnconfirmed`'s doc comment) — an upgrade backfills
+    // the column with a local default that may not match what the server
+    // already has. The server's sync_push update path already guards a
+    // missing key with `v_row ? 'pms'`, so omitting it here is safe.
+    if (row.pmsUnconfirmed != true) 'pms': row.pms,
     'source': row.source,
     'source_id': row.sourceId,
     'import_id': row.importId,

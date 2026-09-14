@@ -251,7 +251,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 19);
+  expect(await userVersion(db), 20);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at',
               'transferred_to_user_id', 'mode',
@@ -345,10 +345,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 19 and database opens with the expected tables',
+    test('schema version is 20 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 19);
-      expect(await userVersion(db), 19);
+      expect(db.schemaVersion, 20);
+      expect(await userVersion(db), 20);
 
       final tables = (await db
               .customSelect(
@@ -1951,6 +1951,93 @@ void main() {
       await expectFullyUpgraded(db);
     });
 
+    test('issue #637, LLA-015: a multi-version upgrade interrupted AFTER an '
+        'earlier version step already committed leaves user_version at '
+        'that step, not the original starting version — so a clean reopen '
+        'never replays already-applied DDL as a duplicate', () async {
+      final dir = await freshTempDir('migration_multi_step_fail');
+      final file = File('${dir.path}${Platform.pathSeparator}v1.db');
+      final raw = sqlite3.sqlite3.open(file.path);
+      seedV1(raw);
+      raw.close();
+
+      // v1 -> v20 in one onUpgrade call. Let the v2 step's transaction
+      // commit in full, then fail partway through the v3 step (before
+      // #637, Drift only ever writes the final user_version once — after
+      // the whole call returns — so a device that reached here would have
+      // v2's DDL (sync_state, profiles.dirty, ...) permanently applied
+      // under a stored user_version of 1; the fix is the per-step
+      // `_advanceSchemaVersion` bump this test proves).
+      final completedSteps = <String>[];
+      final failing = LunarLogDatabase(NativeDatabase(file))
+        ..migrationStepHook = (step) async {
+          completedSteps.add(step);
+          if (step == 'day_entries.logged_by_user_id') {
+            throw StateError('injected failure partway through the v3 step');
+          }
+        };
+      await expectLater(
+        failing.customSelect('SELECT 1').get(),
+        throwsA(isA<StateError>()),
+      );
+      await failing.close();
+      expect(completedSteps, [
+        'profiles.dirty',
+        'profiles.local_rev',
+        'day_entries.dirty',
+        'day_entries.local_rev',
+        'sync_state',
+        'schema_version.v2',
+        'day_entries.logged_by_user_id',
+      ], reason: 'the whole v2 step, including its own version bump, ran '
+          'to completion before the v3 step was interrupted');
+
+      // Inspect the file with a raw handle: v2's DDL is fully applied and
+      // user_version reflects it — NOT the original v1 the device started
+      // from, and NOT v3 (whose transaction rolled back in full).
+      final check = sqlite3.sqlite3.open(file.path);
+      try {
+        expect(check.select('PRAGMA user_version').first.values.first, 2,
+            reason: 'user_version must land exactly on the last step that '
+                'actually committed');
+        final profileCols = check
+            .select('PRAGMA table_info(profiles)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(profileCols, containsAll(['dirty', 'local_rev']),
+            reason: 'the v2 step\'s DDL must survive the v3 failure');
+        final entryCols = check
+            .select('PRAGMA table_info(day_entries)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(entryCols, isNot(contains('logged_by_user_id')),
+            reason: 'the interrupted v3 step\'s addColumn must have been '
+                'rolled back');
+        final tables = check
+            .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map((r) => r['name'])
+            .toSet();
+        expect(tables, contains('sync_state'),
+            reason: 'v2\'s createTable must survive');
+        expect(tables, isNot(contains('profile_guardians')),
+            reason: 'v3\'s createTable must have been rolled back');
+      } finally {
+        check.close();
+      }
+
+      // Clean reopen: without #637's fix, Drift would still see
+      // user_version = 1 (never advanced) and replay the v2 step's
+      // addColumn calls against columns that already exist, throwing a
+      // duplicate-column error and permanently quarantining the file. With
+      // the fix, `from` starts at the true 2, so v2's `if (from < 2)`
+      // guard skips cleanly and only the previously-interrupted v3 step
+      // (and everything after it) re-runs, reaching v20 with every row
+      // intact.
+      final reopened = LunarLogDatabase(NativeDatabase(file));
+      addTearDown(() => reopened.close());
+      await expectFullyUpgraded(reopened);
+    });
+
     test('a database already at the latest version does not re-run the '
         'upgrade on reopen', () async {
       final dir = await freshTempDir('migration_noop');
@@ -1963,7 +2050,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 19);
+      expect(await userVersion(second), 20);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1976,7 +2063,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2021,7 +2108,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2054,7 +2141,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -2114,7 +2201,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'day_entries'), containsAll(['pms']));
       // The new column defaults to false for every already-stored row.
       final existing = await db.storage.getDayEntries(
@@ -2158,7 +2245,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'profiles'), containsAll(['tracking_preferences']));
       // The new column is nullable with no default: every already-stored
       // row reads as never-customized (the all-defaults state).
@@ -2225,7 +2312,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 19);
+      expect(await userVersion(db), 20);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

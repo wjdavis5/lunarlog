@@ -43,6 +43,34 @@ DateTime _afterStored(DateTime next, DateTime stored) {
   return n.isAfter(s) ? n : s.add(const Duration(milliseconds: 1));
 }
 
+/// The `unitsUnconfirmed` write for a profile update (Issue #637,
+/// LLA-039 review round 2): [upsertProfile]'s update branch is a
+/// full-row write, so [bbtUnit]/[weightUnit] arrive on every call —
+/// including an edit to some unrelated field that merely carries
+/// [existing]'s own (possibly still-unconfirmed, still-default) value
+/// through unchanged. Clearing the marker unconditionally there would
+/// silently confirm a value nobody actually touched, letting that
+/// unrelated edit push the stale default over the server's real
+/// preference — the exact LLA-039 clobber, just reached through a
+/// different edit. Cleared only when the write actually changes
+/// [existing]'s stored value; otherwise left untouched
+/// (`Value.absent()`) so a genuinely unconfirmed row stays protected
+/// until something really sets it.
+Value<bool?> _unitsUnconfirmedWrite(
+  Profile existing,
+  String bbtUnit,
+  String weightUnit,
+) =>
+    (bbtUnit != existing.bbtUnit || weightUnit != existing.weightUnit)
+        ? const Value(false)
+        : const Value.absent();
+
+/// The `pmsUnconfirmed` write for a day-entry update ([_writeDayEntry]'s
+/// update branch) — the same reasoning as [_unitsUnconfirmedWrite], for
+/// [pms] against [live]'s own stored value.
+Value<bool?> _pmsUnconfirmedWrite(DayEntry live, bool pms) =>
+    pms != live.pms ? const Value(false) : const Value.absent();
+
 void _validateDisplayName(String displayName) {
   if (displayName.length > kMaxDisplayNameLength) {
     throw ArgumentError.value(displayName.length, 'displayName',
@@ -342,6 +370,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               mode: Value(mode),
               bbtUnit: Value(bbtUnit),
               weightUnit: Value(weightUnit),
+              // Issue #637, LLA-039: this call is the caller's real,
+              // explicit value for bbtUnit/weightUnit (never a stale
+              // upgrade-era default), so the row is confirmed from the
+              // moment it exists.
+              unitsUnconfirmed: const Value(false),
               trackingPreferences: Value(trackingPreferences),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
@@ -365,6 +398,8 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           mode: Value(mode),
           bbtUnit: Value(bbtUnit),
           weightUnit: Value(weightUnit),
+          unitsUnconfirmed:
+              _unitsUnconfirmedWrite(existing, bbtUnit, weightUnit),
           trackingPreferences: Value(trackingPreferences),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
@@ -665,6 +700,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               tags: Value(tags),
               note: Value(note),
               pms: Value(pms),
+              // Issue #637, LLA-039: this call is the caller's real,
+              // explicit value for pms (never a stale upgrade-era
+              // default), so the row is confirmed from the moment it
+              // exists.
+              pmsUnconfirmed: const Value(false),
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
@@ -697,6 +737,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           tags: Value(tags),
           note: Value(note),
           pms: Value(pms),
+          pmsUnconfirmed: _pmsUnconfirmedWrite(live, pms),
           updatedAt: Value(_afterStored(now, live.updatedAt)),
           deletedAt: const Value(null),
           dirty: const Value(true),
@@ -882,6 +923,10 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           // tombstone carries no payload (the server's
           // day_entries_tombstone_pms_check is the structural backstop).
           pms: const Value(false),
+          // Issue #637, LLA-039: this write sets pms to a real,
+          // deliberate value (the tombstone rule), not a stale
+          // upgrade-era default.
+          pmsUnconfirmed: const Value(false),
           updatedAt: Value(at),
           deletedAt: Value(at),
           dirty: const Value(true),

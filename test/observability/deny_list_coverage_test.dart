@@ -145,6 +145,8 @@ const Map<String, String> _waivedKeys = {
   'cursor_visit_prep_items': 'device-local sync cursor, not content',
   'cursor_profile_guardians':
       'device-local sync cursor, not content (issue #525)',
+  'cursor_deleted_profiles':
+      'device-local sync cursor, not content (issue #597)',
   'last_full_pull_at': 'device-local sync bookkeeping timestamp, not content',
   'last_sync_at': 'device-local sync bookkeeping timestamp, not content',
   'server_clock_offset_ms': 'device-local clock-skew bookkeeping, not content',
@@ -159,6 +161,14 @@ const Map<String, String> _waivedKeys = {
   'access_revoked_at':
       'device-local revocation-eviction bookkeeping timestamp (issue #635), '
           'not content',
+  'units_unconfirmed':
+      'device-local boolean marking whether bbt_unit/weight_unit have been '
+          'confirmed against a real server value since the v20 upgrade '
+          '(issue #637, LLA-039), not content',
+  'pms_unconfirmed':
+      'device-local boolean marking whether pms has been confirmed '
+          'against a real server value since the v20 upgrade (issue #637, '
+          'LLA-039), not content',
 
   // Closed-set / bounded values — distinct from open free text.
   'relationship': 'closed-set relationship-to-creator enum, not free text',

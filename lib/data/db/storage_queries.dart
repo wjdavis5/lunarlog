@@ -17,6 +17,7 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorCareNotes: 0,
   cursorVisitPrepItems: 0,
   cursorProfileGuardians: 0,
+  cursorDeletedProfiles: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
