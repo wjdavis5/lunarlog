@@ -1076,6 +1076,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     final sample = result.serverNow.toUtc().difference(sentAt.toUtc());
     final offset = _smoothOffset(sample);
     _storage.setClockOffset(offset);
+    // Issue #641 LLA-042: once we have learned the server clock (from this
+    // push's serverNow), rebase any dirty row that is still future-stamped
+    // (the reason at least one row in this batch was rejected) so it becomes
+    // pushable again instead of staying unsyncable until real time catches
+    // up. Only runs when this batch saw a rejection — the common case for a
+    // fast client clock — and matches only rows the server would reject.
+    if (result.rejectedIds.isNotEmpty) {
+      await _storage.rebaseFutureStampedRows(serverNow: result.serverNow);
+    }
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
   }
