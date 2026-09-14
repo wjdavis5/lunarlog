@@ -53,6 +53,7 @@ interface FakeDepsOverrides {
   progress?: DeletionProgress;
   deleteAccountDataResult?: { data: unknown; error: unknown };
   revokeResult?: AppleRevokeResult;
+  markAppleRevokedResult?: boolean;
   listResult?: ListAttachmentsResult;
   removeResult?: boolean;
   rehomeError?: unknown;
@@ -72,10 +73,11 @@ function fakeDeps(overrides: FakeDepsOverrides = {}): { deps: DeleteAccountDeps;
     },
     getDeletionProgress: async (uid) => {
       calls.push(`getDeletionProgress:${uid}`);
-      return overrides.progress ?? { appleRevokedAt: null };
+      return overrides.progress ?? { appleRevokedAt: null, appleIdentityId: null };
     },
-    markAppleRevoked: async (uid) => {
-      calls.push(`markAppleRevoked:${uid}`);
+    markAppleRevoked: async (uid, appleIdentityId) => {
+      calls.push(`markAppleRevoked:${uid}:${appleIdentityId}`);
+      return overrides.markAppleRevokedResult === undefined ? true : overrides.markAppleRevokedResult;
     },
     listAttachmentPaths: async (uid) => {
       calls.push(`listAttachmentPaths:${uid}`);
@@ -188,20 +190,54 @@ Deno.test(
 
     assertEquals(response.status, 200);
     const revokeIdx = calls.indexOf("revokeApple:apple-sub-123");
-    const markIdx = calls.indexOf("markAppleRevoked:user-1");
+    const markIdx = calls.indexOf("markAppleRevoked:user-1:apple-sub-123");
     const deleteUserIdx = calls.indexOf("deleteUser");
     assertEquals(revokeIdx >= 0 && markIdx > revokeIdx && deleteUserIdx > markIdx, true,
       "the marker must be written after a successful revoke and before deleteUser");
   },
 );
 
+// ---------------------------------------------------------------------------
+// Issue #599: the marker write is fail-closed, not best-effort.
+// ---------------------------------------------------------------------------
+
 Deno.test(
-  "#527: once the progress marker shows apple_revoked_at set, a retry needs no Apple code at all and " +
-    "never calls revokeApple again",
+  "#599: a markAppleRevoked failure after a successful revoke stops the whole call closed with a " +
+    "distinct code, before deleteUser is ever attempted",
   async () => {
     const { deps, calls } = fakeDeps({
       user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
-      progress: { appleRevokedAt: "2026-09-13T00:00:00.000Z" },
+      markAppleRevokedResult: false,
+    });
+
+    const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "code-1" }), deps);
+
+    assertEquals(response.status, 409);
+    const body = await response.json();
+    assertEquals(body.code, "apple_revocation_marker_failed");
+    assertEquals(
+      calls.includes("deleteUser"),
+      false,
+      "deleteUser must never run once the revocation could not be durably recorded",
+    );
+    assertEquals(calls, [
+      "getUser",
+      "getDeletionProgress:user-1",
+      "listAttachmentPaths:user-1",
+      "deleteAccountData",
+      "revokeApple:apple-sub-123",
+      "markAppleRevoked:user-1:apple-sub-123",
+    ]);
+  },
+);
+
+Deno.test(
+  "#527: once the progress marker shows apple_revoked_at set for the caller's current Apple identity, a " +
+    "retry needs no Apple code at all and never calls revokeApple again",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-123" }),
+      progress: { appleRevokedAt: "2026-09-13T00:00:00.000Z", appleIdentityId: "apple-sub-123" },
     });
 
     // No appleAuthorizationCode in the body at all - a retry after a
@@ -210,7 +246,11 @@ Deno.test(
 
     assertEquals(response.status, 200);
     assertEquals(calls.includes("revokeApple:apple-sub-123"), false, "an already-revoked grant must not be re-revoked");
-    assertEquals(calls.includes("markAppleRevoked:user-1"), false, "the marker must not be re-written when already set");
+    assertEquals(
+      calls.includes("markAppleRevoked:user-1:apple-sub-123"),
+      false,
+      "the marker must not be re-written when already set",
+    );
     assertEquals(calls, [
       "getUser",
       "getDeletionProgress:user-1",
@@ -219,6 +259,60 @@ Deno.test(
       "rehomeStrayDayEntries",
       "deleteUser",
     ]);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Issue #605/LLA-051: the progress marker is bound to the identity it was
+// stamped for, not merely to the account.
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "#605/LLA-051: a progress marker stamped for a different (since-replaced) Apple identity does not skip " +
+    "the code precondition - the account's current identity still needs its own revoke",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      // The account previously had identity "apple-sub-OLD" revoked and
+      // recorded, but has since unlinked it and linked a different Apple
+      // identity, "apple-sub-NEW".
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-NEW" }),
+      progress: { appleRevokedAt: "2026-09-13T00:00:00.000Z", appleIdentityId: "apple-sub-OLD" },
+    });
+
+    // No code supplied: if the stale marker were (wrongly) honored, this
+    // would skip straight to deleteUser instead of failing closed here.
+    const response = await handleDeleteAccount(postRequest({}), deps);
+
+    assertEquals(response.status, 400);
+    const body = await response.json();
+    assertEquals(body.code, "apple_code_required");
+    assertEquals(
+      calls,
+      ["getUser", "getDeletionProgress:user-1"],
+      "a marker for a different identity must not let the new identity's deletion skip anything",
+    );
+  },
+);
+
+Deno.test(
+  "#605/LLA-051: given a fresh code, a progress marker for a different Apple identity still revokes the " +
+    "account's current identity (not the stale one) and re-stamps the marker with it",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ providers: ["apple"], appleIdentityId: "apple-sub-NEW" }),
+      progress: { appleRevokedAt: "2026-09-13T00:00:00.000Z", appleIdentityId: "apple-sub-OLD" },
+    });
+
+    const response = await handleDeleteAccount(postRequest({ appleAuthorizationCode: "fresh-code" }), deps);
+
+    assertEquals(response.status, 200);
+    assertEquals(calls.includes("revokeApple:apple-sub-NEW"), true, "the current identity must be revoked");
+    assertEquals(calls.includes("revokeApple:apple-sub-OLD"), false, "the stale identity must never be revoked again");
+    assertEquals(
+      calls.includes("markAppleRevoked:user-1:apple-sub-NEW"),
+      true,
+      "the marker must be re-stamped with the identity that was actually just revoked",
+    );
   },
 );
 
@@ -741,3 +835,79 @@ Deno.test("buildDeps: getUser reports identitiesKnown=true with a null appleIden
   assertEquals(user?.identitiesKnown, true);
   assertEquals(user?.appleIdentityId, null);
 });
+
+// ---------------------------------------------------------------------------
+// buildDeps: markAppleRevoked's production retry-once wiring (Issue #599).
+// ---------------------------------------------------------------------------
+
+/** A minimal fake Supabase client factory whose `.from("account_deletion_progress")`
+ * exposes `.upsert(row)`, resolving each call from `upsertResults` in order
+ * (the last entry repeats for any call past the end of the array) and
+ * recording every row it was called with. */
+function fakeDeletionProgressClientFactory(
+  upsertResults: Array<{ error: unknown }>,
+): { factory: SupabaseClientFactory; upsertCalls: Record<string, unknown>[] } {
+  const upsertCalls: Record<string, unknown>[] = [];
+  const client = {
+    from(table: string) {
+      if (table !== "account_deletion_progress") {
+        throw new Error(`fakeDeletionProgressClientFactory: unexpected table ${table}`);
+      }
+      return {
+        async upsert(row: Record<string, unknown>) {
+          upsertCalls.push(row);
+          const index = Math.min(upsertCalls.length - 1, upsertResults.length - 1);
+          return { data: null, error: upsertResults[index].error };
+        },
+      };
+    },
+  };
+  return { factory: () => client, upsertCalls };
+}
+
+Deno.test(
+  "buildDeps: markAppleRevoked succeeds on the first attempt without retrying",
+  async () => {
+    const { factory, upsertCalls } = fakeDeletionProgressClientFactory([{ error: null }]);
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.markAppleRevoked("user-1", "apple-sub-1");
+
+    assertEquals(ok, true);
+    assertEquals(upsertCalls.length, 1);
+    assertEquals(upsertCalls[0].user_id, "user-1");
+    assertEquals(upsertCalls[0].apple_identity_id, "apple-sub-1");
+  },
+);
+
+Deno.test(
+  "buildDeps: markAppleRevoked retries once and succeeds if the second attempt succeeds (Issue #599)",
+  async () => {
+    const { factory, upsertCalls } = fakeDeletionProgressClientFactory([
+      { error: { message: "transient failure" } },
+      { error: null },
+    ]);
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.markAppleRevoked("user-1", "apple-sub-1");
+
+    assertEquals(ok, true, "a retry that succeeds must report success overall");
+    assertEquals(upsertCalls.length, 2, "exactly one retry - not more, not zero");
+  },
+);
+
+Deno.test(
+  "buildDeps: markAppleRevoked reports false when both attempts fail (Issue #599)",
+  async () => {
+    const { factory, upsertCalls } = fakeDeletionProgressClientFactory([
+      { error: { message: "failure one" } },
+      { error: { message: "failure two" } },
+    ]);
+    const deps = buildDeps(fullEnv, factory);
+
+    const ok = await deps.markAppleRevoked("user-1", "apple-sub-1");
+
+    assertEquals(ok, false);
+    assertEquals(upsertCalls.length, 2, "both the original attempt and its one retry must have run");
+  },
+);

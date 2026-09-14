@@ -157,10 +157,23 @@ class FakeAccountDeletionService implements AccountDeletionService {
   Object? nextError;
   Completer<void>? hold;
 
+  /// Simulates the server's own Step 3 (Issue #605/LLA-052's server-informed
+  /// flow): when true, a call with no Apple code fails closed with
+  /// [AccountDeletionFailure.appleCodeRequired] - exactly `delete-account
+  /// /index.ts`'s behavior for an Apple-linked account whose deletion-
+  /// progress marker (#527/#605) does not already cover the current Apple
+  /// identity. A call that supplies a code (or any call at all when this is
+  /// false, e.g. a "code-free retry" or a non-Apple account) proceeds
+  /// normally to [nextError]/[hold] below.
+  bool requireAppleCode = false;
+
   @override
   Future<void> deleteAccount({String? appleAuthorizationCode}) async {
     deleteCalls++;
     appleCodesPassed.add(appleAuthorizationCode);
+    if (requireAppleCode && appleAuthorizationCode == null) {
+      throw const AccountDeletionFailure.appleCodeRequired();
+    }
     final holdFuture = hold?.future;
     if (holdFuture != null) await holdFuture;
     final error = nextError;
@@ -199,6 +212,7 @@ class DeletionHarness {
     FakeAccountDeletionService? deletionService,
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
+    this.showAddApple,
   })  : auth = FakeAuthService(),
         deletion = deletionService ??
             (provideDeletionService ? FakeAccountDeletionService() : null),
@@ -220,6 +234,13 @@ class DeletionHarness {
   final FakeAccountDeletionService? deletion;
   final ExportAccountCollaborator? exportAccount;
   final AppleAuthorizationCodeRequest? appleAuthorizationCodeRequest;
+
+  /// Forces [AccountSection]'s platform gate for the native Apple ceremony
+  /// (Issue #605/LLA-052): `true` simulates an iOS-capable device, `false`
+  /// simulates a platform with no native Sign in with Apple ceremony at all
+  /// (e.g. Android); null (the default) uses the real platform check, which
+  /// this test host does not satisfy.
+  final bool? showAddApple;
   final bool provideGate;
   int resetCalls = 0;
 
@@ -277,6 +298,7 @@ class DeletionHarness {
                       showExportAndDelete: true,
                       exportAccount: exportAccount,
                       appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
+                      showAddApple: showAddApple,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -572,12 +594,17 @@ void main() {
     });
   });
 
-  group('Apple identity ceremony (KTD3)', () {
-    testWidgets('with apple in providers, the code is fetched and forwarded '
-        'to the service', (tester) async {
+  group('Apple identity ceremony (KTD3) - server-informed flow '
+      '(Issue #605/LLA-052)', () {
+    testWidgets('the normal iOS first attempt: the server asks for a code, '
+        'then the ceremony runs, then a second call carries the code',
+        (tester) async {
       var appleCalls = 0;
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           appleCalls++;
           return _appleCredential('fresh-code-123');
@@ -592,13 +619,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(appleCalls, 1);
-      expect(h.deletion!.deleteCalls, 1);
-      expect(h.deletion!.appleCodesPassed.single, 'fresh-code-123');
+      expect(service.deleteCalls, 2,
+          reason: 'the first, code-free call must run before the ceremony '
+              'is ever invoked');
+      expect(service.appleCodesPassed, [null, 'fresh-code-123']);
       expect(h.resetCalls, 1);
     });
 
-    testWidgets('without apple in providers, the service is called with a '
-        'null code and no Apple ceremony runs', (tester) async {
+    testWidgets('code-free retry on iOS: the server accepts the first, '
+        'code-free call, and the ceremony is never invoked even though '
+        'this device has one', (tester) async {
+      var appleCalls = 0;
+      final h = DeletionHarness(
+        providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        appleAuthorizationCodeRequest: () async {
+          appleCalls++;
+          return _appleCredential('should-not-be-used');
+        },
+      );
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(appleCalls, 0,
+          reason:
+              'the server never asked for a code, so the ceremony must not run');
+      expect(h.deletion!.deleteCalls, 1);
+      expect(h.deletion!.appleCodesPassed.single, isNull);
+      expect(h.resetCalls, 1);
+    });
+
+    testWidgets('a non-Apple account needs no code either: the first, '
+        'code-free call succeeds and no ceremony runs', (tester) async {
       var appleCalls = 0;
       final h = DeletionHarness(
         providers: ['email'],
@@ -620,10 +677,14 @@ void main() {
       expect(h.deletion!.appleCodesPassed.single, isNull);
     });
 
-    testWidgets('a cancelled Apple dialog aborts deletion silently: no '
-        'service call, no reset', (tester) async {
+    testWidgets('a cancelled Apple dialog aborts deletion silently after '
+        'the server asks for a code: exactly one (code-free) service call, '
+        'no reset, no error copy', (tester) async {
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           throw const SignInWithAppleAuthorizationException(
             code: AuthorizationErrorCode.canceled,
@@ -639,15 +700,20 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      expect(h.deletion!.deleteCalls, 0);
+      expect(service.deleteCalls, 1,
+          reason: 'only the first, code-free call ran - the cancelled '
+              'ceremony aborted before a second call could happen');
       expect(h.resetCalls, 0);
       expect(key('account-delete-error'), findsNothing);
     });
 
     testWidgets('a non-cancellation Apple error surfaces unknown copy, not '
         'silence', (tester) async {
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           throw const SignInWithAppleAuthorizationException(
             code: AuthorizationErrorCode.failed,
@@ -663,7 +729,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      expect(h.deletion!.deleteCalls, 0);
+      expect(service.deleteCalls, 1);
       expect(h.resetCalls, 0);
       expect(key('account-delete-error'), findsOneWidget);
       expect(
@@ -677,6 +743,78 @@ void main() {
         findsOneWidget,
       );
     });
+
+    group('no native ceremony on a platform that lacks it (mixed-provider '
+        'Android)', () {
+      testWidgets('a code-free retry succeeds: the native ceremony never '
+          'runs, the service is called with a null code, and deletion '
+          'still succeeds', (tester) async {
+        var appleCalls = 0;
+        final h = DeletionHarness(
+          providers: ['email', 'apple'],
+          showAddApple: false, // simulates Android: no native ceremony
+          appleAuthorizationCodeRequest: () async {
+            appleCalls++;
+            return _appleCredential('should-not-be-used');
+          },
+        );
+        addTearDown(h.dispose);
+        await h.pump(tester);
+
+        await tester.tap(key('account-delete'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-delete-confirm'));
+        await tester.pumpAndSettle();
+
+        expect(appleCalls, 0,
+            reason: 'the unavailable native ceremony must never be invoked');
+        expect(h.deletion!.deleteCalls, 1);
+        expect(h.deletion!.appleCodesPassed.single, isNull);
+        expect(h.resetCalls, 1);
+      });
+
+      testWidgets('when the server still needs a fresh code: surfaces the '
+          'distinct, honest appleNativeCeremonyUnavailable copy rather than '
+          'either the native ceremony throwing '
+          'SignInWithAppleNotSupportedException or the misleading plain '
+          'apple_code_required "please try again" copy', (tester) async {
+        var appleCalls = 0;
+        final service = FakeAccountDeletionService()..requireAppleCode = true;
+        final h = DeletionHarness(
+          providers: ['email', 'apple'],
+          showAddApple: false, // simulates Android: no native ceremony
+          deletionService: service,
+          appleAuthorizationCodeRequest: () async {
+            appleCalls++;
+            return _appleCredential('should-not-be-used');
+          },
+        );
+        addTearDown(h.dispose);
+        await h.pump(tester);
+
+        await tester.tap(key('account-delete'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-delete-confirm'));
+        await tester.pumpAndSettle();
+
+        expect(appleCalls, 0,
+            reason: 'the unavailable native ceremony must never be invoked');
+        expect(service.deleteCalls, 1,
+            reason: 'only the first, code-free call ran - no second call '
+                'was ever attempted on a platform with no ceremony');
+        expect(service.appleCodesPassed.single, isNull);
+        expect(h.resetCalls, 0);
+        expect(
+          find.descendant(
+            of: key('account-delete-error'),
+            matching: find.text(accountDeletionFailureCopy(
+                const AccountDeletionFailure.appleNativeCeremonyUnavailable())),
+            matchRoot: true,
+          ),
+          findsOneWidget,
+        );
+      });
+    });
   });
 
   group('each AccountDeletionFailure variant renders its own copy (R12)', () {
@@ -684,15 +822,30 @@ void main() {
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleCodeRequired(),
+      AccountDeletionFailure.appleNativeCeremonyUnavailable(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.appleRevocationMarkerFailed(),
       AccountDeletionFailure.attachmentCleanupFailed(),
+      AccountDeletionFailure.attachmentCleanupUnbounded(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
     ]) {
       testWidgets('$failure', (tester) async {
         final service = FakeAccountDeletionService()..nextError = failure;
-        final h = DeletionHarness(deletionService: service);
+        // showAddApple: true (Issue #605/LLA-052) so a persistent
+        // appleCodeRequired (set unconditionally as nextError above, so it
+        // also fires on the ceremony's own follow-up call) still surfaces
+        // its own copy via _performDeletion's generic catch, rather than
+        // this loop accidentally exercising the
+        // appleNativeCeremonyUnavailable path on a test host with no
+        // native ceremony of its own.
+        final h = DeletionHarness(
+          deletionService: service,
+          showAddApple: true,
+          appleAuthorizationCodeRequest: () async =>
+              _appleCredential('generic-loop-code'),
+        );
         addTearDown(h.dispose);
         await h.pump(tester);
 
@@ -737,6 +890,30 @@ void main() {
       expect(copy.toLowerCase(), contains('try again'));
     });
 
+    testWidgets('appleNativeCeremonyUnavailable explains nothing was '
+        'deleted and points to another device or support, not a bare retry '
+        '(Issue #605/LLA-052)', (tester) async {
+      const failure = AccountDeletionFailure.appleNativeCeremonyUnavailable();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // Unlike appleCodeRequired, a bare retry can never succeed here - the
+      // ceremony will never become available on this platform - so the
+      // copy must not read as a plain "please try again" and must instead
+      // point somewhere that can actually finish the job.
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('device'));
+      expect(copy.toLowerCase(), contains('support'));
+    });
+
     testWidgets('attachmentCleanupFailed explains nothing was deleted and '
         'the operator should retry (Issue #243 round 2 fix)', (tester) async {
       const failure = AccountDeletionFailure.attachmentCleanupFailed();
@@ -759,6 +936,52 @@ void main() {
       expect(copy, isNot(contains('your account data was deleted')));
       expect(copy.toLowerCase(), contains('nothing was deleted'));
       expect(copy.toLowerCase(), contains('try again'));
+    });
+
+    testWidgets('appleRevocationMarkerFailed explains the data WAS deleted and '
+        'Apple DID confirm the revocation, unlike appleRevokeFailed (Issue '
+        '#599)', (tester) async {
+      const failure = AccountDeletionFailure.appleRevocationMarkerFailed();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      expect(copy, isNot(contains('could not confirm')));
+      expect(copy.toLowerCase(), contains('deleted'));
+      expect(copy.toLowerCase(), contains('confirmed the sign-in'));
+      expect(copy.toLowerCase(), contains('try again'));
+      expect(copy.toLowerCase(), contains('support'));
+    });
+
+    testWidgets('attachmentCleanupUnbounded explains nothing was deleted and '
+        'directs to support rather than inviting a bare retry (Issue #605/'
+        'LLA-053)', (tester) async {
+      const failure = AccountDeletionFailure.attachmentCleanupUnbounded();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // Unlike attachmentCleanupFailed, this is a bound on the account's own
+      // data - a bare retry can never clear it, so the copy must say so and
+      // point to support instead of "please try again".
+      expect(copy, isNot(contains('your account data was deleted')));
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('support'));
+      expect(copy.toLowerCase(), isNot(contains('please try again')));
     });
 
     testWidgets('appleRevokeFailed explains the data WAS deleted, only Apple '

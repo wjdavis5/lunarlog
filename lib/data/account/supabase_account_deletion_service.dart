@@ -101,8 +101,22 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
     if (code == 'apple_revoke_failed') {
       return const AccountDeletionFailure.appleRevokeFailed();
     }
+    if (code == 'apple_revocation_marker_failed') {
+      // Issue #599: distinct from apple_revoke_failed above - Apple DID
+      // confirm the revocation here; only the server's own durable record
+      // of it failed to write.
+      return const AccountDeletionFailure.appleRevocationMarkerFailed();
+    }
     if (code == 'attachment_cleanup_failed') {
       return const AccountDeletionFailure.attachmentCleanupFailed();
+    }
+    if (code == 'attachment_cleanup_unbounded') {
+      // Issue #605/LLA-053: a distinct, terminal code (Issue #559's server
+      // side) - unlike attachment_cleanup_failed above, retrying the exact
+      // same call can never succeed here, so this must not fall through to
+      // _mapResponseCode's unknown() default, whose copy says "please try
+      // again".
+      return const AccountDeletionFailure.attachmentCleanupUnbounded();
     }
     if (code == 'unauthorized') {
       return const AccountDeletionFailure.unauthorized();

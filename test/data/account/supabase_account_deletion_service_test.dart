@@ -134,6 +134,42 @@ void main() {
       );
     });
 
+    test('a non-2xx response body carrying code apple_revocation_marker_failed '
+        'maps to appleRevocationMarkerFailed, not appleRevokeFailed (Issue #599)',
+        () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 409,
+          details: {'ok': false, 'code': 'apple_revocation_marker_failed'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(appleAuthorizationCode: 'a-fresh-code'),
+        throwsA(const AccountDeletionFailure.appleRevocationMarkerFailed()),
+      );
+    });
+
+    test('a 2xx response body reporting ok:false with code '
+        'apple_revocation_marker_failed also maps to appleRevocationMarkerFailed',
+        () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'apple_revocation_marker_failed'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(appleAuthorizationCode: 'a-fresh-code'),
+        throwsA(const AccountDeletionFailure.appleRevocationMarkerFailed()),
+      );
+    });
+
     test('a non-2xx response body carrying code attachment_cleanup_failed '
         'maps to attachmentCleanupFailed (Issue #243 round 2 fix)', () async {
       final client = FakeSupabaseClient(
@@ -166,6 +202,42 @@ void main() {
       await expectLater(
         service.deleteAccount(),
         throwsA(const AccountDeletionFailure.attachmentCleanupFailed()),
+      );
+    });
+
+    test('a non-2xx response body carrying code attachment_cleanup_unbounded '
+        'maps to attachmentCleanupUnbounded, not unknown (Issue #605/'
+        'LLA-053)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 422,
+          details: {'ok': false, 'code': 'attachment_cleanup_unbounded'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.attachmentCleanupUnbounded()),
+      );
+    });
+
+    test('a 2xx response body reporting ok:false with code '
+        'attachment_cleanup_unbounded also maps to '
+        'attachmentCleanupUnbounded (Issue #605/LLA-053)', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'attachment_cleanup_unbounded'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.attachmentCleanupUnbounded()),
       );
     });
 
