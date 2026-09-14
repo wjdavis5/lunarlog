@@ -169,17 +169,24 @@ enum HealthKitChannelHandler {
 
   /// HKCategoryValueVaginalBleeding's raw values, which are identical
   /// to the deprecated-in-iOS-18 HKCategoryValueMenstrualFlow's
-  /// (`unspecified` = 0, `light` = 1, `medium` = 2, `heavy` = 3 — issue
-  /// #193's A3-14). Declared as bare raw values, not the SDK symbols,
+  /// (`unspecified` = 1, `light` = 2, `medium` = 3, `heavy` = 4 — issue
+  /// #619, LLA-021: independently verified against the Apple SDK
+  /// constants — see the PR description — after this file previously
+  /// carried an off-by-one table (`unspecified` = 0 etc., which is
+  /// actually `HKCategoryValue.notApplicable`'s value, shared by types
+  /// with no intensity like intermenstrualBleeding below). The pre-fix
+  /// table silently understated every written sample by one grade: a
+  /// `heavy` write landed as `medium`, `medium` as `light`, and `light`
+  /// as `unspecified`. Declared as bare raw values, not the SDK symbols,
   /// so this compiles against both older and newer SDKs with no
   /// availability branch and no deprecation warning; swapping to
   /// `HKCategoryValueVaginalBleeding.light.rawValue` (iOS 18+ symbol)
   /// yields the same integers.
   enum MenstrualFlowRawValue: Int {
-    case unspecified = 0
-    case light = 1
-    case medium = 2
-    case heavy = 3
+    case unspecified = 1
+    case light = 2
+    case medium = 3
+    case heavy = 4
 
     init?(wire: String) {
       switch wire {
@@ -201,6 +208,11 @@ enum HealthKitChannelHandler {
     let isMinor: Bool
     let birthYear: Int?
     let transferredAtMs: NSNumber?
+    // Issue #619, LLA-031: the server-stamped transfer target, mirroring
+    // HealthSyncBinding._minorTransferExceptionHolds's `target ==
+    // signedInUserId` leg — without this, guardDecision could only see
+    // THAT a transfer happened, never WHOM it named.
+    let transferredToUserId: String?
     let minorBindingAllowed: Bool
 
     init?(_ args: [String: Any]) {
@@ -215,6 +227,7 @@ enum HealthKitChannelHandler {
       self.isMinor = isMinorNumber.boolValue
       self.birthYear = (args["birthYear"] as? NSNumber)?.intValue
       self.transferredAtMs = args["transferredAtMs"] as? NSNumber
+      self.transferredToUserId = args["transferredToUserId"] as? String
       self.minorBindingAllowed = minorAllowedNumber.boolValue
     }
   }
@@ -244,7 +257,15 @@ enum HealthKitChannelHandler {
       && g.signedInUserId == g.ownerUserId
 
     if isMinorNow(isMinor: g.isMinor, birthYear: g.birthYear) {
-      let transferredToOwnAccount = g.transferredAtMs != nil && isOwner
+      // Issue #619, LLA-031: every leg of
+      // HealthSyncBinding._minorTransferExceptionHolds — a transfer
+      // happened, the caller is the resolved owner, AND it named exactly
+      // the signed-in account — not merely "some transfer happened and
+      // the caller happens to pass isOwner".
+      let transferredToOwnAccount =
+        g.transferredAtMs != nil && isOwner
+        && g.transferredToUserId != nil
+        && g.transferredToUserId == g.signedInUserId
       if !g.minorBindingAllowed || !transferredToOwnAccount {
         return "minorRequiresOwnershipTransfer"
       }
@@ -254,14 +275,19 @@ enum HealthKitChannelHandler {
     return "allowed"
   }
 
-  /// Native mirror of HealthSyncBinding._isMinorNow: flagged directly,
-  /// or under 18 by birth year (a coarse same-calendar-year comparison —
-  /// birthYear carries no month/day).
+  /// Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or
+  /// AT MOST 18 whole years since birthYear (issue #619, LLA-031: `<=`,
+  /// not `<` — matching the Dart side's Issue #296 tightening, where a
+  /// year-only birthYear can't see the birthday so the whole calendar
+  /// year someone turns 18 still fails closed. The pre-fix `< 18` here
+  /// let a birth year exactly 18 years back read as an adult while Dart
+  /// still denied it — a defense-in-depth gap, not a live bypass, since
+  /// the Dart guard already covered it.
   static func isMinorNow(isMinor: Bool, birthYear: Int?) -> Bool {
     if isMinor { return true }
     guard let birthYear else { return false }
     let nowYear = Calendar(identifier: .gregorian).component(.year, from: Date())
-    return nowYear - birthYear < 18
+    return nowYear - birthYear <= 18
   }
 
   /// The stored native binding copy — the value every write is checked
@@ -354,9 +380,12 @@ enum HealthKitChannelHandler {
         let flowWire = args?["flow"] as? String,
         let flow = MenstrualFlowRawValue(wire: flowWire),
         let cycleStartNumber = args?["cycleStart"] as? NSNumber,
-        let recordId = args?["recordId"] as? String
+        let recordId = args?["recordId"] as? String,
+        let recordVersionMs = args?["recordVersionMs"] as? NSNumber
       else {
-        badArgs(result, "writeMenstrualFlow requires startMs/endMs/flow/cycleStart/recordId")
+        badArgs(
+          result,
+          "writeMenstrualFlow requires startMs/endMs/flow/cycleStart/recordId/recordVersionMs")
         return
       }
       // #193: HKMetadataKeyMenstrualCycleStart is required on every
@@ -365,7 +394,17 @@ enum HealthKitChannelHandler {
       // #186: HKMetadataKeyExternalUUID carries lunarlog's own record id
       // (the day_entry ULID) so a future re-import can recognise this
       // sample as our own write (the backup loop-breaker) and a tombstone
-      // can locate and delete exactly it.
+      // can locate and delete exactly it (deleteRecords below queries by
+      // this key).
+      // Issue #619, LLA-022: HKMetadataKeySyncIdentifier +
+      // HKMetadataKeySyncVersion are HealthKit's own documented upsert
+      // mechanism (Apple's WWDC20 "Synchronize health data with
+      // HealthKit") — saving with the SAME sync identifier and a HIGHER
+      // sync version REPLACES the existing sample in place instead of
+      // creating a duplicate. `recordVersionMs` (the source row's
+      // `updatedAt`) was previously accepted on the wire but never read
+      // here, so a re-export of an edited day always duplicated rather
+      // than updated.
       let sample = HKCategorySample(
         type: menstrualFlowType,
         value: flow.rawValue,
@@ -374,6 +413,8 @@ enum HealthKitChannelHandler {
         metadata: [
           HKMetadataKeyMenstrualCycleStart: cycleStartNumber,
           HKMetadataKeyExternalUUID: recordId,
+          HKMetadataKeySyncIdentifier: recordId,
+          HKMetadataKeySyncVersion: recordVersionMs,
         ]
       )
       save([sample], result: result)
@@ -395,20 +436,28 @@ enum HealthKitChannelHandler {
       guard
         let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
         let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
-        let recordId = args?["recordId"] as? String
+        let recordId = args?["recordId"] as? String,
+        let recordVersionMs = args?["recordVersionMs"] as? NSNumber
       else {
-        badArgs(result, "writeIntermenstrualBleeding requires startMs/endMs/recordId")
+        badArgs(
+          result, "writeIntermenstrualBleeding requires startMs/endMs/recordId/recordVersionMs")
         return
       }
       // No intensity on this type: HKCategoryValueNotApplicable — the
       // sample's existence is the datum (#193/A3-4).
       // #186: HKMetadataKeyExternalUUID, as for writeMenstrualFlow.
+      // Issue #619, LLA-022: HKMetadataKeySyncIdentifier/SyncVersion, as
+      // for writeMenstrualFlow — see that case's comment.
       let sample = HKCategorySample(
         type: intermenstrualBleedingType,
         value: HKCategoryValue.notApplicable.rawValue,
         start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
         end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
-        metadata: [HKMetadataKeyExternalUUID: recordId]
+        metadata: [
+          HKMetadataKeyExternalUUID: recordId,
+          HKMetadataKeySyncIdentifier: recordId,
+          HKMetadataKeySyncVersion: recordVersionMs,
+        ]
       )
       save([sample], result: result)
 

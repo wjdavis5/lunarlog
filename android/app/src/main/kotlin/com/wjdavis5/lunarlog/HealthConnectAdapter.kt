@@ -104,6 +104,11 @@ class HealthConnectAdapter(context: Context) {
         val isMinor: Boolean,
         val birthYear: Int?,
         val transferredAtMs: Long?,
+        // Issue #619, LLA-031: the server-stamped transfer target, mirroring
+        // HealthSyncBinding._minorTransferExceptionHolds's `target ==
+        // signedInUserId` leg — without this, guardDecision could only see
+        // THAT a transfer happened, never WHOM it named.
+        val transferredToUserId: String?,
         val minorBindingAllowed: Boolean,
     ) {
         companion object {
@@ -119,6 +124,7 @@ class HealthConnectAdapter(context: Context) {
                     isMinor = isMinor,
                     birthYear = number(args, "birthYear")?.toInt(),
                     transferredAtMs = number(args, "transferredAtMs"),
+                    transferredToUserId = args["transferredToUserId"] as? String,
                     minorBindingAllowed = minorBindingAllowed,
                 )
             }
@@ -385,6 +391,19 @@ class HealthConnectAdapter(context: Context) {
                             IntermenstrualBleedingRecord::class,
                             recordIdsList = emptyList(),
                             clientRecordIdsList = ids)
+                        // Issue #619, LLA-030: MenstruationPeriodRecord (#202's
+                        // interval record) is a third type this adapter writes
+                        // under its own clientRecordId
+                        // ("period-<profile>-<start>", a distinct id scheme from
+                        // day-entry/observation ids — see
+                        // health_flow_write_service.dart's _periodWritesFor) and
+                        // was missing here entirely: a caller deleting a period
+                        // record's own id got a false "allowed" with nothing
+                        // actually removed.
+                        client.deleteRecords(
+                            MenstruationPeriodRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
                         result.success("allowed")
                     } catch (e: SecurityException) {
                         result.success("permissionDenied")
@@ -435,7 +454,14 @@ class HealthConnectAdapter(context: Context) {
             g.signedInUserId == g.ownerUserId
 
         if (isMinorNow(g.isMinor, g.birthYear)) {
-            val transferredToOwnAccount = g.transferredAtMs != null && isOwner
+            // Issue #619, LLA-031: every leg of
+            // HealthSyncBinding._minorTransferExceptionHolds — a transfer
+            // happened, the caller is the resolved owner, AND it named
+            // exactly the signed-in account — not merely "some transfer
+            // happened and the caller happens to pass isOwner".
+            val transferredToOwnAccount = g.transferredAtMs != null && isOwner &&
+                g.transferredToUserId != null &&
+                g.transferredToUserId == g.signedInUserId
             if (!g.minorBindingAllowed || !transferredToOwnAccount) {
                 return "minorRequiresOwnershipTransfer"
             }
@@ -444,13 +470,18 @@ class HealthConnectAdapter(context: Context) {
         return if (!isOwner) "notOwner" else "allowed"
     }
 
-    // Native mirror of HealthSyncBinding._isMinorNow: flagged directly,
-    // or under 18 by birth year (coarse same-calendar-year comparison —
-    // birthYear carries no month/day).
+    // Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or
+    // AT MOST 18 whole years since birthYear (issue #619, LLA-031: `<=`,
+    // not `<` — matching the Dart side's Issue #296 tightening, where a
+    // year-only birthYear can't see the birthday so the whole calendar
+    // year someone turns 18 still fails closed. The pre-fix `< 18` here
+    // let a birth year exactly 18 years back read as an adult while Dart
+    // still denied it — a defense-in-depth gap, not a live bypass, since
+    // the Dart guard already covered it.
     private fun isMinorNow(isMinor: Boolean, birthYear: Int?): Boolean {
         if (isMinor) return true
         val year = birthYear ?: return false
-        return Calendar.getInstance().get(Calendar.YEAR) - year < 18
+        return Calendar.getInstance().get(Calendar.YEAR) - year <= 18
     }
 
     private fun isAvailable(): Boolean =

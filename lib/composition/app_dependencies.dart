@@ -47,6 +47,7 @@ import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
+import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -86,6 +87,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
+import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -114,6 +116,7 @@ class AppDependencies {
     required this.onboardingCycleAnswers,
     required this.deviceDiagnostics,
     required this.healthSyncAnchors,
+    required this.healthSyncTombstoneSource,
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
@@ -150,6 +153,12 @@ class AppDependencies {
   /// Device-local health-store sync anchors (Issue #186) — never synced to
   /// the server; the drift `health_sync_state` table's domain contract.
   final HealthSyncStateRepository healthSyncAnchors;
+
+  /// Full-fidelity (tombstones-included) day-entry/observation reads for
+  /// [HealthSyncTombstoneCoordinator] (Issue #619, LLA-018/LLA-020) — never
+  /// [dayEntries]/[observations], whose UI-facing streams filter tombstones
+  /// out.
+  final HealthSyncTombstoneSource healthSyncTombstoneSource;
 
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
@@ -265,6 +274,7 @@ AppDependencies buildAppDependencies({
     onboardingCycleAnswers: DriftOnboardingCycleAnswersRecorder(storage),
     deviceDiagnostics: PlatformDeviceDiagnosticsCollector(),
     healthSyncAnchors: DriftHealthSyncStateRepository(storage),
+    healthSyncTombstoneSource: DriftHealthSyncTombstoneSource(storage),
     accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
@@ -514,7 +524,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
 HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   required SettingsStore settings,
   required ProfilesRepository profiles,
-  required DayEntriesRepository dayEntries,
+  required HealthSyncTombstoneSource tombstoneSource,
   required Future<List<ProfileGuardian>> Function(String profileId)
   guardiansForProfile,
   required String? Function() signedInUserId,
@@ -536,7 +546,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   );
   return HealthSyncTombstoneCoordinator(
     binding: binding,
-    dayEntries: dayEntries,
+    source: tombstoneSource,
     deletionService: deletionService,
   );
 }

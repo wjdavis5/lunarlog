@@ -215,6 +215,25 @@ mixin LunarLogStorageQueries {
     return query.get();
   }
 
+  /// Stream variant of [getObservationsForProfile] (Issue #619, LLA-020):
+  /// the health tombstone coordinator needs `includeTombstones: true` to
+  /// see a spotting observation's own deletion — cascade or direct —
+  /// which [watchObservationsForDayEntry]'s per-entry scope and the
+  /// default tombstone filter both hide from UI reads.
+  Stream<List<Observation>> watchObservationsForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    final query = db.select(db.observations)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        return condition;
+      })
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.watch();
+  }
+
   /// The profile's mode row, or null when none was ever written (which
   /// means `tracking` — the lazy-default contract; callers fall back to
   /// [LifecycleMode.tracking] rather than storing a default row).
