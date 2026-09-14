@@ -33,6 +33,22 @@
   but all of them can briefly contain a copy of its bytes (the staging
   files) or reveal migration state (the sentinel), so they get the same
   treatment as the database itself.
+
+  Round 4 (issue #608 / LLA-026): the pre-#244 legacy database. Before that
+  relocation runs (or if it falls back — see buildDbFactory in
+  lib/startup/startup_native.dart), the database can still be open at
+  getApplicationDocumentsDirectory(), which on Android is
+  Context.getDir("flutter", MODE_PRIVATE) — a directory the framework names
+  `app_flutter` and creates as a *sibling* of getFilesDir(), not inside it.
+  That puts it in the `root` domain (the app's private-data directory as a
+  whole), not the `file` domain the excludes above use — a `file`-domain
+  rule for `app_flutter/...` would silently match nothing, the same class of
+  mistake round 2's correction above already fixed once for the section
+  names. `path="app_flutter/lunarlog.db"` etc. is listed explicitly per
+  sidecar, matching the existing style, rather than excluding the whole
+  `app_flutter` directory — nothing else is ever written there today, but an
+  explicit list doesn't silently swallow some future unrelated file placed
+  in that directory.
 -->
 <data-extraction-rules>
     <cloud-backup>
@@ -45,6 +61,10 @@
         <exclude domain="file" path="lunarlog.db.migrating-shm"/>
         <exclude domain="file" path="lunarlog.db.migrating-journal"/>
         <exclude domain="file" path=".relocation-complete"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="lunarlog.db"/>
@@ -56,5 +76,9 @@
         <exclude domain="file" path="lunarlog.db.migrating-shm"/>
         <exclude domain="file" path="lunarlog.db.migrating-journal"/>
         <exclude domain="file" path=".relocation-complete"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
+        <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
     </device-transfer>
 </data-extraction-rules>

@@ -15,6 +15,14 @@
   lib/startup/database_relocation.dart) can leave next to lunarlog.db
   during a relocation, and its .relocation-complete sentinel — same
   reasoning as data_extraction_rules.xml.
+
+  Round 4 (issue #608 / LLA-026): the legacy pre-#244 database at
+  app_flutter/ (getApplicationDocumentsDirectory() on Android —
+  Context.getDir("flutter", MODE_PRIVATE), a sibling of getFilesDir(), hence
+  the root domain rather than file) — kept consistent with
+  data_extraction_rules.xml's own round-4 addition; see that file's comment
+  for the full explanation. Inert today for the same allowBackup="false"
+  reason as the rest of this file, same belt-and-suspenders rationale.
 -->
 <full-backup-content>
     <exclude domain="file" path="lunarlog.db"/>
@@ -26,4 +34,8 @@
     <exclude domain="file" path="lunarlog.db.migrating-shm"/>
     <exclude domain="file" path="lunarlog.db.migrating-journal"/>
     <exclude domain="file" path=".relocation-complete"/>
+    <exclude domain="root" path="app_flutter/lunarlog.db"/>
+    <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
+    <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
+    <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
 </full-backup-content>
