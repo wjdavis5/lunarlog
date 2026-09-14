@@ -121,7 +121,9 @@ jobs:
 
   ci-gate:
     # Issue #498: Gate release on successful completion of CI verification runs
-    # (pgTAP database tests, Deno edge function tests, and quality gate).
+    # (pgTAP database tests, Deno edge function tests, and the sharded
+    # verify/test/quality-gate jobs — see check-ci-gate.sh's REQUIRED_CHECKS
+    # default for the exact post-#644 job names).
     name: Verify CI check runs on commit
     runs-on: ubuntu-latest
     timeout-minutes: 35

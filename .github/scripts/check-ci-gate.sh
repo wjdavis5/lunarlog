@@ -4,7 +4,10 @@
 # Shared by ios-release.yml and play-store-release.yml (Issue #498).
 #
 # Gates release workflows on the successful completion of required CI check runs
-# (Database tests (pgTAP), Edge Functions (deno test), and Analyze, test, build web).
+# (Database tests (pgTAP), Edge Functions (deno test), and the post-#644 sharded
+# successors of the old "Analyze, test, build web" monolith: Verify (codegen,
+# analyze, web build), Test (shard 0|1|2), and Quality gate (coverage floor +
+# CRAP)).
 # Fails closed unless all required checks on the target commit have completed
 # with a 'success' conclusion.
 #
@@ -13,8 +16,9 @@
 #   GITHUB_REPOSITORY      GitHub repository (owner/repo). Defaults to 'wjdavis5/lunarlog'.
 #   GH_TOKEN               GitHub API token (used by `gh api` or curl).
 #   REQUIRED_CHECKS        Comma-separated list of required check run names.
-#                          Defaults to:
-#                            "Database tests (pgTAP),Edge Functions (deno test),Analyze, test, build web"
+#                          Defaults to (current ci.yml job names, post-#644
+#                          sharded layout):
+#                            "Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)"
 #   MAX_WAIT_SECONDS       Maximum seconds to wait for in-progress checks. Default: 1800 (30m).
 #   POLL_INTERVAL_SECONDS  Seconds between polling iterations. Default: 15.
 #   CHECK_RUNS_JSON_FILE   Optional path to a JSON file containing the check-runs API payload.
@@ -39,8 +43,9 @@ if [ -z "$COMMIT_SHA" ]; then
 fi
 
 REPO="${GITHUB_REPOSITORY:-wjdavis5/lunarlog}"
-# Delimited by '|' to safely support check names containing commas (such as "Analyze, test, build web")
-REQUIRED_CHECKS="${REQUIRED_CHECKS:-Database tests (pgTAP)|Edge Functions (deno test)|Analyze, test, build web}"
+# Delimited by '|' to safely support check names containing commas (such as
+# "Verify (codegen, analyze, web build)")
+REQUIRED_CHECKS="${REQUIRED_CHECKS:-Database tests (pgTAP)|Edge Functions (deno test)|Verify (codegen, analyze, web build)|Test (shard 0)|Test (shard 1)|Test (shard 2)|Quality gate (coverage floor + CRAP)}"
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-1800}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-15}"
 
