@@ -259,34 +259,44 @@ select throws_ok(
 -- by co-guardian b - the deliberate "co-guardian's own entries die with the
 -- profile" case the issue calls out.
 select tests.authenticate_as('a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values
   (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z'),
   (tests.ulid(12), tests.ulid(1), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('b');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(11), tests.ulid(1), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- a's OTHER profile, b's OWN profile, and e's own profile: all must survive
 -- a's purge of profile 1 untouched.
 select tests.authenticate_as('a');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(4), 'Second', false, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(41), tests.ulid(4), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('b');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(3), 'B own', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(31), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('e');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(2), 'Bailey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(21), tests.ulid(2), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (user_id, key, value)
 values (tests.get_supabase_uid('e'), 'e-key', 'e-value');
 
@@ -571,12 +581,14 @@ select throws_ok(
 select tests.authenticate_as('g');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(5), 'Sam', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, source)
 values
   (tests.ulid(51), tests.ulid(5), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z', 'healthkit'),
   (tests.ulid(52), tests.ulid(5), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z', 'healthkit'),
   (tests.ulid(53), tests.ulid(5), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z', 'manual'),
   (tests.ulid(54), tests.ulid(5), '2026-09-04', 'UTC', 'spotting', '2026-09-04T00:00:00Z', 'clue_import');
+select set_config('role', 'authenticated', true);
 insert into public.import_jobs (profile_id, source, total_rows, created_by)
 values
   (tests.ulid(5), 'healthkit', 2, tests.get_supabase_uid('g')),

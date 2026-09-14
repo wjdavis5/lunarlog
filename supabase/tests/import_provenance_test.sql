@@ -13,6 +13,10 @@ select plan(39);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
+-- Issue #201: this file's day_entries fixture writes run as service_role
+-- (see below), so `r` (used afterward to capture sync_push results) needs
+-- the same grant for that role too.
+grant all on table r to service_role;
 
 create function pg_temp.resp(n text) returns jsonb language sql as
   $$ select v from r where name = n $$;
@@ -54,6 +58,14 @@ select is(
 -- by a raw insert that omits source entirely.
 select tests.create_supabase_user('imp_mom');
 select tests.authenticate_as('imp_mom');
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely; this whole file's raw day_entries writes are exercising table
+-- CHECK constraints, the partial unique index, and tombstone/revive shapes
+-- directly (never the grant itself, which sync_push_sole_write_path_test.sql
+-- owns), so it runs as service_role from here on. auth.uid() is untouched
+-- (it reads request.jwt.claims, a separate session GUC from role), and
+-- nothing below depends on being `authenticated` specifically.
+select set_config('role', 'service_role', true);
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(900), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, updated_at)

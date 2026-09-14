@@ -32,13 +32,21 @@ select tests.create_supabase_user('eve');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(1), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
-insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
-values (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'none', '2026-09-01T00:00:00Z');
 
 -- ---------------------------------------------------------------------------
 -- 1. enforce_day_entry_attribution (the original guard - included for
---    symmetry with the other three, which mirror it exactly).
+--    symmetry with the other three, which mirror it exactly). Issue #201
+--    revoked authenticated's insert/update grant on day_entries entirely,
+--    so this whole section runs as service_role instead (auth.uid() is
+--    untouched -- it reads request.jwt.claims, a separate session GUC
+--    from role) to actually reach enforce_day_entry_attribution's own
+--    checks/messages, exactly as this file's header describes: the point
+--    is exercising the trigger via a raw write, not the grant itself
+--    (that is sync_push_sole_write_path_test.sql's job).
 -- ---------------------------------------------------------------------------
+select set_config('role', 'service_role', true);
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'none', '2026-09-01T00:00:00Z');
 select throws_ok(
   format($$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id)
            values (%L, %L, '2026-09-02', 'UTC', 'none', now(), %L)$$,
@@ -69,6 +77,8 @@ select lives_ok(
     tests.get_supabase_uid('mom'), tests.ulid(11)),
   'day_entries UPDATE: last_modified_by_user_id = caller is allowed'
 );
+
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- 2. enforce_observation_attribution.

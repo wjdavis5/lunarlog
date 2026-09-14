@@ -473,6 +473,226 @@ void main() {
     });
   });
 
+  group('primePullCycle / pullPage RPC caching (issue #598)', () {
+    test('primePullCycle POSTs once to /rpc/sync_pull with p_cursors built '
+        'from the given map, and pullPage then answers every one of those '
+        'tables from the cache with no further request (multi-table cursor '
+        'advancement in one round trip)', () async {
+      client = makeClient((_) async => json({
+            'profiles': [profileJson(version: 43), profileJson(version: 44)],
+            'day_entries': [entryJson(version: 9)],
+          }));
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({
+        SyncTable.profiles: 42,
+        SyncTable.dayEntries: 0,
+      });
+      final profiles = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 42, limit: 500);
+      final entries = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(requests, hasLength(1),
+          reason: 'one sync_pull call served both tables\' first page');
+      final request = requests.single;
+      expect(request.method, 'POST');
+      expect(request.url.toString(), '$baseUrl/rest/v1/rpc/sync_pull');
+      expect(jsonDecode(request.body), {
+        'p_cursors': {'profiles': 42, 'day_entries': 0},
+      });
+      expect(profiles.map((r) => r.serverVersion), [43, 44]);
+      expect(entries.single.serverVersion, 9);
+    });
+
+    test('a table not named in primePullCycle\'s cursors is unaffected — '
+        'pullPage falls back to its own select for it', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': []});
+        }
+        return json([entryJson(version: 5)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/day_entries');
+    });
+
+    test('pullPage falls back to the per-table select when sync_pull was '
+        'never primed at all (every pre-#598 caller)', () async {
+      client = makeClient((_) async => json([profileJson(version: 7)]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+      expect(rows, hasLength(1));
+      expect(requests.single.url.path, '/rest/v1/profiles');
+    });
+
+    test('a PGRST202 "function not found" response to sync_pull leaves the '
+        'cache empty, so pullPage falls back to the per-table select — the '
+        'graceful degradation for a server predating the migration that '
+        'adds sync_pull', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          );
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.first.url.toString(), '$baseUrl/rest/v1/rpc/sync_pull');
+      expect(requests.last.url.path, '/rest/v1/profiles');
+    });
+
+    test('a raw Postgres 42883 undefined_function response to sync_pull '
+        'also falls back cleanly (a stale PostgREST schema cache can '
+        'surface the SQLSTATE directly instead of PGRST202)', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json(
+            {'message': 'function does not exist', 'code': '42883'},
+            status: 404,
+          );
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+    });
+
+    test('any other sync_pull failure (network, malformed shape) also '
+        'degrades to the select fallback rather than failing the pull',
+        () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json([1, 2, 3]); // not the expected object shape
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+    });
+
+    test('deletedProfiles always uses the select path, even when primed — '
+        'sync_pull does not cover it', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': []});
+        }
+        return json([
+          {
+            'profile_id': profileId,
+            'deleted_at': '2026-09-01T10:00:00+00:00',
+            'server_version': 9,
+          }
+        ]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.deletedProfiles, afterVersion: 0, limit: 100);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/deleted_profiles');
+    });
+
+    test('a cached page capped at sync_pull\'s 500-row page size cannot '
+        'fill a full page from what remains cached, so pullPage falls back '
+        'to a fresh select for the rest rather than reporting a false '
+        'short/final page', () async {
+      final full500 = List.generate(500, (i) => profileJson(version: i + 1));
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': full500});
+        }
+        // The fallback select for the remainder beyond the cached window.
+        return json([profileJson(version: 998), profileJson(version: 999)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      // Only 3 cached rows remain unconsumed past version 497, far short of
+      // the requested limit — with the raw cache at the 500-row cap, this
+      // must not be trusted as the final page.
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 497, limit: 500);
+
+      expect(requests, hasLength(2),
+          reason: 'the short remainder forces a fresh select instead of '
+              'trusting the capped cache');
+      expect(rows.map((r) => r.serverVersion), [998, 999]);
+    });
+
+    test('a cached page shorter than the 500-row cap is trusted as final, '
+        'even when the slice comes up short of the caller\'s limit',
+        () async {
+      client = makeClient((_) async => json({
+            'profiles': [profileJson(version: 1), profileJson(version: 2)],
+          }));
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(requests, hasLength(1),
+          reason: 'a genuinely short (uncapped) cached page is trusted '
+              'without a fallback call');
+      expect(rows.map((r) => r.serverVersion), [1, 2]);
+    });
+
+    test('a malformed row inside sync_pull\'s response is not silently '
+        'skipped — it is treated as a decode failure and falls back to '
+        'the select path instead', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({
+            'day_entries': [
+              {...entryJson(version: 45), 'tags': [1, 2]},
+            ],
+          });
+        }
+        return json([entryJson(version: 46)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.dayEntries: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(rows.single.serverVersion, 46);
+      expect(requests, hasLength(2));
+    });
+  });
+
   group('fetchWatermark (issue #521)', () {
     test('POSTs to /rpc/sync_watermark and returns the decoded value',
         () async {

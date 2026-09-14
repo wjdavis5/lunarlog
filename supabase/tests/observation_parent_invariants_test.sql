@@ -27,10 +27,16 @@ values
   (tests.ulid(2901), 'Profile A', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
   (tests.ulid(2904), 'Profile B', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
+-- Issue #201: authenticated no longer holds insert/update on day_entries at
+-- all (sync_push is the sole write path) - this fixture insert runs as
+-- service_role instead (auth.uid() is unaffected, since that reads
+-- request.jwt.claims, a separate session GUC from role).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values
   (tests.ulid(2902), tests.ulid(2901), '2026-09-10', 'UTC', 'none', '2026-09-10T09:00:00Z'),
   (tests.ulid(2905), tests.ulid(2904), '2026-09-10', 'UTC', 'none', '2026-09-10T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- 1. LLA-057: a raw INSERT cannot link an observation on profile A's own
@@ -109,8 +115,12 @@ select throws_ok(
 -- SAME profile - exactly what sync_push's same-date resolver does
 -- (20260914010000_sync_push_observation_reparent.sql) - is NOT blocked.
 -- ---------------------------------------------------------------------------
+-- Issue #201: same service_role wrap as the earlier day_entries fixture
+-- insert above.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(2906), tests.ulid(2901), '2026-09-11', 'UTC', 'none', '2026-09-11T09:00:00Z');
+select set_config('role', 'authenticated', true);
 update public.observations
    set day_entry_id = tests.ulid(2906), updated_at = '2026-09-10T09:05:00Z',
        last_modified_by_user_id = tests.get_supabase_uid('mom_l057')

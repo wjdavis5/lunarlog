@@ -86,11 +86,13 @@ select public.accept_guardian_invitation(
 -- Entry 1: mom logs a non-bleed day. Dad (alert_on_log) is eligible;
 -- sitter (no preference row) is not.
 select tests.authenticate_as('mom_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, tags, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(410), tests.ulid(401), '2026-09-01', 'UTC', 'none', '["cramps"]', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 1::bigint,
   'A guardian with alert_on_log gets exactly one outbox row when the holder inserts an entry');
@@ -114,11 +116,13 @@ select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a'))
 );
 
 select tests.authenticate_as('mom_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(411), tests.ulid(401), '2026-09-02', 'UTC', 'heavy', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 0::bigint,
   'A guardian with alert_on_log false gets nothing even when the other flags are true');
@@ -136,22 +140,26 @@ values (tests.get_supabase_uid('sitter_a'), tests.ulid(401), true);
 
 -- Dad logs his own entry: he must not alert himself.
 select tests.authenticate_as('dad_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(412), tests.ulid(401), '2026-09-03', 'UTC', 'light', now(),
    tests.get_supabase_uid('dad_a'), tests.get_supabase_uid('dad_a'));
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 0::bigint,
   'A guardian who is also the writer gets no row for their own write');
 
 -- Two eligible guardians on one profile produce exactly two rows, one each.
 select tests.authenticate_as('mom_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(413), tests.ulid(401), '2026-09-04', 'UTC', 'none', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 1::bigint,
   'Two eligible guardians: dad gets his row');
@@ -161,11 +169,13 @@ select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('sitter_a
 -- A revoked guardian produces no row even though their preference row
 -- still says alert_on_log.
 select public.revoke_guardian(tests.ulid(401), tests.get_supabase_uid('sitter_a'));
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(414), tests.ulid(401), '2026-09-05', 'UTC', 'none', now(),
    tests.get_supabase_uid('mom_a'), tests.get_supabase_uid('mom_a'));
+select set_config('role', 'authenticated', true);
 
 -- U4 (revoke_guardian, R5) also purges the revoked guardian's existing
 -- unsent outbox rows immediately, so sitter's count drops to zero here
@@ -176,7 +186,9 @@ select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a'))
   'A still-accepted guardian keeps receiving rows');
 
 -- A tombstoned update produces no row.
+select set_config('role', 'service_role', true);
 update public.day_entries set deleted_at = now() where id = tests.ulid(414);
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
   'A tombstoned (deleted_at set) update produces no row');
@@ -190,7 +202,9 @@ update public.notification_preferences
  where user_id = tests.get_supabase_uid('dad_a') and profile_id = tests.ulid(401);
 
 select tests.authenticate_as('mom_a');
+select set_config('role', 'service_role', true);
 update public.day_entries set note = 'updated note' where id = tests.ulid(410);
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(401), tests.get_supabase_uid('dad_a')), 2::bigint,
   'Updating a non-boundary entry produces no row for a cycle_start_only guardian');
@@ -228,8 +242,10 @@ select public.accept_guardian_invitation(
 select tests.authenticate_as('mom_b');
 -- Establishes real prior bleed-day state before dad's preference exists;
 -- harmless (no preference row -> no alert).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(420), tests.ulid(402), '2026-09-01', 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('dad_b');
 insert into public.notification_preferences
@@ -238,6 +254,7 @@ values (tests.get_supabase_uid('dad_b'), tests.ulid(402), true, true);
 
 -- A mid-cycle spotting day (preceded by a bleeding day): nothing.
 select tests.authenticate_as('mom_b');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(421), tests.ulid(402), '2026-09-02', 'UTC', 'spotting', now());
 
@@ -270,6 +287,7 @@ select is(pg_temp.outbox_count(tests.ulid(402), tests.get_supabase_uid('dad_b'))
 -- A real 3-day gap (Sept 8-9 empty) does start a new episode.
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(424), tests.ulid(402), '2026-09-10', 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(402), tests.get_supabase_uid('dad_b')), 2::bigint,
   '#6: a genuine 3-day gap still starts a new episode -- one more row');
@@ -297,6 +315,7 @@ insert into public.notification_preferences
 values (tests.get_supabase_uid('dad_c'), tests.ulid(403), true, true);
 
 select tests.authenticate_as('mom_c');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(430), tests.ulid(403), '2026-09-01', 'UTC', 'heavy', now());
 
@@ -305,6 +324,7 @@ select is(pg_temp.outbox_count(tests.ulid(403), tests.get_supabase_uid('dad_c'))
 
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(431), tests.ulid(403), '2026-09-02', 'UTC', 'light', now());
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(403), tests.get_supabase_uid('dad_c')), 1::bigint,
   'A light-flow entry with no severe tag produces no additional row');
@@ -333,11 +353,13 @@ insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('dad_d'), tests.ulid(404), true);
 
 select tests.authenticate_as('mom_d');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, note, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(440), tests.ulid(404), '2026-09-01', 'UTC', 'none', 'original note', now(),
    tests.get_supabase_uid('mom_d'), tests.get_supabase_uid('mom_d'));
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d')), 1::bigint,
   '#7: baseline insert produces one row for an alert_on_log guardian');
@@ -359,11 +381,13 @@ select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d'))
 -- passes; that column is deliberately not part of the WHEN clause's
 -- content check.
 select tests.authenticate_as('mom_d');
+select set_config('role', 'service_role', true);
 update public.day_entries
    set local_date = local_date, flow = flow, tags = tags, note = note,
        last_modified_by_user_id = tests.get_supabase_uid('mom_d'),
        updated_at = now()
  where id = tests.ulid(440);
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d')), 1::bigint,
   '#7: a no-op resave (identical local_date/flow/tags/note/deleted_at) produces no new row');
@@ -371,7 +395,9 @@ select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d'))
 -- A genuine content edit (the note actually changes) must still notify an
 -- alert_on_log guardian -- the WHEN clause narrows what counts as "an
 -- entry", it does not disable the feature.
+select set_config('role', 'service_role', true);
 update public.day_entries set note = 'a real edit' where id = tests.ulid(440);
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(404), tests.get_supabase_uid('dad_d')), 2::bigint,
   '#7: a genuine content edit (note actually changes) still enqueues a row');
@@ -426,6 +452,7 @@ insert into public.notification_preferences (user_id, profile_id, alert_on_log, 
 values (tests.get_supabase_uid('dad_e'), tests.ulid(405), true, 'America/New_York');
 
 select tests.authenticate_as('mom_e');
+select set_config('role', 'service_role', true);
 select lives_ok(
   format(
     $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
@@ -434,6 +461,7 @@ select lives_ok(
   ),
   'a guardian with a genuinely valid time_zone does not block the profile holder''s entry write'
 );
+select set_config('role', 'authenticated', true);
 
 select is(pg_temp.outbox_count(tests.ulid(405), tests.get_supabase_uid('dad_e')), 1::bigint,
   'the alert is still enqueued for a guardian with a valid time_zone');
@@ -471,6 +499,13 @@ insert into public.notification_preferences
 values (tests.get_supabase_uid('dad_f'), tests.ulid(406), true, true);
 
 select tests.authenticate_as('mom_f');
+-- Issue #201: day_entries is no longer directly writable by `authenticated`
+-- -- every raw day_entries insert/update in this Group F fixture block runs
+-- as service_role instead (auth.uid() is untouched, so attribution stays
+-- mom_f's throughout); the interleaved observations writes are unaffected
+-- (only day_entries' grant was revoked) and stay under service_role too
+-- purely because they share this block, not because they need it.
+select set_config('role', 'service_role', true);
 
 -- Neither: a light-flow day with no graded observation is not high
 -- severity -- a high-severity-narrowed guardian gets nothing.
@@ -585,6 +620,7 @@ select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f'))
 update public.day_entries set note = 'intense mood entry present' where id = tests.ulid(464);
 select is(pg_temp.outbox_count(tests.ulid(406), tests.get_supabase_uid('dad_f')), 5::bigint,
   '#256 wrong category: a day with only a non-severity intensity 5 row stays non-severe');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- Group G (profile 407, Issue #256): the observations-side trigger's own
@@ -678,8 +714,10 @@ insert into public.notification_preferences
 values (tests.get_supabase_uid('hank_g'), tests.ulid(407), true, true);
 
 select tests.authenticate_as('mom_g');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(480), tests.ulid(407), '2026-09-01', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 -- G1: mom grades a pain observation at 4. dad_g (alert_on_log) and
 -- carol_g (high-severity narrowing) are alerted; ed_g's high_severity
@@ -783,8 +821,10 @@ select set_config('lunarlog.bulk_import', '', true);
 select is(pg_temp.outbox_count(tests.ulid(407), tests.get_supabase_uid('hank_g')), 0::bigint,
   '#256 cycle_start_only: a severe observation on a non-cycle-start day produces nothing');
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(481), tests.ulid(407), '2026-09-10', 'UTC', 'heavy', now());
+select set_config('role', 'authenticated', true);
 select is(pg_temp.outbox_kind_count(tests.ulid(407), tests.get_supabase_uid('hank_g'), 'cycle_start'),
   1::bigint, '#256 cycle_start_only: the day_entries trigger still delivers the cycle start itself');
 

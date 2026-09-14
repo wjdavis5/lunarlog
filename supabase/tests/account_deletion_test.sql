@@ -113,6 +113,7 @@ select tests.authenticate_as('user_a');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(2), 'Sam', true, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values
   (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z'),
@@ -120,6 +121,7 @@ values
   (tests.ulid(12), tests.ulid(1), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z'),
   (tests.ulid(13), tests.ulid(2), '2026-09-01', 'UTC', 'spotting', '2026-09-01T00:00:00Z'),
   (tests.ulid(14), tests.ulid(2), '2026-09-02', 'UTC', 'heavy', '2026-09-02T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 insert into public.settings (user_id, key, value)
 values
@@ -136,8 +138,10 @@ select public.create_guardian_invitation(
 select tests.authenticate_as('user_b');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(3), 'Bailey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(20), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (user_id, key, value)
 values (tests.get_supabase_uid('user_b'), 'k1', 'v1');
 
@@ -273,8 +277,10 @@ select tests.create_supabase_user('user_d'); -- caregiver
 select tests.authenticate_as('user_c');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(4), 'Riley C', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(30), tests.ulid(4), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select public.create_guardian_invitation(
   tests.ulid(4), 'caregiver', 'D',
@@ -289,9 +295,11 @@ select public.accept_guardian_invitation(
 -- D also logs an entry directly on C's shared profile: this row's user_id
 -- defaults to auth.uid() at insert time, i.e. D, per the initial sync
 -- schema's `default auth.uid()` - the exact case R7/AE3 protects.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(31), tests.ulid(4), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z',
         tests.get_supabase_uid('user_d'), tests.get_supabase_uid('user_d'));
+select set_config('role', 'authenticated', true);
 
 select pg_temp.snapshot('d_result', public.delete_account_data());
 
@@ -397,9 +405,11 @@ select public.accept_guardian_invitation(
 -- H logs an entry directly on G's shared profile: user_id defaults to
 -- auth.uid() at insert time (H), per the initial sync schema - the exact
 -- caregiver-on-someone-else's-profile row this fix re-homes.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(40), tests.ulid(6), '2026-09-05', 'UTC', 'medium', '2026-09-05T00:00:00Z',
         tests.get_supabase_uid('user_h'), tests.get_supabase_uid('user_h'));
+select set_config('role', 'authenticated', true);
 
 -- H deletes their account: the RPC first (as the Edge Function does), then
 -- the auth.users row for real (unlike section 6's AE3 fixture above, which
@@ -528,9 +538,11 @@ select public.accept_guardian_invitation(
   'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 'J'
 );
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(41), tests.ulid(7), '2026-09-06', 'UTC', 'medium', '2026-09-06T00:00:00Z',
         tests.get_supabase_uid('user_j'), tests.get_supabase_uid('user_j'));
+select set_config('role', 'authenticated', true);
 
 -- The revocation-bypass this round-2 fix closes: J, still authenticated
 -- (not even revoked) with a real JWT, cannot call the function directly
@@ -626,6 +638,7 @@ values
 -- K logs an entry: both guardians have alert_on_log, so L (not the writer)
 -- gets an outbox row.
 select tests.authenticate_as('user_k');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(510), tests.ulid(51), '2026-09-01', 'UTC', 'none', now(),
         tests.get_supabase_uid('user_k'), tests.get_supabase_uid('user_k'));
@@ -753,9 +766,11 @@ values
   (tests.ulid(52), tests.get_supabase_uid('user_o'), '2026-09-09');
 
 select tests.authenticate_as('user_n');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(530), tests.ulid(53), '2026-09-01', 'UTC', 'none', now(),
         tests.get_supabase_uid('user_n'), tests.get_supabase_uid('user_n'));
+select set_config('role', 'authenticated', true);
 
 select public.revoke_guardian(tests.ulid(53), tests.get_supabase_uid('user_o'));
 
@@ -1002,8 +1017,10 @@ select tests.create_supabase_user('user_u'); -- co-guardian, survives
 select tests.authenticate_as('user_t');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(8), 'Riley T', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(80), tests.ulid(8), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select public.create_guardian_invitation(
   tests.ulid(8), 'co_parent', 'U',

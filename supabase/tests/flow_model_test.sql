@@ -329,8 +329,10 @@ select tests.authenticate_as('flow247');
 -- be treated as a bleed at all -- before this fix, v_is_bleed was
 -- `flow <> 'none'`, which wrongly counted not_bleeding (and the deprecated
 -- spotting) as a bleed and fired a false cycle_start.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24720), tests.ulid(24700), '2026-09-20', 'UTC', 'not_bleeding', now());
+select set_config('role', 'authenticated', true);
 select is(
   pg_temp.flow_outbox_count(tests.ulid(24700), tests.get_supabase_uid('flow247_dad'), 'cycle_start'),
   0::bigint,
@@ -352,6 +354,7 @@ select tests.authenticate_as('flow247');
 
 -- A light bleed day the day before: not high severity, so it is filtered
 -- out for dad even though it is itself a cycle_start.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24721), tests.ulid(24700), '2026-09-21', 'UTC', 'light', now());
 
@@ -359,6 +362,7 @@ values (tests.ulid(24721), tests.ulid(24700), '2026-09-21', 'UTC', 'light', now(
 -- not a cycle_start either -- isolating the high-severity classification.
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24722), tests.ulid(24700), '2026-09-22', 'UTC', 'super_heavy', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.flow_outbox_count(tests.ulid(24700), tests.get_supabase_uid('flow247_dad'), 'high_severity'),

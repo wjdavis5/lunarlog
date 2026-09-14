@@ -157,4 +157,17 @@ class FakeSyncTransport implements SyncTransport {
     fetchWatermarkCount++;
     return watermark;
   }
+
+  /// Every [primePullCycle] call, recorded in order (issue #598) so a test
+  /// can assert the engine primed a cycle with the expected starting
+  /// cursors. This fake never actually caches anything for [pullPage] to
+  /// read back — [pages]/[pageResolver] remain the only way to script a
+  /// page — so priming here is purely observable, matching how a real
+  /// transport's priming is invisible to the engine either way.
+  final primePullCycleCalls = <Map<SyncTable, int>>[];
+
+  @override
+  Future<void> primePullCycle(Map<SyncTable, int> cursors) async {
+    primePullCycleCalls.add(Map.unmodifiable(cursors));
+  }
 }

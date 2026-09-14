@@ -1,10 +1,21 @@
 /// [SyncTransport] over a `SupabaseClient` (U10; KTD2, KTD3).
 ///
-/// Push is the `sync_push` RPC (`POST /rest/v1/rpc/sync_push`); pull is a
-/// PostgREST select filtered and ordered by `server_version` with a row
-/// limit. The client is injected (the app passes `Supabase.instance.client`
-/// from `main.dart`; tests pass one built over a mock `http.Client`), so
-/// nothing here touches `Supabase.instance`.
+/// Push is the `sync_push` RPC (`POST /rest/v1/rpc/sync_push`). Pull
+/// (issue #598) is primed once per cycle by [primePullCycle], which calls
+/// the `sync_pull(p_cursors)` RPC ONCE for every table it covers — the
+/// tenant-scoped, cursor-filtered-before-`LIMIT` shape #525 added — and
+/// caches the result; [pullPage] then answers each table's first page from
+/// that cache instead of its own round trip. A table [sync_pull] does not
+/// cover ([SyncTable.deletedProfiles]), a cache miss (never primed, the
+/// cached page was itself capped and cannot fill a full page from here, or
+/// priming failed for any reason including the RPC not existing on a
+/// server predating its migration), or an unprimed call (no
+/// [primePullCycle] before it, as every existing test predates issue #598)
+/// all fall back to the original per-table `select … where server_version
+/// > cursor … order by server_version … limit …` query. The client is
+/// injected (the app passes `Supabase.instance.client` from `main.dart`;
+/// tests pass one built over a mock `http.Client`), so nothing here
+/// touches `Supabase.instance`.
 ///
 /// Every failure is mapped to a [SyncTransportError] kind by
 /// [mapSyncTransportError]; the provider's message, code and body stop
@@ -29,6 +40,14 @@ class SupabaseSyncTransport implements SyncTransport {
   static const String _rpc = 'sync_push';
   static const String _versionColumn = 'server_version';
 
+  /// Issue #598: `sync_pull`'s per-table page cap
+  /// (`c_page_size` in 20260913014000_sync_server_version_indexes_and_pull.sql).
+  /// A cached page at exactly this length may not be the whole story — the
+  /// table could have more rows past it — so [_cachedSlice] never trusts a
+  /// slice shorter than the caller's own `limit` out of a cache this full;
+  /// see its doc comment.
+  static const int _pullRpcPageCap = 500;
+
   @override
   Future<PushResult> push(PushBatch batch) async {
     final Object? data;
@@ -52,6 +71,12 @@ class SupabaseSyncTransport implements SyncTransport {
     }
   }
 
+  /// Issue #598: [primePullCycle]'s cached `sync_pull` pages, keyed by
+  /// table — `null` until primed (or after a prime that found nothing to
+  /// cache), always fully replaced (never merged) by the next successful
+  /// prime.
+  Map<SyncTable, _PulledPage>? _pullCache;
+
   @override
   Future<List<RemoteRow>> pullPage({
     required SyncTable table,
@@ -61,6 +86,22 @@ class SupabaseSyncTransport implements SyncTransport {
     if (limit < 1) {
       throw ArgumentError.value(limit, 'limit', 'must be at least 1');
     }
+    if (table != SyncTable.deletedProfiles) {
+      final cached = _cachedSlice(table, afterVersion: afterVersion, limit: limit);
+      if (cached != null) return cached;
+    }
+    return _pullPageViaSelect(table: table, afterVersion: afterVersion, limit: limit);
+  }
+
+  /// The original per-table select, unchanged (issue #598's fallback path):
+  /// used directly for [SyncTable.deletedProfiles] (never covered by
+  /// `sync_pull`), and for every other table whenever [_cachedSlice] has
+  /// nothing to answer from.
+  Future<List<RemoteRow>> _pullPageViaSelect({
+    required SyncTable table,
+    required int afterVersion,
+    required int limit,
+  }) async {
     final List<Map<String, dynamic>> data;
     try {
       data = await _client
@@ -89,6 +130,91 @@ class SupabaseSyncTransport implements SyncTransport {
       // The engine surfaces a durable error and retries after repair.
       throw const SyncTransportError.other();
     }
+  }
+
+  /// A page sliced from [_pullCache], or `null` when there is none — the
+  /// table was never cached, the caller's [afterVersion] is behind what the
+  /// cached page was fetched from (stale relative to it), or the cache
+  /// cannot honestly answer a full [limit]-sized page (see below) — in
+  /// which case [pullPage] falls back to [_pullPageViaSelect].
+  ///
+  /// The cached page was capped at [_pullRpcPageCap] server-side rows, so a
+  /// table with more than that many rows pending needs a follow-up beyond
+  /// what this one cached response holds. Serving a SHORT slice from a
+  /// capped cache would falsely read like "this table is exhausted" to the
+  /// caller (whose own contract is "a page shorter than `limit` is the
+  /// last one") when more rows may genuinely be waiting past the cache's
+  /// own cutoff — so any time the cached page was itself capped, this
+  /// returns `null` rather than a too-short slice, and the caller re-fetches
+  /// the remainder via the ordinary select path instead.
+  List<RemoteRow>? _cachedSlice(
+    SyncTable table, {
+    required int afterVersion,
+    required int limit,
+  }) {
+    final cached = _pullCache?[table];
+    if (cached == null || afterVersion < cached.lowerBound) return null;
+    final rows = [
+      for (final row in cached.rows)
+        if (row.serverVersion > afterVersion) row,
+    ];
+    final slice = rows.length > limit ? rows.sublist(0, limit) : rows;
+    final mayHaveMore =
+        cached.rows.length >= _pullRpcPageCap && slice.length < limit;
+    return mayHaveMore ? null : slice;
+  }
+
+  static const String _pullRpc = 'sync_pull';
+
+  @override
+  Future<void> primePullCycle(Map<SyncTable, int> cursors) async {
+    _pullCache = null;
+    final Object? data;
+    try {
+      data = await _client.rpc<dynamic>(_pullRpc, params: {
+        'p_cursors': {
+          for (final entry in cursors.entries) syncTableName(entry.key): entry.value,
+        },
+      });
+    } catch (_) {
+      // Issue #598: sync_pull is purely an optimization — a server
+      // predating the migration that adds it (PostgREST "function not
+      // found": PGRST202, or the raw Postgres 42883 undefined_function if
+      // the schema cache is stale) or any other failure while priming
+      // leaves the cache empty, so every pullPage call this cycle falls
+      // back to its own per-table select — correct, just without this
+      // RPC's single-round-trip benefit. See the interface doc comment:
+      // this must never throw.
+      return;
+    }
+    _pullCache = _decodePullResponse(data, cursors);
+  }
+
+  /// Decodes `sync_pull`'s response into one [_PulledPage] per key in
+  /// [cursors], or `null` on any shape mismatch (a malformed response is
+  /// treated exactly like an RPC failure — [primePullCycle] leaves the
+  /// cache empty rather than throwing).
+  Map<SyncTable, _PulledPage>? _decodePullResponse(
+    Object? data,
+    Map<SyncTable, int> cursors,
+  ) {
+    if (data is! Map) return null;
+    final result = <SyncTable, _PulledPage>{};
+    for (final entry in cursors.entries) {
+      final rowsJson = data[syncTableName(entry.key)];
+      if (rowsJson is! List) return null;
+      final rows = <RemoteRow>[];
+      for (final row in rowsJson) {
+        if (row is! Map) return null;
+        try {
+          rows.add(decodeRemoteRow(entry.key, row.cast<String, Object?>()));
+        } on RowCodecError {
+          return null;
+        }
+      }
+      result[entry.key] = _PulledPage(entry.value, rows);
+    }
+    return result;
   }
 
   static const String _watermarkRpc = 'sync_watermark';
@@ -169,6 +295,23 @@ class SupabaseSyncTransport implements SyncTransport {
       serverNow: decodeTimestamp(serverNow, field: 'server_now'),
     );
   }
+}
+
+/// Issue #598: one table's slice of a single `sync_pull` response, cached by
+/// [SupabaseSyncTransport._pullCache].
+class _PulledPage {
+  const _PulledPage(this.lowerBound, this.rows);
+
+  /// The `server_version` cursor this page was fetched from (exclusive) —
+  /// every row in [rows] has `serverVersion > lowerBound`. A [pullPage] call
+  /// is only answerable from this cache when its own `afterVersion` is at
+  /// least this value; a lower `afterVersion` needs rows this page never
+  /// requested and was never asked to include.
+  final int lowerBound;
+
+  /// Rows ascending by `server_version`, exactly as `sync_pull` returned
+  /// them (already capped server-side at [SupabaseSyncTransport._pullRpcPageCap]).
+  final List<RemoteRow> rows;
 }
 
 /// HTTP statuses PostgREST answers with when the request is fine but the

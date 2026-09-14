@@ -48,7 +48,9 @@ select is(pg_temp.resp('byid_insert') -> 'inserted', '1'::jsonb, 'setup: the by-
 -- the row already being marked PMS through the ordinary app path (ie.
 -- sync_push) requires a direct write, exactly like this row would already
 -- carry it in day_entries before any bulk import ever touched it.
+select set_config('role', 'service_role', true);
 update public.day_entries set pms = true where id = tests.ulid(761);
+select set_config('role', 'authenticated', true);
 select is((select pms from public.day_entries where id = tests.ulid(761)), true,
   'setup: the by-id fixture row now carries pms = true');
 
@@ -66,7 +68,9 @@ select is((select deleted_at is not null from public.day_entries where id = test
 -- An ordinary (non-tombstoning) by-id update must NOT spuriously clear an
 -- existing pms marker -- the fix only ever forces false when the row is
 -- becoming a tombstone, never on a plain live edit.
+select set_config('role', 'service_role', true);
 update public.day_entries set deleted_at = null, pms = true where id = tests.ulid(761);
+select set_config('role', 'authenticated', true);
 select lives_ok(
   format($$select public.bulk_import_entries(pg_temp.job1(), jsonb_build_array(jsonb_build_object(
       'id', %L, 'profile_id', %L, 'local_date', '2026-09-10', 'tz', 'UTC', 'flow', 'heavy',
@@ -86,7 +90,9 @@ insert into r select 'conflict_insert', public.bulk_import_entries(pg_temp.job1(
     'tz', 'UTC', 'flow', 'medium', 'source_id', 'conflict-src', 'updated_at', '2026-09-13T08:00:00Z')));
 select is(pg_temp.resp('conflict_insert') -> 'inserted', '1'::jsonb,
   'setup: the source-conflict fixture row is inserted');
+select set_config('role', 'service_role', true);
 update public.day_entries set pms = true where id = tests.ulid(762);
+select set_config('role', 'authenticated', true);
 
 -- A DIFFERENT id, same (profile_id, source, source_id) -- misses the by-id
 -- join entirely and resolves only through the ON CONFLICT arbiter.
