@@ -17,10 +17,16 @@ void main() {
           isA<AccountDeletionUnauthorizedFailure>());
       expect(const AccountDeletionFailure.appleCodeRequired(),
           isA<AccountDeletionAppleCodeRequiredFailure>());
+      expect(const AccountDeletionFailure.appleNativeCeremonyUnavailable(),
+          isA<AccountDeletionAppleNativeCeremonyUnavailableFailure>());
       expect(const AccountDeletionFailure.appleRevokeFailed(),
           isA<AccountDeletionAppleRevokeFailedFailure>());
+      expect(const AccountDeletionFailure.appleRevocationMarkerFailed(),
+          isA<AccountDeletionAppleRevocationMarkerFailedFailure>());
       expect(const AccountDeletionFailure.attachmentCleanupFailed(),
           isA<AccountDeletionAttachmentCleanupFailedFailure>());
+      expect(const AccountDeletionFailure.attachmentCleanupUnbounded(),
+          isA<AccountDeletionAttachmentCleanupUnboundedFailure>());
       expect(const AccountDeletionFailure.timeout(),
           isA<AccountDeletionTimeoutFailure>());
       expect(const AccountDeletionFailure.deleteUserFailed(),
@@ -35,8 +41,11 @@ void main() {
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleCodeRequired(),
+      AccountDeletionFailure.appleNativeCeremonyUnavailable(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.appleRevocationMarkerFailed(),
       AccountDeletionFailure.attachmentCleanupFailed(),
+      AccountDeletionFailure.attachmentCleanupUnbounded(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
@@ -83,10 +92,20 @@ void main() {
           'AccountDeletionFailure.unauthorized');
       expect(const AccountDeletionFailure.appleCodeRequired().toString(),
           'AccountDeletionFailure.appleCodeRequired');
+      expect(
+          const AccountDeletionFailure.appleNativeCeremonyUnavailable()
+              .toString(),
+          'AccountDeletionFailure.appleNativeCeremonyUnavailable');
       expect(const AccountDeletionFailure.appleRevokeFailed().toString(),
           'AccountDeletionFailure.appleRevokeFailed');
+      expect(
+          const AccountDeletionFailure.appleRevocationMarkerFailed().toString(),
+          'AccountDeletionFailure.appleRevocationMarkerFailed');
       expect(const AccountDeletionFailure.attachmentCleanupFailed().toString(),
           'AccountDeletionFailure.attachmentCleanupFailed');
+      expect(
+          const AccountDeletionFailure.attachmentCleanupUnbounded().toString(),
+          'AccountDeletionFailure.attachmentCleanupUnbounded');
       expect(const AccountDeletionFailure.timeout().toString(),
           'AccountDeletionFailure.timeout');
       expect(const AccountDeletionFailure.deleteUserFailed().toString(),

@@ -177,6 +177,36 @@
 // fetch in `_shared/apple_revoke.ts`/`_shared/push.ts`, previously had no
 // bound of its own here).
 //
+// Issue #605 fix (2026-09-14, LLA-051, P1): the #527 marker above was keyed
+// only by `user_id`, with no record of *which* Apple identity had actually
+// been revoked. Reproduction: revoke identity A, persist the marker, then
+// `deleteUser` fails (the account survives); the operator unlinks A and
+// links a different Apple identity B to the same account, then retries.
+// `appleAlreadyRevoked` used to ask only "does a marker exist for this
+// user_id", so the retry skipped Steps 3/6 for B entirely and went straight
+// to `deleteUser` - B's own Apple grant was never revoked, even though the
+// call reported success. `account_deletion_progress` now also carries
+// `apple_identity_id` (`20260914103000_account_deletion_cross_guardian_and_identity_fixes.sql`),
+// stamped alongside `apple_revoked_at`; a retry's marker is honored only
+// when that recorded identity still matches the caller's *current*
+// `appleIdentityId` - a marker for a since-replaced identity no longer
+// short-circuits anything, and the new identity gets its own code-and-revoke
+// pass exactly like a first attempt would.
+//
+// Issue #599 fix (2026-09-14): Step 6's `apple_revoked_at` marker write used
+// to be best-effort - a failure there was only logged, never surfaced. If
+// that write then failed right after a real, successful Apple revocation,
+// and the later `deleteUser` call also failed (e.g. a network blip), a
+// retry would re-enter this function with no marker to find: Apple's
+// one-time authorization code was already burned by the successful revoke,
+// so the retry's *fresh* code would need to revoke a grant that no longer
+// exists to revoke - a narrower re-entry of #527 with no way out. The
+// marker write is now retried once in `buildDeps` (see `markAppleRevoked`),
+// and if both attempts fail, Step 6 fails the whole call closed with its
+// own `apple_revocation_marker_failed` (409) - distinct from
+// `apple_revoke_failed` (Apple DID confirm the revocation here; only this
+// durability write failed) - before `deleteUser` is ever attempted.
+//
 // Never echoes Supabase/Apple error text, tokens, emails, or row content
 // into the response or the log: only a stable error `code`, an HTTP status,
 // and (server-side only) an error *type* or U1's row-count summary are ever
@@ -250,6 +280,7 @@ type ErrorCode =
   | "identity_check_failed"
   | "apple_code_required"
   | "apple_revoke_failed"
+  | "apple_revocation_marker_failed"
   | "attachment_cleanup_failed"
   | "attachment_cleanup_unbounded"
   | "delete_user_failed"
@@ -306,14 +337,24 @@ export interface DeleteAccountCaller {
   identitiesKnown: boolean;
 }
 
-/** The account's Apple-revocation progress (Issue #527), read before Steps
- * 3/6 run and written immediately after a successful revoke. */
+/** The account's Apple-revocation progress (Issue #527; identity-bound by
+ * Issue #605/LLA-051), read before Steps 3/6 run and written immediately
+ * after a successful revoke. */
 export interface DeletionProgress {
   /** Set once Apple revocation has actually succeeded for this account. A
-   * retry that sees this already set skips straight past the Apple-code
-   * precondition and the revoke call to `deleteUser` - the only step that
-   * could have failed and left the account stranded. */
+   * retry that sees this already set - *and* whose current Apple identity
+   * still matches [appleIdentityId] below - skips straight past the
+   * Apple-code precondition and the revoke call to `deleteUser` - the only
+   * step that could have failed and left the account stranded. */
   appleRevokedAt: string | null;
+  /** The Apple identity id (`identities[provider=="apple"].id`) that was
+   * actually revoked when [appleRevokedAt] was stamped (Issue #605/LLA-051).
+   * Null whenever [appleRevokedAt] is null. A retry's marker is honored only
+   * when this still equals the caller's *current* Apple identity id - the
+   * account may have unlinked the revoked identity and linked a different
+   * one between attempts, and a stale match would let that new identity's
+   * grant survive deletion unrevoked. */
+  appleIdentityId: string | null;
 }
 
 /** Bounded/failed listing outcome (Issue #559). */
@@ -330,13 +371,20 @@ export interface DeleteAccountDeps {
   getUser(authHeader: string): Promise<DeleteAccountCaller | null>;
   /** Reads this account's Apple-revocation progress marker (Issue #527). */
   getDeletionProgress(uid: string): Promise<DeletionProgress>;
-  /** Records that Apple revocation has succeeded for this account, so a
-   * later retry (after a `deleteUser` failure) skips straight back to
-   * `deleteUser` (Issue #527). Best-effort: a failure here is logged but
-   * never fails the request - the revoke itself already succeeded, and the
-   * worst case of a lost marker write is a future retry needing one more
-   * fresh Apple code, not data loss. */
-  markAppleRevoked(uid: string): Promise<void>;
+  /** Records that Apple revocation has succeeded for this account, and
+   * *which* Apple identity [appleIdentityId] it was for (Issue #605/LLA-051),
+   * so a later retry (after a `deleteUser` failure) skips straight back to
+   * `deleteUser` (Issue #527) only for that same identity. Resolves `true`
+   * on success, `false` if the write could not be persisted (Issue #599: no
+   * longer best-effort - the production wiring below retries once itself
+   * before giving up). A `false` result stops the whole call closed, before
+   * `deleteUser`, with its own `apple_revocation_marker_failed` code: Apple
+   * has already burned the caller's one-time authorization code revoking
+   * the grant, so silently proceeding to a `deleteUser` failure would leave
+   * a retry needing a *fresh* code to re-enter a narrower version of #527 -
+   * this fails the whole deletion closed at the one point that can still
+   * choose to stop before that happens. */
+  markAppleRevoked(uid: string, appleIdentityId: string): Promise<boolean>;
   /** Lists every object path under `<uid>/` in the feedback-attachments
    * bucket, paginating and recursing into nested folders (Issue #243/D-24;
    * round 2 fix), bounded by MAX_ATTACHMENT_OBJECTS/MAX_ATTACHMENT_DEPTH
@@ -403,8 +451,19 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // by an earlier attempt (deletion progress marker set) needs neither a
   // fresh code nor another revoke call - a retry after a `deleteUser`
   // failure goes straight through Steps 3/6 to Step 8.
-  const progress = hasAppleIdentity ? await deps.getDeletionProgress(user.id) : { appleRevokedAt: null };
-  const appleAlreadyRevoked = hasAppleIdentity && progress.appleRevokedAt !== null;
+  //
+  // Issue #605/LLA-051: that marker is honored only when it was stamped for
+  // the caller's *current* Apple identity. Between attempts the account may
+  // have unlinked the revoked identity and linked a different one - a
+  // marker keyed only by user_id would then skip revocation entirely for an
+  // identity that was never actually revoked.
+  const progress = hasAppleIdentity
+    ? await deps.getDeletionProgress(user.id)
+    : { appleRevokedAt: null, appleIdentityId: null };
+  const appleAlreadyRevoked =
+    hasAppleIdentity &&
+    progress.appleRevokedAt !== null &&
+    progress.appleIdentityId === user.appleIdentityId;
 
   // Step 3 (#17 P1 fix - moved ahead of the destructive RPC): an Apple
   // identity with no authorization code supplied fails closed here, before
@@ -495,6 +554,16 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
   // reason. On success here, the deletion-progress marker is stamped
   // *before* proceeding, so a `deleteUser` failure below can retry straight
   // through to Step 8 next time without repeating this step.
+  //
+  // Issue #599: the marker write is no longer best-effort. Apple has
+  // already burned the caller's one-time authorization code revoking the
+  // grant by this point - if the marker write then fails and a later
+  // `deleteUser` failure sends the caller back through this function, a
+  // retry would need a *fresh* Apple code to re-run a revoke whose grant no
+  // longer exists to revoke, re-entering a narrower version of #527 with no
+  // way out. Fail the whole call closed here instead, before `deleteUser`,
+  // with a code distinct from `apple_revoke_failed` (Apple DID confirm the
+  // revocation here - only this durability write failed).
   if (hasAppleIdentity && !appleAlreadyRevoked) {
     const revoked = await deps.revokeApple(appleCode!, user.appleIdentityId!);
     if (revoked.kind !== "ok") {
@@ -503,7 +572,14 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
       );
       return errorResponse("apple_revoke_failed", 409);
     }
-    await deps.markAppleRevoked(user.id);
+    const marked = await deps.markAppleRevoked(user.id, user.appleIdentityId!);
+    if (!marked) {
+      console.error(
+        "delete-account: apple_revoked_at marker could not be persisted after a successful revoke " +
+          "(both attempts failed); stopping before deleteUser rather than risking an unrecorded revoke",
+      );
+      return errorResponse("apple_revocation_marker_failed", 409);
+    }
   }
 
   // Step 7 (#17 P1 fix; round 2 fix on top): a second, best-effort re-home
@@ -723,12 +799,18 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         const { data, error } = await withTimeout(
           adminClient
             .from("account_deletion_progress")
-            .select("apple_revoked_at")
+            .select("apple_revoked_at, apple_identity_id")
             .eq("user_id", uid)
             .maybeSingle(),
         );
-        if (error || !data) return { appleRevokedAt: null };
-        return { appleRevokedAt: (data.apple_revoked_at as string | null) ?? null };
+        if (error || !data) return { appleRevokedAt: null, appleIdentityId: null };
+        return {
+          appleRevokedAt: (data.apple_revoked_at as string | null) ?? null,
+          // Issue #605/LLA-051: read alongside apple_revoked_at so a retry
+          // can confirm the marker was stamped for this same Apple identity,
+          // not merely for this user_id.
+          appleIdentityId: (data.apple_identity_id as string | null) ?? null,
+        };
       } catch (error) {
         // Issue #527: unable to determine progress - treat as "not yet
         // revoked" (the safe default: at worst this asks the caller for one
@@ -736,25 +818,43 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
         console.error(
           `delete-account: failed to read deletion progress marker (${errorType(error)}); treating as not yet revoked`,
         );
-        return { appleRevokedAt: null };
+        return { appleRevokedAt: null, appleIdentityId: null };
       }
     },
-    markAppleRevoked: async (uid) => {
-      try {
-        const { error } = await withTimeout(
-          adminClient
-            .from("account_deletion_progress")
-            .upsert({ user_id: uid, apple_revoked_at: new Date().toISOString() }),
-        );
-        if (error) {
-          console.error(
-            "delete-account: failed to persist the apple_revoked_at marker; a deleteUser failure after " +
-              `this point would repeat the (now-pointless) apple revoke on retry (${error.message ?? "unknown error"})`,
+    markAppleRevoked: async (uid, appleIdentityId) => {
+      // Issue #599: a single write attempt, factored out so the call site
+      // below can retry it exactly once - a lost write here is no longer
+      // best-effort (see this function's own DeleteAccountDeps doc comment
+      // for why).
+      const attemptWrite = async (): Promise<boolean> => {
+        try {
+          const { error } = await withTimeout(
+            adminClient
+              .from("account_deletion_progress")
+              .upsert({
+                user_id: uid,
+                apple_revoked_at: new Date().toISOString(),
+                // Issue #605/LLA-051: stamped together so a later retry can
+                // tell whether this marker still applies to the caller's
+                // current Apple identity.
+                apple_identity_id: appleIdentityId,
+              }),
           );
+          if (error) {
+            console.error(
+              `delete-account: apple_revoked_at marker write failed (${error.message ?? "unknown error"})`,
+            );
+            return false;
+          }
+          return true;
+        } catch (error) {
+          console.error(`delete-account: apple_revoked_at marker write threw unexpectedly (${errorType(error)})`);
+          return false;
         }
-      } catch (error) {
-        console.error(`delete-account: apple_revoked_at marker write threw unexpectedly (${errorType(error)})`);
-      }
+      };
+      if (await attemptWrite()) return true;
+      console.error("delete-account: retrying the apple_revoked_at marker write once");
+      return attemptWrite();
     },
     listAttachmentPaths: (uid) => listFeedbackAttachmentPaths(adminClient, uid),
     removeAttachmentPaths: async (paths) => {

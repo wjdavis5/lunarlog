@@ -41,12 +41,40 @@ sealed class AccountDeletionFailure implements Exception {
   const factory AccountDeletionFailure.appleCodeRequired() =
       AccountDeletionAppleCodeRequiredFailure;
 
+  /// Client-side only (Issue #605/LLA-052) - never thrown by
+  /// [AccountDeletionService.deleteAccount] itself, only by
+  /// `lib/ui/account/account_section.dart`'s delete flow. The server
+  /// responded [AccountDeletionFailure.appleCodeRequired] (a fresh Apple
+  /// authorization code is still needed), but this platform has no native
+  /// Sign in with Apple ceremony to fetch one with (e.g. Android, with
+  /// Apple linked from a different, iOS device) - unlike
+  /// [AccountDeletionFailure.appleCodeRequired], a bare retry can never
+  /// succeed here, since the ceremony will never become available on this
+  /// device. Nothing was touched (the server never even got a code
+  /// request), so this account's Apple sign-in link can only be removed by
+  /// finishing deletion from a device that has the ceremony, or by asking
+  /// support to remove it.
+  const factory AccountDeletionFailure.appleNativeCeremonyUnavailable() =
+      AccountDeletionAppleNativeCeremonyUnavailableFailure;
+
   /// The Edge Function's own `apple_revoke_failed` code (#17 KTD4): the
   /// server-side row deletion already ran, but Apple could not confirm the
   /// revocation, so the `auth.users` row was deliberately left in place and
   /// the whole call is safe to retry.
   const factory AccountDeletionFailure.appleRevokeFailed() =
       AccountDeletionAppleRevokeFailedFailure;
+
+  /// The Edge Function's own `apple_revocation_marker_failed` code (Issue
+  /// #599): Apple confirmed the revocation itself - unlike
+  /// [AccountDeletionFailure.appleRevokeFailed] - but the server's own
+  /// durable record of that (retried once server-side) could not be
+  /// written. Distinct from [AccountDeletionFailure.appleRevokeFailed]
+  /// because its copy's "Apple could not confirm the revocation" claim
+  /// would be false here; distinct from
+  /// [AccountDeletionFailure.deleteUserFailed] because `deleteUser` was
+  /// never even attempted.
+  const factory AccountDeletionFailure.appleRevocationMarkerFailed() =
+      AccountDeletionAppleRevocationMarkerFailedFailure;
 
   /// The Edge Function's own `attachment_cleanup_failed` code (Issue #243
   /// round 2 fix, 2026-09-08): the caller's feedback-attachments Storage
@@ -58,6 +86,23 @@ sealed class AccountDeletionFailure implements Exception {
   /// `auth.users` row. The operator just needs to retry.
   const factory AccountDeletionFailure.attachmentCleanupFailed() =
       AccountDeletionAttachmentCleanupFailedFailure;
+
+  /// The Edge Function's own `attachment_cleanup_unbounded` code (Issue
+  /// #559; Issue #605/LLA-053): the caller's own feedback-attachments
+  /// Storage listing exceeded the server's object-count or depth bound. This
+  /// is a bound on that account's *own* data, not a transient I/O hiccup
+  /// like [AccountDeletionFailure.attachmentCleanupFailed] - retrying the
+  /// exact same delete call can never succeed, since nothing about the
+  /// account's attachments changes on its own. Nothing was touched at all
+  /// (this step runs before the destructive RPC), so - like
+  /// [AccountDeletionFailure.appleCodeRequired] and
+  /// [AccountDeletionFailure.attachmentCleanupFailed] - the account, its
+  /// rows, and this device's data are all still intact. Gets its own
+  /// terminal, support-routed copy rather than falling through to
+  /// [AccountDeletionFailure.unknown]'s "please try again", which would be
+  /// actively misleading here.
+  const factory AccountDeletionFailure.attachmentCleanupUnbounded() =
+      AccountDeletionAttachmentCleanupUnboundedFailure;
 
   /// The client-side call to the Edge Function timed out (#17 P1 fix):
   /// `functions_client` 2.7.1's `invoke()` has no default deadline, so
@@ -113,6 +158,15 @@ final class AccountDeletionAppleCodeRequiredFailure
   String toString() => 'AccountDeletionFailure.appleCodeRequired';
 }
 
+/// See [AccountDeletionFailure.appleNativeCeremonyUnavailable].
+final class AccountDeletionAppleNativeCeremonyUnavailableFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionAppleNativeCeremonyUnavailableFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.appleNativeCeremonyUnavailable';
+}
+
 /// See [AccountDeletionFailure.appleRevokeFailed].
 final class AccountDeletionAppleRevokeFailedFailure
     extends AccountDeletionFailure {
@@ -122,6 +176,15 @@ final class AccountDeletionAppleRevokeFailedFailure
   String toString() => 'AccountDeletionFailure.appleRevokeFailed';
 }
 
+/// See [AccountDeletionFailure.appleRevocationMarkerFailed].
+final class AccountDeletionAppleRevocationMarkerFailedFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionAppleRevocationMarkerFailedFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.appleRevocationMarkerFailed';
+}
+
 /// See [AccountDeletionFailure.attachmentCleanupFailed].
 final class AccountDeletionAttachmentCleanupFailedFailure
     extends AccountDeletionFailure {
@@ -129,6 +192,15 @@ final class AccountDeletionAttachmentCleanupFailedFailure
 
   @override
   String toString() => 'AccountDeletionFailure.attachmentCleanupFailed';
+}
+
+/// See [AccountDeletionFailure.attachmentCleanupUnbounded].
+final class AccountDeletionAttachmentCleanupUnboundedFailure
+    extends AccountDeletionFailure {
+  const AccountDeletionAttachmentCleanupUnboundedFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.attachmentCleanupUnbounded';
 }
 
 /// See [AccountDeletionFailure.timeout].
