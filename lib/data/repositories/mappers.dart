@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/models/care_note.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
+import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
@@ -37,6 +38,11 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
           : domain.LocalDate.fromIso(row.lastPeriodStart!),
       typicalCycleLengthDays: row.typicalCycleLengthDays,
       typicalPeriodLengthDays: row.typicalPeriodLengthDays,
+      // Issue #255: display-unit preferences. `fromDb` degrades an
+      // unrecognised stored value to the column default — presentation
+      // only, so a value this build doesn't recognise never crashes a read.
+      bbtUnit: domain.BbtUnit.fromDb(row.bbtUnit),
+      weightUnit: domain.WeightUnit.fromDb(row.weightUnit),
     );
 
 /// Storage `FlowLevel` -> domain `FlowLevel`. Issue #247 spotting-alias

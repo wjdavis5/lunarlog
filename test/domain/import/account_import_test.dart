@@ -458,6 +458,46 @@ void main() {
       expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
     });
 
+    // Issue #255: the display-unit preferences get mode's closed-set
+    // treatment — an unrecognised value is rejected outright, an absent
+    // key (a pre-v8 export) parses to null and the importer falls back to
+    // the column default.
+    test('a non-string bbtUnit is rejected, not a raw TypeError', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'bbtUnit': 7},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an unrecognised bbtUnit or weightUnit is rejected', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'bbtUnit': 'kelvin'},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+      final raw2 = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'weightUnit': 'stone'},
+      ]);
+      expect(parseAccountImport(_bytes(raw2)), isA<AccountImportParseFailed>());
+    });
+
+    test('a v8 document carries bbtUnit/weightUnit through the parse; an '
+        'older document without the keys parses to nulls', () {
+      final v8 = parseAccountImport(_bytes(_rawDocument(profiles: [
+        {..._rawProfile(_p1), 'bbtUnit': 'fahrenheit', 'weightUnit': 'lb'},
+      ])));
+      final profile =
+          ((v8 as AccountImportParsed).document).profiles.single;
+      expect(profile.bbtUnit, 'fahrenheit');
+      expect(profile.weightUnit, 'lb');
+
+      final preV8 = parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1),
+      ])));
+      final absent = ((preV8 as AccountImportParsed).document).profiles.single;
+      expect(absent.bbtUnit, isNull);
+      expect(absent.weightUnit, isNull);
+    });
+
     test('more than kMaxObservationsPerDay observations on one '
         '(profile, date) are rejected', () {
       final raw = _rawDocument(profiles: [

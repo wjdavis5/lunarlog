@@ -13,6 +13,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -237,6 +238,8 @@ class _ManualProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       throw UnimplementedError('not exercised in the lifecycle tests');
 

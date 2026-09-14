@@ -11,8 +11,10 @@ import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/data/sync/row_codec.dart';
+import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/database_error.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
@@ -249,7 +251,7 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 15);
+  expect(await userVersion(db), 16);
   expect(await columnsOf(db, 'profiles'),
       containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
               'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
@@ -341,10 +343,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 15 and database opens with the expected tables',
+    test('schema version is 16 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 15);
-      expect(await userVersion(db), 15);
+      expect(db.schemaVersion, 16);
+      expect(await userVersion(db), 16);
 
       final tables = (await db
               .customSelect(
@@ -560,6 +562,33 @@ void main() {
       expect(reread!.lastPeriodStart, '2026-01-02');
       expect(reread.typicalCycleLengthDays, 26);
       expect(reread.typicalPeriodLengthDays, 4);
+    });
+
+    test('issue #255: remote-applied profile rows carry the display-unit '
+        'preferences (the sync pull path)', () async {
+      final created = await storage.upsertProfile(
+          displayName: 'Units',
+          isMinor: false,
+          bbtUnit: 'fahrenheit',
+          weightUnit: 'lb');
+      // Round-trip through the codec + remote apply, the way a pull does.
+      final decoded = decodeProfile(encodeProfile(created));
+      final applied = await storage.applyRemoteProfile(decoded);
+      expect(applied, isTrue);
+      final reread = await storage.getProfile(created.id);
+      expect(reread!.bbtUnit, 'fahrenheit');
+      expect(reread.weightUnit, 'lb');
+    });
+
+    test('issue #255: a new profile defaults to the metric display units',
+        () async {
+      final created =
+          await storage.upsertProfile(displayName: 'Defaults', isMinor: false);
+      expect(created.bbtUnit, 'celsius');
+      expect(created.weightUnit, 'kg');
+      final domainProfile = profileToDomain(created);
+      expect(domainProfile.bbtUnit, domain.BbtUnit.celsius);
+      expect(domainProfile.weightUnit, domain.WeightUnit.kg);
     });
 
     test('AE5 (data layer half): soft delete tombstones the row — present in '
@@ -1930,7 +1959,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 15);
+      expect(await userVersion(second), 16);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1943,7 +1972,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 15);
+      expect(await userVersion(db), 16);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1988,7 +2017,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 15);
+      expect(await userVersion(db), 16);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2021,7 +2050,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 15);
+      expect(await userVersion(db), 16);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -2081,7 +2110,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 15);
+      expect(await userVersion(db), 16);
       expect(await columnsOf(db, 'day_entries'), containsAll(['pms']));
       // The new column defaults to false for every already-stored row.
       final existing = await db.storage.getDayEntries(
@@ -2167,7 +2196,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 15);
+      expect(await userVersion(db), 16);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =

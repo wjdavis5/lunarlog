@@ -55,6 +55,7 @@ import '../limits.dart';
 import '../models/day_entry.dart';
 import '../models/flow_level.dart';
 import '../models/local_date.dart';
+import '../models/measurement_unit.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
 import '../models/profile_guardian.dart';
@@ -244,6 +245,8 @@ class ImportedProfile {
     this.archivedAt,
     this.createdAt,
     this.updatedAt,
+    this.bbtUnit,
+    this.weightUnit,
     this.dayEntries = const [],
     this.observations = const [],
   });
@@ -278,6 +281,15 @@ class ImportedProfile {
   final DateTime? archivedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  /// Raw `toDb()` display-unit strings (Issue #255), or null. Already
+  /// validated against the closed sets at parse time (`_parseBbtUnit` /
+  /// `_parseWeightUnit`) — same treatment as [mode]. Only consulted for a
+  /// *created* profile; a *matched* profile keeps its own stored
+  /// preference, exactly like [mode].
+  final String? bbtUnit;
+  final String? weightUnit;
+
   final List<ImportedDayEntry> dayEntries;
   final List<ImportedObservation> observations;
 }
@@ -453,6 +465,8 @@ ImportedProfile _parseProfile(Object? raw) {
     displayName: _profileDisplayName(raw['displayName']),
     isMinor: raw['isMinor'] == true,
     mode: _parseMode(raw['mode'], context: 'Profile $id'),
+    bbtUnit: _parseBbtUnit(raw['bbtUnit'], context: 'Profile $id'),
+    weightUnit: _parseWeightUnit(raw['weightUnit'], context: 'Profile $id'),
     sortOrder: raw['sortOrder'] is int ? raw['sortOrder'] as int : 0,
     archivedAt: DateTime.tryParse('${raw['archivedAt']}'),
     createdAt: DateTime.tryParse('${raw['createdAt']}'),
@@ -487,6 +501,40 @@ String? _parseMode(Object? raw, {required String context}) {
   final recognised = ProfileMode.values.any((m) => m.toDb() == raw);
   if (!recognised) {
     throw _ImportFormatException('$context has an unrecognised mode ("${_truncateForMessage(raw)}").');
+  }
+  return raw;
+}
+
+/// Validates `bbtUnit` against [BbtUnit]'s closed set (Issue #255), the
+/// same treatment [_parseMode] gives `mode`: an untrusted import file
+/// carrying an unrecognised value is rejected outright. Null (absent key —
+/// every schema version before v8, and an export from before the
+/// preference existed) passes through unchanged — `AccountImporter` falls
+/// back to `'celsius'`.
+String? _parseBbtUnit(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw _ImportFormatException('$context has an invalid bbtUnit.');
+  }
+  final recognised = BbtUnit.values.any((u) => u.toDb() == raw);
+  if (!recognised) {
+    throw _ImportFormatException(
+        '$context has an unrecognised bbtUnit ("${_truncateForMessage(raw)}").');
+  }
+  return raw;
+}
+
+/// Validates `weightUnit` against [WeightUnit]'s closed set (Issue #255).
+/// Same contract as [_parseBbtUnit]; the absent-key fallback is `'kg'`.
+String? _parseWeightUnit(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw _ImportFormatException('$context has an invalid weightUnit.');
+  }
+  final recognised = WeightUnit.values.any((u) => u.toDb() == raw);
+  if (!recognised) {
+    throw _ImportFormatException(
+        '$context has an unrecognised weightUnit ("${_truncateForMessage(raw)}").');
   }
   return raw;
 }
@@ -986,6 +1034,8 @@ class ProfilePlan {
     required this.outcome,
     this.skipReason,
     this.mode,
+    this.bbtUnit,
+    this.weightUnit,
     this.isMinor = false,
     this.sortOrder = 0,
     this.entries = const [],
@@ -999,6 +1049,13 @@ class ProfilePlan {
   final ProfileImportOutcome outcome;
   final String? skipReason;
   final String? mode;
+
+  /// Issue #255: the raw display-unit strings from the file, already
+  /// validated against the closed sets at parse time. Only consulted for a
+  /// *created* profile — a *matched* profile keeps its own stored
+  /// preference, exactly like [mode].
+  final String? bbtUnit;
+  final String? weightUnit;
   final bool isMinor;
   final int sortOrder;
   final List<DayEntryPlan> entries;
@@ -1279,6 +1336,8 @@ ProfilePlan _planProfile(
       displayName: imported.displayName,
       outcome: ProfileImportOutcome.created,
       mode: imported.mode,
+      bbtUnit: imported.bbtUnit,
+      weightUnit: imported.weightUnit,
       isMinor: imported.isMinor,
       sortOrder: imported.sortOrder,
       entries: _planEntries(imported.dayEntries, const []),
