@@ -148,8 +148,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// * 17 — `tracking_preferences` on `profiles` (Issue #259, the synced
   ///   curated-tracking-categories document: which categories the day
   ///   sheet surfaces and in what order, shared by every guardian).
+  /// * 18 — `server_version` on `profile_guardians` (Issue #635, LLA-035:
+  ///   membership convergence ordered by the server-owned monotonic
+  ///   version instead of the client-writable `updated_at`) and
+  ///   `access_revoked_at` on `profiles` (Issue #635, LLA-041: marks a
+  ///   revocation-wiped row so a later re-share always restores it,
+  ///   regardless of a stale, unpushed local `updated_at`).
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -199,7 +205,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `observations.exported_to_platform_at`. Issue #525 adds
   /// `sync_state.cursor_profile_guardians`. Issue #255 adds
   /// `profiles.bbt_unit`, `profiles.weight_unit`. Issue #259 adds
-  /// `profiles.tracking_preferences`.
+  /// `profiles.tracking_preferences`. Issue #635 adds
+  /// `profile_guardians.server_version`, `profiles.access_revoked_at`.
   @visibleForTesting
   Future<void> Function(String completedStep)? migrationStepHook;
 
@@ -339,6 +346,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV16(m, from);
     // Issue #259's v17 step, same shape again.
     await _upgradeToV17(m, from);
+    // Issue #635's v18 step, same shape again.
+    await _upgradeToV18(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -535,6 +544,35 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await transaction(() async {
       await m.addColumn(profiles, profiles.trackingPreferences);
       await migrationStepHook?.call('profiles.tracking_preferences');
+    });
+  }
+
+  /// The v18 upgrade step (Issue #635): `server_version` on
+  /// `profile_guardians` (LLA-035) and `access_revoked_at` on `profiles`
+  /// (LLA-041). `profiles` has existed since v1 on every real device, so
+  /// its addColumn is always safe regardless of `from`. `profile_guardians`
+  /// mirrors the `sync_state`/`observations` gotcha documented elsewhere in
+  /// this file: the `from < 3` block's `m.createTable(profileGuardians)`
+  /// builds the table from the *current* `ProfileGuardians` class, which
+  /// already declares `serverVersion` — so a device upgrading straight
+  /// from v1 or v2 gets the column for free as part of that createTable,
+  /// and adding it again here would be a duplicate-column error. Only a
+  /// device that already had `profile_guardians` *before* this version
+  /// (from >= 3) is missing the column and needs the explicit `addColumn`
+  /// below. Neither column needs a real backfill: a fresh local row's
+  /// `server_version` reads `0` (lower than any real remote value,
+  /// matching a never-synced row's treatment everywhere else) and
+  /// `access_revoked_at` reads `null` (never evicted), which is exactly
+  /// the pre-#635 behavior for every row already on the device.
+  Future<void> _upgradeToV18(Migrator m, int from) async {
+    if (from >= 18) return;
+    await transaction(() async {
+      if (from >= 3) {
+        await m.addColumn(profileGuardians, profileGuardians.serverVersion);
+        await migrationStepHook?.call('profile_guardians.server_version');
+      }
+      await m.addColumn(profiles, profiles.accessRevokedAt);
+      await migrationStepHook?.call('profiles.access_revoked_at');
     });
   }
 

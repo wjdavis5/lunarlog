@@ -18,6 +18,7 @@ db.ProfileGuardianData _row({required String role, required String status}) =>
       status: status,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
+      serverVersion: 0,
     );
 
 void main() {

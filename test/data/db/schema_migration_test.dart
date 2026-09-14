@@ -49,13 +49,13 @@ import 'generated_migrations/schema.dart';
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 8` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 17;
+const int _kCurrentSchemaVersion = 18;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -419,6 +419,36 @@ void main() {
         contains('cursor_profile_guardians'),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
             'sync_state.cursor_profile_guardians (Issue #525)',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion adds server_version to '
+        'profile_guardians and access_revoked_at to profiles (Issue #635)',
+        () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+
+      final guardianColumns = await db
+          .customSelect("PRAGMA table_info('profile_guardians')")
+          .get();
+      expect(
+        guardianColumns.map((row) => row.data['name'] as String),
+        contains('server_version'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'profile_guardians.server_version (Issue #635, LLA-035)',
+      );
+
+      final profileColumns =
+          await db.customSelect("PRAGMA table_info('profiles')").get();
+      expect(
+        profileColumns.map((row) => row.data['name'] as String),
+        contains('access_revoked_at'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must add '
+            'profiles.access_revoked_at (Issue #635, LLA-041)',
       );
     });
   }

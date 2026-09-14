@@ -29,6 +29,24 @@ bool remoteWinsById({
 }) =>
     compareInstants(remoteUpdatedAt, localUpdatedAt) >= 0;
 
+/// Per-id rule for `profile_guardians` (LLA-035, issue #635): membership
+/// status transitions (accept/revoke) are ordered by the server-owned,
+/// monotonic `server_version` sequence rather than `updated_at`.
+/// `profile_guardians.updated_at` is directly client-writable (a guardian
+/// may edit its own `display_name` alongside it), so [remoteWinsById]
+/// against it lets an accepted guardian stamp a far-future `updated_at`
+/// that permanently outranks a later, authoritative revocation —
+/// `server_version` is stamped exclusively by the server's
+/// `set_server_version` trigger and always advances forward on every
+/// state transition, revocation included, regardless of what any client
+/// wrote into `updated_at`. Remote wins ties, same convention as
+/// [remoteWinsById].
+bool remoteWinsByVersion({
+  required int localServerVersion,
+  required int remoteServerVersion,
+}) =>
+    remoteServerVersion >= localServerVersion;
+
 /// The minimum a day entry contributes to the same-date rule.
 class DayEntryCandidate {
   const DayEntryCandidate({

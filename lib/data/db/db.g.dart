@@ -245,6 +245,18 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     requiredDuringInsert: false,
     defaultValue: const Constant('kg'),
   );
+  static const VerificationMeta _accessRevokedAtMeta = const VerificationMeta(
+    'accessRevokedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> accessRevokedAt =
+      GeneratedColumn<DateTime>(
+        'access_revoked_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -268,6 +280,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     trackingPreferences,
     bbtUnit,
     weightUnit,
+    accessRevokedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -438,6 +451,15 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         weightUnit.isAcceptableOrUnknown(data['weight_unit']!, _weightUnitMeta),
       );
     }
+    if (data.containsKey('access_revoked_at')) {
+      context.handle(
+        _accessRevokedAtMeta,
+        accessRevokedAt.isAcceptableOrUnknown(
+          data['access_revoked_at']!,
+          _accessRevokedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -531,6 +553,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.string,
         data['${effectivePrefix}weight_unit'],
       )!,
+      accessRevokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}access_revoked_at'],
+      ),
     );
   }
 
@@ -637,6 +663,22 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// `domain.WeightUnit` and the server's `profiles_weight_unit_check`
   /// CHECK (`kg|lb`). Same contract as [bbtUnit].
   final String weightUnit;
+
+  /// Device-local, never synced (LLA-041): the instant
+  /// `_tombstoneRevokedSharedProfile` last wiped this row for a guardian
+  /// revocation (or a server-side hard purge), or null if it has never
+  /// been evicted this way. Marks the local copy's `updated_at` as a
+  /// cache-eviction artifact rather than a genuine LWW competitor: the
+  /// wipe deliberately leaves `updated_at` untouched (so an unrevoked
+  /// re-share carrying the profile's original, never-bumped timestamp can
+  /// still tie/win normally), but that same choice means a row that was
+  /// *dirty* with an unpushed, clock-ahead edit at wipe time keeps an
+  /// `updated_at` no future authoritative delivery can ever beat under the
+  /// ordinary per-id rule. [_applyProfile] bypasses that rule entirely
+  /// while this is non-null — any remote delivery of the row wins
+  /// unconditionally — and clears it back to null the moment one lands, so
+  /// normal per-id LWW resumes from the restored value.
+  final DateTime? accessRevokedAt;
   const Profile({
     required this.id,
     required this.displayName,
@@ -659,6 +701,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.trackingPreferences,
     required this.bbtUnit,
     required this.weightUnit,
+    this.accessRevokedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -706,6 +749,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     }
     map['bbt_unit'] = Variable<String>(bbtUnit);
     map['weight_unit'] = Variable<String>(weightUnit);
+    if (!nullToAbsent || accessRevokedAt != null) {
+      map['access_revoked_at'] = Variable<DateTime>(accessRevokedAt);
+    }
     return map;
   }
 
@@ -752,6 +798,9 @@ class Profile extends DataClass implements Insertable<Profile> {
           : Value(trackingPreferences),
       bbtUnit: Value(bbtUnit),
       weightUnit: Value(weightUnit),
+      accessRevokedAt: accessRevokedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accessRevokedAt),
     );
   }
 
@@ -790,6 +839,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       ),
       bbtUnit: serializer.fromJson<String>(json['bbtUnit']),
       weightUnit: serializer.fromJson<String>(json['weightUnit']),
+      accessRevokedAt: serializer.fromJson<DateTime?>(json['accessRevokedAt']),
     );
   }
   @override
@@ -819,6 +869,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'trackingPreferences': serializer.toJson<String?>(trackingPreferences),
       'bbtUnit': serializer.toJson<String>(bbtUnit),
       'weightUnit': serializer.toJson<String>(weightUnit),
+      'accessRevokedAt': serializer.toJson<DateTime?>(accessRevokedAt),
     };
   }
 
@@ -844,6 +895,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<String?> trackingPreferences = const Value.absent(),
     String? bbtUnit,
     String? weightUnit,
+    Value<DateTime?> accessRevokedAt = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
     displayName: displayName ?? this.displayName,
@@ -878,6 +930,9 @@ class Profile extends DataClass implements Insertable<Profile> {
         : this.trackingPreferences,
     bbtUnit: bbtUnit ?? this.bbtUnit,
     weightUnit: weightUnit ?? this.weightUnit,
+    accessRevokedAt: accessRevokedAt.present
+        ? accessRevokedAt.value
+        : this.accessRevokedAt,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -922,6 +977,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       weightUnit: data.weightUnit.present
           ? data.weightUnit.value
           : this.weightUnit,
+      accessRevokedAt: data.accessRevokedAt.present
+          ? data.accessRevokedAt.value
+          : this.accessRevokedAt,
     );
   }
 
@@ -948,7 +1006,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('typicalPeriodLengthDays: $typicalPeriodLengthDays, ')
           ..write('trackingPreferences: $trackingPreferences, ')
           ..write('bbtUnit: $bbtUnit, ')
-          ..write('weightUnit: $weightUnit')
+          ..write('weightUnit: $weightUnit, ')
+          ..write('accessRevokedAt: $accessRevokedAt')
           ..write(')'))
         .toString();
   }
@@ -976,6 +1035,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     trackingPreferences,
     bbtUnit,
     weightUnit,
+    accessRevokedAt,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -1001,7 +1061,8 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.typicalPeriodLengthDays == this.typicalPeriodLengthDays &&
           other.trackingPreferences == this.trackingPreferences &&
           other.bbtUnit == this.bbtUnit &&
-          other.weightUnit == this.weightUnit);
+          other.weightUnit == this.weightUnit &&
+          other.accessRevokedAt == this.accessRevokedAt);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -1026,6 +1087,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<String?> trackingPreferences;
   final Value<String> bbtUnit;
   final Value<String> weightUnit;
+  final Value<DateTime?> accessRevokedAt;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
@@ -1049,6 +1111,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.trackingPreferences = const Value.absent(),
     this.bbtUnit = const Value.absent(),
     this.weightUnit = const Value.absent(),
+    this.accessRevokedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -1073,6 +1136,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.trackingPreferences = const Value.absent(),
     this.bbtUnit = const Value.absent(),
     this.weightUnit = const Value.absent(),
+    this.accessRevokedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        displayName = Value(displayName),
@@ -1101,6 +1165,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<String>? trackingPreferences,
     Expression<String>? bbtUnit,
     Expression<String>? weightUnit,
+    Expression<DateTime>? accessRevokedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1129,6 +1194,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
         'tracking_preferences': trackingPreferences,
       if (bbtUnit != null) 'bbt_unit': bbtUnit,
       if (weightUnit != null) 'weight_unit': weightUnit,
+      if (accessRevokedAt != null) 'access_revoked_at': accessRevokedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1155,6 +1221,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<String?>? trackingPreferences,
     Value<String>? bbtUnit,
     Value<String>? weightUnit,
+    Value<DateTime?>? accessRevokedAt,
     Value<int>? rowid,
   }) {
     return ProfilesCompanion(
@@ -1181,6 +1248,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       trackingPreferences: trackingPreferences ?? this.trackingPreferences,
       bbtUnit: bbtUnit ?? this.bbtUnit,
       weightUnit: weightUnit ?? this.weightUnit,
+      accessRevokedAt: accessRevokedAt ?? this.accessRevokedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1257,6 +1325,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (weightUnit.present) {
       map['weight_unit'] = Variable<String>(weightUnit.value);
     }
+    if (accessRevokedAt.present) {
+      map['access_revoked_at'] = Variable<DateTime>(accessRevokedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1287,6 +1358,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('trackingPreferences: $trackingPreferences, ')
           ..write('bbtUnit: $bbtUnit, ')
           ..write('weightUnit: $weightUnit, ')
+          ..write('accessRevokedAt: $accessRevokedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2388,6 +2460,18 @@ class $ProfileGuardiansTable extends ProfileGuardians
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _serverVersionMeta = const VerificationMeta(
+    'serverVersion',
+  );
+  @override
+  late final GeneratedColumn<int> serverVersion = GeneratedColumn<int>(
+    'server_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2399,6 +2483,7 @@ class $ProfileGuardiansTable extends ProfileGuardians
     invitedBy,
     createdAt,
     updatedAt,
+    serverVersion,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2478,6 +2563,15 @@ class $ProfileGuardiansTable extends ProfileGuardians
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('server_version')) {
+      context.handle(
+        _serverVersionMeta,
+        serverVersion.isAcceptableOrUnknown(
+          data['server_version']!,
+          _serverVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2523,6 +2617,10 @@ class $ProfileGuardiansTable extends ProfileGuardians
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      serverVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_version'],
+      )!,
     );
   }
 
@@ -2547,6 +2645,18 @@ class ProfileGuardianData extends DataClass
   final String? invitedBy;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Server-owned, monotonic version stamped by the server's
+  /// `set_server_version` trigger on every insert/update (LLA-035): unlike
+  /// every other per-id table, this table's `updated_at` is directly
+  /// client-writable (`grant update (display_name, updated_at)` in
+  /// `20260904010000_multi_guardian_schema.sql`, needed so a guardian can
+  /// edit its own `display_name`), so an accepted guardian can stamp its
+  /// own membership row's `updated_at` arbitrarily far in the future and
+  /// permanently outrank a later, authoritative revocation under the
+  /// ordinary per-id rule. Membership convergence is ordered by this
+  /// column instead — see `conflict_rules.dart`'s `remoteWinsByVersion`.
+  final int serverVersion;
   const ProfileGuardianData({
     required this.id,
     required this.profileId,
@@ -2557,6 +2667,7 @@ class ProfileGuardianData extends DataClass
     this.invitedBy,
     required this.createdAt,
     required this.updatedAt,
+    required this.serverVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2574,6 +2685,7 @@ class ProfileGuardianData extends DataClass
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['server_version'] = Variable<int>(serverVersion);
     return map;
   }
 
@@ -2592,6 +2704,7 @@ class ProfileGuardianData extends DataClass
           : Value(invitedBy),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      serverVersion: Value(serverVersion),
     );
   }
 
@@ -2610,6 +2723,7 @@ class ProfileGuardianData extends DataClass
       invitedBy: serializer.fromJson<String?>(json['invitedBy']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      serverVersion: serializer.fromJson<int>(json['serverVersion']),
     );
   }
   @override
@@ -2625,6 +2739,7 @@ class ProfileGuardianData extends DataClass
       'invitedBy': serializer.toJson<String?>(invitedBy),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'serverVersion': serializer.toJson<int>(serverVersion),
     };
   }
 
@@ -2638,6 +2753,7 @@ class ProfileGuardianData extends DataClass
     Value<String?> invitedBy = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
+    int? serverVersion,
   }) => ProfileGuardianData(
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
@@ -2648,6 +2764,7 @@ class ProfileGuardianData extends DataClass
     invitedBy: invitedBy.present ? invitedBy.value : this.invitedBy,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    serverVersion: serverVersion ?? this.serverVersion,
   );
   ProfileGuardianData copyWithCompanion(ProfileGuardiansCompanion data) {
     return ProfileGuardianData(
@@ -2662,6 +2779,9 @@ class ProfileGuardianData extends DataClass
       invitedBy: data.invitedBy.present ? data.invitedBy.value : this.invitedBy,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      serverVersion: data.serverVersion.present
+          ? data.serverVersion.value
+          : this.serverVersion,
     );
   }
 
@@ -2676,7 +2796,8 @@ class ProfileGuardianData extends DataClass
           ..write('displayName: $displayName, ')
           ..write('invitedBy: $invitedBy, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('serverVersion: $serverVersion')
           ..write(')'))
         .toString();
   }
@@ -2692,6 +2813,7 @@ class ProfileGuardianData extends DataClass
     invitedBy,
     createdAt,
     updatedAt,
+    serverVersion,
   );
   @override
   bool operator ==(Object other) =>
@@ -2705,7 +2827,8 @@ class ProfileGuardianData extends DataClass
           other.displayName == this.displayName &&
           other.invitedBy == this.invitedBy &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.serverVersion == this.serverVersion);
 }
 
 class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
@@ -2718,6 +2841,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
   final Value<String?> invitedBy;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<int> serverVersion;
   final Value<int> rowid;
   const ProfileGuardiansCompanion({
     this.id = const Value.absent(),
@@ -2729,6 +2853,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     this.invitedBy = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.serverVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfileGuardiansCompanion.insert({
@@ -2741,6 +2866,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     this.invitedBy = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
+    this.serverVersion = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        profileId = Value(profileId),
@@ -2758,6 +2884,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     Expression<String>? invitedBy,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<int>? serverVersion,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2770,6 +2897,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
       if (invitedBy != null) 'invited_by': invitedBy,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (serverVersion != null) 'server_version': serverVersion,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2784,6 +2912,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     Value<String?>? invitedBy,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<int>? serverVersion,
     Value<int>? rowid,
   }) {
     return ProfileGuardiansCompanion(
@@ -2796,6 +2925,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
       invitedBy: invitedBy ?? this.invitedBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      serverVersion: serverVersion ?? this.serverVersion,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2830,6 +2960,9 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (serverVersion.present) {
+      map['server_version'] = Variable<int>(serverVersion.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2848,6 +2981,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
           ..write('invitedBy: $invitedBy, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('serverVersion: $serverVersion, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8458,6 +8592,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> trackingPreferences,
   Value<String> bbtUnit,
   Value<String> weightUnit,
+  Value<DateTime?> accessRevokedAt,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -8482,6 +8617,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String?> trackingPreferences,
   Value<String> bbtUnit,
   Value<String> weightUnit,
+  Value<DateTime?> accessRevokedAt,
   Value<int> rowid,
 });
 
@@ -8734,6 +8870,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<String> get weightUnit => $composableBuilder(
     column: $table.weightUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get accessRevokedAt => $composableBuilder(
+    column: $table.accessRevokedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9026,6 +9167,11 @@ class $$ProfilesTableOrderingComposer
     column: $table.weightUnit,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get accessRevokedAt => $composableBuilder(
+    column: $table.accessRevokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -9117,6 +9263,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<String> get weightUnit => $composableBuilder(
     column: $table.weightUnit,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get accessRevokedAt => $composableBuilder(
+    column: $table.accessRevokedAt,
     builder: (column) => column,
   );
 
@@ -9353,6 +9504,7 @@ class $$ProfilesTableTableManager
                 Value<String?> trackingPreferences = const Value.absent(),
                 Value<String> bbtUnit = const Value.absent(),
                 Value<String> weightUnit = const Value.absent(),
+                Value<DateTime?> accessRevokedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
@@ -9376,6 +9528,7 @@ class $$ProfilesTableTableManager
                 trackingPreferences: trackingPreferences,
                 bbtUnit: bbtUnit,
                 weightUnit: weightUnit,
+                accessRevokedAt: accessRevokedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -9401,6 +9554,7 @@ class $$ProfilesTableTableManager
                 Value<String?> trackingPreferences = const Value.absent(),
                 Value<String> bbtUnit = const Value.absent(),
                 Value<String> weightUnit = const Value.absent(),
+                Value<DateTime?> accessRevokedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
@@ -9424,6 +9578,7 @@ class $$ProfilesTableTableManager
                 trackingPreferences: trackingPreferences,
                 bbtUnit: bbtUnit,
                 weightUnit: weightUnit,
+                accessRevokedAt: accessRevokedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -10287,6 +10442,7 @@ typedef $$ProfileGuardiansTableCreateCompanionBuilder =
       Value<String?> invitedBy,
       required DateTime createdAt,
       required DateTime updatedAt,
+      Value<int> serverVersion,
       Value<int> rowid,
     });
 typedef $$ProfileGuardiansTableUpdateCompanionBuilder =
@@ -10300,6 +10456,7 @@ typedef $$ProfileGuardiansTableUpdateCompanionBuilder =
       Value<String?> invitedBy,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<int> serverVersion,
       Value<int> rowid,
     });
 
@@ -10383,6 +10540,11 @@ class $$ProfileGuardiansTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProfilesTableFilterComposer get profileId {
     final $$ProfilesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -10456,6 +10618,11 @@ class $$ProfileGuardiansTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProfilesTableOrderingComposer get profileId {
     final $$ProfilesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10514,6 +10681,11 @@ class $$ProfileGuardiansTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get serverVersion => $composableBuilder(
+    column: $table.serverVersion,
+    builder: (column) => column,
+  );
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -10578,6 +10750,7 @@ class $$ProfileGuardiansTableTableManager
                 Value<String?> invitedBy = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> serverVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfileGuardiansCompanion(
                 id: id,
@@ -10589,6 +10762,7 @@ class $$ProfileGuardiansTableTableManager
                 invitedBy: invitedBy,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                serverVersion: serverVersion,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10602,6 +10776,7 @@ class $$ProfileGuardiansTableTableManager
                 Value<String?> invitedBy = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
+                Value<int> serverVersion = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfileGuardiansCompanion.insert(
                 id: id,
@@ -10613,6 +10788,7 @@ class $$ProfileGuardiansTableTableManager
                 invitedBy: invitedBy,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                serverVersion: serverVersion,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
