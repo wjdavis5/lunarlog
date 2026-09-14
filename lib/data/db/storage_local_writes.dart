@@ -282,6 +282,13 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// [mode]: presentation-only, synced like any other profile column.
   /// They are display preferences only — never a storage unit (each
   /// `observations` row carries its own `unit`).
+  ///
+  /// [trackingPreferences] (Issue #259) is the raw JSON text of the
+  /// `{category: {enabled, sort_order}}` document
+  /// (`TrackingPreferences.toJsonText`); null means never customized.
+  /// Carried on every full-row write so an unrelated edit never clears
+  /// the shared copy (the same full-row-overwrite discipline as
+  /// [DriftProfilesRepository]'s update path documents).
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
@@ -289,6 +296,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     String mode = 'standard',
     String bbtUnit = 'celsius',
     String weightUnit = 'kg',
+    String? trackingPreferences,
     int sortOrder = 0,
     DateTime? archivedAt,
     DateTime? createdAt,
@@ -323,6 +331,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               mode: Value(mode),
               bbtUnit: Value(bbtUnit),
               weightUnit: Value(weightUnit),
+              trackingPreferences: Value(trackingPreferences),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
               lastPeriodStart: Value(lastPeriodStart),
@@ -345,6 +354,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           mode: Value(mode),
           bbtUnit: Value(bbtUnit),
           weightUnit: Value(weightUnit),
+          trackingPreferences: Value(trackingPreferences),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
           lastPeriodStart: Value(lastPeriodStart),
@@ -353,6 +363,57 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         ),
       );
       return _profileById(rowId);
+    });
+  }
+
+  /// Writes (or clears) the profile's tracking-preferences document
+  /// (Issue #259): [jsonText] is the raw JSON text [TrackingPreferences]
+  /// produces, or null to clear back to "never customized" (which resolves
+  /// identically to an empty document). This is the column's *only*
+  /// dedicated write path — everything else about the row is untouched —
+  /// so curating the day sheet never restamps or clobbers any other
+  /// profile metadata. Marks the row dirty and bumps `local_rev` (the
+  /// document syncs to co-guardians, AC1/AC6); stamps `updated_at`
+  /// strictly after the stored value like every local write. No-op when
+  /// the row is not held locally or is tombstoned (curating a deleted
+  /// profile is meaningless). Throws [ArgumentError] when [jsonText] is
+  /// not null and not a JSON object — the same shape rule the server's
+  /// `profiles_tracking_preferences_check` enforces — a weaker, fail-fast
+  /// object-ness check only (the server's CHECK remains the real shape
+  /// enforcement: per-entry `enabled` boolean, `sort_order` integer in
+  /// [0, 1000], key length bounds). A null [jsonText] is stored as the
+  /// explicitly empty document `'{}'`: a clear must be non-null to survive
+  /// the codec's emit-only-when-non-null rule and actually propagate.
+  Future<Profile?> setTrackingPreferences(
+    String profileId,
+    String? jsonText,
+  ) async {
+    jsonText ??= '{}';
+    final String stored = jsonText;
+    if (jsonText.isNotEmpty) {
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(jsonText);
+      } on FormatException {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be valid JSON');
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be a JSON object');
+      }
+    }
+    return db.transaction(() async {
+      final existing = await _profileOrNull(profileId);
+      if (existing == null || existing.deletedAt != null) return null;
+      await (db.update(db.profiles)..where((t) => t.id.equals(profileId)))
+          .write(ProfilesCompanion(
+        trackingPreferences: Value(stored),
+        updatedAt: Value(_afterStored(_now(), existing.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileById(profileId);
     });
   }
 

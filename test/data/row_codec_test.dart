@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:drift/native.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/sync/conflict_rules.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
@@ -31,6 +32,7 @@ void main() {
     String? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    String? trackingPreferences,
   }) =>
       Profile(
         id: profileId,
@@ -52,6 +54,7 @@ void main() {
         lastPeriodStart: lastPeriodStart,
         typicalCycleLengthDays: typicalCycleLengthDays,
         typicalPeriodLengthDays: typicalPeriodLengthDays,
+        trackingPreferences: trackingPreferences,
       );
 
   DayEntry makeEntry({
@@ -246,6 +249,97 @@ void main() {
           'last_period_start': 'August 14',
         }),
         throwsA(isA<RowCodecError>()),
+      );
+    });
+
+    test('encode OMITS tracking_preferences when locally null (Issue #259): '
+        'a device that has not customized (or not pulled) must never wipe a '
+        'co-guardian\u2019s curated document with an explicit null', () {
+      final json = encodeProfile(makeProfile());
+      expect(json.keys, isNot(contains('tracking_preferences')));
+    });
+
+    test('encode emits an explicitly-cleared document as {} — the '
+        'composition the clear path depends on (Issue #259 review): '
+        'a cleared profile must NOT be wire-indistinguishable from '
+        'never-customized', () async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final p = await db.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await db.storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": false, "sort_order": 1}}');
+      final cleared = await db.storage.setTrackingPreferences(p.id, null);
+      expect(cleared!.trackingPreferences, '{}',
+          reason: 'the clear is stored as the empty document');
+      final json = encodeProfile(cleared);
+      expect(json['tracking_preferences'], isNotNull,
+          reason: 'the key IS emitted (non-null), so the server stores the '
+              'clear instead of preserving the stale document');
+      expect(json['tracking_preferences'], isA<Map>());
+      expect((json['tracking_preferences'] as Map), isEmpty);
+    });
+
+    test('encode emits the decoded JSON object, not a doubly-encoded '
+        'string (Issue #259)', () {
+      final json = encodeProfile(makeProfile(
+        trackingPreferences: '{"mood": {"enabled": false, "sort_order": 2}}',
+      ));
+      expect(json['tracking_preferences'],
+          {'mood': {'enabled': false, 'sort_order': 2}});
+    });
+
+    test('unparsable local preferences text is a typed failure attributed '
+        'to profiles.tracking_preferences (Issue #259)', () {
+      expect(
+        () => encodeProfile(makeProfile(trackingPreferences: 'not json')),
+        throwsA(isA<RowCodecError>()),
+      );
+      expect(
+        () => encodeProfile(makeProfile(trackingPreferences: 'not json')),
+        throwsA(predicate((e) =>
+            e is RowCodecError &&
+            e.kind == RowCodecErrorKind.invalidTrackingPreferences &&
+            e.field == 'tracking_preferences')),
+      );
+    });
+
+    test('preferences round-trip: object on the wire, JSON text locally '
+        '(Issue #259)', () {
+      // The wire carries the DECODED object (PostgREST renders jsonb as
+      // JSON), not a doubly-encoded string.
+      final decoded = decodeProfile({
+        ...encodeProfile(makeProfile()),
+        'tracking_preferences': {
+          'pain': {'enabled': true, 'sort_order': 0},
+          'mood': {'enabled': false, 'sort_order': 1},
+        },
+      });
+      expect(decoded.trackingPreferences, isNotNull);
+      expect(decoded.trackingPreferences, isA<String>());
+      final reencoded = encodeProfile(makeProfile(
+        trackingPreferences: decoded.trackingPreferences,
+      ));
+      expect(reencoded['tracking_preferences'], {
+        'pain': {'enabled': true, 'sort_order': 0},
+        'mood': {'enabled': false, 'sort_order': 1},
+      });
+    });
+
+    test('an absent or explicitly-null tracking_preferences decodes to '
+        'null (never customized), and a non-object value is a typed '
+        'failure (Issue #259)', () {
+      final base = encodeProfile(makeProfile());
+      expect(decodeProfile(base).trackingPreferences, isNull);
+      expect(
+        decodeProfile({...base, 'tracking_preferences': null})
+            .trackingPreferences,
+        isNull,
+      );
+      expect(
+        () => decodeProfile({...base, 'tracking_preferences': 'curated'}),
+        throwsA(predicate((e) =>
+            e is RowCodecError &&
+            e.kind == RowCodecErrorKind.invalidTrackingPreferences)),
       );
     });
 

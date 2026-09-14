@@ -160,6 +160,10 @@ const List<String> sentryDenyListedKeys = [
   'last_period_start',
   'typical_cycle_length_days',
   'typical_period_length_days',
+  // Issue #259: the curated-categories document reveals which (potentially
+  // intimate) areas a profile tracks at all — content-adjacent, scrubbed
+  // like 'tags'.
+  'tracking_preferences',
   // Issue #520: the bulk importer's per-chunk payload (a batch of whole
   // imported day-entry-shaped rows) and its reminder-window sibling (a
   // predicted cycle-start date), plus a user-typed recipient label

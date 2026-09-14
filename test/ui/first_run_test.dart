@@ -25,6 +25,7 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -147,6 +148,11 @@ class ThrowingProfilesRepository implements ProfilesRepository {
 
   /// How many times [create] was actually invoked (double-tap guard proof).
   int createCalls = 0;
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      _inner.setTrackingPreferences(id, preferences);
 
   @override
   Future<Profile> create({
@@ -1025,6 +1031,11 @@ class _GatedProfilesRepository implements ProfilesRepository {
     }
     _pending.clear();
   }
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      _inner.setTrackingPreferences(id, preferences);
 
   @override
   Future<Profile> create({

@@ -251,10 +251,12 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 16);
+  expect(await userVersion(db), 17);
   expect(await columnsOf(db, 'profiles'),
-      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
-              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
+      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at',
+              'transferred_to_user_id', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
+              'tracking_preferences']));
   expect(
       await columnsOf(db, 'day_entries'),
       containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
@@ -343,10 +345,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 16 and database opens with the expected tables',
+    test('schema version is 17 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 16);
-      expect(await userVersion(db), 16);
+      expect(db.schemaVersion, 17);
+      expect(await userVersion(db), 17);
 
       final tables = (await db
               .customSelect(
@@ -360,8 +362,10 @@ void main() {
               'observations', 'profile_modes', 'cycle_overrides',
               'care_notes', 'visit_prep_items', 'health_sync_state']));
       expect(await columnsOf(db, 'profiles'),
-          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
-              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
+          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at',
+              'transferred_to_user_id', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
+              'tracking_preferences']));
       expect(
           await columnsOf(db, 'day_entries'),
           containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
@@ -1959,7 +1963,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 16);
+      expect(await userVersion(second), 17);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1972,7 +1976,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 16);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2017,7 +2021,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 16);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2050,7 +2054,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 16);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -2110,7 +2114,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 16);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'day_entries'), containsAll(['pms']));
       // The new column defaults to false for every already-stored row.
       final existing = await db.storage.getDayEntries(
@@ -2143,6 +2147,31 @@ void main() {
       expect(tombstone.deletedAt, isNotNull);
       expect(tombstone.pms, isFalse,
           reason: 'a local tombstone carries no payload, the marker included');
+    });
+
+    test('a v7 fixture upgrades to v17 by adding the tracking-preferences '
+        'document column (Issue #259), preserving every row, and the '
+        'upgraded database immediately curates and reads a document',
+        () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV7(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+
+      expect(await userVersion(db), 17);
+      expect(await columnsOf(db, 'profiles'), containsAll(['tracking_preferences']));
+      // The new column is nullable with no default: every already-stored
+      // row reads as never-customized (the all-defaults state).
+      final existing = await db.storage.getProfiles(includeTombstones: true);
+      expect(existing.single.trackingPreferences, isNull);
+
+      // The upgraded database is immediately usable: curate the sheet and
+      // read the document back through the domain mapper.
+      final updated = await db.storage.setTrackingPreferences(
+          kV3ProfileId, '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated!.trackingPreferences,
+          '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated.dirty, isTrue);
     });
 
     test('an upgrade step failing on profiles.relationship leaves the '
@@ -2196,7 +2225,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 16);
+      expect(await userVersion(db), 17);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =
