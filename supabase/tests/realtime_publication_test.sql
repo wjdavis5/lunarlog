@@ -151,8 +151,15 @@ select ok(
   'signal reset before the day_entries trigger assertion'
 );
 
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely; this fixture write (and the update below) run as service_role
+-- (auth.uid() is untouched -- it reads request.jwt.claims, a separate
+-- session GUC from role) so they still reach the table and its triggers
+-- directly, which is what this section is actually proving.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(402), tests.ulid(401), '2026-09-05', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select ok(
   exists(select 1 from public.sync_signals where profile_id = tests.ulid(401)),
@@ -164,9 +171,11 @@ select tests.clear_authentication();
 delete from public.sync_signals where profile_id = tests.ulid(401);
 select tests.authenticate_as('mom');
 
+select set_config('role', 'service_role', true);
 update public.day_entries
    set flow = 'light', updated_at = now(), last_modified_by_user_id = tests.get_supabase_uid('mom')
  where id = tests.ulid(402);
+select set_config('role', 'authenticated', true);
 
 select ok(
   exists(select 1 from public.sync_signals where profile_id = tests.ulid(401)),
@@ -191,8 +200,11 @@ select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(405), 'Deletion Target', false, 0, now(), now());
 
+-- Issue #201: service_role for the same reason as above.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(406), tests.ulid(405), '2026-09-05', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select ok(
   exists(select 1 from public.sync_signals where profile_id = tests.ulid(405)),

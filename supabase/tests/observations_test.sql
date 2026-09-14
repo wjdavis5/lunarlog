@@ -106,14 +106,22 @@ select tests.create_supabase_user('other_parent');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(801), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+-- Issue #201: authenticated no longer holds insert/update on day_entries at
+-- all - these fixture inserts run as service_role instead (auth.uid() is
+-- unaffected, since that reads request.jwt.claims, a separate session GUC
+-- from role).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(802), tests.ulid(801), '2026-09-05', 'UTC', 'medium', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('other_parent');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(851), 'Casey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(852), tests.ulid(851), '2026-09-05', 'UTC', 'none', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- Round trip: mom logs a pain/migraine observation via sync_push.
@@ -283,8 +291,10 @@ select is(
 -- succeed). A CHECK cannot count sibling rows, hence this is enforced here.
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('mom');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(803), tests.ulid(801), '2026-09-07', 'UTC', 'none', '2026-09-07T09:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into r select 'cap_push', public.sync_push('[]'::jsonb, '[]'::jsonb,
   (select jsonb_agg(jsonb_build_object(
      'id', tests.ulid(1000 + i), 'day_entry_id', tests.ulid(803), 'profile_id', tests.ulid(801),
@@ -346,8 +356,10 @@ select is((select deleted_at from public.observations where id = tests.ulid(1050
 -- the same per-day cap -- the "found" branch used to skip the cap check
 -- for an ordinary update too, so this used to silently succeed.
 -- ---------------------------------------------------------------------------
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(805), tests.ulid(801), '2026-09-09', 'UTC', 'none', '2026-09-09T09:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into r select 'datemove_setup', public.sync_push('[]'::jsonb, '[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(901), 'day_entry_id', tests.ulid(805), 'profile_id', tests.ulid(801),
@@ -415,8 +427,10 @@ select tests.authenticate_as('mom');
 -- ---------------------------------------------------------------------------
 -- Backfill idempotency: day_entries.tags -> observations, re-run verbatim.
 -- ---------------------------------------------------------------------------
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, tags, updated_at)
 values (tests.ulid(804), tests.ulid(801), '2026-09-08', 'UTC', 'light', '["cramps", "not_a_known_tag"]'::jsonb, '2026-09-08T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 insert into public.observations (
   id, day_entry_id, profile_id, local_date, tz, category, code, source,
@@ -497,8 +511,10 @@ select is(
 -- Issue #470: Cascading tombstone from day_entries to observations.
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('mom');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(890), tests.ulid(801), '2026-09-12', 'UTC', 'medium', '2026-09-12T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 insert into public.observations (
   id, day_entry_id, profile_id, local_date, tz, category, code, intensity, source, source_id, updated_at
@@ -561,8 +577,10 @@ select is(
 -- observation's TRUE (newer) live value win acceptance and resurrect it
 -- under a still-tombstoned day entry.
 -- ---------------------------------------------------------------------------
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(893), tests.ulid(801), '2026-09-11', 'UTC', 'medium', '2026-09-11T08:00:00Z');
+select set_config('role', 'authenticated', true);
 
 insert into public.observations (
   id, day_entry_id, profile_id, local_date, tz, category, code, intensity, source, source_id, updated_at

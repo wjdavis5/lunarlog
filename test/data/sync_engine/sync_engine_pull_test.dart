@@ -709,4 +709,103 @@ void main() {
       });
     });
   });
+
+  group('issue #598: sync_pull priming', () {
+    test('an incremental cycle primes every sync_pull-covered table with '
+        'its persisted starting cursor, before any pullPage call', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.storage.writeSyncState(kDefaultSyncState.copyWith(
+        boundUserId: const Value(uidA),
+        deviceId: 'device-1',
+        lastFullPullAt: Value(t0),
+        cursorProfiles: 5,
+        cursorDayEntries: 7,
+        cursorObservations: 9,
+        cursorProfileModes: 11,
+        cursorCycleOverrides: 13,
+        cursorCareNotes: 15,
+        cursorVisitPrepItems: 17,
+        cursorProfileGuardians: 19,
+      ));
+
+      await rig.start();
+
+      expect(rig.transport.primePullCycleCalls, hasLength(1));
+      expect(rig.transport.primePullCycleCalls.single, {
+        SyncTable.profiles: 5,
+        SyncTable.profileGuardians: 19,
+        SyncTable.dayEntries: 7,
+        SyncTable.observations: 9,
+        SyncTable.profileModes: 11,
+        SyncTable.cycleOverrides: 13,
+        SyncTable.careNotes: 15,
+        SyncTable.visitPrepItems: 17,
+      }, reason: 'deletedProfiles is deliberately excluded — sync_pull does '
+          'not cover it');
+      expect(
+        rig.transport.pulls.first.afterVersion,
+        greaterThanOrEqualTo(0),
+        reason: 'priming happens before the ordinary per-table pull loop '
+            'below still runs unchanged',
+      );
+    });
+
+    test('a full reconcile primes every sync_pull-covered table at cursor '
+        'zero, regardless of any persisted cursor', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.storage.writeSyncState(kDefaultSyncState.copyWith(
+        boundUserId: const Value(uidA),
+        deviceId: 'device-1',
+        // No lastFullPullAt: due for a full reconcile on bind.
+        cursorProfiles: 500,
+        cursorDayEntries: 500,
+      ));
+
+      await rig.start();
+
+      // Binding with no lastFullPullAt runs an incremental pull (primed
+      // from the persisted cursors above) AND, being due, a reconcile
+      // (primed at all zeros) in the same cycle — the reconcile's own
+      // prime is the LAST call, not necessarily the first.
+      expect(rig.transport.primePullCycleCalls, hasLength(2));
+      expect(rig.transport.primePullCycleCalls.last, {
+        for (final table in const [
+          SyncTable.profiles,
+          SyncTable.profileGuardians,
+          SyncTable.dayEntries,
+          SyncTable.observations,
+          SyncTable.profileModes,
+          SyncTable.cycleOverrides,
+          SyncTable.careNotes,
+          SyncTable.visitPrepItems,
+        ])
+          table: 0,
+      }, reason: 'reconcile always pages from version 0, so priming must '
+          'never reuse a persisted cursor');
+    });
+
+    test('the engine still pulls correctly when the transport never '
+        'implements real priming (every existing fake/test predates issue '
+        '#598) — primePullCycle is best-effort and never required', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final pA = ulidN(1);
+      rig.transport.scriptPage(
+        SyncTable.profiles,
+        [remoteProfile(pA, updatedAt: t0, serverVersion: 1)],
+      );
+
+      await rig.start();
+
+      expect(rig.transport.primePullCycleCalls, hasLength(1));
+      expect((await rig.profile(pA)).id, pA,
+          reason: 'FakeSyncTransport.primePullCycle only records the call '
+              '— it never actually caches pullPage data — so this proves '
+              'the ordinary per-table pull path is completely unaffected '
+              'by priming being a no-op');
+    });
+  });
 }

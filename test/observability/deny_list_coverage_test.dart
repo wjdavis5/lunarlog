@@ -156,6 +156,9 @@ const Map<String, String> _waivedKeys = {
   'last_synced_at': 'health-platform sync bookkeeping timestamp, not content',
   'p_episode_open': 'boolean reminder-window RPC parameter, not content',
   'p_ttl_hours': 'numeric TTL RPC parameter, not content',
+  'p_cursors':
+      'issue #598: jsonb object mapping table name to a sync_pull cursor '
+          'integer, not content',
   'server_version':
       'server-owned monotonic sync-ordering counter (issue #635), not content',
   'access_revoked_at':

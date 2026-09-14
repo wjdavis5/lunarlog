@@ -202,6 +202,11 @@ select is(
 -- The structural backstop: NO write path can leave payload on a
 -- tombstone, even one that forgets sync_push's history entirely.
 -- ---------------------------------------------------------------------------
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely; both direct writes below run as service_role to actually
+-- reach the table (otherwise the first would fail outright rather than
+-- "lives", and the second would get 42501 instead of the CHECK's 23514).
+select set_config('role', 'service_role', true);
 select lives_ok(
   $$ update public.day_entries set deleted_at = null, pms = true where id = tests.ulid(920) $$,
   'reviving a tombstone with pms = true is a legitimate live write'
@@ -212,6 +217,7 @@ select throws_ok(
   'new row for relation "day_entries" violates check constraint "day_entries_tombstone_pms_check"',
   'a direct write cannot put a PMS marker back on a tombstoned row (CHECK backstop)'
 );
+select set_config('role', 'authenticated', true);
 select is(
   (select count(*) from public.day_entries where deleted_at is not null and pms = true),
   0::bigint,

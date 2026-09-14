@@ -39,6 +39,11 @@ create temp table ts (k text primary key, t timestamptz);
 insert into ts values
   ('t0', '2026-09-01T09:00:00Z'), ('t1', '2026-09-01T10:00:00Z'), ('t2', '2026-09-01T11:00:00Z');
 grant select on table ts to authenticated;
+-- Issue #201: some of this file's day_entries writes below run as
+-- service_role (the direct-write CHECK proofs need to reach the table
+-- past the now-revoked authenticated grant), so `ts` needs the same
+-- select grant for that role too.
+grant select on table ts to service_role;
 create function pg_temp.ts_txt(k text) returns text language sql as
   $$ select to_char(t at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') from ts where ts.k = $1 $$;
 create function pg_temp.ts_at(k text) returns timestamptz language sql as
@@ -76,12 +81,21 @@ select throws_ok(
   null, null, 'profiles: raw PATCH created_at pre-epoch rejected');
 
 -- day_entries
+-- Issue #201: authenticated no longer holds an UPDATE grant on day_entries
+-- at all, so these two checks run as service_role instead -- otherwise
+-- every one of them would still throw (now 42501 from the revoked grant,
+-- matched by throws_ok's `null` -> "any SQLSTATE"), but would no longer be
+-- proving what its description claims: that the finite-timestamp CHECK
+-- itself rejects these specific values. auth.uid() is unaffected (it reads
+-- request.jwt.claims, a separate session GUC from role).
+select set_config('role', 'service_role', true);
 select throws_ok(
   $$ update public.day_entries set updated_at = 'infinity' where id = tests.ulid(101) $$,
   null, null, 'day_entries: raw PATCH updated_at = infinity rejected');
 select throws_ok(
   $$ update public.day_entries set updated_at = '2100-01-01T00:00:00Z' where id = tests.ulid(101) $$,
   null, null, 'day_entries: raw PATCH updated_at = 2100 rejected');
+select set_config('role', 'authenticated', true);
 
 -- observations
 select throws_ok(
@@ -94,10 +108,13 @@ select throws_ok(
   $$ update public.observations set updated_at = '2100-01-01T00:00:00Z' where id = tests.ulid(201) $$,
   null, null, 'observations: raw PATCH updated_at = 2100 rejected');
 
--- a healthy raw write still lands
+-- a healthy raw write still lands (issue #201: as service_role -- see the
+-- two throws_ok checks above for why).
+select set_config('role', 'service_role', true);
 update public.day_entries
    set updated_at = pg_temp.ts_at('t2')::timestamptz, note = 'still works'
  where id = tests.ulid(101);
+select set_config('role', 'authenticated', true);
 select is((select note from public.day_entries where id = tests.ulid(101)), 'still works',
   'day_entries: a healthy raw write is not blocked');
 

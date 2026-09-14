@@ -16,8 +16,10 @@ select tests.create_supabase_user('mom');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(9001), 'Riley', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(9002), tests.ulid(9001), '2026-09-05', 'UTC', 'medium', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- Schema shape: the column exists, is nullable, and carries no grant of its

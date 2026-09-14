@@ -76,8 +76,10 @@ select tests.create_supabase_user('doc');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(801), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(802), tests.ulid(801), '2026-09-05', 'UTC', 'none', '2026-09-05T08:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.observations (id, day_entry_id, profile_id, local_date, tz, category, code, updated_at)
 values (tests.ulid(803), tests.ulid(802), tests.ulid(801), '2026-09-05', 'UTC', 'pain', 'cramps', '2026-09-05T08:30:00Z');
 

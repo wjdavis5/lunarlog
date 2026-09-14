@@ -132,14 +132,18 @@ select public.accept_guardian_invitation(
 -- profile - the exact "entries they authored" case the shared-profile
 -- scoping must isolate.
 select tests.authenticate_as('user_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_a'));
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('user_b');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(11), tests.ulid(1), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z',
         tests.get_supabase_uid('user_b'), tests.get_supabase_uid('user_b'));
+select set_config('role', 'authenticated', true);
 
 -- B (co_parent) may invite a caregiver/viewer (R3) - a second, distinct
 -- inviter on the same profile, exercising the "invitations the caller
@@ -240,9 +244,11 @@ select public.accept_guardian_invitation(
   'd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'D'
 );
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(20), tests.ulid(2), '2026-09-01', 'UTC', 'heavy', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_d'), tests.get_supabase_uid('user_d'));
+select set_config('role', 'authenticated', true);
 
 insert into public.notification_preferences (user_id, profile_id, alert_on_log, missed_entry_days)
 values (tests.get_supabase_uid('user_d'), tests.ulid(2), true, 3);
@@ -599,6 +605,7 @@ values (tests.ulid(3), 'Riley E', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T
 
 -- E's own caregiver-authored entry on C's shared profile - must survive
 -- scoping alongside C's and D's entries (ulid(20)), which must not.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(21), tests.ulid(2), '2026-09-03', 'UTC', 'spotting', '2026-09-03T00:00:00Z',
         tests.get_supabase_uid('user_e'), tests.get_supabase_uid('user_e'));
@@ -607,6 +614,7 @@ values (tests.ulid(21), tests.ulid(2), '2026-09-03', 'UTC', 'spotting', '2026-09
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(30), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_e'), tests.get_supabase_uid('user_e'));
+select set_config('role', 'authenticated', true);
 
 -- Distinct value from both C's (3) and D's (3) rows on the same profile so
 -- "whose row is this" stays provable by content.

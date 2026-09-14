@@ -1111,6 +1111,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
     final watermark = await _fetchWatermark();
+    await _primePullCycle(await _incrementalCycleCursors());
     var retry = false;
     for (final table in const [
       SyncTable.profiles,
@@ -1148,6 +1149,46 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       return await _transport.fetchWatermark();
     } catch (_) {
       return null;
+    }
+  }
+
+  /// [_incrementalCycleCursors]'s starting-cursor snapshot for every table
+  /// [SyncTransport.primePullCycle] can prime (issue #598) — every
+  /// [SyncTable] but [SyncTable.deletedProfiles], which `sync_pull` does
+  /// not cover and which [_pullIncremental] still pages from version 0
+  /// every cycle via [_startingCursor]'s own carve-out for it.
+  static const List<SyncTable> _pullRpcTables = [
+    SyncTable.profiles,
+    SyncTable.profileGuardians,
+    SyncTable.dayEntries,
+    SyncTable.observations,
+    SyncTable.profileModes,
+    SyncTable.cycleOverrides,
+    SyncTable.careNotes,
+    SyncTable.visitPrepItems,
+  ];
+
+  /// One [_storage.readSyncState] read, turned into the persisted starting
+  /// cursor for every [_pullRpcTables] entry (issue #598) — the snapshot
+  /// [_primePullCycle] hands the transport before [_pullIncremental]'s own
+  /// per-table loop begins reading (and advancing) those same cursors.
+  Future<Map<SyncTable, int>> _incrementalCycleCursors() async {
+    final state = await _storage.readSyncState();
+    return {
+      for (final table in _pullRpcTables) table: _startingCursor(table, state),
+    };
+  }
+
+  /// Best-effort prime of this cycle's `sync_pull` cache (issue #598): never
+  /// lets a transport that forgets [SyncTransport.primePullCycle]'s own
+  /// never-throws contract fail the whole cycle — priming is purely an
+  /// optimization the per-table pull below still works correctly without,
+  /// just via `SupabaseSyncTransport`'s own select fallback.
+  Future<void> _primePullCycle(Map<SyncTable, int> cursors) async {
+    try {
+      await _transport.primePullCycle(cursors);
+    } catch (_) {
+      // Deliberately swallowed — see the doc comment above.
     }
   }
 
@@ -1266,6 +1307,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// a row hit a retryable apply failure.
   Future<bool> _reconcile(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
+    // Issue #598: every table reconcile pages starts at version 0, so this
+    // cycle's prime is just that — no persisted-state read needed, unlike
+    // _pullIncremental's snapshot.
+    await _primePullCycle({for (final table in _pullRpcTables) table: 0});
     var retry = false;
     for (final table in const [
       SyncTable.profiles,

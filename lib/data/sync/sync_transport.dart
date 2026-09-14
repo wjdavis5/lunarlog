@@ -244,4 +244,20 @@ abstract interface class SyncTransport {
   /// LWW-idempotent (re-applying an already-applied row is a no-op or a
   /// correct overwrite, never wrong).
   Future<int?> fetchWatermark();
+
+  /// Issue #598: primes a pull cycle's `sync_pull(p_cursors)` cache ahead of
+  /// this cycle's [pullPage] calls, so a transport that supports the RPC
+  /// (currently only `SupabaseSyncTransport`) can answer every table's
+  /// first page from ONE round trip instead of one per-table `select`.
+  /// [cursors] is the caller's current starting cursor for every table
+  /// `sync_pull` covers — every [SyncTable] except [SyncTable.deletedProfiles],
+  /// which the RPC does not serve and which keeps paging from version 0
+  /// every cycle via [pullPage] regardless.
+  ///
+  /// Never throws: priming is purely an optimization. A transport with
+  /// nothing to prime (a fake, a server predating the migration that adds
+  /// `sync_pull`, or any other failure while priming) is free to no-op —
+  /// [pullPage] must still work correctly, just via its own per-table
+  /// `select` fallback, whether this was never called or failed silently.
+  Future<void> primePullCycle(Map<SyncTable, int> cursors);
 }

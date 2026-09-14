@@ -93,6 +93,12 @@ select tests.create_supabase_user('tz_mom');
 select tests.authenticate_as('tz_mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(1800), 'Riley', true, 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely; this fixture row and the day_entries_tz_valid proof just below
+-- both run as service_role (auth.uid() is untouched -- it reads
+-- request.jwt.claims, a separate session GUC from role) so they still
+-- reach the table directly rather than the now-revoked grant.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(1801), tests.ulid(1800), '2026-01-01', 'UTC', 'none', '2026-01-01T00:00:00Z');
 
@@ -106,6 +112,7 @@ select throws_ok(
          tests.ulid(1802), tests.ulid(1800)),
   '23514', null,
   'day_entries_tz_valid rejects an unrecognized zone name');
+select set_config('role', 'authenticated', true);
 select throws_ok(
   format($$insert into public.observations
              (id, day_entry_id, profile_id, local_date, tz, category, updated_at)

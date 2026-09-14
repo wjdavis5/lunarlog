@@ -335,6 +335,7 @@ select count(*) as n from public.notification_outbox
  where profile_id = tests.ulid(6801) and recipient_user_id = tests.get_supabase_uid('pc_dad');
 
 select tests.authenticate_as('pc_mom');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6837), tests.ulid(6801), '2026-09-10', 'UTC', 'none', now());
 

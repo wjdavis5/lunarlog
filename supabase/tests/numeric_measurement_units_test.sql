@@ -71,8 +71,10 @@ select tests.create_supabase_user('nanny');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(901), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(902), tests.ulid(901), '2026-09-05', 'UTC', 'none', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.clear_authentication();
 insert into public.profile_guardians (profile_id, user_id, role, status)

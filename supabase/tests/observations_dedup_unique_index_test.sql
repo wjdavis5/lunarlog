@@ -12,8 +12,14 @@ select tests.authenticate_as('mom');
 
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(1), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+-- Issue #201: authenticated no longer holds insert/update on day_entries at
+-- all - this fixture insert runs as service_role instead (auth.uid() is
+-- unaffected, since that reads request.jwt.claims, a separate session GUC
+-- from role).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'none', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select ok(
   exists (

@@ -32,8 +32,10 @@ select public.accept_guardian_invitation(
   '6060606060606060606060606060606060606060606060606060606060606060', 'Dad'
 );
 select tests.authenticate_as('mom_s8');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5080), tests.ulid(508), (current_date - 10), 'UTC', 'heavy', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -63,8 +65,10 @@ values (tests.get_supabase_uid('dad_s2'), tests.ulid(502), 2);
 select public.upsert_reminder_window(tests.ulid(502), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s2');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5020), tests.ulid(502), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -111,8 +115,10 @@ values (tests.get_supabase_uid('dad_s3'), tests.ulid(503), 2);
 select public.upsert_reminder_window(tests.ulid(503), (current_date + 10), false);
 
 select tests.authenticate_as('mom_s3');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5030), tests.ulid(503), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -142,8 +148,10 @@ values (tests.get_supabase_uid('dad_s4'), tests.ulid(504), 2);
 select public.upsert_reminder_window(tests.ulid(504), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s4');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5040), tests.ulid(504), (current_date - 1), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -173,8 +181,10 @@ values (tests.get_supabase_uid('dad_s5'), tests.ulid(505), 2);
 select public.upsert_reminder_window(tests.ulid(505), (current_date + 10), true);
 
 select tests.authenticate_as('mom_s5');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5050), tests.ulid(505), (current_date - 5), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -204,8 +214,10 @@ values (tests.get_supabase_uid('dad_s6'), tests.ulid(506), 2);
 select public.upsert_reminder_window(tests.ulid(506), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s6');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5060), tests.ulid(506), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 select public.revoke_guardian(tests.ulid(506), tests.get_supabase_uid('dad_s6'));
 
 select set_config('request.jwt.claims', '', true);
@@ -259,8 +271,10 @@ values (tests.get_supabase_uid('step_s10'), tests.ulid(510), 3);
 select public.upsert_reminder_window(tests.ulid(510), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s10');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5100), tests.ulid(510), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -329,8 +343,10 @@ values (tests.get_supabase_uid('step_s11'), tests.ulid(511), 1);
 select public.upsert_reminder_window(tests.ulid(511), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s11');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5110), tests.ulid(511), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 -- Forces the notification_outbox insert to fail for dad's row only --
 -- step's row on the same profile, in the same scan invocation, is untouched.
@@ -393,8 +409,10 @@ values (tests.get_supabase_uid('dad_s13'), tests.ulid(513), 1);
 select public.upsert_reminder_window(tests.ulid(513), (current_date - 1), false);
 
 select tests.authenticate_as('mom_s13');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5130), tests.ulid(513), (current_date - 3), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -633,8 +651,10 @@ select lives_ok(
 -- inner join on profile_reminder_windows excludes it entirely, the same
 -- "no row at all" posture Group 508 (top of this file) already proves.
 select tests.authenticate_as('mom_s12');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(5120), tests.ulid(512), (current_date - 5), 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);

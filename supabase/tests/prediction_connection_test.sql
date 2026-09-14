@@ -109,6 +109,11 @@ insert into public.profiles (id, display_name, is_minor, sort_order, created_at,
 values (tests.ulid(902), 'Other Adult', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select tests.authenticate_as('mom');
+-- Issue #201: authenticated no longer holds insert/update on day_entries at
+-- all - this fixture insert runs as service_role instead (auth.uid() is
+-- unaffected, since that reads request.jwt.claims, a separate session GUC
+-- from role).
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, user_id, profile_id, local_date, tz, flow, tags, note, updated_at)
 values (
@@ -116,6 +121,7 @@ values (
   tests.get_supabase_uid('mom'), tests.ulid(901), '2026-09-01', 'America/New_York',
   'medium', '["cramps"]'::jsonb, 'a private note',
   '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- 1. Schema shape: RLS, policies, grants, indexes, triggers.
