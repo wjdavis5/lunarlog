@@ -176,6 +176,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
                     guardiansRepository: guardiansRepository,
+                    bbtUnit: widget.profile.bbtUnit,
+                    weightUnit: widget.profile.weightUnit,
                   ),
           ),
         ],

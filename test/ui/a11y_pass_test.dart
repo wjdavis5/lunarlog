@@ -820,6 +820,87 @@ void main() {
         await db.close();
       });
 
+      testWidgets(
+          'issue #457: a day carrying spotting, graded pain, AND BBT/weight '
+          'shows all four in the read-only view -- #457\'s measurement '
+          'rendering sits alongside #642\'s spotting/pain rendering rather '
+          'than displacing it', (tester) async {
+        Future<DayEntry> seedEverything(
+          DriftDayEntriesRepository entries,
+          DriftObservationsRepository observations,
+          String profileId,
+        ) async {
+          final saved = await seedSpottingAndPain(entries, observations, profileId);
+          await observations.save(
+            Observation(
+              id: '',
+              dayEntryId: saved.id,
+              profileId: profileId,
+              localDate: saved.localDate,
+              tz: saved.tz,
+              category: 'bbt',
+              valueNum: 36.7,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          await observations.save(
+            Observation(
+              id: '',
+              dayEntryId: saved.id,
+              profileId: profileId,
+              localDate: saved.localDate,
+              tz: saved.tz,
+              category: 'weight',
+              valueNum: 61.2,
+              unit: 'kg',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+          return saved;
+        }
+
+        final db = await pumpDaySheet(
+          tester,
+          readOnly: true,
+          buildExisting: seedEverything,
+        );
+
+        expect(
+          find.byKey(const ValueKey('day-sheet-spotting-value')),
+          findsOneWidget,
+          reason: 'spotting (#642) still renders',
+        );
+        expect(
+          find.byKey(const ValueKey('day-sheet-pain-intensity-cramps')),
+          findsOneWidget,
+          reason: 'graded pain (#642) still renders',
+        );
+        expect(
+          find.text('36.7'),
+          findsOneWidget,
+          reason: 'BBT (#457) renders alongside them',
+        );
+        expect(
+          find.text('61.2'),
+          findsOneWidget,
+          reason: 'weight (#457) renders alongside them',
+        );
+        expect(
+          find.byKey(const ValueKey('bbt-field')),
+          findsNothing,
+          reason: 'read-only: no editable BBT field',
+        );
+        expect(
+          find.byKey(const ValueKey('weight-field')),
+          findsNothing,
+          reason: 'read-only: no editable weight field',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+
       testWidgets('neither renders, and no loading/error copy lingers, for '
           'a day with no spotting or graded pain', (tester) async {
         final db = await pumpDaySheet(tester, readOnly: true);

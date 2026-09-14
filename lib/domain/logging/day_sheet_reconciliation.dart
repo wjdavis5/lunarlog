@@ -183,15 +183,105 @@ ObservationMutations computePainMutations({
   return ObservationMutations(toUpsert: toUpsert, toDelete: toDelete);
 }
 
-/// Combines [computeSpottingMutations] and [computePainMutations] into the
-/// one pair of lists an autosave write commits alongside the entry (issue
-/// #471's atomic write) — the pure half of `_computeObservationMutations`,
-/// which also does the (impure) repository fetch of [existingObservations]
-/// and so stays in `lib/ui/logging/day_sheet.dart`.
+/// One numeric measurement row's upsert/delete/no-op (Issue #457's day-sheet
+/// entry for the `bbt`/`weight` categories #240/#255 already store): unlike
+/// [computeSpottingMutations] (existence-only) or [computePainMutations]
+/// (keyed by code), a numeric measurement is a single (category, no code)
+/// row per day whose *value* is what changes.
+///
+/// [value] is `null` for "the field is empty" — the operator cleared it, so
+/// any existing manual row is tombstoned (mirrors [computeSpottingMutations]'
+/// unchecked case). A non-null [value] upserts: unchanged from the existing
+/// row (same value, unit, and [excluded] flag) is a genuine no-op — every
+/// other autosave already writes the surrounding `DayEntry` unconditionally,
+/// so this only avoids a pointless `observations` write when the operator's
+/// edit touched something else on the day.
+///
+/// Only ever matches an existing row whose `source` is
+/// [ObservationSource.manual] (never a wearable/import/health-platform
+/// row) — the same same-date source discipline
+/// `supabase/migrations/20260914020000_numeric_measurement_units.sql` item
+/// 3 documents server-side: a manually-entered BBT/weight value must never
+/// overwrite or merge with a value some other source recorded for the same
+/// day. A day with no existing manual row for [category] always creates a
+/// fresh one rather than adopting a same-category row from another source.
+ObservationMutations computeMeasurementMutations({
+  required List<Observation> existingObservations,
+  required String category,
+  required double? value,
+  required String unit,
+  required bool excluded,
+  required String targetDayEntryId,
+  required String profileId,
+  required LocalDate date,
+  required String tz,
+  required DateTime updatedAt,
+}) {
+  final matching = [
+    for (final o in existingObservations)
+      if (o.category == category && o.source == ObservationSource.manual) o,
+  ];
+  if (value == null) {
+    return ObservationMutations(
+      toDelete: [for (final o in matching) o.id],
+    );
+  }
+  if (matching.isNotEmpty) {
+    final row = matching.first;
+    final unchanged = row.valueNum == value &&
+        row.unit == unit &&
+        row.excluded == excluded;
+    if (unchanged) return const ObservationMutations();
+    return ObservationMutations(
+      toUpsert: [
+        row.copyWith(
+          valueNum: value,
+          unit: unit,
+          excluded: excluded,
+          updatedAt: updatedAt,
+        ),
+      ],
+    );
+  }
+  return ObservationMutations(
+    toUpsert: [
+      Observation(
+        id: '',
+        dayEntryId: targetDayEntryId,
+        profileId: profileId,
+        localDate: date,
+        tz: tz,
+        category: category,
+        valueNum: value,
+        unit: unit,
+        excluded: excluded,
+        updatedAt: updatedAt,
+      ),
+    ],
+  );
+}
+
+/// Combines [computeSpottingMutations], [computePainMutations], and (Issue
+/// #457) the BBT/weight [computeMeasurementMutations] calls into the one
+/// pair of lists an autosave write commits alongside the entry (issue #471's
+/// atomic write) — the pure half of `_computeObservationMutations`, which
+/// also does the (impure) repository fetch of [existingObservations] and so
+/// stays in `lib/ui/logging/day_sheet.dart`.
+///
+/// The six BBT/weight parameters default to "no measurement" (`null` value,
+/// the canonical default unit, not excluded) so every pre-#457 caller —
+/// including this file's own earlier tests — keeps compiling and behaving
+/// identically without passing them.
 ObservationMutations computeObservationMutations({
   required List<Observation> existingObservations,
   required bool spotting,
   required Map<String, int?> painIntensity,
+  double? bbtValue,
+  String bbtUnit = 'celsius',
+  bool bbtExcluded = false,
+  double? weightValue,
+  String weightUnit = 'kg',
+  bool weightExcluded = false,
   required String targetDayEntryId,
   required String profileId,
   required LocalDate date,
@@ -199,23 +289,51 @@ ObservationMutations computeObservationMutations({
   required DateTime updatedAt,
 }) =>
     ObservationMutations.merge(
-      computeSpottingMutations(
-        existingObservations: existingObservations,
-        spotting: spotting,
-        targetDayEntryId: targetDayEntryId,
-        profileId: profileId,
-        date: date,
-        tz: tz,
-        updatedAt: updatedAt,
+      ObservationMutations.merge(
+        computeSpottingMutations(
+          existingObservations: existingObservations,
+          spotting: spotting,
+          targetDayEntryId: targetDayEntryId,
+          profileId: profileId,
+          date: date,
+          tz: tz,
+          updatedAt: updatedAt,
+        ),
+        computePainMutations(
+          existingObservations: existingObservations,
+          painIntensity: painIntensity,
+          targetDayEntryId: targetDayEntryId,
+          profileId: profileId,
+          date: date,
+          tz: tz,
+          updatedAt: updatedAt,
+        ),
       ),
-      computePainMutations(
-        existingObservations: existingObservations,
-        painIntensity: painIntensity,
-        targetDayEntryId: targetDayEntryId,
-        profileId: profileId,
-        date: date,
-        tz: tz,
-        updatedAt: updatedAt,
+      ObservationMutations.merge(
+        computeMeasurementMutations(
+          existingObservations: existingObservations,
+          category: 'bbt',
+          value: bbtValue,
+          unit: bbtUnit,
+          excluded: bbtExcluded,
+          targetDayEntryId: targetDayEntryId,
+          profileId: profileId,
+          date: date,
+          tz: tz,
+          updatedAt: updatedAt,
+        ),
+        computeMeasurementMutations(
+          existingObservations: existingObservations,
+          category: 'weight',
+          value: weightValue,
+          unit: weightUnit,
+          excluded: weightExcluded,
+          targetDayEntryId: targetDayEntryId,
+          profileId: profileId,
+          date: date,
+          tz: tz,
+          updatedAt: updatedAt,
+        ),
       ),
     );
 

@@ -109,4 +109,17 @@ void main() {
           closeTo(61.1896107, 1e-6));
     });
   });
+
+  group('bbtUnitSymbol / weightUnitSymbol (Issue #457)', () {
+    test('bbtUnitSymbol returns the international symbol for each unit', () {
+      expect(bbtUnitSymbol(BbtUnit.celsius), '°C');
+      expect(bbtUnitSymbol(BbtUnit.fahrenheit), '°F');
+    });
+
+    test('weightUnitSymbol returns the international symbol for each unit',
+        () {
+      expect(weightUnitSymbol(WeightUnit.kg), 'kg');
+      expect(weightUnitSymbol(WeightUnit.lb), 'lb');
+    });
+  });
 }

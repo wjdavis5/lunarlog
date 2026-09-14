@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -39,6 +40,8 @@ class TodayLogFab extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   final String profileId;
@@ -66,6 +69,11 @@ class TodayLogFab extends StatefulWidget {
   /// local-only use (the button then fails open, matching
   /// `acceptedGuardianFor`'s own null-vs-empty discipline).
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Per-profile BBT/weight display units (Issue #457), forwarded to
+  /// [DaySheet]. Presentation only.
+  final BbtUnit bbtUnit;
+  final WeightUnit weightUnit;
 
   @override
   State<TodayLogFab> createState() => _TodayLogFabState();
@@ -148,6 +156,8 @@ class _TodayLogFabState extends State<TodayLogFab>
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
         guardians: _guardians,
+        bbtUnit: widget.bbtUnit,
+        weightUnit: widget.weightUnit,
       ),
     );
   }

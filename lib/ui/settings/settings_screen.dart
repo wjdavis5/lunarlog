@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/feedback/support_history_screen.dart'
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
+import 'package:lunarlog/ui/settings/measurement_units_settings_section.dart';
 import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:provider/provider.dart';
@@ -161,6 +162,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
           // Issue #225: per-profile predictions toggle section.
           const PredictionsSettingsSection(),
+          // Issue #457: per-profile BBT/weight display-unit section.
+          const MeasurementUnitsSettingsSection(),
           if (hasHealthSync) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
