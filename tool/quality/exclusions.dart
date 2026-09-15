@@ -151,8 +151,10 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   const CoverageExclusion(
     'lib/data/notifications/firebase_push_token_source.dart',
     'FirebasePushTokenSource wraps firebase_core/firebase_messaging calls '
-        '(Firebase.initializeApp, requestPermission, getToken, and the two '
-        'FirebaseMessaging stream getters) that cannot run under flutter '
+        '(Firebase.initializeApp, requestPermission, getToken, the two '
+        'FirebaseMessaging stream getters, and #174\'s '
+        'setForegroundNotificationPresentationOptions) that cannot run '
+        'under flutter '
         'test -- but, per review #10, NOT because the file has no branching '
         'worth testing in isolation: an earlier version of this rationale '
         'said exactly that while quietly excluding the sequencing bugs #4 '

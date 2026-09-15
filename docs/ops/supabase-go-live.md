@@ -965,6 +965,27 @@ entries only. Nothing here reaches real family data.
       `select public.scan_missed_entry_reminders();` against the cloud
       project, for a faster check) enqueues, and B's device receives, the
       check-in alert.
+- [ ] **Foreground alert shows a banner (issue #174, iOS).** With B's app
+      open in the foreground, A logs an entry on P: B's iPhone shows the
+      fixed generic banner immediately (via
+      `setForegroundNotificationPresentationOptions`) — not silence, and
+      not two banners.
+- [ ] **Foreground alert shows a banner (issue #174, Android).** Same
+      setup on B's Android device: the banner appears (FCM never
+      auto-presents in the foreground; the app presents it through
+      flutter_local_notifications), exactly once, with the same fixed
+      generic copy.
+- [ ] **Android FCM alerts match local reminders visually (issue #174).**
+      Compare an alert delivered while B's app is backgrounded against a
+      locally scheduled reminder: both appear under the app's "Reminders"
+      channel (long-press the notification → channel name) with the same
+      icon, not Android's default "Misc"/"Other" channel with a generic
+      icon.
+- [ ] **Copy stays generic everywhere (issue #174 discretion pin, both
+      platforms, foreground and background).** Every delivered alert reads
+      exactly "A reminder from Lunarlog / Open Lunarlog to see what it is
+      about." — no profile name, date, or health detail on the lock screen
+      or the banner, whatever was logged.
 
 ### Gate-exclusion pairing (issue #215)
 
@@ -1042,7 +1063,10 @@ build), always with a throwaway account and fabricated profiles only.
       reminders (issue #5)" section above: an alert received with the app
       killed proves the initialize → requestPermission → getToken
       sequencing, and its tap-routing item proves the opened-app/initial
-      message streams. Running that section satisfies this entry.
+      message streams. Issue #174's
+      `setForegroundNotificationPresentationOptions` call is proven by the
+      "Foreground alert shows a banner (issue #174, iOS)" item above.
+      Running those sections satisfies this entry.
 - [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
       MethodChannel pin.** Inert in every current build
       (`AppConfig.hasHealthSync` is false): confirm a normal build shows no
