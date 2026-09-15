@@ -16,6 +16,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_lifecycle.dart';
 import 'config.dart';
+import 'data/gate/pin_credential_store.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
 import 'data/notifications/notification_scheduler.dart';
@@ -104,6 +105,11 @@ Future<void> _runLunarlog() async {
   }
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
+    // #271: constructing the store does no I/O (it only opens secure
+    // storage lazily, per call) — safe to pass unconditionally, including
+    // on web, where the gate never consults it (`gate.requiresUnlock` is
+    // false there, so `GateController.unlock` never reaches a PIN check).
+    pinService: PinCredentialStore(),
     // Issue #244: `protectDatabaseFile` runs after `.open()` succeeds (so
     // the file is guaranteed to exist — `.open()`'s own `SELECT 1` probe
     // already forced drift to create it) and on every open, not just the

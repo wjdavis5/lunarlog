@@ -370,6 +370,76 @@ class FakeAuthService implements AuthService {
     emit(AuthSessionState.signedOut);
   }
 
+  // ---------------------------------------------------------------- MFA
+  // Issue #268: controllable knobs mirroring the rest of this fake's shape
+  // — a settable result/failure per call, plus a call recorder.
+
+  /// What [enrollTotp] returns.
+  TotpEnrollmentOffer enrollTotpResult = const TotpEnrollmentOffer(
+    factorId: 'factor-1',
+    qrCodeDataUri: 'data:image/svg+xml;utf-8,<svg></svg>',
+    secret: 'JBSWY3DPEHPK3PXP',
+  );
+
+  /// What [listMfaFactors] returns.
+  List<MfaFactor> mfaFactors = const [];
+
+  /// When true, [requiresMfaStepUp] returns true (an aal2 challenge is
+  /// needed) instead of the default false.
+  bool mfaStepUpRequired = false;
+
+  AuthAssuranceLevel? mfaAssuranceLevel;
+
+  final verifyTotpCodeCalls = <({String factorId, String code})>[];
+  final unenrollMfaFactorCalls = <String>[];
+  int enrollTotpCalls = 0;
+
+  /// Throw a non-[AuthFailure] error from [verifyTotpCode] once, mirroring
+  /// [unlinkThrowsGeneric] — exercises a caller's generic (non-AuthFailure)
+  /// catch branch.
+  bool verifyTotpCodeThrowsGeneric = false;
+
+  @override
+  Future<TotpEnrollmentOffer> enrollTotp() async {
+    enrollTotpCalls++;
+    await _maybeThrow();
+    return enrollTotpResult;
+  }
+
+  @override
+  Future<void> verifyTotpCode({
+    required String factorId,
+    required String code,
+  }) async {
+    if (verifyTotpCodeThrowsGeneric) {
+      verifyTotpCodeThrowsGeneric = false;
+      throw StateError('verify failed unexpectedly');
+    }
+    verifyTotpCodeCalls.add((factorId: factorId, code: code));
+    await _maybeThrow();
+    mfaAssuranceLevel = AuthAssuranceLevel.aal2;
+    mfaStepUpRequired = false;
+  }
+
+  @override
+  Future<List<MfaFactor>> listMfaFactors() async {
+    await _maybeThrow();
+    return mfaFactors;
+  }
+
+  @override
+  Future<void> unenrollMfaFactor(String factorId) async {
+    unenrollMfaFactorCalls.add(factorId);
+    await _maybeThrow();
+    mfaFactors = mfaFactors.where((f) => f.id != factorId).toList();
+  }
+
+  @override
+  AuthAssuranceLevel? get assuranceLevel => mfaAssuranceLevel;
+
+  @override
+  Future<bool> requiresMfaStepUp() async => mfaStepUpRequired;
+
   Future<void> dispose() async {
     await _states.close();
     await _linkFailures.close();

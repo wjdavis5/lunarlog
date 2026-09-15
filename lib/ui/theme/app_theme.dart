@@ -1,15 +1,16 @@
 /// Single theme factory (issue #176; B-1, B-3, B-4, B-34): the one place
-/// [ThemeData] is built, consumed by all three `MaterialApp`s
+/// [ThemeData] is built, consumed by all of `lib/`'s `MaterialApp`s
 /// (`lib/app.dart`, `lib/ui/gate/lock_screen.dart`,
-/// `lib/ui/startup/fail_closed_screen.dart`) so a theme change is made once
-/// instead of three times.
+/// `lib/ui/startup/fail_closed_screen.dart`, and the two shell
+/// placeholders in `lib/app_root.dart`) so a theme change is made once
+/// instead of five times.
 ///
-/// [darkTheme] exists and is unit-tested for role completeness and contrast
-/// (`test/ui/theme_test.dart`), but no `MaterialApp` wires it in via
-/// `darkTheme:`/`themeMode:` yet -- flipping the app to follow system
-/// brightness is issue #137's job, which should consume this factory rather
-/// than invent its own dark palette (`test/architecture/theme_wiring_test.dart`
-/// guards that no `MaterialApp` in `lib/` does this before #137 lands).
+/// [darkTheme] is wired in through `darkTheme:`/`themeMode:` by every
+/// `MaterialApp` since issue #137 (system-following by default, with the
+/// device-local `SettingsKeys.themeMode` override resolved by
+/// `lib/ui/theme/appearance.dart`) —
+/// `test/architecture/theme_wiring_test.dart` guards that no `MaterialApp`
+/// in `lib/` can regress to light-only wiring.
 ///
 /// [lightTheme]/[darkTheme] are memoized `static final`s, built once at
 /// class load rather than on every read (issue #176 review): a getter that

@@ -48,6 +48,17 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (Authentication → URL Configuration). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
+- [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →
+      Providers → Multi-Factor Authentication → "Authenticator App (TOTP)" on.
+      `supabase/config.toml`'s `[auth.mfa.totp]` stays `enroll_enabled = false`/
+      `verify_enabled = false` deliberately (see #266's note above this
+      section — `config.toml`'s `[auth]` block governs the local stack only,
+      and `supabase config push` was never wired into `supabase-migrate.yml`)
+      — this dashboard toggle is what actually turns enrolment on for the
+      linked project. Until it's on, `lib/domain/auth/mfa.dart`'s enrolment
+      flow (`AuthService.enrollTotp`) fails with a generic `AuthUnknownFailure`
+      from the client's perspective, and the "Set up two-factor
+      authentication" tile in the Account section simply won't complete.
 
 ### Social logins and passwordless (issue #2)
 

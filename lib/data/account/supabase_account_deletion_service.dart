@@ -80,6 +80,14 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
   }
 
   AccountDeletionFailure _mapFunctionException(FunctionException error) {
+    // #268: `mfa_required` also carries a 401 status - checked first, ahead
+    // of the blanket `error.status == 401` branch below, so it is never
+    // swallowed into the generic AccountDeletionFailure.unauthorized (which
+    // reads as "sign in again", not "step up MFA").
+    final details = error.details;
+    if (details is Map && details['code'] == 'mfa_required') {
+      return const AccountDeletionFailure.mfaRequired();
+    }
     if (error.status == 401) {
       return const AccountDeletionFailure.unauthorized();
     }
@@ -87,7 +95,6 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
       // The request never reached the function (offline, DNS, timeout).
       return const AccountDeletionFailure.network();
     }
-    final details = error.details;
     if (details is Map) {
       return _mapResponseCode(details['code']);
     }
@@ -95,6 +102,9 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
   }
 
   AccountDeletionFailure _mapResponseCode(Object? code) {
+    if (code == 'mfa_required') {
+      return const AccountDeletionFailure.mfaRequired();
+    }
     if (code == 'apple_code_required') {
       return const AccountDeletionFailure.appleCodeRequired();
     }

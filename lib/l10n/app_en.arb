@@ -642,6 +642,26 @@
   "@settingsRelockSubtitle": {
     "description": "Subtitle of the inactivity auto-relock switch."
   },
+  "settingsAppearanceTitle": "Appearance",
+  "@settingsAppearanceTitle": {
+    "description": "Settings tile and picker-dialog title for the appearance override (issue #137)."
+  },
+  "settingsAppearanceSubtitle": "Follow your device's setting, or choose light or dark",
+  "@settingsAppearanceSubtitle": {
+    "description": "Subtitle of the appearance tile, naming the three override options."
+  },
+  "appearanceOptionSystem": "Follow system",
+  "@appearanceOptionSystem": {
+    "description": "Picker option: use the OS light/dark setting (the default)."
+  },
+  "appearanceOptionLight": "Light",
+  "@appearanceOptionLight": {
+    "description": "Picker option: always use the light theme."
+  },
+  "appearanceOptionDark": "Dark",
+  "@appearanceOptionDark": {
+    "description": "Picker option: always use the dark theme."
+  },
   "settingsHealthHeader": "Health",
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
@@ -1517,5 +1537,171 @@
   "settingsMeasurementUnitsWeightLabel": "Weight unit",
   "@settingsMeasurementUnitsWeightLabel": {
     "description": "Row label for the weight display-unit selector in Settings (Issue #457)."
+  },
+  "mfaSectionTitle": "Two-factor authentication",
+  "@mfaSectionTitle": {
+    "description": "Heading of the Account section's TOTP MFA tile group (issue #268)."
+  },
+  "mfaEnrollTileTitle": "Set up two-factor authentication",
+  "@mfaEnrollTileTitle": {
+    "description": "Tile offering to start TOTP enrolment when the account has no factor yet (issue #268)."
+  },
+  "mfaEnrollTileSubtitle": "Add an authenticator app as a second sign-in factor.",
+  "@mfaEnrollTileSubtitle": {
+    "description": "Subtitle under mfaEnrollTileTitle (issue #268)."
+  },
+  "mfaFactorTileTitle": "Authenticator app",
+  "@mfaFactorTileTitle": {
+    "description": "Title of the row for an enrolled TOTP factor (issue #268)."
+  },
+  "mfaFactorTileSubtitleVerified": "Enabled",
+  "@mfaFactorTileSubtitleVerified": {
+    "description": "Subtitle for a verified TOTP factor row (issue #268)."
+  },
+  "mfaFactorTileSubtitlePending": "Setup not finished — remove and try again",
+  "@mfaFactorTileSubtitlePending": {
+    "description": "Subtitle for a still-unverified TOTP factor row, e.g. after an interrupted enrolment (issue #268)."
+  },
+  "mfaRemoveFactorTitle": "Remove two-factor authentication?",
+  "@mfaRemoveFactorTitle": {
+    "description": "Confirmation dialog title for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorBody": "You will only need your password to sign in and to confirm account actions.",
+  "@mfaRemoveFactorBody": {
+    "description": "Confirmation dialog body for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorConfirm": "Remove",
+  "@mfaRemoveFactorConfirm": {
+    "description": "Confirm button for removing a TOTP factor (issue #268)."
+  },
+  "mfaErrorGeneric": "Something went wrong. Please try again.",
+  "@mfaErrorGeneric": {
+    "description": "Generic inline error for an MFA action (enroll/verify/remove) that failed (issue #268)."
+  },
+  "mfaEnrollScreenTitle": "Set up two-factor authentication",
+  "@mfaEnrollScreenTitle": {
+    "description": "Title of the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollInstructions": "Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).",
+  "@mfaEnrollInstructions": {
+    "description": "Instructions above the manual-entry setup key on the TOTP enrolment screen (issue #268). No in-app QR code today — flutter_svg is not a project dependency, and gotrue's enrolment response encodes it only as an SVG data URI, which Image.network/Image.memory cannot rasterize; see mfa_enroll_screen.dart's doc comment."
+  },
+  "mfaEnrollSecretLabel": "Setup key",
+  "@mfaEnrollSecretLabel": {
+    "description": "Label above the manual-entry TOTP secret (issue #268)."
+  },
+  "mfaEnrollCodeLabel": "Enter the 6-digit code from your app",
+  "@mfaEnrollCodeLabel": {
+    "description": "Label for the verification-code field on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaCodeHint": "6-digit code",
+  "@mfaCodeHint": {
+    "description": "Hint text for a TOTP code entry field, shared by enrolment and step-up (issue #268)."
+  },
+  "mfaEnrollConfirmButton": "Confirm",
+  "@mfaEnrollConfirmButton": {
+    "description": "Confirm button on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollSuccessMessage": "Two-factor authentication is on.",
+  "@mfaEnrollSuccessMessage": {
+    "description": "Snackbar shown after a TOTP enrolment completes (issue #268)."
+  },
+  "mfaStepUpTitle": "Confirm it's you",
+  "@mfaStepUpTitle": {
+    "description": "Title of the AAL2 step-up dialog shown before a destructive account action (issue #268 D-6)."
+  },
+  "mfaStepUpBody": "Enter the 6-digit code from your authenticator app to continue.",
+  "@mfaStepUpBody": {
+    "description": "Body of the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "mfaStepUpConfirmButton": "Verify",
+  "@mfaStepUpConfirmButton": {
+    "description": "Confirm button on the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "pinSettingsSectionTitle": "App PIN",
+  "@pinSettingsSectionTitle": {
+    "description": "Heading of the optional in-app PIN settings row (issue #271)."
+  },
+  "pinSettingsToggleTitle": "Require a PIN to open lunarlog",
+  "@pinSettingsToggleTitle": {
+    "description": "Title of the in-app PIN settings tile (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOn": "On — an additional lock layer on top of your device credential.",
+  "@pinSettingsToggleSubtitleOn": {
+    "description": "Subtitle of the PIN settings tile when a PIN is set (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOff": "Off",
+  "@pinSettingsToggleSubtitleOff": {
+    "description": "Subtitle of the PIN settings tile when no PIN is set (issue #271)."
+  },
+  "pinSetScreenTitle": "Set a PIN",
+  "@pinSetScreenTitle": {
+    "description": "Title of the screen for setting a brand-new in-app PIN (issue #271)."
+  },
+  "pinChangeScreenTitle": "Change PIN",
+  "@pinChangeScreenTitle": {
+    "description": "Title of the screen for changing an existing in-app PIN (issue #271)."
+  },
+  "pinCurrentPinLabel": "Current PIN",
+  "@pinCurrentPinLabel": {
+    "description": "Field label for the current PIN, required to change or remove one (issue #271)."
+  },
+  "pinNewPinLabel": "New PIN (4-8 digits)",
+  "@pinNewPinLabel": {
+    "description": "Field label for the new PIN (issue #271)."
+  },
+  "pinConfirmPinLabel": "Confirm PIN",
+  "@pinConfirmPinLabel": {
+    "description": "Field label for re-entering the new PIN (issue #271)."
+  },
+  "pinMismatchError": "PINs don't match.",
+  "@pinMismatchError": {
+    "description": "Inline error when the new-PIN and confirm-PIN fields differ (issue #271)."
+  },
+  "pinTooShortError": "Enter at least 4 digits.",
+  "@pinTooShortError": {
+    "description": "Inline error when the new PIN is shorter than 4 digits (issue #271)."
+  },
+  "pinWrongCurrentError": "That PIN is incorrect.",
+  "@pinWrongCurrentError": {
+    "description": "Inline error when the current-PIN field does not match the stored PIN, while changing or removing it (issue #271)."
+  },
+  "pinSaveButton": "Save",
+  "@pinSaveButton": {
+    "description": "Save button on the set/change-PIN screen (issue #271)."
+  },
+  "pinRemoveConfirmTitle": "Turn off PIN?",
+  "@pinRemoveConfirmTitle": {
+    "description": "Confirmation dialog title for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmBody": "You can still use your device credential to unlock lunarlog.",
+  "@pinRemoveConfirmBody": {
+    "description": "Confirmation dialog body for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmButton": "Turn off",
+  "@pinRemoveConfirmButton": {
+    "description": "Confirm button for removing the in-app PIN (issue #271)."
+  },
+  "pinLockScreenPrompt": "Enter your PIN",
+  "@pinLockScreenPrompt": {
+    "description": "Prompt shown above the PIN field on the lock screen (issue #271)."
+  },
+  "pinLockScreenUnlockButton": "Unlock",
+  "@pinLockScreenUnlockButton": {
+    "description": "Submit button on the lock screen's PIN entry (issue #271)."
+  },
+  "pinLockScreenIncorrect": "Wrong PIN. {count} attempt(s) remaining before a short lockout.",
+  "@pinLockScreenIncorrect": {
+    "description": "Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "pinLockScreenLockedOut": "Too many attempts. Try again after {time}.",
+  "@pinLockScreenLockedOut": {
+    "description": "Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).",
+    "placeholders": {
+      "time": {"type": "String"}
+    }
   }
 }

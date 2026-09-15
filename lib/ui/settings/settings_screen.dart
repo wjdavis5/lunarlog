@@ -32,12 +32,14 @@ import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
 import 'package:lunarlog/ui/feedback/support_history_screen.dart'
     show newestReplyActivityAt;
+import 'package:lunarlog/ui/gate/pin_settings_tile.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 import 'package:lunarlog/ui/settings/measurement_units_settings_section.dart';
 import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
+import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -163,6 +165,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 : null,
           ),
+          // Issue #271: optional in-app PIN, a second lock layer on top of
+          // the device credential above — self-hiding when unconfigured.
+          const PinSettingsTile(),
+          const Divider(),
+          // Issue #137: the appearance override (system / light / dark),
+          // persisted through the same device-local store the relock
+          // toggle above uses. The main `MaterialApp` (and the lock
+          // screen, via the shell) watch the same key, so a change here
+          // re-themes the app with no controller in between.
+          _AppearanceTile(),
           const Divider(),
           // Issue #225: per-profile predictions toggle section.
           const PredictionsSettingsSection(),
@@ -355,3 +367,106 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
 /// untested navigation wiring around it.
 String? confirmedHealthSyncUserId(AuthController? controller) =>
     (controller?.signedIn ?? false) ? controller!.currentUserId : null;
+
+/// Issue #137: the appearance-override tile. Renders the current mode in
+/// its subtitle (kept live through the same `watch` the app shell uses,
+/// so an external change — a settings write from any surface — updates
+/// it) and opens a three-option picker dialog. Writes go straight through
+/// [SettingsStore.set]; the `MaterialApp`s' own watches pick the change
+/// up, which is the entire propagation mechanism — no controller.
+class _AppearanceTile extends StatefulWidget {
+  const _AppearanceTile();
+
+  @override
+  State<_AppearanceTile> createState() => _AppearanceTileState();
+}
+
+class _AppearanceTileState extends State<_AppearanceTile> {
+  ThemeMode _mode = ThemeMode.system;
+  StreamSubscription<String?>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    // The store's watch seeds the current value on subscribe (null when
+    // unset — which parses to `ThemeMode.system`), so one subscription
+    // covers both the initial read and every later change.
+    _sub = context
+        .read<SettingsStore>()
+        .watch(SettingsKeys.themeMode)
+        .listen((value) {
+          if (mounted) setState(() => _mode = themeModeFromStored(value));
+        });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_sub?.cancel());
+    _sub = null;
+    super.dispose();
+  }
+
+  String _label(AppLocalizations l10n) => switch (_mode) {
+        ThemeMode.system => l10n.appearanceOptionSystem,
+        ThemeMode.light => l10n.appearanceOptionLight,
+        ThemeMode.dark => l10n.appearanceOptionDark,
+      };
+
+  Future<void> _pick(ThemeMode mode) async {
+    Navigator.of(context).pop();
+    setState(() => _mode = mode);
+    await context
+        .read<SettingsStore>()
+        .set(SettingsKeys.themeMode, storedThemeMode(mode));
+  }
+
+  Future<void> _openPicker() async {
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l10n.settingsAppearanceTitle),
+        children: [
+          // `RadioGroup` (rather than per-tile `groupValue`/`onChanged`,
+          // deprecated since Flutter 3.32) owns the selection: the tiles
+          // below carry only `value`, and the group's `onChanged` funnels
+          // every tap into [_pick].
+          RadioGroup<ThemeMode>(
+            groupValue: _mode,
+            onChanged: (mode) {
+              if (mode != null) unawaited(_pick(mode));
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final mode in ThemeMode.values)
+                  RadioListTile<ThemeMode>(
+                    key: ValueKey('appearance-option-${mode.name}'),
+                    value: mode,
+                    title: Text(switch (mode) {
+                      ThemeMode.system => l10n.appearanceOptionSystem,
+                      ThemeMode.light => l10n.appearanceOptionLight,
+                      ThemeMode.dark => l10n.appearanceOptionDark,
+                    }),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return ListTile(
+      key: const ValueKey('appearance-tile'),
+      leading: const Icon(Icons.brightness_6_outlined),
+      title: Text(l10n.settingsAppearanceTitle),
+      subtitle: Text(_label(l10n)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _openPicker,
+    );
+  }
+}

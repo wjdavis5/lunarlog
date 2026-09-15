@@ -239,6 +239,23 @@
 // and (server-side only) an error *type* or U1's row-count summary are ever
 // recorded, mirroring the `debugPrint('... (${error.runtimeType})')`
 // discipline in `lib/`.
+//
+// Issue #268 fix (2026-09-15): a new Step 2.5, run immediately after the
+// identities check and before anything else is touched, requires an aal2
+// session whenever the caller's account has a verified TOTP factor
+// enrolled. This is a *server-side* enforcement point on top of the client
+// UI's own AAL2 step-up dialog (`lib/ui/account/mfa_step_up_dialog.dart`) -
+// a client that skipped or bypassed that dialog (a stale build, a direct
+// API call) is refused here regardless, with its own `mfa_required` (401)
+// code, before Step 3's Apple-code precondition or any destructive step.
+// `aal` is read directly from the already-verified JWT's own claims
+// (`decodeJwtAal` below) rather than from a second network round trip -
+// `userClient.auth.getUser(jwt)` already proved the token's signature is
+// valid, so this is a pure claim read, not a fresh trust decision. No
+// runtime behavior changes for an account with no verified factor (the
+// overwhelming majority today, since TOTP enrolment ships in this same
+// issue) - see AGENTS.md/CLAUDE.md's note that this function's source hash
+// changes as release evidence regardless.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { revokeAppleToken, type AppleRevokeResult } from "../_shared/apple_revoke.ts";
@@ -305,6 +322,7 @@ interface DeleteAccountRequestBody {
 type ErrorCode =
   | "unauthorized"
   | "identity_check_failed"
+  | "mfa_required"
   | "apple_code_required"
   | "apple_revoke_failed"
   | "apple_revocation_marker_failed"
@@ -329,6 +347,29 @@ function errorResponse(code: ErrorCode, status: number): Response {
 function errorType(error: unknown): string {
   if (error instanceof Error) return error.constructor.name;
   return typeof error;
+}
+
+/** Reads the `aal` claim from a JWT's payload segment (Issue #268) - a
+ * plain base64url-JSON decode, not a signature verification: the caller
+ * already passed `userClient.auth.getUser(jwt)` by the time this runs,
+ * which is what actually establishes the token is genuine. Returns null on
+ * any malformed token or a missing/non-string claim, rather than throwing -
+ * a decode failure here fails the aal2 check closed (treated as "not
+ * aal2") exactly like a missing claim would, never open. */
+function decodeJwtAal(jwt: string): string | null {
+  try {
+    const payloadSegment = jwt.split(".")[1];
+    if (!payloadSegment) return null;
+    // atob expects standard base64; JWTs use base64url (`-`/`_`, no
+    // padding) - translate before decoding.
+    const base64 = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
+    const json = atob(padded);
+    const claims = JSON.parse(json) as Record<string, unknown>;
+    return typeof claims.aal === "string" ? claims.aal : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readBody(req: Request): Promise<DeleteAccountRequestBody> {
@@ -362,6 +403,15 @@ export interface DeleteAccountCaller {
    * account as having no linked Apple identity (Issue #560: this used to be
    * the one non-fail-closed Apple branch in this file). */
   identitiesKnown: boolean;
+  /** True when any of the account's MFA factors (`user.factors`) has
+   * `status: "verified"` (Issue #268). Gates the aal2 requirement below -
+   * an account with no enrolled factor is unaffected by it. */
+  hasVerifiedMfaFactor: boolean;
+  /** The `aal` claim from the caller's own (already signature-verified)
+   * JWT - `"aal1"` or `"aal2"`, or null if the claim is missing/unreadable
+   * (Issue #268). Read directly from the token rather than a second network
+   * call; see the header comment. */
+  aal: string | null;
 }
 
 /** The account's Apple-revocation progress (Issue #527; identity-bound by
@@ -475,6 +525,18 @@ export async function handleDeleteAccount(req: Request, deps: DeleteAccountDeps)
         "`identities`); failing closed before anything is touched",
     );
     return errorResponse("identity_check_failed", 500);
+  }
+
+  // Step 2.5 (Issue #268 D-6): server-side AAL2 enforcement, on top of the
+  // client's own step-up dialog - see the header comment above. A no-op for
+  // an account with no verified MFA factor (`hasVerifiedMfaFactor` false),
+  // matching the client-side `requiresMfaStepUp` gate's same unaffected-path
+  // behavior.
+  if (user.hasVerifiedMfaFactor && user.aal !== "aal2") {
+    console.error(
+      "delete-account: aal2 required (account has a verified MFA factor) but session is not aal2; nothing touched",
+    );
+    return errorResponse("mfa_required", 401);
   }
 
   const body = await readBody(req);
@@ -839,11 +901,19 @@ export function buildDeps(env: DeleteAccountEnv, clientFactory: SupabaseClientFa
       const providers = identities.map((identity) => identity.provider as string);
       // deno-lint-ignore no-explicit-any
       const appleIdentity = identities.find((identity: any) => identity.provider === "apple");
+      // Issue #268: `user.factors` is GoTrue's own MFA-factor list on the
+      // user object (distinct from `identities`, which is sign-in
+      // providers) - present whenever any factor was ever enrolled.
+      // deno-lint-ignore no-explicit-any
+      const factors = (data.user.factors ?? []) as any[];
+      const hasVerifiedMfaFactor = factors.some((factor) => factor?.status === "verified");
       return {
         id: data.user.id as string,
         providers,
         appleIdentityId: appleIdentity ? (appleIdentity.id as string) : null,
         identitiesKnown,
+        hasVerifiedMfaFactor,
+        aal: decodeJwtAal(jwt),
       };
     },
     getDeletionProgress: async (uid) => {

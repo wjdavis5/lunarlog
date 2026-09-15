@@ -112,6 +112,15 @@ class RecordingDayEntriesRepository implements DayEntriesRepository {
 Future<Harness> pumpCalendar(
   WidgetTester tester, {
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
+  // Issue #137: the theme the harness mounts the calendar under —
+  // `AppTheme.lightTheme` by default (every existing call site unchanged),
+  // or `AppTheme.darkTheme` for the dark-mode suite, which needs the real
+  // seeded scheme rather than a generic `ThemeData(brightness:)` so the
+  // calendar's `LunarLogColors` derivation is the production one.
+  // Nullable only because `AppTheme.lightTheme` is a memoized `static
+  // final`, not a const, so it cannot be an optional parameter's default
+  // value.
+  ThemeData? theme,
   // Issue #312 (large-text budget): lets a single test override the text
   // scale MediaQuery reports, without touching every other call site.
   double textScale = 1.0,
@@ -162,7 +171,7 @@ Future<Harness> pumpCalendar(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.lightTheme,
+        theme: theme ?? AppTheme.lightTheme,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context)
               .copyWith(textScaler: TextScaler.linear(textScale)),
