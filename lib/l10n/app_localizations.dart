@@ -2230,10 +2230,10 @@ abstract class AppLocalizations {
   /// **'Set up two-factor authentication'**
   String get mfaEnrollScreenTitle;
 
-  /// Instructions above the QR code on the TOTP enrolment screen (issue #268).
+  /// Instructions above the manual-entry setup key on the TOTP enrolment screen (issue #268). No in-app QR code today — flutter_svg is not a project dependency, and gotrue's enrolment response encodes it only as an SVG data URI, which Image.network/Image.memory cannot rasterize; see mfa_enroll_screen.dart's doc comment.
   ///
   /// In en, this message translates to:
-  /// **'Scan this code with your authenticator app, or enter the setup key manually.'**
+  /// **'Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).'**
   String get mfaEnrollInstructions;
 
   /// Label above the manual-entry TOTP secret (issue #268).

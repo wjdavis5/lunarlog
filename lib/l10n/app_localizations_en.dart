@@ -1260,7 +1260,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get mfaEnrollInstructions =>
-      'Scan this code with your authenticator app, or enter the setup key manually.';
+      'Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).';
 
   @override
   String get mfaEnrollSecretLabel => 'Setup key';
