@@ -2163,6 +2163,246 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Weight unit'**
   String get settingsMeasurementUnitsWeightLabel;
+
+  /// Heading of the Account section's TOTP MFA tile group (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Two-factor authentication'**
+  String get mfaSectionTitle;
+
+  /// Tile offering to start TOTP enrolment when the account has no factor yet (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Set up two-factor authentication'**
+  String get mfaEnrollTileTitle;
+
+  /// Subtitle under mfaEnrollTileTitle (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Add an authenticator app as a second sign-in factor.'**
+  String get mfaEnrollTileSubtitle;
+
+  /// Title of the row for an enrolled TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator app'**
+  String get mfaFactorTileTitle;
+
+  /// Subtitle for a verified TOTP factor row (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Enabled'**
+  String get mfaFactorTileSubtitleVerified;
+
+  /// Subtitle for a still-unverified TOTP factor row, e.g. after an interrupted enrolment (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Setup not finished — remove and try again'**
+  String get mfaFactorTileSubtitlePending;
+
+  /// Confirmation dialog title for removing the account's TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove two-factor authentication?'**
+  String get mfaRemoveFactorTitle;
+
+  /// Confirmation dialog body for removing the account's TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'You will only need your password to sign in and to confirm account actions.'**
+  String get mfaRemoveFactorBody;
+
+  /// Confirm button for removing a TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get mfaRemoveFactorConfirm;
+
+  /// Generic inline error for an MFA action (enroll/verify/remove) that failed (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get mfaErrorGeneric;
+
+  /// Title of the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Set up two-factor authentication'**
+  String get mfaEnrollScreenTitle;
+
+  /// Instructions above the QR code on the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Scan this code with your authenticator app, or enter the setup key manually.'**
+  String get mfaEnrollInstructions;
+
+  /// Label above the manual-entry TOTP secret (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Setup key'**
+  String get mfaEnrollSecretLabel;
+
+  /// Label for the verification-code field on the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit code from your app'**
+  String get mfaEnrollCodeLabel;
+
+  /// Hint text for a TOTP code entry field, shared by enrolment and step-up (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'6-digit code'**
+  String get mfaCodeHint;
+
+  /// Confirm button on the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get mfaEnrollConfirmButton;
+
+  /// Snackbar shown after a TOTP enrolment completes (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Two-factor authentication is on.'**
+  String get mfaEnrollSuccessMessage;
+
+  /// Title of the AAL2 step-up dialog shown before a destructive account action (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm it\'s you'**
+  String get mfaStepUpTitle;
+
+  /// Body of the AAL2 step-up dialog (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit code from your authenticator app to continue.'**
+  String get mfaStepUpBody;
+
+  /// Confirm button on the AAL2 step-up dialog (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get mfaStepUpConfirmButton;
+
+  /// Heading of the optional in-app PIN settings row (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'App PIN'**
+  String get pinSettingsSectionTitle;
+
+  /// Title of the in-app PIN settings tile (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Require a PIN to open lunarlog'**
+  String get pinSettingsToggleTitle;
+
+  /// Subtitle of the PIN settings tile when a PIN is set (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'On — an additional lock layer on top of your device credential.'**
+  String get pinSettingsToggleSubtitleOn;
+
+  /// Subtitle of the PIN settings tile when no PIN is set (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get pinSettingsToggleSubtitleOff;
+
+  /// Title of the screen for setting a brand-new in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Set a PIN'**
+  String get pinSetScreenTitle;
+
+  /// Title of the screen for changing an existing in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN'**
+  String get pinChangeScreenTitle;
+
+  /// Field label for the current PIN, required to change or remove one (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Current PIN'**
+  String get pinCurrentPinLabel;
+
+  /// Field label for the new PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN (4-8 digits)'**
+  String get pinNewPinLabel;
+
+  /// Field label for re-entering the new PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm PIN'**
+  String get pinConfirmPinLabel;
+
+  /// Inline error when the new-PIN and confirm-PIN fields differ (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'PINs don\'t match.'**
+  String get pinMismatchError;
+
+  /// Inline error when the new PIN is shorter than 4 digits (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter at least 4 digits.'**
+  String get pinTooShortError;
+
+  /// Inline error when the current-PIN field does not match the stored PIN, while changing or removing it (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'That PIN is incorrect.'**
+  String get pinWrongCurrentError;
+
+  /// Save button on the set/change-PIN screen (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get pinSaveButton;
+
+  /// Confirmation dialog title for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off PIN?'**
+  String get pinRemoveConfirmTitle;
+
+  /// Confirmation dialog body for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'You can still use your device credential to unlock lunarlog.'**
+  String get pinRemoveConfirmBody;
+
+  /// Confirm button for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off'**
+  String get pinRemoveConfirmButton;
+
+  /// Prompt shown above the PIN field on the lock screen (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your PIN'**
+  String get pinLockScreenPrompt;
+
+  /// Submit button on the lock screen's PIN entry (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get pinLockScreenUnlockButton;
+
+  /// Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong PIN. {count} attempt(s) remaining before a short lockout.'**
+  String pinLockScreenIncorrect(int count);
+
+  /// Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Try again after {time}.'**
+  String pinLockScreenLockedOut(String time);
 }
 
 class _AppLocalizationsDelegate

@@ -96,6 +96,8 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
+import 'package:lunarlog/ui/account/mfa_settings_section.dart';
+import 'package:lunarlog/ui/account/mfa_step_up_dialog.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
@@ -151,7 +153,8 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
       AccountDeletionAppleCodeRequiredFailure() ||
       AccountDeletionAppleNativeCeremonyUnavailableFailure() ||
       AccountDeletionAttachmentCleanupFailedFailure() ||
-      AccountDeletionAttachmentCleanupUnboundedFailure() =>
+      AccountDeletionAttachmentCleanupUnboundedFailure() ||
+      AccountDeletionMfaRequiredFailure() =>
         _nothingWasDeletedCopy(failure),
       AccountDeletionAppleRevokeFailedFailure() ||
       AccountDeletionAppleRevocationMarkerFailedFailure() ||
@@ -191,6 +194,9 @@ String _nothingWasDeletedCopy(AccountDeletionFailure failure) =>
             'than we can clean up automatically, so the deletion never '
             'began. Retrying won\'t help - please contact support so we can '
             'finish removing your account.',
+      AccountDeletionMfaRequiredFailure() =>
+        'Nothing was deleted. Please confirm your two-factor code and try '
+            'again.',
       _ => throw StateError(
           'unreachable: $failure is not a "nothing was deleted" kind'),
     };
@@ -374,6 +380,8 @@ class _AccountSectionState extends State<AccountSection> {
         const SyncStatusTile(),
         if (signedIn && sync != null) _buildSyncNowTile(sync),
         if (signedIn) ..._buildSignOutTiles(context),
+        // Issue #268: optional TOTP enrolment/removal, self-contained.
+        if (signedIn) MfaSettingsSection(auth: auth),
         if (signedIn && _canExportAndDelete)
           ..._buildDeleteTile(context, theme, deletionService),
       ],
@@ -835,6 +843,9 @@ class _AccountSectionState extends State<AccountSection> {
     );
     if (confirmed != true || !context.mounted) return;
     final auth = context.read<AuthController>();
+    // #268 D-6: AAL2 step-up before ending every session, for an account
+    // with an enrolled TOTP factor; a no-op otherwise.
+    if (!await ensureAal2(context, auth) || !context.mounted) return;
     final removeAllRegistrations =
         context.read<RemoveAllPushRegistrationsCallback?>();
     // Issue #638 (LLA-004): resolved here, before the awaits below, the
@@ -947,8 +958,9 @@ class _AccountSectionState extends State<AccountSection> {
       return;
     }
     setState(() => _deleteError = null);
-    final granted = await gate.duringSystemUi(gate.reauthenticate);
-    if (!granted || !context.mounted) return;
+    if (!await _passesPreDeleteChecks(context, gate) || !context.mounted) {
+      return;
+    }
 
     final decision = await showDeleteAccountDialog(
       context,
@@ -963,6 +975,20 @@ class _AccountSectionState extends State<AccountSection> {
     }
 
     await _performDeletion(context, gate, service);
+  }
+
+  /// The device credential and, when the account has an enrolled TOTP
+  /// factor, an AAL2 step-up (#268 D-6) — both must pass before the delete
+  /// confirmation dialog even opens. Split out of [_deleteAccount] to keep
+  /// that method's own cyclomatic complexity under the CRAP gate's budget.
+  Future<bool> _passesPreDeleteChecks(
+    BuildContext context,
+    GateController gate,
+  ) async {
+    final granted = await gate.duringSystemUi(gate.reauthenticate);
+    if (!granted || !context.mounted) return false;
+    final auth = context.read<AuthController>();
+    return await ensureAal2(context, auth) && context.mounted;
   }
 
   /// The service call itself, once the credential and confirmation steps

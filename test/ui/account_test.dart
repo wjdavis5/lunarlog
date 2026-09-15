@@ -2363,6 +2363,52 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets(
+        'Sign out everywhere (issue #268 D-6): a verified MFA factor '
+        'requires a correct step-up code before signing out',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn();
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+      await h.openSettings();
+      await h.settle();
+
+      await tester.tap(key('account-sign-out-everywhere'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-sign-out-everywhere-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsOneWidget);
+      expect(h.auth.signOutCalls, isEmpty,
+          reason: 'signOut must wait for the step-up to succeed');
+
+      await tester.enterText(
+          find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+      await tester.tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+      await h.settle();
+
+      expect(h.auth.verifyTotpCodeCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+      expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+      expect(h.resets, 1);
+      await h.dispose();
+    });
+
     testWidgets('Sign out everywhere when global sign out fails still runs '
         'reset and shows snackbar', (tester) async {
       // Issue #157 review fix (mirrors #325) — see the taller-viewport

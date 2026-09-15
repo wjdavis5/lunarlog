@@ -165,4 +165,50 @@ void main() {
           auth.registerPasskey(), throwsA(isA<UnsupportedError>()));
     });
   });
+
+  group('MfaFactor equality/hashCode (issue #268)', () {
+    final createdAt = DateTime.utc(2026, 1, 1);
+
+    test('equal when id, status, and createdAt all match', () {
+      final a = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      final b = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+    });
+
+    test('unequal on a different id', () {
+      final a = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      final b = MfaFactor(
+          id: 'f2', status: MfaFactorStatus.verified, createdAt: createdAt);
+      expect(a, isNot(b));
+    });
+
+    test('unequal on a different status', () {
+      final a = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      final b = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.unverified, createdAt: createdAt);
+      expect(a, isNot(b));
+    });
+
+    test('unequal on a different createdAt', () {
+      final a = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      final b = MfaFactor(
+          id: 'f1',
+          status: MfaFactorStatus.verified,
+          createdAt: createdAt.add(const Duration(days: 1)));
+      expect(a, isNot(b));
+    });
+
+    test('unequal to a non-MfaFactor object', () {
+      final a = MfaFactor(
+          id: 'f1', status: MfaFactorStatus.verified, createdAt: createdAt);
+      // ignore: unrelated_type_equality_checks
+      expect(a == 'not a factor', isFalse);
+    });
+  });
 }
