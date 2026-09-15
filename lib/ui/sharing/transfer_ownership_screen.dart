@@ -10,7 +10,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/mfa_step_up_dialog.dart';
 import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
@@ -123,7 +126,15 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
+    // #268 D-6: AAL2 step-up before arming a transfer, for an account with
+    // an enrolled TOTP factor; a no-op otherwise (unaffected pre-#268
+    // behavior). Read lazily (not at the top of the file) so a build with
+    // no AuthController configured — every non-Supabase test harness for
+    // this screen — still arms normally, exactly as before this issue.
+    final auth = context.read<AuthController?>();
+    if (auth != null && !await ensureAal2(context, auth)) return;
+    if (!mounted) return;
     await _armTransfer(role);
   }
 

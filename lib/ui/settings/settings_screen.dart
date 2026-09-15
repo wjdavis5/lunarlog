@@ -32,6 +32,7 @@ import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
 import 'package:lunarlog/ui/feedback/support_history_screen.dart'
     show newestReplyActivityAt;
+import 'package:lunarlog/ui/gate/pin_settings_tile.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
@@ -163,6 +164,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 : null,
           ),
+          // Issue #271: optional in-app PIN, a second lock layer on top of
+          // the device credential above — self-hiding when unconfigured.
+          const PinSettingsTile(),
           const Divider(),
           // Issue #225: per-profile predictions toggle section.
           const PredictionsSettingsSection(),

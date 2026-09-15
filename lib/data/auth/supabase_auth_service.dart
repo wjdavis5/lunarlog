@@ -57,9 +57,10 @@ export 'package:lunarlog/data/auth/auth_link_classifier.dart'
 
 part 'supabase_auth_providers.dart';
 part 'supabase_auth_session_state.dart';
+part 'supabase_auth_mfa.dart';
 
 class SupabaseAuthService
-    with SupabaseAuthSessionState, SupabaseAuthProviders
+    with SupabaseAuthSessionState, SupabaseAuthProviders, SupabaseAuthMfa
     implements AuthService {
   SupabaseAuthService({
     required this._gateway,

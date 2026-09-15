@@ -44,6 +44,12 @@ function baseUser(overrides: Partial<DeleteAccountCaller> = {}): DeleteAccountCa
     providers: [],
     appleIdentityId: null,
     identitiesKnown: true,
+    // #268: false/null by default so every pre-existing test case (an
+    // account with no verified MFA factor) is unaffected by the new aal2
+    // check - only a test that explicitly opts in with
+    // `hasVerifiedMfaFactor: true` exercises it.
+    hasVerifiedMfaFactor: false,
+    aal: null,
     ...overrides,
   };
 }
@@ -131,6 +137,76 @@ Deno.test("an invalid caller identity (getUser returns null) is rejected with 40
   assertEquals(response.status, 401);
   assertEquals(calls, ["getUser"], "nothing past auth resolution runs for an unresolvable caller");
 });
+
+// ---------------------------------------------------------------------------
+// Issue #268: server-side AAL2 enforcement (Step 2.5).
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "#268: an account with a verified MFA factor and an aal1 session is rejected with 401 mfa_required, " +
+    "before anything is touched",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ hasVerifiedMfaFactor: true, aal: "aal1" }),
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 401);
+    const body = await response.json();
+    assertEquals(body.code, "mfa_required");
+    assertEquals(calls, ["getUser"], "nothing past auth resolution runs when the aal2 check fails");
+  },
+);
+
+Deno.test(
+  "#268: an account with a verified MFA factor and a missing/undecodable aal claim is also rejected " +
+    "(fails closed, never treated as aal2)",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ hasVerifiedMfaFactor: true, aal: null }),
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 401);
+    const body = await response.json();
+    assertEquals(body.code, "mfa_required");
+    assertEquals(calls, ["getUser"]);
+  },
+);
+
+Deno.test(
+  "#268: an account with a verified MFA factor and an aal2 session proceeds normally (200 ok:true)",
+  async () => {
+    const { deps, calls } = fakeDeps({
+      user: baseUser({ hasVerifiedMfaFactor: true, aal: "aal2" }),
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.ok, true);
+    assertEquals(calls.includes("deleteUser"), true);
+  },
+);
+
+Deno.test(
+  "#268: an account with no verified MFA factor is unaffected regardless of aal (unaffected-path acceptance " +
+    "criterion) - matches the pre-#268 happy path",
+  async () => {
+    const { deps } = fakeDeps({
+      user: baseUser({ hasVerifiedMfaFactor: false, aal: "aal1" }),
+    });
+
+    const response = await handleDeleteAccount(postRequest(), deps);
+
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.ok, true);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Issue #560: identity determination and Apple-identity binding.
@@ -961,6 +1037,65 @@ Deno.test("buildDeps: getUser reports identitiesKnown=true with a null appleIden
 
   assertEquals(user?.identitiesKnown, true);
   assertEquals(user?.appleIdentityId, null);
+});
+
+// ---------------------------------------------------------------------------
+// buildDeps: getUser's MFA/AAL resolution (Issue #268).
+// ---------------------------------------------------------------------------
+
+/** A minimal, unsigned JWT carrying the given payload claims, base64url
+ * encoded exactly like a real one - `decodeJwtAal` only ever reads the
+ * payload segment, and never verifies the signature itself (that already
+ * happened by the time `userClient.auth.getUser(jwt)` succeeds), so a fake
+ * header/signature is fine for this test. */
+function fakeJwt(payload: Record<string, unknown>): string {
+  const base64url = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const header = base64url(JSON.stringify({ alg: "none" }));
+  const body = base64url(JSON.stringify(payload));
+  return `${header}.${body}.`;
+}
+
+Deno.test("buildDeps: getUser reports hasVerifiedMfaFactor=true when any factor has status verified", async () => {
+  const deps = buildDeps(
+    fullEnv,
+    fakeAuthClientFactory({
+      id: "user-1",
+      identities: [],
+      factors: [
+        { id: "f1", status: "unverified" },
+        { id: "f2", status: "verified" },
+      ],
+    }),
+  );
+
+  const user = await deps.getUser(`Bearer ${fakeJwt({ aal: "aal1" })}`);
+
+  assertEquals(user?.hasVerifiedMfaFactor, true);
+});
+
+Deno.test("buildDeps: getUser reports hasVerifiedMfaFactor=false with no factors, or only unverified ones", async () => {
+  const noFactors = buildDeps(fullEnv, fakeAuthClientFactory({ id: "user-1", identities: [] }));
+  const unverifiedOnly = buildDeps(
+    fullEnv,
+    fakeAuthClientFactory({ id: "user-1", identities: [], factors: [{ id: "f1", status: "unverified" }] }),
+  );
+
+  assertEquals((await noFactors.getUser("Bearer jwt"))?.hasVerifiedMfaFactor, false);
+  assertEquals((await unverifiedOnly.getUser("Bearer jwt"))?.hasVerifiedMfaFactor, false);
+});
+
+Deno.test("buildDeps: getUser decodes the aal claim from the caller's own JWT", async () => {
+  const deps = buildDeps(fullEnv, fakeAuthClientFactory({ id: "user-1", identities: [] }));
+
+  const aal1 = await deps.getUser(`Bearer ${fakeJwt({ aal: "aal1" })}`);
+  const aal2 = await deps.getUser(`Bearer ${fakeJwt({ aal: "aal2" })}`);
+  const malformed = await deps.getUser("Bearer not-a-jwt");
+  const noClaim = await deps.getUser(`Bearer ${fakeJwt({ sub: "user-1" })}`);
+
+  assertEquals(aal1?.aal, "aal1");
+  assertEquals(aal2?.aal, "aal2");
+  assertEquals(malformed?.aal, null, "an undecodable token must fail closed to null, never throw");
+  assertEquals(noClaim?.aal, null);
 });
 
 // ---------------------------------------------------------------------------

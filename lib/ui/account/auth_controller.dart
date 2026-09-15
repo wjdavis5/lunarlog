@@ -184,6 +184,26 @@ class AuthController extends ChangeNotifier {
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
       _service.signOut(scope: scope);
 
+  // -------------------------------------------------------------- MFA
+  // Thin delegations (#268): no adoption step needed — the settings
+  // screen re-reads [listMfaFactors] itself after each mutation, and a
+  // step-up's session promotion arrives through [AuthService.states] like
+  // every other session change.
+
+  Future<TotpEnrollmentOffer> enrollTotp() => _service.enrollTotp();
+
+  Future<void> verifyTotpCode({required String factorId, required String code}) =>
+      _service.verifyTotpCode(factorId: factorId, code: code);
+
+  Future<List<MfaFactor>> listMfaFactors() => _service.listMfaFactors();
+
+  Future<void> unenrollMfaFactor(String factorId) =>
+      _service.unenrollMfaFactor(factorId);
+
+  AuthAssuranceLevel? get assuranceLevel => _service.assuranceLevel;
+
+  Future<bool> requiresMfaStepUp() => _service.requiresMfaStepUp();
+
   void _onState(AuthSessionState next) {
     // Any incoming state notification — a same-state signal (e.g.
     // Supabase's `userUpdated` event, or a token refresh) *or* a real
