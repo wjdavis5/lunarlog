@@ -94,6 +94,33 @@ abstract interface class AuthGateway {
 
   Future<void> signOut({required SignOutScope scope});
 
+  /// Starts TOTP factor enrolment (#268 U1). [issuer] is embedded in the
+  /// authenticator app's entry name.
+  Future<AuthMFAEnrollResponse> enrollTotpFactor({String? issuer});
+
+  /// Challenges and immediately verifies [code] against [factorId] in one
+  /// round trip (#268 U2/U3) — gotrue's own `challengeAndVerify` helper.
+  /// Used both to complete an enrolment and as an AAL2 step-up for an
+  /// already-verified factor.
+  Future<AuthMFAVerifyResponse> challengeAndVerifyMfa({
+    required String factorId,
+    required String code,
+  });
+
+  /// Every factor on the account (#268 U2). Refreshes the session first
+  /// (gotrue's own `listFactors` behavior), so it always reflects a factor
+  /// this call itself just enrolled or removed.
+  Future<AuthMFAListFactorsResponse> listMfaFactors();
+
+  /// Removes [factorId] (#268 U2). The server requires an aal2 session to
+  /// unenroll a verified factor.
+  Future<AuthMFAUnenrollResponse> unenrollMfaFactor(String factorId);
+
+  /// The session's current/next AAL (#268 D-6), read from the session JWT
+  /// gotrue already holds in memory — no network call.
+  AuthMFAGetAuthenticatorAssuranceLevelResponse
+      getAuthenticatorAssuranceLevel();
+
   /// Exchanges the PKCE code (or implicit tokens) carried by [uri] and
   /// stores the session (KTD8: the service calls this itself because
   /// `detectSessionInUri` is off).
@@ -224,6 +251,30 @@ class GoTrueAuthGateway implements AuthGateway {
   @override
   Future<void> signOut({required SignOutScope scope}) =>
       _auth.signOut(scope: scope);
+
+  @override
+  Future<AuthMFAEnrollResponse> enrollTotpFactor({String? issuer}) =>
+      _auth.mfa.enroll(factorType: FactorType.totp, issuer: issuer);
+
+  @override
+  Future<AuthMFAVerifyResponse> challengeAndVerifyMfa({
+    required String factorId,
+    required String code,
+  }) =>
+      _auth.mfa.challengeAndVerify(factorId: factorId, code: code);
+
+  @override
+  Future<AuthMFAListFactorsResponse> listMfaFactors() =>
+      _auth.mfa.listFactors();
+
+  @override
+  Future<AuthMFAUnenrollResponse> unenrollMfaFactor(String factorId) =>
+      _auth.mfa.unenroll(factorId);
+
+  @override
+  AuthMFAGetAuthenticatorAssuranceLevelResponse
+      getAuthenticatorAssuranceLevel() =>
+          _auth.mfa.getAuthenticatorAssuranceLevel();
 
   @override
   Future<AuthSessionUrlResponse> getSessionFromUrl(Uri uri) =>

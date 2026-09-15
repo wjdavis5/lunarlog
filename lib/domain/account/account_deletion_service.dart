@@ -126,6 +126,19 @@ sealed class AccountDeletionFailure implements Exception {
   const factory AccountDeletionFailure.unknown() =
       AccountDeletionUnknownFailure;
 
+  /// The Edge Function's own `mfa_required` code (#268 D-6): the server's
+  /// own AAL2 enforcement refused the call because the account has a
+  /// verified TOTP factor and the session is not aal2. The client UI
+  /// resolves this itself before ever calling the service
+  /// (`lib/ui/account/mfa_step_up_dialog.dart`'s `ensureAal2`), so this
+  /// should be unreachable in practice - it exists for a client that
+  /// skipped that check (a stale build, or a direct API call), and its own
+  /// copy tells the operator to try the delete flow again rather than
+  /// showing [AccountDeletionFailure.unknown]'s "please try again" for a
+  /// cause it can't actually explain.
+  const factory AccountDeletionFailure.mfaRequired() =
+      AccountDeletionMfaRequiredFailure;
+
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -226,6 +239,14 @@ final class AccountDeletionUnknownFailure extends AccountDeletionFailure {
 
   @override
   String toString() => 'AccountDeletionFailure.unknown';
+}
+
+/// See [AccountDeletionFailure.mfaRequired].
+final class AccountDeletionMfaRequiredFailure extends AccountDeletionFailure {
+  const AccountDeletionMfaRequiredFailure();
+
+  @override
+  String toString() => 'AccountDeletionFailure.mfaRequired';
 }
 
 /// The account-deletion seam (#17 KTD8). Built alongside the production

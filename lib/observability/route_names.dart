@@ -188,6 +188,40 @@ const String kRouteExportRangePickerSheet = 'ExportRangePickerSheet';
 /// ProfileDetailScreen).
 const String kRouteCycleComparisonScreen = 'CycleComparisonScreen';
 
+/// `lib/ui/account/mfa_enroll_screen.dart` (issue #268) — the TOTP QR/secret
+/// + verification-code enrolment flow, pushed from the Account section's
+/// "Set up two-factor authentication" tile.
+const String kRouteMfaEnrollScreen = 'MfaEnrollScreen';
+
+/// `lib/ui/account/mfa_step_up_dialog.dart` (issue #268 D-6) — the AAL2
+/// step-up code prompt shown before a destructive account action for an
+/// account with a verified TOTP factor.
+const String kRouteMfaStepUpDialog = 'MfaStepUpDialog';
+
+/// `lib/ui/account/account_section.dart` (issue #268) — confirms removing
+/// the account's TOTP factor.
+const String kRouteMfaRemoveFactorDialog = 'MfaRemoveFactorDialog';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the "App PIN"
+/// settings screen (status, change, turn off).
+const String kRoutePinSettingsScreen = 'PinSettingsScreen';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the set-a-new-PIN
+/// form, reached when no PIN exists yet.
+const String kRoutePinSetScreen = 'PinSetScreen';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the change-PIN
+/// form, reached only after [kRoutePinAuthorizationDialog] succeeds.
+const String kRoutePinChangeScreen = 'PinChangeScreen';
+
+/// `lib/ui/gate/pin_authorization_dialog.dart` (issue #271) — "requires the
+/// current PIN or device auth" before a change or removal.
+const String kRoutePinAuthorizationDialog = 'PinAuthorizationDialog';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — confirms turning
+/// the PIN off.
+const String kRoutePinRemoveConfirmDialog = 'PinRemoveConfirmDialog';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -233,5 +267,13 @@ const Set<String> kSentryRouteNames = {
   kRouteCycleLiteracyArticleSheet,
   kRouteExportRangePickerSheet,
   kRouteCycleComparisonScreen,
+  kRouteMfaEnrollScreen,
+  kRouteMfaStepUpDialog,
+  kRouteMfaRemoveFactorDialog,
+  kRoutePinSettingsScreen,
+  kRoutePinSetScreen,
+  kRoutePinChangeScreen,
+  kRoutePinAuthorizationDialog,
+  kRoutePinRemoveConfirmDialog,
 };
 

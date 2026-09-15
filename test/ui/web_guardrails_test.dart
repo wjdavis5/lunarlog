@@ -19,6 +19,7 @@ import 'package:lunarlog/app.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
@@ -236,13 +237,20 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          // Issue #268: MfaSettingsSection renders unconditionally whenever
+          // AccountSection is signed-in and calls AppLocalizations.of
+          // immediately.
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),
               Provider<AccountDeletionService>.value(value: deletion),
             ],
             child: const Scaffold(
-              body: AccountSection(showExportAndDelete: false),
+              body: SingleChildScrollView(
+                child: AccountSection(showExportAndDelete: false),
+              ),
             ),
           ),
         ),
@@ -252,12 +260,16 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),
               Provider<AccountDeletionService>.value(value: deletion),
             ],
-            child: const Scaffold(body: AccountSection()),
+            child: const Scaffold(
+              body: SingleChildScrollView(child: AccountSection()),
+            ),
           ),
         ),
       );

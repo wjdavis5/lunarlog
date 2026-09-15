@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/gate/device_settings_launcher.dart';
+import 'package:lunarlog/ui/gate/pin_unlock_section.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class LockScreen extends StatelessWidget {
@@ -73,7 +74,12 @@ class LockScreen extends StatelessWidget {
                 Text('lunarlog is locked',
                     style: theme.textTheme.headlineSmall),
                 const SizedBox(height: 8),
-                if (controller.denialReason ==
+                // #271 D-6: once the PIN step is reached — after a granted
+                // device credential, or standing alone with none enrolled —
+                // it replaces the device-credential content entirely.
+                if (controller.pinRequired)
+                  PinUnlockSection(controller: controller)
+                else if (controller.denialReason ==
                     GateDenialReason.noCredentialEnrolled)
                   ..._noCredentialContent(theme)
                 else

@@ -66,6 +66,12 @@ AuthFailure _mapGoTrueAuthException(AuthException error) {
       return const AuthFailure.identityTaken();
     case 'single_identity_not_deletable':
       return const AuthFailure.lastSignInMethod();
+    // #268: a rejected TOTP code (wrong or expired), on either an
+    // enrolment-completing verify or an AAL2 step-up verify — mapped the
+    // same as a rejected emailed code (AuthInvalidCodeFailure) since the
+    // copy ("wrong or expired code") reads correctly for both.
+    case 'mfa_verification_rejected':
+      return const AuthFailure.invalidCode();
   }
   final bucketed = _mapThrottlingOrMisconfigured(error);
   if (bucketed != null) return bucketed;

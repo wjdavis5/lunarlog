@@ -203,6 +203,7 @@ class LunarLogRoot extends StatefulWidget {
   const LunarLogRoot({
     super.key,
     required this.gate,
+    this.pinService,
     required this.dbOpener,
     this.launchProfileId,
     this.scheduler,
@@ -230,6 +231,13 @@ class LunarLogRoot extends StatefulWidget {
   });
 
   final AppGate gate;
+
+  /// The optional in-app PIN layer (#271 D-6); null disables the feature
+  /// entirely (a plain device-credential gate, unchanged from before this
+  /// issue) — `main.dart` passes the real store on every platform since
+  /// constructing it does no I/O, and the gate never consults it while
+  /// `gate.requiresUnlock` is false (web).
+  final PinCredentialService? pinService;
 
   /// Opens (and never quarantines silently — throws U2's typed errors).
   final Future<LunarLogDatabase> Function() dbOpener;
@@ -391,6 +399,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
     super.initState();
     _gate = GateController(
       gate: widget.gate,
+      pinService: widget.pinService,
       inactivityTimeout: widget.inactivityTimeout,
       inactivityTimerFactory: widget.inactivityTimerFactory,
     )..addListener(_onGateChanged);

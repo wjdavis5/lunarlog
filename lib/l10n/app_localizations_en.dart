@@ -1237,4 +1237,135 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMeasurementUnitsWeightLabel => 'Weight unit';
+
+  @override
+  String get mfaSectionTitle => 'Two-factor authentication';
+
+  @override
+  String get mfaEnrollTileTitle => 'Set up two-factor authentication';
+
+  @override
+  String get mfaEnrollTileSubtitle =>
+      'Add an authenticator app as a second sign-in factor.';
+
+  @override
+  String get mfaFactorTileTitle => 'Authenticator app';
+
+  @override
+  String get mfaFactorTileSubtitleVerified => 'Enabled';
+
+  @override
+  String get mfaFactorTileSubtitlePending =>
+      'Setup not finished — remove and try again';
+
+  @override
+  String get mfaRemoveFactorTitle => 'Remove two-factor authentication?';
+
+  @override
+  String get mfaRemoveFactorBody =>
+      'You will only need your password to sign in and to confirm account actions.';
+
+  @override
+  String get mfaRemoveFactorConfirm => 'Remove';
+
+  @override
+  String get mfaErrorGeneric => 'Something went wrong. Please try again.';
+
+  @override
+  String get mfaEnrollScreenTitle => 'Set up two-factor authentication';
+
+  @override
+  String get mfaEnrollInstructions =>
+      'Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).';
+
+  @override
+  String get mfaEnrollSecretLabel => 'Setup key';
+
+  @override
+  String get mfaEnrollCodeLabel => 'Enter the 6-digit code from your app';
+
+  @override
+  String get mfaCodeHint => '6-digit code';
+
+  @override
+  String get mfaEnrollConfirmButton => 'Confirm';
+
+  @override
+  String get mfaEnrollSuccessMessage => 'Two-factor authentication is on.';
+
+  @override
+  String get mfaStepUpTitle => 'Confirm it\'s you';
+
+  @override
+  String get mfaStepUpBody =>
+      'Enter the 6-digit code from your authenticator app to continue.';
+
+  @override
+  String get mfaStepUpConfirmButton => 'Verify';
+
+  @override
+  String get pinSettingsSectionTitle => 'App PIN';
+
+  @override
+  String get pinSettingsToggleTitle => 'Require a PIN to open lunarlog';
+
+  @override
+  String get pinSettingsToggleSubtitleOn =>
+      'On — an additional lock layer on top of your device credential.';
+
+  @override
+  String get pinSettingsToggleSubtitleOff => 'Off';
+
+  @override
+  String get pinSetScreenTitle => 'Set a PIN';
+
+  @override
+  String get pinChangeScreenTitle => 'Change PIN';
+
+  @override
+  String get pinCurrentPinLabel => 'Current PIN';
+
+  @override
+  String get pinNewPinLabel => 'New PIN (4-8 digits)';
+
+  @override
+  String get pinConfirmPinLabel => 'Confirm PIN';
+
+  @override
+  String get pinMismatchError => 'PINs don\'t match.';
+
+  @override
+  String get pinTooShortError => 'Enter at least 4 digits.';
+
+  @override
+  String get pinWrongCurrentError => 'That PIN is incorrect.';
+
+  @override
+  String get pinSaveButton => 'Save';
+
+  @override
+  String get pinRemoveConfirmTitle => 'Turn off PIN?';
+
+  @override
+  String get pinRemoveConfirmBody =>
+      'You can still use your device credential to unlock lunarlog.';
+
+  @override
+  String get pinRemoveConfirmButton => 'Turn off';
+
+  @override
+  String get pinLockScreenPrompt => 'Enter your PIN';
+
+  @override
+  String get pinLockScreenUnlockButton => 'Unlock';
+
+  @override
+  String pinLockScreenIncorrect(int count) {
+    return 'Wrong PIN. $count attempt(s) remaining before a short lockout.';
+  }
+
+  @override
+  String pinLockScreenLockedOut(String time) {
+    return 'Too many attempts. Try again after $time.';
+  }
 }
