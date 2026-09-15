@@ -203,6 +203,105 @@
   "@cycleHistoryLoadError": {
     "description": "InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602."
   },
+  "cycleComparisonToggleButton": "Compare cycles",
+  "@cycleComparisonToggleButton": {
+    "description": "Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side."
+  },
+  "cycleComparisonCancelButton": "Cancel",
+  "@cycleComparisonCancelButton": {
+    "description": "Issue #235: replaces cycleComparisonToggleButton while cycle-comparison selection mode is active, exiting it and clearing the current selection."
+  },
+  "cycleComparisonSelectedCount": "{count} of 2 selected",
+  "@cycleComparisonSelectedCount": {
+    "description": "Issue #235: selection-mode progress hint in the cycle-history list (\"0 of 2 selected\", \"1 of 2 selected\", \"2 of 2 selected\") -- always exactly two are required, so this is a bare count, not a pluralized noun.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleComparisonOpenButton": "Compare",
+  "@cycleComparisonOpenButton": {
+    "description": "Issue #235: the button that opens the comparison screen once exactly two cycles are selected; disabled otherwise."
+  },
+  "cycleComparisonSelectCycleSemantic": "Select cycle starting {date} for comparison",
+  "@cycleComparisonSelectCycleSemantic": {
+    "description": "Issue #235: accessibility label on a completed cycle's selection checkbox in the cycle-history list, naming what the checkbox is for (a bare Checkbox otherwise announces only checked/unchecked state).",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonSelectCurrentCycleSemantic": "Select current cycle for comparison",
+  "@cycleComparisonSelectCurrentCycleSemantic": {
+    "description": "Issue #235: same as cycleComparisonSelectCycleSemantic, for the still-open cycle's own selection checkbox."
+  },
+  "cycleComparisonScreenTitle": "Compare cycles",
+  "@cycleComparisonScreenTitle": {
+    "description": "Issue #235: app-bar title of the side-by-side cycle comparison screen."
+  },
+  "cycleComparisonNotEnoughTitle": "Nothing to compare yet",
+  "@cycleComparisonNotEnoughTitle": {
+    "description": "Issue #235: honest empty-state title when the comparison screen has no valid pair of cycles to show (e.g. reached with a stale selection)."
+  },
+  "cycleComparisonNotEnoughBody": "Select two cycles from your cycle history to compare them side by side.",
+  "@cycleComparisonNotEnoughBody": {
+    "description": "Issue #235: body copy paired with cycleComparisonNotEnoughTitle."
+  },
+  "cycleComparisonSideHeading": "Cycle starting {date}",
+  "@cycleComparisonSideHeading": {
+    "description": "Issue #235: header above a completed cycle's column in the comparison screen.",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonCurrentCycleHeading": "Current cycle (started {date})",
+  "@cycleComparisonCurrentCycleHeading": {
+    "description": "Issue #235: header above the still-open cycle's column in the comparison screen, when one side of the comparison is the open cycle.",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonExcludedBadge": "Excluded from averages",
+  "@cycleComparisonExcludedBadge": {
+    "description": "Issue #235 AC4: marks a compared cycle that is in the operator's cycle_overrides exclusion set, so an excluded cycle reads as excluded within the comparison rather than being silently included as if it were a normal one."
+  },
+  "cycleComparisonLengthLabel": "Length",
+  "@cycleComparisonLengthLabel": {
+    "description": "Issue #235: row label above a compared cycle's length (rendered as a day count, or cycleComparisonOngoingLabel for the open cycle)."
+  },
+  "cycleComparisonOngoingLabel": "Ongoing",
+  "@cycleComparisonOngoingLabel": {
+    "description": "Issue #235: the still-open cycle's length value, replacing a day count it does not have yet."
+  },
+  "cycleComparisonBleedDaysLabel": "Bleed days",
+  "@cycleComparisonBleedDaysLabel": {
+    "description": "Issue #235: row label above a compared cycle's logged bleed-day count (so far, for the open cycle)."
+  },
+  "cycleComparisonLengthDifferenceLabel": "Length difference",
+  "@cycleComparisonLengthDifferenceLabel": {
+    "description": "Issue #235: label for the compared statistic showing how many days the two cycle lengths differ by (an unsigned day count -- this view names both cycles by their own start date above it rather than by \"longer\"/\"shorter\" wording)."
+  },
+  "cycleComparisonBleedDaysDifferenceLabel": "Bleed days difference",
+  "@cycleComparisonBleedDaysDifferenceLabel": {
+    "description": "Issue #235: same as cycleComparisonLengthDifferenceLabel, for the bleed-day count difference."
+  },
+  "cycleComparisonLengthDifferenceUnknown": "Not yet known",
+  "@cycleComparisonLengthDifferenceUnknown": {
+    "description": "Issue #235: replaces the length-difference value whenever either compared cycle is still open (its final length isn't known yet, so no difference can be stated)."
+  },
+  "cycleComparisonDayHeading": "Day {day}",
+  "@cycleComparisonDayHeading": {
+    "description": "Issue #235: the shared cycle-day label each aligned row starts with (\"Day 1\", \"Day 2\", ...), and the leading fragment of that row's accessibility label for each side.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleComparisonNoEntryLabel": "Not logged",
+  "@cycleComparisonNoEntryLabel": {
+    "description": "Issue #235: a compared day within a cycle's own length that has no day entry logged at all (distinct from an explicit \"not bleeding\" assertion, and distinct from cycleComparisonCycleEndedLabel)."
+  },
+  "cycleComparisonCycleEndedLabel": "Cycle ended",
+  "@cycleComparisonCycleEndedLabel": {
+    "description": "Issue #235: fills a side's cell past that cycle's own last day, when the two compared cycles differ in length -- text, not a blank cell or a bare dash, so the shorter cycle's end reads as a fact rather than missing data (R9/no information by colour alone)."
+  },
   "monthPickerPreviousYear": "Previous year",
   "@monthPickerPreviousYear": {
     "description": "Tooltip on the month/year picker's back-year chevron."

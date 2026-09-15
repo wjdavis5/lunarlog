@@ -26,6 +26,7 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
+import 'package:lunarlog/ui/insights/cycle_comparison_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -247,6 +248,19 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 readOnly: true,
                 showStatistics: true,
                 showDisclaimer: true,
+                // Issue #235: an archived profile has no Insights tab of
+                // its own to reach the comparison feature through (see
+                // this screen's own doc comment), so this mount wires it
+                // directly, the same as AnalysisTab's does.
+                onCompareSelected: (cycleAStart, cycleBStart) =>
+                    Navigator.of(context).push(
+                      CycleComparisonScreen.route(
+                        profileId: widget.profile.id,
+                        cycleAStart: cycleAStart,
+                        cycleBStart: cycleBStart,
+                        todayProvider: widget.todayProvider,
+                      ),
+                    ),
               ),
             ],
     );

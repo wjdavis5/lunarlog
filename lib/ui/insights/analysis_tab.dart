@@ -55,6 +55,12 @@
 /// [CareModeCopy.showsFertileWindow], hidden in the same not-enough-history
 /// state the rest of the card already is, and available on every profile
 /// including `isMinor` ones (#142) with no separate check here.
+///
+/// Issue #235: [CycleHistorySection] is mounted here with
+/// `onCompareSelected` wired to push [CycleComparisonScreen] -- the
+/// side-by-side comparison this tab is the primary entry point for (the
+/// archived-profile mount in `profile_detail_screen.dart` wires the same
+/// callback for its own, separate [CycleHistorySection] instance).
 library;
 
 import 'dart:async';
@@ -95,6 +101,7 @@ import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 import '../sharing/guardian_watch_mixin.dart';
 import '../theme/tokens.dart';
+import 'cycle_comparison_screen.dart';
 import 'phase_insights_card.dart';
 import 'symptom_trends_section.dart';
 
@@ -345,6 +352,15 @@ class _AnalysisTabState extends State<AnalysisTab>
         readOnly: _effectiveReadOnly,
         showStatistics: false,
         showDisclaimer: false,
+        onCompareSelected: (cycleAStart, cycleBStart) =>
+            Navigator.of(context).push(
+              CycleComparisonScreen.route(
+                profileId: widget.profileId,
+                cycleAStart: cycleAStart,
+                cycleBStart: cycleBStart,
+                todayProvider: widget.todayProvider,
+              ),
+            ),
       ),
       if (prediction is ActivePrediction) ...[
         const SizedBox(height: 16),

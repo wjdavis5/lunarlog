@@ -182,6 +182,12 @@ const String kRouteCycleLiteracyArticleSheet = 'CycleLiteracyArticleSheet';
 /// choice and the Bundle build.
 const String kRouteExportRangePickerSheet = 'ExportRangePickerSheet';
 
+/// `lib/ui/insights/cycle_comparison_screen.dart` (Issue #235) — the
+/// side-by-side cycle comparison, pushed from CycleHistorySection's
+/// selection mode (mounted by both the Analysis tab and the archived
+/// ProfileDetailScreen).
+const String kRouteCycleComparisonScreen = 'CycleComparisonScreen';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -226,5 +232,6 @@ const Set<String> kSentryRouteNames = {
   kRouteCycleLiteracyLibraryScreen,
   kRouteCycleLiteracyArticleSheet,
   kRouteExportRangePickerSheet,
+  kRouteCycleComparisonScreen,
 };
 

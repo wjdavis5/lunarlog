@@ -155,6 +155,81 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cycleHistoryLoadError => 'Could not load cycle history.';
 
   @override
+  String get cycleComparisonToggleButton => 'Compare cycles';
+
+  @override
+  String get cycleComparisonCancelButton => 'Cancel';
+
+  @override
+  String cycleComparisonSelectedCount(int count) {
+    return '$count of 2 selected';
+  }
+
+  @override
+  String get cycleComparisonOpenButton => 'Compare';
+
+  @override
+  String cycleComparisonSelectCycleSemantic(String date) {
+    return 'Select cycle starting $date for comparison';
+  }
+
+  @override
+  String get cycleComparisonSelectCurrentCycleSemantic =>
+      'Select current cycle for comparison';
+
+  @override
+  String get cycleComparisonScreenTitle => 'Compare cycles';
+
+  @override
+  String get cycleComparisonNotEnoughTitle => 'Nothing to compare yet';
+
+  @override
+  String get cycleComparisonNotEnoughBody =>
+      'Select two cycles from your cycle history to compare them side by side.';
+
+  @override
+  String cycleComparisonSideHeading(String date) {
+    return 'Cycle starting $date';
+  }
+
+  @override
+  String cycleComparisonCurrentCycleHeading(String date) {
+    return 'Current cycle (started $date)';
+  }
+
+  @override
+  String get cycleComparisonExcludedBadge => 'Excluded from averages';
+
+  @override
+  String get cycleComparisonLengthLabel => 'Length';
+
+  @override
+  String get cycleComparisonOngoingLabel => 'Ongoing';
+
+  @override
+  String get cycleComparisonBleedDaysLabel => 'Bleed days';
+
+  @override
+  String get cycleComparisonLengthDifferenceLabel => 'Length difference';
+
+  @override
+  String get cycleComparisonBleedDaysDifferenceLabel => 'Bleed days difference';
+
+  @override
+  String get cycleComparisonLengthDifferenceUnknown => 'Not yet known';
+
+  @override
+  String cycleComparisonDayHeading(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String get cycleComparisonNoEntryLabel => 'Not logged';
+
+  @override
+  String get cycleComparisonCycleEndedLabel => 'Cycle ended';
+
+  @override
   String get monthPickerPreviousYear => 'Previous year';
 
   @override
