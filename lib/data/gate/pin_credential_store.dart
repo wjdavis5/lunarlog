@@ -17,15 +17,76 @@
 /// — a PIN set on one device never appears, even hashed, on another.
 /// Android: the package default (AES-GCM under a Keystore-wrapped key);
 /// `allowBackup="false"` in the manifest already keeps it out of backups.
+///
+/// PBKDF2 at [kPbkdf2DefaultIterations] rounds is CPU-bound work that can
+/// run for a second or more on a mid-range phone — run synchronously on the
+/// calling isolate (the UI isolate, for every real caller of this class),
+/// that blocks the event loop for the whole duration: no frame renders, no
+/// spinner animates, the unlock screen and the PIN-settings screen both
+/// visibly freeze. [defaultPbkdf2Runner] below is what keeps that work off
+/// the UI isolate in production.
 library;
 
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lunarlog/data/gate/pbkdf2.dart';
 import 'package:lunarlog/domain/gate/pin_credential_service.dart';
+
+/// Runs [pbkdf2HmacSha256] and returns its digest. A seam so
+/// [PinCredentialStore] never calls the CPU-bound function directly —
+/// production dispatches through [defaultPbkdf2Runner] (off the UI
+/// isolate); tests inject a synchronous runner with a low iteration count
+/// so the suite stays fast without ever touching the production iteration
+/// count itself (that stays fixed at [kPbkdf2DefaultIterations] in
+/// [PinCredentialStore.setPin] regardless of what a test's runner does with
+/// whatever iteration count it's called with).
+typedef Pbkdf2Runner = Future<Uint8List> Function({
+  required List<int> password,
+  required List<int> salt,
+  required int iterations,
+  required int keyLengthBytes,
+});
+
+/// Production [Pbkdf2Runner]: runs the derivation on a fresh isolate via
+/// [Isolate.run] so the 210,000-round hash never blocks the UI isolate —
+/// only plain, sendable data crosses the isolate boundary ([List<int>]/
+/// [int] arguments, a [Uint8List] result), never a closure over anything
+/// stateful.
+///
+/// `dart:isolate` has no web implementation ([Isolate.run] throws
+/// [UnsupportedError] there), so this falls back to calling
+/// [pbkdf2HmacSha256] directly on [kIsWeb]. That fallback is defense in
+/// depth, not a path any real build takes today: the PIN gate only ever
+/// engages behind [GateController.pinRequired], which — like the rest of
+/// the device-credential gate — never fires on web (`WebAppGate
+/// .requiresUnlock` is `false`, so `GateController` never reaches a PIN
+/// check there at all; see `lib/startup/gate/web_gate.dart`).
+Future<Uint8List> defaultPbkdf2Runner({
+  required List<int> password,
+  required List<int> salt,
+  required int iterations,
+  required int keyLengthBytes,
+}) {
+  if (kIsWeb) {
+    return Future.value(pbkdf2HmacSha256(
+      password: password,
+      salt: salt,
+      iterations: iterations,
+      keyLengthBytes: keyLengthBytes,
+    ));
+  }
+  return Isolate.run(() => pbkdf2HmacSha256(
+        password: password,
+        salt: salt,
+        iterations: iterations,
+        keyLengthBytes: keyLengthBytes,
+      ));
+}
 
 /// Wrong guesses allowed before the first lockout tier begins.
 const int kPinFreeAttempts = 3;
@@ -49,12 +110,24 @@ class PinCredentialStore implements PinCredentialService {
     FlutterSecureStorage? storage,
     this._now = DateTime.now,
     Random? random,
+    Pbkdf2Runner derive = defaultPbkdf2Runner,
   })  : _storage = storage ?? const FlutterSecureStorage(),
-        _random = random ?? Random.secure();
+        _random = random ?? Random.secure(),
+        // Deliberately not an initializing formal (`this._derive`): that
+        // would rename the public `derive:` argument every call site above
+        // uses to `_derive:`, an API break for one lint's sake (same
+        // reasoning as `GateController`'s `pinService` constructor param).
+        // ignore: prefer_initializing_formals
+        _derive = derive;
 
   final FlutterSecureStorage _storage;
   final DateTime Function() _now;
   final Random _random;
+
+  /// How the PBKDF2 digest is actually computed (see [defaultPbkdf2Runner]'s
+  /// doc comment) — injectable so a test can run it synchronously with a
+  /// low iteration count instead of spawning a real isolate per call.
+  final Pbkdf2Runner _derive;
 
   static const String _credentialKey = 'lunarlog.pin.credential';
   static const String _lockoutKey = 'lunarlog.pin.lockout';
@@ -77,7 +150,15 @@ class PinCredentialStore implements PinCredentialService {
   Future<void> setPin(String pin) async {
     final salt = Uint8List.fromList(
         List<int>.generate(_saltLengthBytes, (_) => _random.nextInt(256)));
-    final hash = pbkdf2HmacSha256(password: utf8.encode(pin), salt: salt);
+    // The production iteration count is fixed here, at the call site —
+    // never taken from (or lowered by) whatever a test's injected [_derive]
+    // does with it.
+    final hash = await _derive(
+      password: utf8.encode(pin),
+      salt: salt,
+      iterations: kPbkdf2DefaultIterations,
+      keyLengthBytes: kPbkdf2DefaultKeyLengthBytes,
+    );
     final payload = jsonEncode({
       'salt': base64Encode(salt),
       'hash': base64Encode(hash),
@@ -124,11 +205,15 @@ class PinCredentialStore implements PinCredentialService {
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
     final salt = base64Decode(decoded['salt'] as String);
     final storedHash = base64Decode(decoded['hash'] as String);
+    // The stored record's own iteration count, not the current default —
+    // a record written under a future, higher default must still verify
+    // correctly against the count it was actually hashed with.
     final iterations = decoded['iterations'] as int;
-    final candidate = pbkdf2HmacSha256(
+    final candidate = await _derive(
       password: utf8.encode(pin),
       salt: salt,
       iterations: iterations,
+      keyLengthBytes: kPbkdf2DefaultKeyLengthBytes,
     );
     if (constantTimeEquals(candidate, storedHash)) {
       await _clearLockout();
