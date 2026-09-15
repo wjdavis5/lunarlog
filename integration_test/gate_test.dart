@@ -1,6 +1,9 @@
-/// U7 gate integration matrix (R7, flow F3, AE4), run on the host with a
-/// fake authenticator: `flutter test integration_test/gate_test.dart`.
-/// Real biometrics are verified manually on-device later (U9 checklist).
+/// U7 gate integration matrix (R7, flow F3, AE4), run with a fake
+/// authenticator: `flutter test integration_test/gate_test.dart` (which,
+/// on this Flutter toolchain, routes any file under `integration_test/`
+/// to a connected device) — CI runs it on a real iOS Simulator (the
+/// "iOS Simulator tests" job). Real biometrics are verified manually
+/// on-device later (U9 checklist).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -95,8 +98,38 @@ Future<void> main() async {
     return db;
   }
 
+  /// Issue #121: a manual `handleAppLifecycleStateChanged` walk into
+  /// `hidden`/`paused` is a framework-level simulation — nothing is sent to
+  /// the OS — but `SchedulerBinding.handleAppLifecycleStateChanged` still
+  /// flips `framesEnabled` to false for exactly those two states (it stays
+  /// true for `inactive`, which is why the issue #65 test never hung).
+  ///
+  /// That flip is invisible host-mode, where `pump()` drives
+  /// `handleBeginFrame`/`handleDrawFrame` directly. On a real device,
+  /// `IntegrationTestWidgetsFlutterBinding` is a *live* binding: `pump()`
+  /// waits for a real engine frame, `scheduleFrame()` is now a no-op, and
+  /// the binding's default test timeout is `Timeout.none` — so the first
+  /// pump after a `paused`/`hidden` step waited on a frame that could never
+  /// be requested and hung the run forever (the #121 failure).
+  ///
+  /// `scheduleForcedFrame()` is the framework's own escape hatch for this —
+  /// documented as "ignores the [lifecycleState] when scheduling a frame" —
+  /// and, because the app was never really backgrounded, the engine is
+  /// still foreground and delivers the frame. A no-op wherever frames are
+  /// already enabled, so the resumed/inactive path is unchanged.
+  void forceFrameIfBackgrounded(WidgetTester tester) {
+    if (!tester.binding.framesEnabled) {
+      tester.binding.scheduleForcedFrame();
+    }
+  }
+
   Future<void> disposeDb(WidgetTester tester, LunarLogDatabase db) async {
+    // Issue #121: callers may still be in a frames-disabled state here (the
+    // inactivity-timeout test ends on `hidden`), and on a live device
+    // binding each pump in that state needs its own forced frame.
+    forceFrameIfBackgrounded(tester);
     await tester.pumpWidget(const SizedBox.shrink());
+    forceFrameIfBackgrounded(tester);
     await tester.pump(const Duration(milliseconds: 100));
     await db.close();
   }
@@ -118,8 +151,12 @@ Future<void> main() async {
     while (from != to) {
       from += to > from ? 1 : -1;
       tester.binding.handleAppLifecycleStateChanged(path[from]);
+      // Issue #121: every step landing in hidden/paused must force the
+      // frame the following pump waits for, or a real-device run hangs.
+      forceFrameIfBackgrounded(tester);
       await tester.pump();
     }
+    forceFrameIfBackgrounded(tester);
     await tester.pumpAndSettle();
   }
 
@@ -319,6 +356,12 @@ Future<void> main() async {
     // Background re-lock still applies with the toggle off.
     await transitionTo(tester, AppLifecycleState.hidden);
     expect(find.byKey(const ValueKey('lock-screen')), findsOneWidget);
+    // Issue #121 suite hygiene: the binding's lifecycle state persists
+    // across tests in a suite (see ensureResumed), and the next test's very
+    // first pumpWidget would hang a real-device run if it inherited the
+    // frames-disabled `hidden` state. Return to the foreground like every
+    // other test in this file.
+    await ensureResumed(tester);
     await disposeDb(tester, db);
   });
 
