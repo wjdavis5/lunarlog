@@ -1509,9 +1509,19 @@ class _MonthCalendarState extends State<MonthCalendar>
                         size: 16,
                       ),
                       const SizedBox(width: 2),
-                      Text(
-                        l10n.calendarLegend,
-                        style: theme.textTheme.bodySmall,
+                      // Issue #460's RTL/pseudo-locale smoke found this
+                      // label overflowing the row the moment localized
+                      // copy runs longer than English "Legend" (58px over
+                      // at ~2x expansion): the row had no flex or
+                      // ellipsis, so any longer translation (or large
+                      // text scale) painted past the tap area's edge.
+                      Flexible(
+                        child: Text(
+                          l10n.calendarLegend,
+                          style: theme.textTheme.bodySmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
