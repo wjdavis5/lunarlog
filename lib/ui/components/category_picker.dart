@@ -139,6 +139,9 @@ class _CategoryPickerState extends State<CategoryPicker> {
           key: const ValueKey('category-picker-search'),
           controller: _searchController,
           enabled: widget.enabled,
+          // #165: a live filter — the honest keyboard action is "search"
+          // (there is no submit to wire; filtering happens per keystroke).
+          textInputAction: TextInputAction.search,
           decoration: InputDecoration(
             hintText: widget.searchHint,
             isDense: true,
