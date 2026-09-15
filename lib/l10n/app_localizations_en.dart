@@ -1165,6 +1165,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileDetailSwitchProfileTooltip => 'Switch profile';
 
   @override
+  String get appShellProfileSwitcherTooltip => 'Switch profile';
+
+  @override
+  String get quickSwitcherManageProfiles => 'Manage profiles…';
+
+  @override
+  String get profileStatusNoHistory => 'No history yet';
+
+  @override
+  String get profileStatusPredictionsSuppressed => 'Period predictions off';
+
+  @override
+  String get profileStatusPredictionsOff => 'Period predictions off';
+
+  @override
   String daysCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

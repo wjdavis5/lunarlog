@@ -14,8 +14,10 @@
 ///
 /// The app bar shared by Today/Calendar/Insights (not rebuilt per screen,
 /// and not shown at all on More -- [SettingsScreen] carries its own) holds
-/// the active profile name as a tappable switcher opening the existing
-/// picker ([ProfileController.openPicker], same mechanism
+/// the active profile name as a tappable quick switcher (issue #241: a
+/// popup listing active profiles for in-place switching, with a "Manage
+/// profiles…" entry that opens the existing picker via
+/// [ProfileController.openPicker] -- the same mechanism
 /// `ProfileDetailScreen`'s old "Switch profile" action used), the
 /// [SyncStatusGlyph] (previously picker-only), and a Settings action that
 /// simply switches to the More tab rather than pushing a second copy of
@@ -42,6 +44,8 @@
 /// "up returns to the first destination before exiting" guidance.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -49,9 +53,11 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/components/profile_card.dart' show ProfileAvatar;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -323,7 +329,7 @@ class _AppShellState extends State<AppShell> {
       AppBar(
         title: _ProfileSwitcher(
           profile: widget.profile,
-          onTap: _openPicker,
+          onManageProfiles: _openPicker,
           guardiansRepository: guardiansRepository,
         ),
         actions: [
@@ -345,10 +351,13 @@ class _AppShellState extends State<AppShell> {
       );
 }
 
-/// The active profile name as a tappable switcher (issue #182 AC2): opens
-/// the existing picker via [ProfileController.openPicker], the same
-/// mechanism `ProfileDetailScreen`'s "Switch profile" `IconButton` used --
-/// wrapped in the same [Tooltip] message so it stays findable the same way.
+/// The active profile name as a tappable quick switcher (issue #182 AC2;
+/// issue #241 B-16 makes it a popup): tapping opens a menu listing every
+/// active profile with its [ProfileAvatar] -- selecting one makes it
+/// active in place, replacing the three-tap round trip through the
+/// full-screen picker -- plus a "Manage profiles…" entry that opens the
+/// full picker via [ProfileController.openPicker] (create, rename,
+/// archive, sharing -- everything the menu does not do).
 ///
 /// Issue #126: carries the co-managed mark ([_SharedMark]) right after the
 /// name, so a co-managed record always reads as one without opening any
@@ -356,24 +365,121 @@ class _AppShellState extends State<AppShell> {
 class _ProfileSwitcher extends StatelessWidget {
   const _ProfileSwitcher(
       {required this.profile,
-      required this.onTap,
+      required this.onManageProfiles,
       required this.guardiansRepository});
 
+  /// The menu value of the "Manage profiles…" entry. Profile ids are
+  /// ULIDs, so this can never collide with a real id.
+  static const String _kManageProfilesValue = '__manage__';
+
   final Profile profile;
-  final VoidCallback onTap;
+
+  /// Opens the full picker ([_AppShellState._openPicker]).
+  final VoidCallback onManageProfiles;
+
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// The popup's position: a [RelativeRect] anchoring the menu directly
+  /// under this button, in the Overlay's coordinate space.
+  RelativeRect _menuPosition(BuildContext context) {
+    final box = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    return RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(
+            box.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+  }
+
+  /// One menu row per active profile (avatar, name, a check on the
+  /// active one), then the divider and the "Manage profiles…" entry.
+  List<PopupMenuEntry<String>> _menuItems(
+    BuildContext context,
+    List<Profile> active,
+  ) =>
+      [
+        for (final other in active)
+          PopupMenuItem<String>(
+            key: ValueKey('quick-switcher-profile-${other.id}'),
+            value: other.id,
+            height: 56,
+            child: Row(
+              children: [
+                ProfileAvatar(profileId: other.id, radius: 14),
+                const SizedBox(width: LLSpace.space3),
+                Expanded(
+                  child: Text(
+                    other.displayName,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Fixed-width slot either way, so every name aligns in
+                // one column whether or not the check renders.
+                other.id == profile.id
+                    ? const Icon(Icons.check, size: 18)
+                    : const SizedBox(width: 18),
+              ],
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          key: const ValueKey('quick-switcher-manage'),
+          value: _kManageProfilesValue,
+          child: Row(
+            children: [
+              const Icon(Icons.manage_accounts_outlined),
+              const SizedBox(width: LLSpace.space3),
+              // Flexible + ellipsis: the label never forces the menu wider
+              // than its bounded item width (a wide locale or the test
+              // binding's wide Ahem font).
+              Flexible(
+                child: Text(
+                  AppLocalizations.of(context).quickSwitcherManageProfiles,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+
+  /// Shows the switcher menu and applies the selection: a profile id
+  /// makes that profile active in place; the manage entry opens the full
+  /// picker. The menu itself is named (issue #313's route-name
+  /// discipline) so the popup shows in the Sentry navigation trail.
+  Future<void> _showMenu(BuildContext context) async {
+    final controller = context.read<ProfileController>();
+    final selected = await showMenu<String>(
+      context: context,
+      routeSettings:
+          const RouteSettings(name: kRouteQuickProfileSwitcherMenu),
+      position: _menuPosition(context),
+      items: _menuItems(context, controller.activeProfiles),
+    );
+    if (selected == null || !context.mounted) return;
+    if (selected == _kManageProfilesValue) {
+      onManageProfiles();
+      return;
+    }
+    await context.read<ProfileController>().selectProfile(selected);
+  }
 
   @override
   Widget build(BuildContext context) {
     final repository = guardiansRepository;
     return Tooltip(
-      message: 'Switch profile',
+      message: AppLocalizations.of(context).appShellProfileSwitcherTooltip,
       child: InkWell(
         key: const ValueKey('app-shell-profile-switcher'),
         borderRadius: BorderRadius.circular(LLRadius.rMd),
         onTap: () {
           LLHaptics.selection();
-          onTap();
+          unawaited(_showMenu(context));
         },
         child: ConstrainedBox(
           constraints: const BoxConstraints(

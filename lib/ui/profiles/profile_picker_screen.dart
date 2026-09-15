@@ -18,6 +18,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -30,13 +31,13 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/profile_card.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
-import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
 import 'package:provider/provider.dart';
 
@@ -217,10 +218,15 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
     final roleSubtitle =
         sharingProfileRoleSubtitle(AppLocalizations.of(context), info);
-    return ProfileSharingTile(
+    // Issue #241: the picker row is a ProfileCard — avatar, cycle status
+    // (when a prediction service exists; an unconfigured tree keeps the
+    // bare name/subtitle row), and the #126 badges, replacing the bare
+    // sharing tile.
+    return ProfileCard(
       key: ValueKey('profile-row-${profile.id}'),
       profile: profile,
       info: info,
+      predictionService: Provider.of<CyclePredictionService?>(context),
       sharingService: sharing,
       refreshToken: overview?.badgeEpoch ?? 0,
       subtitle: roleSubtitle ?? 'Created ${formatCreatedDate(profile.createdAt)}',
