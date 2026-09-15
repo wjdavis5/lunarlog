@@ -559,6 +559,89 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsClose => 'Close';
 
   @override
+  String get settingsSectionYourData => 'Your data';
+
+  @override
+  String get settingsSectionAppearance => 'Appearance';
+
+  @override
+  String get settingsThemeTitle => 'Theme';
+
+  @override
+  String get settingsSectionReminders => 'Reminders';
+
+  @override
+  String get settingsSectionCalendar => 'Calendar';
+
+  @override
+  String get settingsSectionFamilySharing => 'Family & sharing';
+
+  @override
+  String get settingsSectionPrivacySecurity => 'Privacy & security';
+
+  @override
+  String get settingsSectionHelp => 'Help';
+
+  @override
+  String get settingsSectionAbout => 'About';
+
+  @override
+  String get settingsReminderSettingsTitle => 'Reminder settings';
+
+  @override
+  String get settingsReminderSettingsSubtitle =>
+      'Choose which reminders fire, when, and for whom';
+
+  @override
+  String get settingsCaregiverAlertsTitle => 'Caregiver alerts';
+
+  @override
+  String get settingsFirstDayTitle => 'First day of week';
+
+  @override
+  String get settingsFirstDaySunday => 'Sunday';
+
+  @override
+  String get settingsFirstDayMonday => 'Monday';
+
+  @override
+  String get settingsDateFormatTitle => 'Date format';
+
+  @override
+  String get settingsDateFormatSystemOption => 'System default (5 Sep)';
+
+  @override
+  String get settingsDateFormatDayMonthOption => 'Day first (5 Sep)';
+
+  @override
+  String get settingsDateFormatMonthDayOption => 'Month first (Sep 5)';
+
+  @override
+  String get settingsHelpTitle => 'Help & explanations';
+
+  @override
+  String get settingsHelpSubtitle =>
+      'Plain-language answers about estimates, logging, sync, and sharing — works offline';
+
+  @override
+  String get settingsAboutVersionTitle => 'Version';
+
+  @override
+  String settingsAboutVersion(String version, String build) {
+    return 'Version $version (build $build)';
+  }
+
+  @override
+  String get settingsAboutVersionUnavailable => 'Not available';
+
+  @override
+  String get settingsAboutLicensesTitle => 'Open-source licences';
+
+  @override
+  String get settingsAboutLicensesSubtitle =>
+      'The packages and terms this app builds on';
+
+  @override
   String get firstRunValueHeadline => 'A private cycle log for your family';
 
   @override

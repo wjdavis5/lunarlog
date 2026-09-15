@@ -51,13 +51,15 @@
 /// destinations.
 library;
 
-import 'dart:async' show Timer, scheduleMicrotask, unawaited;
+import 'dart:async'
+    show StreamSubscription, Timer, scheduleMicrotask, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
@@ -108,10 +110,17 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// never the raw ISO string. Backed by `intl` so #160's shared
 /// date formatter can absorb this helper wholesale once it lands (same
 /// inputs, same shape); until then it is the sheet's own thin local helper.
-String daySheetDateLabel(LocalDate date, LocalDate today) {
+/// [preference] (Issue #226) reorders the month/day pair per the
+/// Calendar → "Date format" setting; it defaults to the system order, the
+/// exact pre-#226 rendering.
+String daySheetDateLabel(
+  LocalDate date,
+  LocalDate today, {
+  DateFormatPreference preference = DateFormatPreference.system,
+}) {
   // Thin bridge onto #160's shared helper: LocalDate -> civil DateTime.
   DateTime civil(LocalDate d) => DateTime(d.year, d.month, d.day);
-  return dates.relativeDayLabel(civil(date), civil(today));
+  return dates.relativeDayLabel(civil(date), civil(today), preference: preference);
 }
 
 /// Issue #457: formats a BBT/weight value for display in a text field or an
@@ -497,9 +506,28 @@ class _DaySheetState extends State<DaySheet> {
   /// settings-store round trip.
   List<String> _tagRecents = const [];
 
+  /// Issue #226: the Calendar → "Date format" preference, resolved once the
+  /// ambient [SettingsStore] seeds it (null store — a bare test harness —
+  /// keeps `system`, the pre-#226 rendering). Watched live so a picker
+  /// change re-renders the sheet's date header on the next build.
+  DateFormatPreference _dateFormat = DateFormatPreference.system;
+  StreamSubscription<String?>? _dateFormatSub;
+
   @override
   void initState() {
     super.initState();
+    final settingsStore = context.read<SettingsStore?>();
+    if (settingsStore != null) {
+      _dateFormatSub = settingsStore
+          .watch(SettingsKeys.dateFormat)
+          .listen((value) {
+            if (mounted) {
+              setState(
+                () => _dateFormat = DateFormatPreference.fromStored(value),
+              );
+            }
+          });
+    }
     final existing = widget.existing;
     _persistedEntryId = existing?.id;
     _flow = existing?.flow ?? FlowLevel.none;
@@ -552,6 +580,8 @@ class _DaySheetState extends State<DaySheet> {
   void dispose() {
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
+    unawaited(_dateFormatSub?.cancel());
+    _dateFormatSub = null;
     if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
     _noteController.dispose();
     _bbtController.dispose();
@@ -1093,7 +1123,11 @@ class _DaySheetState extends State<DaySheet> {
         content: SingleChildScrollView(
           child: Text(
             l10n.daySheetDeleteBody(
-              daySheetDateLabel(widget.date, widget.today),
+              daySheetDateLabel(
+                widget.date,
+                widget.today,
+                preference: _dateFormat,
+              ),
             ),
           ),
         ),
@@ -1667,7 +1701,11 @@ class _DaySheetState extends State<DaySheet> {
                         header: true,
                         child: Text(
                           key: const ValueKey('day-sheet-date-title'),
-                          daySheetDateLabel(widget.date, widget.today),
+                          daySheetDateLabel(
+                            widget.date,
+                            widget.today,
+                            preference: _dateFormat,
+                          ),
                           style: theme.textTheme.titleMedium,
                         ),
                       ),
@@ -1993,7 +2031,11 @@ class _DaySheetState extends State<DaySheet> {
                 header: true,
                 child: Text(
                   key: const ValueKey('day-sheet-date-title'),
-                  daySheetDateLabel(existing.localDate, widget.today),
+                  daySheetDateLabel(
+                    existing.localDate,
+                    widget.today,
+                    preference: _dateFormat,
+                  ),
                   style: theme.textTheme.titleMedium,
                 ),
               ),

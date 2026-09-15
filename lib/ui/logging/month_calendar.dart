@@ -43,6 +43,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -57,6 +58,7 @@ import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -77,11 +79,13 @@ import 'package:provider/provider.dart';
 /// The weekday the month grid's weeks start on, as a `DateTime` weekday
 /// constant (`DateTime.monday` .. `DateTime.sunday`). Explicit seam
 /// (issue #160): the grid previously baked Sunday-start into
-/// `DateTime.weekday % 7` arithmetic. The value stays Sunday to preserve
-/// today's layout; deriving a default from the active locale and persisting
-/// a user override in Settings are tracked follow-on work — both consumers
-/// of this seam ([leadingBlanksFor] and [weekdayHeaderLabels]) already
-/// honour it.
+/// `DateTime.weekday % 7` arithmetic. This constant is now the *default*
+/// only (issue #226): the user's Calendar → "First day of week" override,
+/// persisted under [SettingsKeys.calendarFirstDayOfWeek], is watched by
+/// `_MonthCalendarState` and feeds the same seam both consumers
+/// ([leadingBlanksFor] and [weekdayHeaderLabels], plus the weekday
+/// header's Semantics labels) already honour. Deriving a default from the
+/// active locale remains follow-on work.
 const int kFirstDayOfWeek = DateTime.sunday;
 
 /// Leading blank cells before day 1 of [year]/[month] in a grid whose weeks
@@ -547,6 +551,14 @@ class _MonthCalendarState extends State<MonthCalendar>
   int _displayedYear = 1970;
   int _displayedMonth = 1;
 
+  /// The grid's week-start day (Issue #226): [kFirstDayOfWeek] until the
+  /// ambient [SettingsStore]'s watch for [SettingsKeys.calendarFirstDayOfWeek]
+  /// seeds the user's override (absent/unparsable still parses to Sunday).
+  /// Null store (a test harness or local-only mount) just keeps the
+  /// default — the pre-#226 layout, unchanged.
+  int _firstDayOfWeek = kFirstDayOfWeek;
+  StreamSubscription<String?>? _firstDaySub;
+
   /// The currently-subscribed window's day entries (review follow-up on
   /// issue #197): kept in state via an explicit subscription rather than
   /// read off a `StreamBuilder` snapshot, so a window crossing
@@ -797,6 +809,21 @@ class _MonthCalendarState extends State<MonthCalendar>
     _repository = context.read<DayEntriesRepository>();
     _predictionService = context.read<CyclePredictionService?>();
     _historyService = context.read<CycleHistoryService?>();
+    // Issue #226: the user's week-start override. The store's watch seeds
+    // the current value on subscribe, so this covers both the initial read
+    // and later changes from the Settings picker (same mechanism the
+    // appearance override uses).
+    final settingsStore = context.read<SettingsStore?>();
+    if (settingsStore != null) {
+      _firstDaySub = settingsStore
+          .watch(SettingsKeys.calendarFirstDayOfWeek)
+          .listen((value) {
+            if (mounted) {
+              setState(() => _firstDayOfWeek =
+                  CalendarFirstDay.fromStored(value).weekday);
+            }
+          });
+    }
     _rewatchPrediction();
     final auth = context.read<AuthController?>();
     if (auth != null) {
@@ -921,6 +948,8 @@ class _MonthCalendarState extends State<MonthCalendar>
   void dispose() {
     unawaited(_entriesSub?.cancel());
     _entriesSub = null;
+    unawaited(_firstDaySub?.cancel());
+    _firstDaySub = null;
     disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
@@ -1351,10 +1380,13 @@ class _MonthCalendarState extends State<MonthCalendar>
                     child: Center(
                       child: Semantics(
                         container: true,
-                        label: fullWeekdays[(kFirstDayOfWeek + i) % 7],
+                        label: fullWeekdays[(_firstDayOfWeek + i) % 7],
                         excludeSemantics: true,
                         child: Text(
-                          weekdayHeaderLabels(locale: locale)[i],
+                          weekdayHeaderLabels(
+                            locale: locale,
+                            firstDayOfWeek: _firstDayOfWeek,
+                          )[i],
                           style: theme.textTheme.labelSmall,
                         ),
                       ),
@@ -1825,9 +1857,11 @@ class _MonthCalendarState extends State<MonthCalendar>
         ? LocalDate(year + 1, 1, 1)
         : LocalDate(year, month + 1, 1);
     final daysInMonth = firstOfNext.difference(firstOfMonth);
-    // Issue #160: the grid's week start is the explicit [kFirstDayOfWeek]
-    // seam (today Sunday), no longer `weekday % 7` arithmetic.
-    final leadingBlanks = leadingBlanksFor(year, month);
+    // Issue #160: the grid's week start is the explicit first-day seam, no
+    // longer `weekday % 7` arithmetic — and since #226 that seam is fed by
+    // the user's Calendar → "First day of week" override ([_firstDayOfWeek])
+    // rather than the constant alone.
+    final leadingBlanks = leadingBlanksFor(year, month, firstDayOfWeek: _firstDayOfWeek);
     return [
       // #138 (B-23): the blanks before day 1 are layout filler with no
       // meaning — explicitly excluded so no screen reader step lands on

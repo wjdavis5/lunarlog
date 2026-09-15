@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/settings_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
@@ -89,17 +90,15 @@ class _FamilySharingSectionState extends State<FamilySharingSection> {
                 ProfileSharingGroup.sharedWithMe)
               p,
         ];
-        return Column(
+        // Issue #226: the section hosts the shared `SettingsSection`
+        // header itself (keeping this widget's own
+        // `family-sharing-section` key) so the header disappears together
+        // with the body when the section self-hides.
+        return SettingsSection(
           key: const ValueKey('family-sharing-section'),
-          crossAxisAlignment: CrossAxisAlignment.start,
+          id: 'family-sharing',
+          title: AppLocalizations.of(context).settingsSectionFamilySharing,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                'Family & sharing',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
             for (final profile in [...owned, ...shared])
               _row(context, overview, sharing, profile),
           ],

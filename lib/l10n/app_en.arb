@@ -694,6 +694,120 @@
   "@settingsClose": {
     "description": "Close action of the settings dialogs."
   },
+  "settingsSectionYourData": "Your data",
+  "@settingsSectionYourData": {
+    "description": "Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge."
+  },
+  "settingsSectionAppearance": "Appearance",
+  "@settingsSectionAppearance": {
+    "description": "Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker."
+  },
+  "settingsThemeTitle": "Theme",
+  "@settingsThemeTitle": {
+    "description": "Tile title inside the Appearance section (Issue #226 retitled from 'Appearance' once the section header carried that word): opens the system/light/dark picker; the subtitle names the current mode."
+  },
+  "settingsSectionReminders": "Reminders",
+  "@settingsSectionReminders": {
+    "description": "Header of the Settings 'Reminders' section (Issue #226): reminder scheduling and caregiver alert preferences."
+  },
+  "settingsSectionCalendar": "Calendar",
+  "@settingsSectionCalendar": {
+    "description": "Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units."
+  },
+  "settingsSectionFamilySharing": "Family & sharing",
+  "@settingsSectionFamilySharing": {
+    "description": "Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians."
+  },
+  "settingsSectionPrivacySecurity": "Privacy & security",
+  "@settingsSectionPrivacySecurity": {
+    "description": "Header of the Settings 'Privacy & security' section (Issue #226): relock, app PIN, privacy policy."
+  },
+  "settingsSectionHelp": "Help",
+  "@settingsSectionHelp": {
+    "description": "Header of the Settings 'Help' section (Issue #226): help library, feedback/support, support history."
+  },
+  "settingsSectionAbout": "About",
+  "@settingsSectionAbout": {
+    "description": "Header of the Settings 'About' section (Issue #226): version, build number, licences."
+  },
+  "settingsReminderSettingsTitle": "Reminder settings",
+  "@settingsReminderSettingsTitle": {
+    "description": "Tile (inside the Reminders section) opening the per-profile reminder configuration screen (Issue #136)."
+  },
+  "settingsReminderSettingsSubtitle": "Choose which reminders fire, when, and for whom",
+  "@settingsReminderSettingsSubtitle": {
+    "description": "Subtitle of the reminder-settings tile."
+  },
+  "settingsCaregiverAlertsTitle": "Caregiver alerts",
+  "@settingsCaregiverAlertsTitle": {
+    "description": "Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name."
+  },
+  "settingsFirstDayTitle": "First day of week",
+  "@settingsFirstDayTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing which day the month grid's weeks start on."
+  },
+  "settingsFirstDaySunday": "Sunday",
+  "@settingsFirstDaySunday": {
+    "description": "Week-start option: weeks start on Sunday (the historical default)."
+  },
+  "settingsFirstDayMonday": "Monday",
+  "@settingsFirstDayMonday": {
+    "description": "Week-start option: weeks start on Monday (ISO 8601)."
+  },
+  "settingsDateFormatTitle": "Date format",
+  "@settingsDateFormatTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing the month/day order of compact dates."
+  },
+  "settingsDateFormatSystemOption": "System default (5 Sep)",
+  "@settingsDateFormatSystemOption": {
+    "description": "Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering."
+  },
+  "settingsDateFormatDayMonthOption": "Day first (5 Sep)",
+  "@settingsDateFormatDayMonthOption": {
+    "description": "Date-format option: day before month, e.g. '5 Sep'."
+  },
+  "settingsDateFormatMonthDayOption": "Month first (Sep 5)",
+  "@settingsDateFormatMonthDayOption": {
+    "description": "Date-format option: month before day, e.g. 'Sep 5'."
+  },
+  "settingsHelpTitle": "Help & explanations",
+  "@settingsHelpTitle": {
+    "description": "Tile (inside the Help section) opening the offline help library (Issue #139)."
+  },
+  "settingsHelpSubtitle": "Plain-language answers about estimates, logging, sync, and sharing — works offline",
+  "@settingsHelpSubtitle": {
+    "description": "Subtitle of the help library tile."
+  },
+  "settingsAboutVersionTitle": "Version",
+  "@settingsAboutVersionTitle": {
+    "description": "About-section tile title (Issue #226); the subtitle carries the actual version and build number."
+  },
+  "settingsAboutVersion": "Version {version} (build {build})",
+  "@settingsAboutVersion": {
+    "description": "The version line shown in Settings → About and on the licence page (Issue #226).",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "1.2.3"
+      },
+      "build": {
+        "type": "String",
+        "example": "42"
+      }
+    }
+  },
+  "settingsAboutVersionUnavailable": "Not available",
+  "@settingsAboutVersionUnavailable": {
+    "description": "Shown in place of the version line when the platform package-info read failed (Issue #226)."
+  },
+  "settingsAboutLicensesTitle": "Open-source licences",
+  "@settingsAboutLicensesTitle": {
+    "description": "About-section tile opening Flutter's licence page (Issue #226)."
+  },
+  "settingsAboutLicensesSubtitle": "The packages and terms this app builds on",
+  "@settingsAboutLicensesSubtitle": {
+    "description": "Subtitle of the licences tile."
+  },
   "firstRunValueHeadline": "A private cycle log for your family",
   "@firstRunValueHeadline": {
     "description": "Headline of the first onboarding card (identity/value)."

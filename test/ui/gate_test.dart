@@ -1450,6 +1450,11 @@ void main() {
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsScreen), findsOneWidget);
+      // Issue #226: the Account section now sits below the fold of the
+      // default 800x600 surface.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('account-sign-in')));
       await tester.pumpAndSettle();
       expect(find.byType(SignInScreen), findsOneWidget);
@@ -1932,6 +1937,12 @@ void main() {
         'fixed 2-minute timeout', (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final store = DriftSettingsStore(db.storage);
+      // Issue #226: the relock toggle now sits in the Privacy & security
+      // section, below the fold of the default 800x600 surface.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
       await tester.pumpWidget(Provider<SettingsStore>.value(
         value: store,
@@ -1978,6 +1989,10 @@ void main() {
 
       expect(find.byTooltip('Settings'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      // Issue #226: same below-the-fold reason as the test above.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('relock-toggle')), findsOneWidget);
       await harness.dispose();
