@@ -135,4 +135,14 @@ abstract final class SettingsKeys {
   /// per-device logging-UI shortlist, not health data — and never synced,
   /// the same posture as [reminderConfigs].
   static const String tagRecents = 'tag_recents';
+
+  /// The device-local appearance override (issue #137): one of `'system'`,
+  /// `'light'`, or `'dark'`, parsed by `themeModeFromStored`
+  /// (`lib/ui/theme/appearance.dart`). Absent — or any unrecognized value,
+  /// so a future value can never wedge the app on a light-only build —
+  /// reads as "follow the system appearance", the issue's own default
+  /// posture. Device-local **by design**: appearance is a property of the
+  /// display this device happens to be on, not of the account, the same
+  /// posture as [relockEnabled].
+  static const String themeMode = 'theme_mode';
 }

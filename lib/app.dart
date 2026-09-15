@@ -80,6 +80,7 @@ import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -296,6 +297,14 @@ class _LunarLogAppState extends State<LunarLogApp>
   String? _pendingInviteKind;
   bool _inviteSheetOpen = false;
 
+  /// Issue #137: the resolved appearance override for this widget's
+  /// `MaterialApp.themeMode`. `ThemeMode.system` (follow the OS) until the
+  /// settings watch's first emission says otherwise — the store's own
+  /// seed emission arrives within a frame or two of mounting, and the
+  /// gate is still locked for the whole cold-start window before that.
+  ThemeMode _themeMode = ThemeMode.system;
+  StreamSubscription<String?>? _themeModeSub;
+
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
   /// database on a *mounted* app would leave them bound to the old (closed)
   /// one while `build`'s row counter read the new one. `LunarLogRoot` never
@@ -360,6 +369,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // every build with a Supabase client (web and no-push included), so
     // its publisher must start on every one of them too.
     _startPredictionProjectionPublisher();
+    _watchAppearanceSetting();
     WidgetsBinding.instance.addObserver(this);
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
@@ -552,6 +562,20 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
+
+  /// Issue #137: subscribes to the persisted appearance override. The
+  /// store's `watch` seeds the current value on subscribe (null when
+  /// unset), then re-emits on every change — so the Settings picker's
+  /// `store.set` is the *only* write path and this subscription is the
+  /// *only* read path the `MaterialApp` needs: no controller, no
+  /// duplicate initial `get`. Extracted out of [initState] (the issue
+  /// #168 CRAP-gate discipline the neighbouring `_init*` methods follow).
+  void _watchAppearanceSetting() {
+    _themeModeSub = _settings.watch(SettingsKeys.themeMode).listen((value) {
+      if (!mounted) return;
+      setState(() => _themeMode = themeModeFromStored(value));
+    });
+  }
 
   /// Issue #535 (b): a latched cold-start/live invite code (see
   /// [_maybePresentInvite]) is otherwise consumed exactly once, silently,
@@ -891,6 +915,11 @@ class _LunarLogAppState extends State<LunarLogApp>
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_inviteSub?.cancel());
     _inviteSub = null;
+    // Issue #137: cancelled here rather than leaked, mirroring the invite
+    // subscription above — this widget's unmount (a device reset,
+    // KTD16) always precedes the database closing underneath the store.
+    unawaited(_themeModeSub?.cancel());
+    _themeModeSub = null;
     _authController?.dispose();
     _authController = null;
     _actionExecutor?.dispose();
@@ -1074,6 +1103,14 @@ class _LunarLogAppState extends State<LunarLogApp>
         navigatorObservers: _navigatorObservers,
         title: 'lunarlog',
         theme: AppTheme.lightTheme,
+        // Issue #137: the app follows the OS appearance by default
+        // (`ThemeMode.system`, this state field's value until the settings
+        // watch's first emission) and honours the in-app override after
+        // that. `darkTheme` is the #176 factory's dark scheme — same seed
+        // token, same `LunarLogColors` derivation contract, so
+        // theme-driven consumers needed zero changes for dark mode.
+        darkTheme: AppTheme.darkTheme,
+        themeMode: _themeMode,
         // Issue #160: localization scaffolding. `en` is the only supported
         // locale today; the delegates (AppLocalizations plus Flutter's own
         // material/cupertino/widgets delegates) make every screen's copy

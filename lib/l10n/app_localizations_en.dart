@@ -516,6 +516,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.';
 
   @override
+  String get settingsAppearanceTitle => 'Appearance';
+
+  @override
+  String get settingsAppearanceSubtitle =>
+      'Follow your device\'s setting, or choose light or dark';
+
+  @override
+  String get appearanceOptionSystem => 'Follow system';
+
+  @override
+  String get appearanceOptionLight => 'Light';
+
+  @override
+  String get appearanceOptionDark => 'Dark';
+
+  @override
   String get settingsHealthHeader => 'Health';
 
   @override
