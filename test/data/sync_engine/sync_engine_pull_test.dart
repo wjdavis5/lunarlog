@@ -600,6 +600,93 @@ void main() {
           reason: 'an unresolvable guardian row is retried, not fatal');
     });
 
+    // Issue #102: the bound above is only half the guarantee — the count
+    // must also RESET when profileGuardians applies cleanly again
+    // (`_onTablePullSettled`), so a household whose deferred row resolves
+    // and later hits a NEW stuck row gets fresh rewinds instead of being
+    // silently capped at 3 total failures for the engine's whole lifetime.
+    // The test above never exercises a clean profileGuardians page between
+    // failures, so a regression deleting the reset (or making the counter
+    // cumulative rather than consecutive) leaves it green. This test drives
+    // a defer across two consecutive cycles, lets the row resolve cleanly,
+    // then defers again — the rewind must fire again on the new failure.
+    test('issue #102: the guardian-defer bound is consecutive, not '
+        'cumulative — two deferring cycles rewind, a clean profileGuardians '
+        'apply resets the count, and the next failure rewinds again',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // Cycle 1-2: an accepted membership for a profile that has not been
+      // pulled yet (deferred, not stuck). Cycle 3 delivers the profile, so
+      // the same membership applies cleanly. Cycle 4: a NEW membership for
+      // a profile that never arrives (genuinely stuck).
+      final pendingProfile = ulidN(30);
+      final deferredGuardian = remoteGuardian('g-deferred',
+          profileId: pendingProfile, userId: uidA, status: 'accepted',
+          updatedAt: t0, serverVersion: 5);
+      final stuckGuardian = remoteGuardian('g-stuck-2',
+          profileId: ulidN(31), userId: uidA, status: 'accepted',
+          updatedAt: t0, serverVersion: 20);
+      var deliverProfile = false;
+      rig.transport.pageResolver = (table, after, limit) => switch (table) {
+            SyncTable.profiles =>
+              (deliverProfile && after < 10) ? [remoteProfile(
+                  pendingProfile, updatedAt: t0, serverVersion: 10)] : const [],
+            SyncTable.profileGuardians => after < 5
+                ? [deferredGuardian]
+                : (after < 20 ? [stuckGuardian] : const []),
+            _ => const [],
+          };
+
+      // Re-primes cursorProfiles to a nonzero value before cycles 1 and 2,
+      // so a rewind back to 0 is observable; NOT before cycles 3 and 4,
+      // which must run on whatever the previous cycle actually left there.
+      Future<void> primeCursorProfiles() async {
+        final s = await rig.state();
+        await rig.storage.writeSyncState(s.copyWith(cursorProfiles: 100));
+      }
+
+      // Cycle 1: 1st consecutive defer — the rewind fires.
+      await primeCursorProfiles();
+      await rig.start();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 1: rewound (1st consecutive defer)');
+
+      // Cycle 2: 2nd consecutive defer — still under the cap, still
+      // rewinds. This is the two-consecutive-cycles defer the issue asked
+      // to pin: without the rewind, the deferred row's profile (version
+      // 10, below the profiles cursor) would never be re-pulled.
+      await primeCursorProfiles();
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 2: rewound again (2nd consecutive defer)');
+
+      // Cycle 3: the profile arrives. The rewind from cycle 2 left
+      // cursorProfiles at 0, so the profile page (version 10) is pulled
+      // and applied; the same guardian row then applies cleanly and the
+      // consecutive-failure count resets.
+      deliverProfile = true;
+      await rig.sync();
+      final state3 = await rig.state();
+      expect(state3.cursorProfiles, 10,
+          reason: 'the deferred profile finally arrived and was pulled');
+      expect(state3.cursorProfileGuardians, 5,
+          reason: 'the membership applied cleanly once its profile was '
+              'held — the page cursor advanced');
+
+      // Cycle 4: a NEW stuck membership. The reset makes this failure
+      // consecutive-failure #1, so the rewind must fire again; without
+      // `_onTablePullSettled`'s reset it would be #4 and the cap would
+      // swallow it (cursorProfiles left at 10).
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'the bound re-armed after the clean cycle: the new '
+              'failure rewinds again');
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+    });
+
     test('R5, finding #9: revoke -> re-invite -> reconcile brings the '
         'profile and its entries back, instead of the revocation tombstone '
         'outliving every later server row forever', () async {

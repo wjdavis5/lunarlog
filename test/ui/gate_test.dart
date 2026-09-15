@@ -1020,9 +1020,18 @@ void main() {
       expect(controller.locked, isTrue);
     });
 
+    // Issue #102: this test used FakeGate(requiresUnlock: false), under
+    // which lock() never sets _locked — its `controller.locked` assertion
+    // could never fail (docs/residual-review-findings/
+    // fix-gate-system-ui-relock.md, "one pre-existing re-auth test cannot
+    // fail on its lock assertion"). Now gated: the gate starts locked,
+    // opens through unlock(), and the interrupted prompt's suppressed
+    // departure must REPLAY as a re-lock after the prompt settles — an
+    // assertion that fails if the replay (or the lock) regresses.
     testWidgets('returns false when the prompt is interrupted by a '
-        'lifecycle change, without re-locking mid-prompt', (tester) async {
-      final gate = FakeGate(requiresUnlock: false);
+        'lifecycle change, without re-locking mid-prompt — the suppressed '
+        'departure replays as a re-lock afterwards (#102)', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
       // Fake timers: a closing system-UI window re-arms the inactivity
       // countdown (#65 U1), which would otherwise leave a real 2-minute
       // Timer pending past the end of the test.
@@ -1030,6 +1039,12 @@ void main() {
       final controller = GateController(
           gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
+      expect(controller.locked, isTrue,
+          reason: 'a gated platform starts locked');
+
+      // reauthenticate() is the already-unlocked prompt: open the gate.
+      gate.grantNext = true;
+      await controller.unlock();
       expect(controller.locked, isFalse);
 
       final hold = Completer<bool>();
@@ -1038,12 +1053,23 @@ void main() {
       expect(controller.authenticating, isTrue);
       // The system prompt itself reports `inactive`.
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isFalse,
+          reason: 'no re-lock while the prompt is still up — the window '
+              'suppresses the departure, it does not ignore it');
       hold.complete(true);
       expect(await pending, isFalse);
       expect(controller.authenticating, isFalse);
-      expect(controller.locked, isFalse);
+      expect(controller.locked, isTrue,
+          reason: 'the suppressed departure replays once the window '
+              'settles: the gated platform re-locks, not just covers');
+      expect(controller.obscured, isTrue);
 
-      // A clean prompt afterwards works again.
+      // A clean prompt afterwards works again: come back, unlock, and a
+      // second re-auth with no departure succeeds.
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
       gate.grantNext = true;
       expect(await controller.reauthenticate(), isTrue);
     });
