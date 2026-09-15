@@ -966,6 +966,129 @@ entries only. Nothing here reaches real family data.
       project, for a faster check) enqueues, and B's device receives, the
       check-in alert.
 
+### Gate-exclusion pairing (issue #215)
+
+Every file `tool/quality/exclusions.dart` keeps out of the coverage/CRAP
+gates' denominator owns a platform seam `flutter test` cannot drive — which
+is exactly where the least-tested code lives. Each excluded file is named
+once here so its platform-seam behavior is manually verified pre-release
+instead of being silently uncovered by both the automated gate and this
+checklist. Entries are titled with the excluded file's repo-relative path,
+and each exclusion in `tool/quality/exclusions.dart` carries a pointer
+comment back to its entry here, so neither side can drift silently. Where
+an item overlaps an existing checklist entry above it cross-references that
+entry rather than duplicating its on-device steps; running the overlapping
+entry satisfies this one too.
+
+Run on an iPhone build **and** an Android build unless an item names its own
+target (the web items run in Chrome; the inert-build items run on any
+build), always with a throwaway account and fabricated profiles only.
+
+- [ ] **`lib/startup/startup_native.dart` — iOS-only file protection plus
+      the path_provider-wrapped database paths.** Fresh install: the app
+      reaches first-run and creates its database where the platform expects
+      it (no fail-closed screen), and a profile plus entry survive a
+      force-quit and relaunch. The iOS-only `protectDatabaseFile` channel
+      call is verified by the "iOS database backup exclusion and at-rest
+      protection (issue #244, round 2 …)" item above — running that item
+      satisfies this entry's protection half.
+- [ ] **`lib/data/auth/google_sign_in_client.dart` — the google_sign_in
+      plugin wrapper.** Covered by the "Google sign-in on a fresh device
+      (#2 F1, AE2)" and "Google same-email auto-link (#2 F2)" items in the
+      Social logins section above (the native picker, a clean cancel, and a
+      binding sign-in are this file's whole surface); running those
+      satisfies this entry.
+- [ ] **`lib/data/auth/auth_gateway.dart` — the GoTrueClient and app_links
+      adapters.** Covered by "Cold-start password reset (F4, AE8)" and
+      "Confirmation link on the signing-up device (F1, AS10)" above — the
+      `lunarlog://auth-callback` cold-start deep link is exactly the
+      app_links seam — plus one restart check of the GoTrue session store:
+      while signed in, force-quit and relaunch; the session restores
+      without re-prompting sign-in.
+- [ ] **`lib/data/notifications/notification_scheduler.dart` — the
+      flutter_local_notifications wrapper.** Turn on reminders for a
+      fabricated profile with a reminder a few minutes out: the local
+      notification arrives at the configured local time. (The fire-time
+      computation and the permission-answer→availability mapping are
+      unit-tested in `lib/domain/notifications/reminder_fire_time.dart` and
+      `notification_availability.dart`; this item proves the plugin-bound
+      scheduling half.) Deny the OS prompt twice on Android, then tap "Turn
+      on reminders": OS notification settings open (not a dead button); on
+      iOS deny once and tap it: Settings opens the same way. A
+      period-anchored reminder presents its Started / Spotting / Not yet
+      action buttons on both platforms, and a plain tap opens the app
+      through the device-credential gate (cross-ref "Tap routing through
+      the lock gate (R11)" in Caregiver alerts above).
+- [ ] **`lib/data/export/account_export_writer.dart` — the path_provider
+      temp file plus the share_plus sheet.** Covered by the "Export on
+      iPhone and open the file" / "Export on Android and open the file"
+      items in Account deletion and export above (the share sheet and the
+      saved JSON file are this file's whole surface). Also export from a
+      signed-out device holding a local profile: the file is produced with
+      local data only.
+- [ ] **`lib/data/export/csv_export_writer.dart` — the same shape for the
+      CSV export.** Settings → Your data → the CSV export tile on each
+      platform: the share sheet offers a save target and the saved
+      spreadsheet files open with the fabricated profiles' cycle and daily
+      log rows — no identifiers the JSON export policy would not allow.
+- [ ] **`lib/data/import/import_file_picker.dart` — the file_picker
+      wrapper.** Settings → Your data → "Import from file": the document
+      picker opens; picking the JSON file produced by the export items
+      above imports it (additive merge, profile count grows, nothing
+      overwritten); cancelling the picker leaves the screen unchanged with
+      no error.
+- [ ] **`lib/data/notifications/firebase_push_token_source.dart` — the
+      firebase_messaging wrapper.** Covered by the "Caregiver alerts and
+      reminders (issue #5)" section above: an alert received with the app
+      killed proves the initialize → requestPermission → getToken
+      sequencing, and its tap-routing item proves the opened-app/initial
+      message streams. Running that section satisfies this entry.
+- [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
+      MethodChannel pin.** Inert in every current build
+      (`AppConfig.hasHealthSync` is false): confirm a normal build shows no
+      Health section anywhere in Settings. When a health-sync build exists,
+      verify the HealthKit authorization prompt appears and one fabricated
+      observation round-trips.
+- [ ] **`lib/data/health/android_health_channel.dart` — the Kotlin Health
+      Connect MethodChannel pin.** Same posture as the iOS item: inert in
+      every current build (no Health section); in a health-sync build,
+      verify the Health Connect permissions flow and one fabricated
+      observation round-trip.
+- [ ] **`lib/data/db/factory_unsupported.dart` — the neither-native-nor-web
+      conditional-export branch.** Structural: this branch cannot load on
+      any real target. Any successful launch above (device or Chrome)
+      proves it never executed — no `UnsupportedError`, app boots.
+- [ ] **`lib/data/db/web_db.dart` — the web drift (WASM/IndexedDB)
+      branch.** `flutter run -d chrome` on a configured build: the app
+      boots, a profile and an entry survive a page reload (IndexedDB
+      persistence), and accounts/sync stay off unless
+      `LUNARLOG_WEB_SYNC=true` is set.
+- [ ] **`lib/startup/gate/gate_unsupported.dart` — the
+      neither-native-nor-web gate branch.** Same structural check as
+      `factory_unsupported.dart`: any successful launch above proves this
+      branch never executed.
+- [ ] **`lib/startup/gate/web_gate.dart` — the web no-op gate.** On the
+      same Chrome run as `web_db.dart`: the app is usable with no
+      device-credential gate presented.
+- [ ] **`lib/startup/startup_unsupported.dart` — the neither-native-nor-web
+      startup branch.** Same structural check: any successful launch above
+      proves it never executed.
+- [ ] **`lib/startup/startup_web.dart` — the web startup branch.** On the
+      same Chrome run as `web_db.dart`: bootstrap completes and the app
+      reaches the profile picker or first-run, matching the native flow.
+- [ ] **`lib/main.dart` — the app entry point.** Cold-launch the installed
+      app from the home screen: splash → device-credential gate → profiles,
+      with no errors. A cold start by tapping a delivered notification
+      lands behind the same gate (overlaps "Alert received with the app
+      killed (AE1)" / "Tap routing through the lock gate (R11)" in
+      Caregiver alerts above).
+- [ ] **`lib/startup/supabase_bootstrap.dart` — Supabase client
+      initialization.** On a configured build: sign in once, force-quit,
+      relaunch — the session is restored and the account section renders.
+      On an unconfigured build (no `--dart-define`s): the app runs with no
+      account section, no sync, and nothing Supabase-related in the
+      console.
+
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows
