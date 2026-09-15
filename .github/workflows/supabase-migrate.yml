@@ -128,6 +128,39 @@ name: Supabase migrate
 # `if: always() && steps.link.outcome == 'success'`, independent of each
 # other and of every step in between: they run whenever `supabase link`
 # itself succeeded, regardless of what happened after it.
+#
+# Issue #185 adds two PRE-push safety nets on top of the #538/#163 gates:
+#
+#   * The dry-run job's "Assert dry-run migration list matches this push"
+#     step (.github/scripts/assert-pending-migrations.sh, unit tested in
+#     .github/scripts/tests/) compares the migrations `db push --dry-run`
+#     would apply against exactly the migration files this push ADDED
+#     (git diff before..HEAD, --diff-filter=A). Any mismatch fails the
+#     dry-run job before the migrate job can run: "extra" means
+#     production is behind the repo (an earlier deploy failed or was
+#     reverted -- the exact drift #163 found), "missing" means a pushed
+#     migration already exists on the project out-of-band. A modified
+#     (e.g. comment-only UNDO-note retrofit, Migration Flow item 9) or
+#     deleted migration is deliberately NOT expected to re-apply. The
+#     assertion needs github.event.before in the checkout, hence the
+#     dry-run job's fetch-depth: 0.
+#   * The migrate job's "Confirm PITR/backup gate" step
+#     (.github/scripts/check-pitr-gate.sh, unit tested) runs immediately
+#     before `db push` and fails closed unless the SUPABASE_PITR_CONFIRMED
+#     repository variable is 'true'. That variable is a ONE-TIME OPERATOR
+#     ACTION -- confirming on the Supabase dashboard (Project Settings ->
+#     Database -> Backups) that PITR/backups are enabled, per the
+#     checklist in docs/ops/supabase-go-live.md and issue #18 -- the same
+#     fail-closed gate convention as RELEASE_GATE_ACCOUNT_DELETION. It is
+#     never set by automation, a coordinator, or a PR; flipping it is a
+#     deliberate human release action. Until it is set, every migrate run
+#     fails before pushing anything.
+#
+# Migrations here are forward-only (AGENTS.md's Migration Flow; "never
+# edit a merged migration in place"), so for a row-rewriting migration
+# PITR is the only undo -- it must be confirmed present BEFORE the push,
+# not discovered missing after an incident. Migration Flow item 9 pairs
+# this with the UNDO-notes convention for row-rewriting migrations.
 
 on:
   push:
@@ -171,6 +204,14 @@ jobs:
       PGSSLMODE: require
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Full history (not the default shallow 1) so the dry-run-list
+          # assertion below can diff github.event.before -> HEAD to compute
+          # what this push added (issue #185). detect-version-bump.sh on
+          # the release side needs the same thing but degrades to HEAD~1;
+          # here a missing before-commit means skipping the assertion, so
+          # fetch everything up front instead.
+          fetch-depth: 0
 
       - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
         with:
@@ -196,7 +237,37 @@ jobs:
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: List pending migrations
-        run: supabase db push --dry-run
+        # `set -o pipefail` is load-bearing: without it the pipeline's exit
+        # code would be tee's (always 0) and a failed dry run would pass
+        # silently. Both streams are merged because the CLI writes the
+        # pending-migration list to stderr and the "is up to date" message
+        # to stdout (pinned-CLI behavior -- see
+        # assert-pending-migrations.sh's header).
+        run: |
+          set -euo pipefail
+          supabase db push --dry-run 2>&1 | tee "$RUNNER_TEMP/db-push-dry-run.log"
+
+      - name: Assert dry-run migration list matches this push
+        # Issue #185: the dry run above stops being decorative -- the
+        # migrations it would apply must be exactly the migration files
+        # this push added. Extra (pending but not added here) means
+        # production is behind the repo; missing (added here but not
+        # pending) means the migration already exists out-of-band. Both
+        # fail this job, which the migrate job below needs-gates on, so
+        # nothing is pushed on a mismatch. The comparison itself lives in
+        # the unit-tested .github/scripts/assert-pending-migrations.sh
+        # (release-guards CI runs its truth table on every PR), not
+        # inline here. Skips with a notice on workflow_dispatch (no
+        # pushed range -- a manual retry may be deliberately applying
+        # long-pending migrations) and with a warning on an unresolvable
+        # before-SHA; the destructive-statement scan below still runs
+        # either way.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/assert-pending-migrations.sh < "$RUNNER_TEMP/db-push-dry-run.log"
 
       - name: Install psql
         run: |
@@ -281,6 +352,11 @@ jobs:
       FCM_CLIENT_EMAIL: ${{ secrets.FCM_CLIENT_EMAIL }}
       FCM_PRIVATE_KEY: ${{ secrets.FCM_PRIVATE_KEY }}
       PUSH_DISPATCH_WEBHOOK_SECRET: ${{ secrets.PUSH_DISPATCH_WEBHOOK_SECRET }}
+      # Issue #185's PITR gate -- a repository VARIABLE (not a secret),
+      # read fail-closed by check-pitr-gate.sh in the step below. 'true'
+      # is a one-time operator confirmation that backups/PITR are enabled
+      # on the Supabase project; never set by automation or a PR.
+      SUPABASE_PITR_CONFIRMED: ${{ vars.SUPABASE_PITR_CONFIRMED }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -307,6 +383,21 @@ jobs:
       - name: Link project
         id: link
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: Confirm PITR/backup gate
+        # Issue #185: `db push` below is forward-only against production
+        # family data, so PITR is the only undo for a bad row-rewriting
+        # migration -- and it must be confirmed present BEFORE the push,
+        # not discovered missing after an incident. The gate reads the
+        # SUPABASE_PITR_CONFIRMED repository variable and fails closed
+        # (skipping this step's successors: the push, the function
+        # deploys, the secret sets -- the two post-deploy read-only gates
+        # still run, per LLA-111 above) until the operator has confirmed
+        # backups/PITR on the dashboard and set the variable by hand. The
+        # gate itself lives in the unit-tested
+        # .github/scripts/check-pitr-gate.sh (release-guards CI runs its
+        # truth table on every PR), not inline here.
+        run: bash .github/scripts/check-pitr-gate.sh
 
       - name: Push migrations
         run: supabase db push

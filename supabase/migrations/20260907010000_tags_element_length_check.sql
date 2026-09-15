@@ -23,6 +23,32 @@
 -- path once this migration has run), so the branch is expected to be a
 -- no-op in practice; it exists so the migration is unconditionally safe to
 -- apply.
+--
+-- UNDO (Migration Flow item 9, issue #185 -- retrofit; see the end of this
+-- block for why a comment-only edit to an already-applied migration is
+-- safe): there is no SQL inverse. This migration REWRITES stored rows (the
+-- pre-clean UPDATE below), and the dropped over-length elements are not
+-- staged anywhere -- recovering them from anything still inside the
+-- database is impossible by design. The honest undo is a point-in-time
+-- recovery (PITR) restore of the project to a pre-migration recovery
+-- point (Supabase dashboard -> Database -> Backups), which is what "undo"
+-- means operationally here:
+--   * The restore reverts EVERYTHING to that instant -- day entries,
+--     guardian changes, and invitations written after the migration ran
+--     are lost too -- so it is a whole-project rewind, not a per-table
+--     fix. Confirm the backup/PITR window in the dashboard BEFORE
+--     approving a push that carries a row-rewriting migration (the
+--     supabase-migrate.yml PITR gate, same issue), and prefer a
+--     compensating forward migration whenever the damage is local.
+--   * The schema-only steps here (the function replace and the
+--     drop/re-add of day_entries_tags_check) ARE individually invertible
+--     with compensating SQL (restore the 20260903170000 function body,
+--     drop the constraint) -- but doing that undoes the BOUND, not the
+--     pre-clean; already-cleaned rows stay cleaned.
+-- This retrofitted comment changes no SQL and is safe against the
+-- already-applied migration because a migration file's identity to
+-- `supabase db push` is its filename -- the schema_migrations version key
+-- -- and comments never reach the database; the applied SQL is untouched.
 
 create or replace function public.is_valid_tags_array(p_tags jsonb)
 returns boolean

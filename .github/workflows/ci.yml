@@ -86,6 +86,20 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
 
+      # Issue #185's two migration-deploy safety scripts. Both are invoked
+      # by supabase-migrate.yml on its ubuntu runners only, so they need
+      # no macOS/bash-3.2 arm in release-guards-macos below (the same
+      # scoping check-auth-config has). assert-pending-migrations' truth
+      # table builds throwaway git repos per case, like
+      # detect-version-bump's.
+      - name: Run check-pitr-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-pitr-gate.test.sh
+
+      - name: Run assert-pending-migrations tests
+        if: always()
+        run: bash .github/scripts/tests/assert-pending-migrations.test.sh
+
       - name: Run check-auth-config tests
         if: always()
         run: bash .github/scripts/tests/check-auth-config.test.sh
