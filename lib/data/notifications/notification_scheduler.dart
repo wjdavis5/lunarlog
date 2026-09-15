@@ -8,10 +8,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/notification_permission_gate.dart';
-import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
-import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/reminder_fire_time.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart';
@@ -52,23 +51,10 @@ bool reminderHasActions(ReminderKind kind) => switch (kind) {
         false,
     };
 
-/// Computes the exact [tz.TZDateTime] for a reminder on [fireOn] at
-/// [minuteOfDay] (minutes since local midnight; default 09:00 — the
-/// pre-#136 hardcoded hour) in the given [location].
-tz.TZDateTime calculateReminderFireAt({
-  required LocalDate fireOn,
-  required tz.Location location,
-  int minuteOfDay = kDefaultReminderTimeMinutes,
-}) {
-  return tz.TZDateTime(
-    location,
-    fireOn.year,
-    fireOn.month,
-    fireOn.day,
-    minuteOfDay ~/ 60,
-    minuteOfDay % 60,
-  );
-}
+// Issue #215: calculateReminderFireAt (the fire-time computation this file
+// used to own) moved to lib/domain/notifications/reminder_fire_time.dart —
+// same signature, same behavior — so its unit tests count toward the
+// coverage floor instead of living in this gate-excluded file.
 
 /// Resolves the host device's IANA time zone identifier via platform channels.
 /// Falls back to 'UTC' if unavailable.
@@ -311,9 +297,12 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       } else if (macosPlugin != null) {
         enabled = (await macosPlugin.checkPermissions())?.isEnabled;
       }
-      return enabled == false
-          ? NotificationAvailability.denied
-          : NotificationAvailability.available;
+      // Issue #215: the enabled→availability mapping itself is the pure
+      // domain function notificationAvailabilityFromPlatformProbe()
+      // (lib/domain/notifications/notification_availability.dart),
+      // directly unit-tested and counted toward the coverage floor; only
+      // the platform probes above remain plugin-bound.
+      return notificationAvailabilityFromPlatformProbe(enabled);
     } catch (error) {
       // The OS remains the enforcement boundary. Preserve the historical
       // available fallback rather than aborting reminder coordination.

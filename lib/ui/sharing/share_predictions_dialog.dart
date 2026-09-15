@@ -203,6 +203,12 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
             TextField(
               controller: _labelController,
               enabled: !_loading,
+              // #165: the form's only text field — "done" is the Create
+              // Link action.
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) {
+                if (!_loading) unawaited(_createConnection());
+              },
               decoration: const InputDecoration(
                 labelText: 'Nickname / Label (Optional)',
                 hintText: 'e.g. Partner, Aunt',

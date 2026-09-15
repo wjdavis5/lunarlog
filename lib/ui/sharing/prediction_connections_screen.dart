@@ -347,6 +347,10 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
         key: const ValueKey('prediction-code-field'),
         controller: _controller,
         autofocus: true,
+        // #165: the dialog's only text field — "done" is the Connect
+        // action (identical to the button's pop-with-trimmed-code).
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => Navigator.of(context).pop(_controller.text.trim()),
         decoration: const InputDecoration(
           hintText: 'Paste the code you received',
         ),

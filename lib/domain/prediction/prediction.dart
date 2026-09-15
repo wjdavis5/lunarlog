@@ -74,6 +74,18 @@
 /// This file only owns the resulting state's shape: exactly one of
 /// [PredictionsSuppressed.method] / [PredictionsSuppressed.lifecycleMode] is
 /// set, never both, never neither.
+///
+/// Issue #693 sizes [ActivePrediction.forecast] by *horizon* instead of a
+/// fixed cycle count: the forecast keeps predicting cycles until a start
+/// passes the end of the month [kPredictionHorizonMonths] (12) after
+/// `today` — the twelve-month horizon the forward calendar navigates —
+/// bounded defensively by [kMaxForecastCycles]. Before #693 the forecast
+/// was always exactly [kPredictionWindowCycles] (12) cycles regardless of
+/// cycle length, so short cycles left the calendar's tail months empty
+/// (twelve 21-day cycles span only ~8.3 months). The confidence-
+/// degradation curve (`_forecastSpreadFor`'s `sqrt(cycleIndex)` widening
+/// and one-step tier degradation) is unchanged — it simply extends across
+/// as many cycles as the horizon needs.
 library;
 
 import 'dart:math' show sqrt;
@@ -109,7 +121,49 @@ const int kRecencyWindowCycles = 12;
 /// most recent *valid* (and not omitted) ones feed [estimatedNextStart]
 /// and [ActivePrediction.forecast]. Replaces the old `kMaxAveragedCycles`
 /// for prediction purposes (was 3; Clue-matched to 12, synthesis.md #6).
+/// Issue #693 note: this names the *input* window (the mean the forecast
+/// chains off) only — the forecast's own length is sized by
+/// [kPredictionHorizonMonths] now, not by this constant.
 const int kPredictionWindowCycles = 12;
+
+/// The engine's forecast horizon (issue #693): [ActivePrediction.forecast]
+/// covers every cycle whose start falls on or before the last day of the
+/// month this many months after `today`. Deliberately equal to
+/// `forecast.dart`'s `kForecastHorizonMonths` (the twelve months the
+/// forward calendar navigates past the current month) so the single
+/// forecast always covers every navigable month — a profile on steady
+/// 21-day cycles gets ~18 predicted cycles where the pre-#693 fixed
+/// 12-cycle forecast covered only ~8.3 months. Changing either constant
+/// without the other either truncates the calendar short of its navigable
+/// horizon (engine < calendar) or computes cycles the calendar can never
+/// show (engine > calendar).
+const int kPredictionHorizonMonths = 12;
+
+/// Defensive upper bound on [ActivePrediction.forecast]'s cycle count
+/// (issue #693): sizing by horizon means the chain loop's termination
+/// depends on the cycle step actually advancing each start past the
+/// horizon, so a degenerate step length must never be able to loop
+/// forever. 24 covers any realistic cycle length at the 12-month horizon
+/// with headroom (a steady 21-day cycle needs ~18, a steady 35-day cycle
+/// ~11) and even the pathological [kMinCycleDays] (15-day) floor
+/// terminates here — such a profile truncates at 24 cycles (~11.8 months)
+/// rather than iterating toward ~27, a documented, deliberate shortfall
+/// for a length the validity window admits but no real profile sustains.
+const int kMaxForecastCycles = 24;
+
+/// The last day of the month [months] after [today]'s month — where the
+/// forecast horizon ends. Lived as a private helper in `forecast.dart`
+/// until issue #693 made the engine's own forecast horizon-sized; now
+/// defined once here (the module `forecast.dart` already imports) so the
+/// engine's chain loop and the calendar adapter's truncation can never
+/// disagree about where the horizon ends. Pure month arithmetic on
+/// `year * 12 + month` — never [LocalDate.addMonths], whose day-clamping
+/// (Jan 31 + 1 month = Feb 28) would make "last day of the target month"
+/// depend on [today]'s day-of-month.
+LocalDate endOfHorizonMonth(LocalDate today, int months) {
+  final total = today.year * 12 + (today.month - 1) + months + 1;
+  return LocalDate(total ~/ 12, total % 12 + 1, 1).addDays(-1);
+}
 
 /// Of the cycles inside [kRecencyWindowCycles], up to this many of the
 /// most recent *valid* (and not omitted) ones feed the displayed averages:
@@ -595,9 +649,12 @@ class ActivePrediction extends CyclePrediction {
   /// than one exact date whenever this is not [CycleConfidence.high].
   final CycleConfidence tier;
 
-  /// Up to [kPredictionWindowCycles] forecasted future cycles, each with
-  /// degrading confidence the further out it is (issue #213, item 4).
-  /// `forecast.first.start == estimatedNextStart`.
+  /// The forecasted future cycles, each with degrading confidence the
+  /// further out it is (issue #213, item 4) — sized by *horizon* since
+  /// issue #693: every cycle whose start falls on or before the end of
+  /// the month [kPredictionHorizonMonths] after [today], never more than
+  /// [kMaxForecastCycles] of them. `forecast.first.start ==
+  /// estimatedNextStart`.
   final List<PredictedCycle> forecast;
 
   /// True once the open cycle (today − [lastEpisodeStart]) exceeds
@@ -809,6 +866,7 @@ CyclePrediction computePrediction({
   );
   final forecast = _buildForecast(
     firstStart: rolledStart,
+    today: today,
     meanCycleDays: estimate.meanDays,
     periodLengthDays: periodLength.periodLengthDays,
     baseTier: tier,
@@ -901,6 +959,7 @@ ActivePrediction _packDrivenPrediction({
   );
   final forecast = _buildForecast(
     firstStart: rolledStart,
+    today: today,
     meanCycleDays: kPackCycleLengthDays,
     periodLengthDays: periodLength.periodLengthDays,
     baseTier: CycleConfidence.high,
@@ -1044,8 +1103,10 @@ _CycleLengthEstimate _cycleLengthEstimate({
   // most kRecencyWindowCycles entries by the recency window above, and
   // kRecencyWindowCycles == kPredictionWindowCycles, so usableLengths can
   // never be longer than kPredictionWindowCycles by the time it gets here.
-  // kPredictionWindowCycles still names the forecast's own cycle count
-  // (_buildForecast, below) — only the redundant second truncation is gone.
+  // (#693: kPredictionWindowCycles now names the *input* window only — the
+  // forecast's own length is horizon-sized in _buildForecast, below — so
+  // this dead branch would have been doubly dead; only the redundant
+  // second truncation is gone, either way.)
   var total = 0;
   for (final length in usableLengths) {
     total += length;
@@ -1161,19 +1222,31 @@ _MeanPeriodLength _meanPeriodLength({
   );
 }
 
-/// Chains [kPredictionWindowCycles] future cycles off [firstStart] by the
-/// (rounded) mean cycle length, degrading confidence further out (issue
-/// #213, item 4).
+/// Chains future cycles off [firstStart] by the (rounded) mean cycle
+/// length, degrading confidence further out (issue #213, item 4). Issue
+/// #693: the chain is sized by *horizon*, not a fixed cycle count — cycle
+/// 1 (the live estimate; `forecast.first.start == estimatedNextStart`
+/// must never depend on horizon math) is always emitted, and the loop
+/// keeps predicting while the next start falls on or before the end of
+/// the month [kPredictionHorizonMonths] after [today], never past
+/// [kMaxForecastCycles].
 List<PredictedCycle> _buildForecast({
   required LocalDate firstStart,
+  required LocalDate today,
   required int meanCycleDays,
   required int periodLengthDays,
   required CycleConfidence baseTier,
   required double baseSpreadDays,
 }) {
+  final horizonEnd = endOfHorizonMonth(today, kPredictionHorizonMonths);
   final cycles = <PredictedCycle>[];
   var start = firstStart;
-  for (var i = 1; i <= kPredictionWindowCycles; i++) {
+  for (var i = 1; i <= kMaxForecastCycles; i++) {
+    // #693: every later cycle past the horizon end is one the calendar
+    // can never render — stop before emitting it. Starts only ever move
+    // forward (or, on a degenerate non-positive step, stay put, where the
+    // kMaxForecastCycles bound above is what terminates the loop).
+    if (i > 1 && start.isAfter(horizonEnd)) break;
     final spread = _forecastSpreadFor(baseSpreadDays, i);
     final tier = spread > kIrregularSpreadThresholdDays
         ? _stepTierDown(baseTier)
@@ -1280,8 +1353,9 @@ class CycleFacts {
 /// + [CycleFacts.typicalCycleLengthDays], `meanCycleLengthDays` /
 /// `meanPeriodLengthDays` = the supplied answers, `tier` =
 /// [CycleConfidence.provisional], spread = [kProvisionalSpreadDays], and a
-/// 12-cycle forecast built by the same `_buildForecast` the computed path
-/// uses. No cycles are claimed to exist: `averagedCycleLengths` is empty
+/// horizon-sized forecast (issue #693) built by the same `_buildForecast`
+/// the computed path uses. No cycles are claimed to exist:
+/// `averagedCycleLengths` is empty
 /// and both history counts are zero — the mean fields carry the supplied
 /// *answers*, not averages over observed data (the one place
 /// `meanCycleLengthDays` is not the mean of `averagedCycleLengths`; the
@@ -1334,6 +1408,7 @@ CyclePrediction seedProvisionalPrediction({
       unusuallyLongCycle ? CycleConfidence.irregular : CycleConfidence.provisional;
   final forecast = _buildForecast(
     firstStart: rolledStart,
+    today: today,
     meanCycleDays: cycleDays,
     periodLengthDays: periodLengthDays,
     baseTier: tier,

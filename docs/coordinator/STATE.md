@@ -1,4 +1,4 @@
-# Coordinator state
+# Coordinator state (claude-orch — ARCHIVED 2026-09-15T14:00Z; the live ZCode coordinator state moved to [zcode-orch/STATE.md](zcode-orch/STATE.md) after the owner flagged cross-engine id sharing. Rows below are the pre-migration record.)
 
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
@@ -14,6 +14,9 @@
 | 400 | 719 | 2026-09-15T02:25Z |
 | (state sync) | 716 | 2026-09-15T02:28Z |
 | 175 | 720 | 2026-09-15T03:05Z |
+| 137 | 727 | 2026-09-15T04:40Z |
+| 99 | 728 | 2026-09-15T04:55Z |
+| 268+271 (sibling bundle, adopted) | 714 | 2026-09-15T11:55Z |
 | 97 | 147 | 2026-09-08T22:05Z |
 | (docs+simulator CI) | 119 | 2026-09-08T22:07Z |
 | 94 follow-up (tag-length fix gaps) | 146 | 2026-09-08T22:16Z |
