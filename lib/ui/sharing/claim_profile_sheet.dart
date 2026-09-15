@@ -10,6 +10,8 @@
 /// consistent place for "here's what changed" copy.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
@@ -38,6 +40,12 @@ class ClaimProfileSheet extends StatefulWidget {
 class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
   final TextEditingController _childNameController = TextEditingController();
   final TextEditingController _parentNameController = TextEditingController();
+
+  /// #165: the sheet's two-field focus chain — "next" on the child-name
+  /// field advances to the parent-label field.
+  final _childNameFocus = FocusNode();
+  final _parentNameFocus = FocusNode();
+
   bool _loading = false;
   String? _error;
 
@@ -45,6 +53,8 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
   void dispose() {
     _childNameController.dispose();
     _parentNameController.dispose();
+    _childNameFocus.dispose();
+    _parentNameFocus.dispose();
     super.dispose();
   }
 
@@ -166,7 +176,10 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _childNameController,
+                  focusNode: _childNameFocus,
                   enabled: !_loading,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _parentNameFocus.requestFocus(),
                   decoration: const InputDecoration(
                     labelText: "Child's display name (optional)",
                     hintText: 'Shows on the profile',
@@ -175,7 +188,14 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _parentNameController,
+                  focusNode: _parentNameFocus,
                   enabled: !_loading,
+                  // #165: the form's last field — "done" is the Become
+                  // Owner action.
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    if (!_loading) unawaited(_claim());
+                  },
                   decoration: const InputDecoration(
                     labelText: 'Label for the parent (optional)',
                     hintText: 'Shows when they log entries',

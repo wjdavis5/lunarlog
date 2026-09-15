@@ -326,6 +326,18 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     );
   }
 
+  /// #165: the label field's "done" — the Transfer Ownership button's own
+  /// action, guarded the same way (`_loading || _selectedRole == null`
+  /// disables the button; the keyboard path just no-ops instead).
+  ///
+  /// Extracted from [_armableBody] so its two conditions don't count
+  /// against that build method's CRAP-gate complexity.
+  void _submitFromLabelField() {
+    if (!_loading && _selectedRole != null) {
+      unawaited(_handleTransferPressed());
+    }
+  }
+
   Widget _armableBody(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
@@ -388,6 +400,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         TextField(
           controller: _labelController,
           enabled: !_loading,
+          // #165: the form's only text field — "done" is the Transfer
+          // Ownership action (guarded exactly like the button below).
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submitFromLabelField(),
           decoration: const InputDecoration(
             labelText: 'Recipient label (optional)',
             hintText: 'e.g. Sam',

@@ -196,6 +196,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         enabled: !_busy,
         maxLines: 6,
         minLines: 3,
+        // #165: multiline — the honest keyboard action is "newline" (a
+        // "done" action would steal the enter key from line breaks).
+        textInputAction: TextInputAction.newline,
         decoration: const InputDecoration(
           labelText: 'What happened?',
           alignLabelWithHint: true,
@@ -203,12 +206,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         onChanged: (_) => setState(() {}),
       );
 
+  /// #165: the form's last single-line field — `email` is the honest
+  /// autofill hint, and "done" submits (the Send feedback action).
   Widget _buildReplyEmailField() => TextField(
         key: const ValueKey('feedback-reply-email'),
         controller: _replyEmail,
         enabled: !_busy,
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+        autofillHints: const [AutofillHints.email],
         decoration: const InputDecoration(labelText: 'Reply email'),
       );
 

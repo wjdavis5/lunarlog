@@ -20,6 +20,8 @@
 /// notifications of its own.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/limits.dart';
@@ -406,6 +408,10 @@ class _CareNotesSection extends StatelessWidget {
             maxLength: kMaxCareNoteLength,
             maxLines: 3,
             minLines: 1,
+            // #165: multiline — the honest keyboard action is "newline"
+            // (a "done" action would steal the enter key from line
+            // breaks).
+            textInputAction: TextInputAction.newline,
             decoration: const InputDecoration(
               labelText: 'Add a care note',
               hintText: 'Standing notes for everyone caring for this profile',
@@ -555,6 +561,12 @@ class _VisitPrepSection extends StatelessWidget {
             key: const ValueKey('visit-prep-field'),
             controller: controller,
             maxLength: kMaxVisitPrepItemLength,
+            // #165: single-line — "done" is the Add item action (guarded
+            // exactly like the button below).
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!saving) unawaited(onAdd());
+            },
             decoration: const InputDecoration(
               labelText: 'Add a prep item',
               hintText: 'A question or to-bring for the next appointment',

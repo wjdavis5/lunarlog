@@ -417,6 +417,13 @@ class _DaySheetState extends State<DaySheet> {
   /// `initState` already attached both listeners).
   bool _seedingMeasurements = false;
 
+  /// #165: the editable sheet's text-field focus chain — "next" on the BBT
+  /// field advances to weight, "next" on weight advances to the note field
+  /// (the sheet's field order, explicit rather than tree-derived).
+  final _bbtFocus = FocusNode();
+  final _weightFocus = FocusNode();
+  final _noteFocus = FocusNode();
+
   /// Issue #220: the first-class PMS marker, tracked straight off the
   /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
   /// not a child row).
@@ -549,6 +556,9 @@ class _DaySheetState extends State<DaySheet> {
     _noteController.dispose();
     _bbtController.dispose();
     _weightController.dispose();
+    _bbtFocus.dispose();
+    _weightFocus.dispose();
+    _noteFocus.dispose();
     super.dispose();
   }
 
@@ -1575,6 +1585,9 @@ class _DaySheetState extends State<DaySheet> {
     required VoidCallback onToggleExcluded,
     required Key excludeKey,
     required Key errorKey,
+    FocusNode? focusNode,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onFieldSubmitted,
   }) {
     final excludeLabel = excluded
         ? l10n.daySheetMeasurementIncludeLabel
@@ -1594,10 +1607,13 @@ class _DaySheetState extends State<DaySheet> {
                   child: TextFormField(
                     key: fieldKey,
                     controller: controller,
+                    focusNode: focusNode,
                     enabled: !_busy,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    textInputAction: textInputAction,
+                    onFieldSubmitted: onFieldSubmitted,
                     decoration: InputDecoration(labelText: label),
                   ),
                 ),
@@ -1727,6 +1743,10 @@ class _DaySheetState extends State<DaySheet> {
                   onToggleExcluded: _toggleBbtExcluded,
                   excludeKey: const ValueKey('bbt-exclude-toggle'),
                   errorKey: const ValueKey('bbt-error'),
+                  // #165: BBT → weight → note is the sheet's field order.
+                  focusNode: _bbtFocus,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _weightFocus.requestFocus(),
                 ),
                 _measurementField(
                   theme: theme,
@@ -1743,6 +1763,9 @@ class _DaySheetState extends State<DaySheet> {
                   onToggleExcluded: _toggleWeightExcluded,
                   excludeKey: const ValueKey('weight-exclude-toggle'),
                   errorKey: const ValueKey('weight-error'),
+                  focusNode: _weightFocus,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _noteFocus.requestFocus(),
                 ),
                 if (_unrecognisedTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
@@ -1751,12 +1774,17 @@ class _DaySheetState extends State<DaySheet> {
                   child: TextFormField(
                     key: const ValueKey('note-field'),
                     controller: _noteController,
+                    focusNode: _noteFocus,
                     enabled: !_busy,
                     decoration: InputDecoration(
                       labelText: l10n.daySheetNoteLabel,
                       alignLabelWithHint: true,
                     ),
                     maxLines: 3,
+                    // #165: the sheet's last field is multiline — the
+                    // honest keyboard action is "newline" (a "done" action
+                    // would steal the enter key from note line breaks).
+                    textInputAction: TextInputAction.newline,
                     // Mirrors the server CHECK; a longer note is rejected forever.
                     maxLength: kMaxNoteLength,
                     maxLengthEnforcement: MaxLengthEnforcement.enforced,
