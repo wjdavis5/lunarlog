@@ -3,13 +3,12 @@
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-| 710 | claude-orch/710-seed-test-account | .worktrees/claude-orch/710-seed-test-account | 2026-09-14 (see log) | — | coding |
-
-(Session resumed 2026-09-14 after a multi-day gap: the 2026-09-10 fleet rows — #208, #264, #255, #259, #218, #242, #125, #132 and the #234/#257/#266/#265/#211/#252/#183/#260 wave — all resolved while this session was down; GitHub issue/PR state is ground truth, their rows are dropped rather than back-filled. No open PR currently carries `owner:claude-orch`.)
+(In progress: none. Session resumed 2026-09-14 after a multi-day gap: the 2026-09-10 fleet rows — #208, #264, #255, #259, #218, #242, #125, #132 and the #234/#257/#266/#265/#211/#252/#183/#260 wave — all resolved while this session was down; GitHub issue/PR state is ground truth, their rows are dropped rather than back-filled. No open PR currently carries `owner:claude-orch`.)
 
 ## Done this session
 | issue | PR | merged at |
 |---|---|---|
+| 710 (+state sync) | 713, 711 | 2026-09-15T00:50Z |
 | 97 | 147 | 2026-09-08T22:05Z |
 | (docs+simulator CI) | 119 | 2026-09-08T22:07Z |
 | 94 follow-up (tag-length fix gaps) | 146 | 2026-09-08T22:16Z |
