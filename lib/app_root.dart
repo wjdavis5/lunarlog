@@ -55,6 +55,8 @@ import 'package:lunarlog/startup/startup.dart' as startup;
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/ui/gate/lock_screen.dart';
 import 'package:lunarlog/ui/startup/fail_closed_screen.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:provider/provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:supabase_flutter/supabase_flutter.dart' show SupabaseClient;
@@ -373,6 +375,17 @@ class LunarLogRootState extends State<LunarLogRoot> {
   bool _firstUnlockAttempted = false;
   bool _resetting = false;
 
+  /// Issue #137: the resolved appearance override for the shell's own
+  /// `MaterialApp`s — the pre-content placeholder below and, through
+  /// [GateShell], the lock screen. `ThemeMode.system` until the settings
+  /// watch's first emission: at cold start the lock screen deliberately
+  /// has no store to read (the database opens only after the gate
+  /// unlocks, AE4), so system-following is the honest default there, and
+  /// on a later re-lock this field carries the operator's override so a
+  /// dark-forced app never flashes a light lock screen.
+  ThemeMode _themeMode = ThemeMode.system;
+  StreamSubscription<String?>? _themeModeSub;
+
   @override
   void initState() {
     super.initState();
@@ -407,6 +420,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       _db = db;
       // AC2: the settings store is built in `lib/composition/`, never here.
       _gate.attachSettings(buildCompositionSettingsStore(db));
+      _watchAppearance(db);
       _startSyncEngine(db);
     } catch (error, stackTrace) {
       // U7 (KTD12): the message can embed a database path or SQL; log the
@@ -419,6 +433,31 @@ class LunarLogRootState extends State<LunarLogRoot> {
       _opening = false;
       if (mounted) setState(() {});
     }
+  }
+
+  /// Issue #137: subscribes the shell's appearance field to the persisted
+  /// override (same read path `LunarLogApp` uses — the store's `watch`
+  /// seeds the current value, then re-emits on every Settings write), so
+  /// the lock screen re-rendered on a re-lock honours the override rather
+  /// than snapping back to the system appearance. AC2: the store is built
+  /// in `lib/composition/`, never here — the same discipline
+  /// `_gate.attachSettings` one line up already follows.
+  void _watchAppearance(LunarLogDatabase db) {
+    _themeModeSub = buildCompositionSettingsStore(db)
+        .watch(SettingsKeys.themeMode)
+        .listen((value) {
+          if (!mounted) return;
+          setState(() => _themeMode = themeModeFromStored(value));
+        });
+  }
+
+  /// Cancels [_themeModeSub] before the database it watches can close
+  /// (device reset and root disposal). Synchronous on purpose: drift's
+  /// watch streams must not outlive the database, and both callers await
+  /// the close right after.
+  void _stopAppearanceWatch() {
+    unawaited(_themeModeSub?.cancel());
+    _themeModeSub = null;
   }
 
   /// KTD11: the engine exists only when the build has both collaborators;
@@ -553,6 +592,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
   /// that queries the database on its own), then the app subtree's
   /// asynchronous disposal, which the framework already unmounted.
   Future<void> _teardown() async {
+    _stopAppearanceWatch();
     await _disposeSyncEngine();
     await _awaitAppTeardown();
   }
@@ -600,6 +640,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
       final db = _db;
       await _detachDatabaseFromTree(db);
       await _awaitAppTeardown();
+      // Issue #137: the appearance watch must not outlive the database it
+      // reads — same discipline as the gate's own settings watch above.
+      _stopAppearanceWatch();
       final deleted = await _deleteDatabase(db);
       if (!deleted) return;
       await _signOutLocally();
@@ -699,11 +742,29 @@ class LunarLogRootState extends State<LunarLogRoot> {
       );
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free
-      // placeholder — nothing renders, not even a spinner.
-      content = const MaterialApp(home: Scaffold(body: SizedBox.expand()));
+      // placeholder — nothing renders, not even a spinner. Issue #137:
+      // both themes wired with system-following; this placeholder is
+      // invisible under the lock screen and the settings store does not
+      // exist yet (AE4), so there is no override to honour here.
+      content = MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        home: const Scaffold(body: SizedBox.expand()),
+      );
     } else {
-      content = const MaterialApp(
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      // Issue #137: the post-unlock loading spinner keeps system-following
+      // too — the appearance override lives *in* the database that is
+      // still opening, so system is the only resolvable mode for these
+      // few frames (the real app corrects it on its own first build if
+      // the override disagrees).
+      content = MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        home: const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
     // The shell (Stack/Listener) renders *above* the content's
@@ -722,7 +783,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
             updateShouldNotify: (_, _) => false,
             child: Directionality(
               textDirection: TextDirection.ltr,
-              child: GateShell(controller: _gate, child: content),
+              child: GateShell(
+                controller: _gate,
+                themeMode: _themeMode,
+                child: content,
+              ),
             ),
           ),
         ),
@@ -758,9 +823,20 @@ class LunarLogRootState extends State<LunarLogRoot> {
 /// layers. Content is kept offstage and input-blocked while hidden so no
 /// data paints and no stray tap reaches it.
 class GateShell extends StatelessWidget {
-  const GateShell({super.key, required this.controller, required this.child});
+  const GateShell({
+    super.key,
+    required this.controller,
+    required this.themeMode,
+    required this.child,
+  });
 
   final GateController controller;
+
+  /// Issue #137: the resolved appearance override, forwarded to the
+  /// [LockScreen] this shell overlays while the gate holds — see
+  /// `LunarLogRootState._themeMode` for why it is `system` at cold start.
+  final ThemeMode themeMode;
+
   final Widget child;
 
   @override
@@ -782,7 +858,8 @@ class GateShell extends StatelessWidget {
             ),
           ),
           if (gate.obscured && !gate.locked) const PrivacyCover(),
-          if (gate.locked) LockScreen(controller: controller),
+          if (gate.locked)
+            LockScreen(controller: controller, themeMode: themeMode),
         ],
       ),
     );

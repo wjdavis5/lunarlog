@@ -958,6 +958,36 @@ abstract class AppLocalizations {
   /// **'Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.'**
   String get settingsRelockSubtitle;
 
+  /// Settings tile and picker-dialog title for the appearance override (issue #137).
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearanceTitle;
+
+  /// Subtitle of the appearance tile, naming the three override options.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow your device\'s setting, or choose light or dark'**
+  String get settingsAppearanceSubtitle;
+
+  /// Picker option: use the OS light/dark setting (the default).
+  ///
+  /// In en, this message translates to:
+  /// **'Follow system'**
+  String get appearanceOptionSystem;
+
+  /// Picker option: always use the light theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get appearanceOptionLight;
+
+  /// Picker option: always use the dark theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get appearanceOptionDark;
+
   /// Section header above the health-sync settings tile.
   ///
   /// In en, this message translates to:

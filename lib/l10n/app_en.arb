@@ -642,6 +642,26 @@
   "@settingsRelockSubtitle": {
     "description": "Subtitle of the inactivity auto-relock switch."
   },
+  "settingsAppearanceTitle": "Appearance",
+  "@settingsAppearanceTitle": {
+    "description": "Settings tile and picker-dialog title for the appearance override (issue #137)."
+  },
+  "settingsAppearanceSubtitle": "Follow your device's setting, or choose light or dark",
+  "@settingsAppearanceSubtitle": {
+    "description": "Subtitle of the appearance tile, naming the three override options."
+  },
+  "appearanceOptionSystem": "Follow system",
+  "@appearanceOptionSystem": {
+    "description": "Picker option: use the OS light/dark setting (the default)."
+  },
+  "appearanceOptionLight": "Light",
+  "@appearanceOptionLight": {
+    "description": "Picker option: always use the light theme."
+  },
+  "appearanceOptionDark": "Dark",
+  "@appearanceOptionDark": {
+    "description": "Picker option: always use the dark theme."
+  },
   "settingsHealthHeader": "Health",
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."

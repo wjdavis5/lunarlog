@@ -4,6 +4,12 @@
 /// action (never a wipe/recreate button — the settled posture); a single
 /// Close action exits. Message differs per failure class using U2's typed
 /// errors; the raw error stays selectable for operator diagnostics.
+///
+/// Issue #137: follows the system appearance (`darkTheme` wired,
+/// `ThemeMode.system` hardcoded) rather than the in-app override — this
+/// screen renders precisely because the database that stores the override
+/// failed to open, so system is both the only option and the exact
+/// fallback `themeModeFromStored` would compute for an unreadable value.
 library;
 
 import 'package:flutter/material.dart';
@@ -21,6 +27,8 @@ class FailClosedApp extends StatelessWidget {
     return MaterialApp(
       title: 'lunarlog',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       home: FailClosedScreen(error: error),
     );
   }

@@ -8,6 +8,16 @@
 /// [GateDenialReason.deniedByUser]'s retry — a device with no screen lock
 /// at all was previously stuck behind the same generic denial message and
 /// a footnote below an apparently-broken Unlock button.
+///
+/// Issue #137: this screen renders dark under a dark system appearance
+/// (and under a dark in-app override once the settings store is
+/// available). [themeMode] defaults to [ThemeMode.system] — at cold start
+/// the database holding the override is deliberately not open yet (AE4:
+/// nothing touches it before a credential is accepted), and following the
+/// system is exactly the fallback the override itself would compute; on a
+/// re-lock the shell passes the resolved override through
+/// `GateShell.themeMode` so a dark-forced app never flashes a light lock
+/// screen in a shared dark room.
 library;
 
 import 'package:flutter/material.dart';
@@ -21,6 +31,7 @@ class LockScreen extends StatelessWidget {
     super.key,
     required this.controller,
     this.openDeviceSettings = defaultOpenDeviceSettings,
+    this.themeMode = ThemeMode.system,
   });
 
   final GateController controller;
@@ -31,12 +42,17 @@ class LockScreen extends StatelessWidget {
   /// `AccountSection`'s `appleAuthorizationCodeRequest`.
   final DeviceSettingsLauncher openDeviceSettings;
 
+  /// Issue #137: this MaterialApp's theme mode (see the library doc).
+  final ThemeMode themeMode;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return MaterialApp(
       title: 'lunarlog',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
       // Issue #160: same localization scaffolding as the main MaterialApp
       // in `lib/app.dart` — this screen renders above (and independent of)
       // the app content, so it must carry its own delegates.
