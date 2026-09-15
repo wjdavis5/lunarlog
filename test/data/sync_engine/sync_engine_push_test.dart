@@ -815,11 +815,12 @@ void main() {
 
       final hooked = rig.storage as HookedStorage;
       var markPushedCalls = 0;
-      hooked.beforeMarkPushed = (table, id) async {
+      hooked.beforeMarkPushedBatch = () async {
         markPushedCalls++;
-        // The first write of batch 2, after batch 1 fully committed. A plain
-        // Exception (not a SyncTransportError) lands in `_cycle`'s general
-        // catch, so the kind is `other`.
+        // The batched write of batch 2, after batch 1 fully committed (each
+        // batch carries one profile at batchSize 1). A plain Exception (not
+        // a SyncTransportError) lands in `_cycle`'s general catch, so the
+        // kind is `other`.
         if (markPushedCalls == 2) throw Exception('storage apply failed');
       };
 
@@ -850,7 +851,7 @@ void main() {
           const Duration(minutes: 5).inMilliseconds,
           reason: 'the persist happens immediately per committed batch');
 
-      hooked.beforeMarkPushed = null;
+      hooked.beforeMarkPushedBatch = null;
       await rig.sync();
 
       expect(rig.transport.pushes, hasLength(3));

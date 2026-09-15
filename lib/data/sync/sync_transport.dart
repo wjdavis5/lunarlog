@@ -260,4 +260,23 @@ abstract interface class SyncTransport {
   /// [pullPage] must still work correctly, just via its own per-table
   /// `select` fallback, whether this was never called or failed silently.
   Future<void> primePullCycle(Map<SyncTable, int> cursors);
+
+  /// Issue #42: the highest `server_version` the caller can currently see
+  /// on [table] — the cheap pre-reconcile probe that lets the engine skip
+  /// the daily full re-pull when nothing changed server-side. Every synced
+  /// table stamps `server_version` from a trigger on *every* insert/update
+  /// (including the server-side RPCs `sync_push` never touches — guardian
+  /// changes, ownership transfers, the hard-purge `deleted_profiles`
+  /// markers), so the per-table maximum is a complete change signal for
+  /// rows this caller can see: `max <= persistedCursor` for every table
+  /// means the incremental pull's cursors have already seen and applied
+  /// everything there is, and re-paging from version 0 would be a no-op.
+  ///
+  /// Like [fetchWatermark] this never throws: `null` means "unknown" (any
+  /// transport or decode failure, or a table this transport cannot probe),
+  /// and the caller must treat that conservatively — the full re-pull
+  /// runs; sync is never silently skipped on a probe failure. An empty
+  /// (or entirely RLS-invisible) table is *not* a failure: it answers `0`,
+  /// below any cursor.
+  Future<int?> fetchMaxVersion(SyncTable table);
 }

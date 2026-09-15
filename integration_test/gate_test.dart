@@ -1,6 +1,9 @@
-/// U7 gate integration matrix (R7, flow F3, AE4), run on the host with a
-/// fake authenticator: `flutter test integration_test/gate_test.dart`.
-/// Real biometrics are verified manually on-device later (U9 checklist).
+/// U7 gate integration matrix (R7, flow F3, AE4), run with a fake
+/// authenticator: `flutter test integration_test/gate_test.dart` (which,
+/// on this Flutter toolchain, routes any file under `integration_test/`
+/// to a connected device) — CI runs it on a real iOS Simulator (the
+/// "iOS Simulator tests" job). Real biometrics are verified manually
+/// on-device later (U9 checklist).
 library;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -46,8 +49,14 @@ class FakeGate implements AppGate {
 }
 
 class FakeInactivityTimer implements InactivityTimer {
-  FakeInactivityTimer(this._onTimeout);
+  FakeInactivityTimer(this.delay, this._onTimeout);
 
+  /// The delay this timer was created with. The controller creates three
+  /// kinds of timer through one factory — the inactivity countdown, the
+  /// system-UI window deadline, and the settling tail (#65 U1) — and their
+  /// durations are what tell them apart. Mirrors the host twin in
+  /// `test/ui/gate_test.dart`, which `fireWithDelay` below depends on.
+  final Duration delay;
   final void Function() _onTimeout;
   bool active = true;
 
@@ -65,9 +74,20 @@ class FakeInactivityTimers {
   final created = <FakeInactivityTimer>[];
 
   InactivityTimer create(Duration delay, VoidCallback onTimeout) {
-    final timer = FakeInactivityTimer(onTimeout);
+    final timer = FakeInactivityTimer(delay, onTimeout);
     created.add(timer);
     return timer;
+  }
+
+  /// Fires every active timer created with [delay]; the others stay armed,
+  /// so a test can expire the settling tail without also expiring the
+  /// inactivity countdown or the window deadline. The host twin's Harness
+  /// does exactly this after every unlock — see
+  /// [expireSystemUiSettleTail].
+  void fireWithDelay(Duration delay) {
+    for (final timer in List.of(created)) {
+      if (timer.delay == delay) timer.fire();
+    }
   }
 
   InactivityTimerFactory get factory => create;
@@ -95,8 +115,38 @@ Future<void> main() async {
     return db;
   }
 
+  /// Issue #121: a manual `handleAppLifecycleStateChanged` walk into
+  /// `hidden`/`paused` is a framework-level simulation — nothing is sent to
+  /// the OS — but `SchedulerBinding.handleAppLifecycleStateChanged` still
+  /// flips `framesEnabled` to false for exactly those two states (it stays
+  /// true for `inactive`, which is why the issue #65 test never hung).
+  ///
+  /// That flip is invisible host-mode, where `pump()` drives
+  /// `handleBeginFrame`/`handleDrawFrame` directly. On a real device,
+  /// `IntegrationTestWidgetsFlutterBinding` is a *live* binding: `pump()`
+  /// waits for a real engine frame, `scheduleFrame()` is now a no-op, and
+  /// the binding's default test timeout is `Timeout.none` — so the first
+  /// pump after a `paused`/`hidden` step waited on a frame that could never
+  /// be requested and hung the run forever (the #121 failure).
+  ///
+  /// `scheduleForcedFrame()` is the framework's own escape hatch for this —
+  /// documented as "ignores the [lifecycleState] when scheduling a frame" —
+  /// and, because the app was never really backgrounded, the engine is
+  /// still foreground and delivers the frame. A no-op wherever frames are
+  /// already enabled, so the resumed/inactive path is unchanged.
+  void forceFrameIfBackgrounded(WidgetTester tester) {
+    if (!tester.binding.framesEnabled) {
+      tester.binding.scheduleForcedFrame();
+    }
+  }
+
   Future<void> disposeDb(WidgetTester tester, LunarLogDatabase db) async {
+    // Issue #121: callers may still be in a frames-disabled state here (the
+    // inactivity-timeout test ends on `hidden`), and on a live device
+    // binding each pump in that state needs its own forced frame.
+    forceFrameIfBackgrounded(tester);
     await tester.pumpWidget(const SizedBox.shrink());
+    forceFrameIfBackgrounded(tester);
     await tester.pump(const Duration(milliseconds: 100));
     await db.close();
   }
@@ -118,8 +168,12 @@ Future<void> main() async {
     while (from != to) {
       from += to > from ? 1 : -1;
       tester.binding.handleAppLifecycleStateChanged(path[from]);
+      // Issue #121: every step landing in hidden/paused must force the
+      // frame the following pump waits for, or a real-device run hangs.
+      forceFrameIfBackgrounded(tester);
       await tester.pump();
     }
+    forceFrameIfBackgrounded(tester);
     await tester.pumpAndSettle();
   }
 
@@ -140,6 +194,29 @@ Future<void> main() async {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pumpAndSettle();
     }
+  }
+
+  /// Issue #121's second finding (from the first real-simulator CI run):
+  /// every unlock — cold start's automatic one included — opens a
+  /// system-UI window for the credential prompt and leaves a 3-second
+  /// settling tail behind it (#65 KTD2a), during which a departure covers
+  /// content but does NOT lock, and the window-deadline timer stays armed.
+  /// On the live device binding those are 3 wall-clock seconds the test's
+  /// assertions would race (the first CI run failed exactly there: zero
+  /// lock-screens after transitionTo(paused), and `timers.anyActive` true
+  /// where the toggle-off half expected false). The host twin expires the
+  /// tail deterministically after every unlock — Harness.pump's
+  /// `fireWithDelay(kSystemUiSettleTimeout)` — because a fake clock never
+  /// reaches 3s on its own; do the same here, then drain so the reconcile
+  /// and the settings watch both land before the caller asserts.
+  Future<void> expireSystemUiSettleTail(
+    WidgetTester tester,
+    FakeInactivityTimers timers,
+  ) async {
+    timers.fireWithDelay(kSystemUiSettleTimeout);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await drainIsolateTraffic(tester);
   }
 
   Future<void> unlockViaButton(WidgetTester tester) async {
@@ -251,13 +328,18 @@ Future<void> main() async {
       'returns', (tester) async {
     final db = await seededDb();
     final gate = FakeGate();
+    // Injected so expireSystemUiSettleTail can expire the cold-start
+    // prompt's settling tail deterministically (issue #121).
+    final timers = FakeInactivityTimers();
 
     await tester.pumpWidget(LunarLogRoot(
       gate: gate,
       dbOpener: () async => db,
+      inactivityTimerFactory: timers.factory,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    await expireSystemUiSettleTail(tester, timers);
     expect(find.text('Alice'), findsOneWidget);
 
     await transitionTo(tester, AppLifecycleState.paused);
@@ -286,6 +368,7 @@ Future<void> main() async {
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    await expireSystemUiSettleTail(tester, timers);
     expect(find.text('Alice'), findsOneWidget);
     expect(timers.anyActive, isTrue);
 
@@ -308,6 +391,12 @@ Future<void> main() async {
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    // Expiring the settle tail also lets the settings watch's 'false'
+    // emission cancel whatever the reconcile armed, so anyActive is
+    // deterministically false here rather than racing the drift isolate
+    // (issue #121: the first CI run found the window-deadline timer still
+    // armed from the never-expired tail).
+    await expireSystemUiSettleTail(tester, timers);
     expect(timers.anyActive, isFalse);
 
     timers.fireActive();
@@ -319,6 +408,12 @@ Future<void> main() async {
     // Background re-lock still applies with the toggle off.
     await transitionTo(tester, AppLifecycleState.hidden);
     expect(find.byKey(const ValueKey('lock-screen')), findsOneWidget);
+    // Issue #121 suite hygiene: the binding's lifecycle state persists
+    // across tests in a suite (see ensureResumed), and the next test's very
+    // first pumpWidget would hang a real-device run if it inherited the
+    // frames-disabled `hidden` state. Return to the foreground like every
+    // other test in this file.
+    await ensureResumed(tester);
     await disposeDb(tester, db);
   });
 

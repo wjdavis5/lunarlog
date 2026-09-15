@@ -34,6 +34,7 @@ import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_presentation.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
@@ -629,3 +630,11 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   currentAuthState: currentAuthState,
   onTap: onTap,
 );
+
+/// Constructs the foreground push presenter (Issue #174). The caller starts
+/// it next to the push-registration coordinator (the same
+/// `AppConfig.hasPush && !isWeb` gate in `lib/app_root.dart`) and disposes
+/// it with the coordinator — foreground caregiver alerts are presented only
+/// for a device that is registered to receive them at all.
+PushForegroundPresenter buildPushForegroundPresenter() =>
+    PushForegroundPresenter();
