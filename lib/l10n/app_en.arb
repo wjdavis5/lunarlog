@@ -1817,5 +1817,49 @@
     "placeholders": {
       "time": {"type": "String"}
     }
+  },
+  "reminderTextTileTitle": "Notification text",
+  "@reminderTextTileTitle": {
+    "description": "Row title for a reminder type's custom notification text editor entry (Issue #184)."
+  },
+  "reminderTextTileDefaultSubtitle": "Using the default text",
+  "@reminderTextTileDefaultSubtitle": {
+    "description": "Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184)."
+  },
+  "reminderTextEditorAppBarTitle": "Notification text",
+  "@reminderTextEditorAppBarTitle": {
+    "description": "App bar title of the per-type notification text editor (Issue #184)."
+  },
+  "reminderTextPreviewSection": "Preview",
+  "@reminderTextPreviewSection": {
+    "description": "Section header above the live notification preview in the text editor (Issue #184)."
+  },
+  "reminderTextPreviewAppName": "Lunarlog",
+  "@reminderTextPreviewAppName": {
+    "description": "The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184)."
+  },
+  "reminderTextPreviewNow": "now",
+  "@reminderTextPreviewNow": {
+    "description": "The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184)."
+  },
+  "reminderTextTitleLabel": "Title",
+  "@reminderTextTitleLabel": {
+    "description": "Label above the notification title field in the text editor (Issue #184)."
+  },
+  "reminderTextBodyLabel": "Body",
+  "@reminderTextBodyLabel": {
+    "description": "Label above the notification body field in the text editor (Issue #184)."
+  },
+  "reminderTextSaveButton": "Save",
+  "@reminderTextSaveButton": {
+    "description": "Save action in the notification text editor (Issue #184)."
+  },
+  "reminderTextResetButton": "Reset to default",
+  "@reminderTextResetButton": {
+    "description": "Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184)."
+  },
+  "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.",
+  "@reminderTextDiscretionNote": {
+    "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
   }
 }

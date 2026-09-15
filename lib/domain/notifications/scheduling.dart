@@ -8,7 +8,11 @@
 /// daily log nudge (Issue #136, R10/R11). iOS delivers local notifications
 /// with no Dart callback, so a same-day re-arm loop cannot be relied on;
 /// each reschedule arms the next bounded window ahead. Every body/title is
-/// generic — no profile names, no dates (lock-screen privacy).
+/// generic — no profile names, no dates (lock-screen privacy) — unless the
+/// profile's operator authored custom text for that type (Issue #184),
+/// which is still manual user-authored copy: the resolver
+/// (`resolveReminderText`) accepts nothing but the config, so no code path
+/// can interpolate a name or date into it.
 ///
 /// Issue #136 (per-type configuration): each profile's
 /// [ReminderConfig] decides which types are armed, each type's own
@@ -97,6 +101,50 @@ const int kLogNudgeCadencePreArmOccurrences = 4;
 const String kReminderTitle = 'A reminder from Lunarlog';
 const String kReminderBody = 'Open Lunarlog to see what it is about.';
 
+/// The title and body one notification presents (Issue #184): either the
+/// type's user-authored custom text or the generic defaults — never
+/// anything else.
+class ReminderText {
+  const ReminderText({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReminderText && other.title == title && other.body == body;
+
+  @override
+  int get hashCode => Object.hash(title, body);
+
+  @override
+  String toString() => 'ReminderText($title | $body)';
+}
+
+/// Resolves the text one reminder of a type presents (Issue #184):
+/// [ReminderTypeConfig.customTitle]/[customBody] when set, else the
+/// generic [kReminderTitle]/[kReminderBody].
+///
+/// **The discretion invariant, made structural:** this function takes
+/// *only* the type config. It has no profile, no name, no date to read —
+/// no code path can concatenate either into notification text, because
+/// the one resolver through which every reminder's text flows accepts
+/// nothing but user-authored copy (and the fallback constants above).
+/// Clue's mechanism is manual user-authored text, not templated
+/// interpolation, and this signature is what keeps lunarlog's the same.
+/// `reminder_text_test.dart` pins it by feeding a name-bearing profile
+/// and a dated plan through and asserting the built text equals the
+/// configured strings verbatim.
+ReminderText resolveReminderText(ReminderTypeConfig config) => ReminderText(
+      title: _orDefault(config.customTitle, kReminderTitle),
+      body: _orDefault(config.customBody, kReminderBody),
+    );
+
+String _orDefault(String? custom, String fallback) {
+  final trimmed = custom?.trim() ?? '';
+  return trimmed.isEmpty ? fallback : trimmed;
+}
+
 /// Eviction priority under the [kMaxPendingReminders] cap (Issue #136,
 /// widened by Issue #178 and Issue #183): lower is kept longer. The
 /// documented eviction order is late over upcoming over
@@ -146,6 +194,8 @@ class PlannedReminder {
     required this.fireOn,
     required this.kind,
     this.timeOfDayMinutes = kDefaultReminderTimeMinutes,
+    this.title = kReminderTitle,
+    this.body = kReminderBody,
   });
 
   final String profileId;
@@ -156,12 +206,39 @@ class PlannedReminder {
   /// configured time after quiet-hours shifting (R10).
   final int timeOfDayMinutes;
 
+  /// The notification title the scheduler presents (Issue #184): this
+  /// kind's custom text when configured, else the generic
+  /// [kReminderTitle]. Resolved once at plan time from the profile's
+  /// [ReminderConfig] — local notifications carry their text at schedule
+  /// time (iOS delivers them with no Dart callback), and #136's replan-on-
+  /// every-change machinery re-arms the whole plan (through
+  /// `rescheduleAll`'s cancel-then-schedule) the moment the stored text
+  /// changes, so baked-at-schedule-time stays current exactly the way the
+  /// type's time-of-day already does.
+  final String title;
+
+  /// The notification body (see [title]).
+  final String body;
+
   /// The notification id the scheduler uses for this reminder. Derived
   /// from the reminder's full identity (see [stableReminderId]), so a
   /// replan that yields the same reminder reuses the id rather than
-  /// renumbering it.
+  /// renumbering it. Deliberately excludes [title]/[body]: a text edit is
+  /// not a different reminder, and `rescheduleAll` cancels every pending
+  /// notification before re-arming anyway.
   int get id => stableReminderId(
       '$profileId|${kind.name}|${fireOn.iso}|$timeOfDayMinutes');
+
+  /// This reminder with its presentation text resolved from [text] —
+  /// the one place plan-time text resolution happens (Issue #184).
+  PlannedReminder withText(ReminderText text) => PlannedReminder(
+        profileId: profileId,
+        fireOn: fireOn,
+        kind: kind,
+        timeOfDayMinutes: timeOfDayMinutes,
+        title: text.title,
+        body: text.body,
+      );
 
   @override
   bool operator ==(Object other) =>
@@ -169,10 +246,13 @@ class PlannedReminder {
       other.profileId == profileId &&
       other.fireOn == fireOn &&
       other.kind == kind &&
-      other.timeOfDayMinutes == timeOfDayMinutes;
+      other.timeOfDayMinutes == timeOfDayMinutes &&
+      other.title == title &&
+      other.body == body;
 
   @override
-  int get hashCode => Object.hash(profileId, fireOn, kind, timeOfDayMinutes);
+  int get hashCode =>
+      Object.hash(profileId, fireOn, kind, timeOfDayMinutes, title, body);
 
   @override
   String toString() =>
@@ -257,7 +337,11 @@ List<PlannedReminder> planReminders({
   for (final id in eligibleIds) {
     final preset = presets[id] ?? ReminderPreset.all;
     final config = configs[id] ?? ReminderConfig.fromPreset(preset);
-    planned.addAll(_planProfile(
+    // Issue #184: each planned reminder resolves its presentation text
+    // from the profile's per-type config here — the one text-resolution
+    // point on the planning path. Types with no custom text (and profiles
+    // with no stored config) keep the generic defaults.
+    for (final reminder in _planProfile(
       profileId: id,
       today: today,
       prediction: predictions[id],
@@ -265,7 +349,10 @@ List<PlannedReminder> planReminders({
       snoozeUntil: lateSnoozes[id],
       statisticSignal: statisticChangeSignals[id],
       birthControlState: birthControlModes[id],
-    ));
+    )) {
+      planned.add(
+          reminder.withText(resolveReminderText(config.typeConfig(reminder.kind))));
+    }
   }
   return _coalesceAndCap(planned);
 }

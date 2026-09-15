@@ -708,6 +708,71 @@ void main() {
       );
     });
 
+    test('stored custom notification text reaches the scheduler payload '
+        '(Issue #184: the scheduling path reads the per-type text)', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'Tea time',
+            customBody: 'Bring the blue bottle.',
+          ),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+
+      final plan = scheduler.rescheduleCalls.last;
+      final reminder = plan.singleWhere((r) => r.kind == ReminderKind.upcoming);
+      expect(reminder.title, 'Tea time');
+      expect(reminder.body, 'Bring the blue bottle.');
+
+      // Editing the stored text re-arms the plan with the new copy through
+      // the same changes-stream replan the schedule edits ride.
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'New title',
+            customBody: 'New body',
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      final replanned = scheduler.rescheduleCalls.last
+          .singleWhere((r) => r.kind == ReminderKind.upcoming);
+      expect(replanned.title, 'New title');
+      expect(replanned.body, 'New body');
+    });
+
     test('two profiles hold different schedules and both plan correctly',
         () async {
       final scheduler = FakeReminderScheduler();

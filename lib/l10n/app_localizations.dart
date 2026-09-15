@@ -2589,6 +2589,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Too many attempts. Try again after {time}.'**
   String pinLockScreenLockedOut(String time);
+
+  /// Row title for a reminder type's custom notification text editor entry (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextTileTitle;
+
+  /// Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Using the default text'**
+  String get reminderTextTileDefaultSubtitle;
+
+  /// App bar title of the per-type notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextEditorAppBarTitle;
+
+  /// Section header above the live notification preview in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get reminderTextPreviewSection;
+
+  /// The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Lunarlog'**
+  String get reminderTextPreviewAppName;
+
+  /// The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get reminderTextPreviewNow;
+
+  /// Label above the notification title field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get reminderTextTitleLabel;
+
+  /// Label above the notification body field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Body'**
+  String get reminderTextBodyLabel;
+
+  /// Save action in the notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get reminderTextSaveButton;
+
+  /// Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to default'**
+  String get reminderTextResetButton;
+
+  /// Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.'**
+  String get reminderTextDiscretionNote;
 }
 
 class _AppLocalizationsDelegate
