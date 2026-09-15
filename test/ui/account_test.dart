@@ -840,6 +840,9 @@ void main() {
       );
 
       await tester.enterText(key('recovery-new-password'), 'a brand new pass');
+      // #165: the confirm field must match before the save proceeds.
+      await tester.enterText(
+          key('recovery-confirm-password'), 'a brand new pass');
       await tester.tap(key('recovery-save'));
       await tester.pumpAndSettle();
       await drainIsolateTraffic(tester);

@@ -294,6 +294,12 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     TextField(
                       controller: _labelController,
                       enabled: !_loading,
+                      // #165: the form's only text field — "done" is the
+                      // Create Link action.
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (!_loading) unawaited(_createInvite());
+                      },
                       decoration: const InputDecoration(
                         labelText: 'Nickname / Label (Optional)',
                         hintText: 'e.g. Dad, Grandma, School Nurse',

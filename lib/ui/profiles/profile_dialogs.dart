@@ -133,6 +133,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   );
   late ProfileRelationship? _relationship = widget.existing?.relationship;
 
+  /// #165: the dialog's two text fields' explicit focus chain — "next" on
+  /// the name field advances to the birth-year field.
+  final _nameFocus = FocusNode();
+  final _birthYearFocus = FocusNode();
+
   /// The two #216 onboarding answers that are editable here (Issue #188
   /// storage). Loaded asynchronously from the profile's `profile_modes`
   /// row; until it resolves (or on a tree with no storage wired) the
@@ -165,7 +170,29 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   void dispose() {
     _name.dispose();
     _birthYear.dispose();
+    _nameFocus.dispose();
+    _birthYearFocus.dispose();
     super.dispose();
+  }
+
+  /// The Create/Save action, shared by the button and the birth-year
+  /// field's "done" (#165): validate, then pop with the collected result.
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      final trimmedBirthYear = _birthYear.text.trim();
+      Navigator.of(context).pop(
+        ProfileEditResult(
+          _name.text,
+          _isMinor,
+          mode: _mode,
+          birthYear:
+              trimmedBirthYear.isEmpty ? null : int.tryParse(trimmedBirthYear),
+          relationship: _relationship,
+          lifecycleMode: _lifecycleMode,
+          birthControlChoice: _birthControl,
+        ),
+      );
+    }
   }
 
   @override
@@ -198,11 +225,17 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                     children: [
                       TextFormField(
                         controller: _name,
+                        focusNode: _nameFocus,
                         autofocus: true,
                         decoration: const InputDecoration(labelText: 'Name'),
                         maxLength: kMaxDisplayNameLength,
                         maxLengthEnforcement: MaxLengthEnforcement.enforced,
                         validator: validateProfileName,
+                        // #165: `name` is the honest hint; "next" moves to
+                        // the birth-year field below.
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => _birthYearFocus.requestFocus(),
+                        autofillHints: const [AutofillHints.name],
                       ),
                       CheckboxListTile(
                         value: _isMinor,
@@ -255,7 +288,12 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                       ),
                       TextFormField(
                         controller: _birthYear,
+                        focusNode: _birthYearFocus,
                         keyboardType: TextInputType.number,
+                        // #165: the dialog's last text field — "done" is
+                        // the Create/Save action.
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
                         decoration: const InputDecoration(
                           labelText: 'Birth year (optional)',
                         ),
@@ -370,24 +408,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      final trimmedBirthYear = _birthYear.text.trim();
-                      Navigator.of(context).pop(
-                        ProfileEditResult(
-                          _name.text,
-                          _isMinor,
-                          mode: _mode,
-                          birthYear: trimmedBirthYear.isEmpty
-                              ? null
-                              : int.tryParse(trimmedBirthYear),
-                          relationship: _relationship,
-                          lifecycleMode: _lifecycleMode,
-                          birthControlChoice: _birthControl,
-                        ),
-                      );
-                    }
-                  },
+                  onPressed: _submit,
                   child: Text(existing == null ? 'Create' : 'Save'),
                 ),
               ],

@@ -121,6 +121,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   final _typicalCycleController = TextEditingController();
   final _typicalPeriodController = TextEditingController();
 
+  /// #165: the cycle questions' explicit focus chain — "next" on the
+  /// typical-cycle field advances to the typical-period field.
+  final _typicalCycleFocus = FocusNode();
+  final _typicalPeriodFocus = FocusNode();
+
   /// Which introduction card is showing (0 value / 1 guardians / 2 the
   /// data/sync notice). The whole intro lives under [_noticePending].
   int _introIndex = 0;
@@ -220,6 +225,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     _nameController.dispose();
     _typicalCycleController.dispose();
     _typicalPeriodController.dispose();
+    _typicalCycleFocus.dispose();
+    _typicalPeriodFocus.dispose();
     super.dispose();
   }
 
@@ -589,6 +596,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 maxLength: kMaxDisplayNameLength,
                 maxLengthEnforcement: MaxLengthEnforcement.enforced,
                 validator: validateProfileName,
+                // #165: the name form's only text field — "done" is its
+                // submit (the Continue action), and `name` is the honest
+                // autofill hint.
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _continueToCycleQuestions(),
+                autofillHints: const [AutofillHints.name],
               ),
               CheckboxListTile(
                 value: _isMinor,
@@ -720,7 +733,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
             TextFormField(
               key: const ValueKey('cycle-typical-cycle'),
               controller: _typicalCycleController,
+              focusNode: _typicalCycleFocus,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              onFieldSubmitted: (_) => _typicalPeriodFocus.requestFocus(),
               decoration: InputDecoration(
                 labelText: l10n.firstRunCycleTypicalCycleLabel,
                 hintText: l10n.firstRunCycleTypicalCycleHint,
@@ -736,7 +752,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
             TextFormField(
               key: const ValueKey('cycle-typical-period'),
               controller: _typicalPeriodController,
+              focusNode: _typicalPeriodFocus,
               keyboardType: TextInputType.number,
+              // #165: the form's last text field — "done" submits (the
+              // Create profile action, the same one the button performs).
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _create(),
               decoration: InputDecoration(
                 labelText: l10n.firstRunCycleTypicalPeriodLabel,
                 hintText: l10n.firstRunCycleTypicalPeriodHint,
