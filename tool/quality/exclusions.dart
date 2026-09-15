@@ -18,6 +18,15 @@
 /// its generated `mutation_test` rules document, so the two never drift.
 /// Generated code (`**/*.g.dart`) is handled separately since it's a suffix
 /// glob, not a literal path.
+///
+/// Device-checklist pairing (issue #215): every entry in
+/// [excludedLibFilePaths] is paired with a same-titled item in the
+/// "Gate-exclusion pairing (issue #215)" section of the device checklist in
+/// `docs/ops/supabase-go-live.md`, and carries a pointer comment right here
+/// — because a file excluded from these gates is exactly where an
+/// unverified platform-seam bug can hide, the exclusion and its
+/// manual-verification entry are added, moved, or removed together, never
+/// one without the other.
 library;
 
 import 'dart:io';
@@ -32,6 +41,8 @@ class CoverageExclusion {
 }
 
 final List<CoverageExclusion> excludedLibFilePaths = [
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/startup_native.dart',
     'protectDatabaseFile (issue #244) is an iOS-only platform-channel call '
@@ -55,12 +66,16 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'channel call, so excluding it no longer hides any testable logic '
         'from the gate\'s denominator.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/auth/google_sign_in_client.dart',
     'PluginGoogleSignInClient wraps the google_sign_in plugin and cannot '
         'run under flutter test; the file also holds a trivial immutable '
         'value type with no branching.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/auth/auth_gateway.dart',
     'GoTrueAuthGateway and AppLinksSource are 100% platform adapters over '
@@ -68,22 +83,38 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         '(AuthGateway, AuthLinkSource) that contribute no executable lines, '
         'so nothing testable is lost by excluding the whole file.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/notifications/notification_scheduler.dart',
     'FlutterLocalNotificationsScheduler wraps flutter_local_notifications '
-        'and cannot run under flutter test. NoopReminderScheduler is pure '
-        'and gets a direct unit test anyway, same treatment as '
-        'google_sign_in_client.dart.',
+    'and cannot run under flutter test. Issue #215 moved every piece of '
+    'pure, testable logic out of this file into the non-excluded domain '
+    'layer, each with direct unit tests that count toward the coverage '
+    'floor: the fire-time computation (calculateReminderFireAt, now '
+    'lib/domain/notifications/reminder_fire_time.dart) and the '
+    'permission-answer-to-availability mapping '
+    '(notificationAvailabilityFromPlatformProbe, now in '
+    'lib/domain/notifications/notification_availability.dart) — so the '
+    'remaining excluded surface is only the plugin-bound scheduling and '
+    'permission-request wrapping itself. NoopReminderScheduler is pure '
+    'and gets a direct unit test anyway, same treatment as '
+    'google_sign_in_client.dart.',
   ),
   // Issue #207: image_picker_attachment_source.dart is deliberately NOT
   // listed here any more. It still wraps the image_picker plugin, but every
   // decision around the plugin call (downscale/normalisation parameters,
-  // the pre-read size rejection, the name-based mime fallback incl. HEIC)
-  // now runs under flutter test against an injected pick seam
+  // the pre-read size rejection, and — since #215 — the name-based mime
+  // fallback incl. HEIC, as the pure domain function
+  // attachmentMimeTypeFromFilename in
+  // lib/domain/feedback/attachment_mime.dart with its own unit tests) runs
+  // under flutter test against an injected pick seam
   // (test/data/feedback/image_picker_attachment_source_test.dart), so only
   // a five-line static plugin wrapper remains uncovered — not enough to
   // warrant hiding the whole file from the gates' denominator, and keeping
   // the exclusion would have let the newly tested logic silently regress.
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/export/account_export_writer.dart',
     'AccountExportWriter wraps path_provider (temp directory) and '
@@ -93,6 +124,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'unit-tested directly; this file is proven by the U7 device '
         'checklist instead, same treatment as google_sign_in_client.dart.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/export/csv_export_writer.dart',
     'PlatformCsvExportWriter wraps path_provider (temp directory) and '
@@ -102,6 +135,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'unit-tested directly; this file is proven by the device checklist '
         'instead, same treatment as account_export_writer.dart.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/import/import_file_picker.dart',
     'pickImportFile wraps the file_picker plugin (FilePicker.pickFile) and '
@@ -111,6 +146,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'unit-tested directly; this file is proven by the device checklist '
         'instead, same treatment as account_export_writer.dart.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/notifications/firebase_push_token_source.dart',
     'FirebasePushTokenSource wraps firebase_core/firebase_messaging calls '
@@ -143,6 +180,9 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   // coverage instruments Dart only -- which is why the issue's
   // "exclude the native files" checklist item lands on their Dart-side
   // pins instead.
+  //
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/health/ios_health_channel.dart',
     'IOSHealthChannel pins the shared MethodChannelHealthPlatform engine '
@@ -152,6 +192,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'non-excluded health_channel.dart/health_channel_codec.dart — '
         'same treatment as google_sign_in_client.dart.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/health/android_health_channel.dart',
     'AndroidHealthChannel pins the shared MethodChannelHealthPlatform '
@@ -174,6 +216,9 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   // selected, so `_unsupported.dart`/`_web.dart` never do), or the app
   // entry point / Supabase bootstrap wiring that only ever runs for real
   // inside a launched app.
+  //
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/db/factory_unsupported.dart',
     'The `if (dart.library.ffi) ... if (dart.library.js_interop) ...` '
@@ -183,6 +228,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'instead, so this file structurally never loads. One line: '
         'throws UnsupportedError, nothing to unit test in isolation.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/data/db/web_db.dart',
     'The web branch of lib/data/db/platform_factory.dart\'s conditional '
@@ -192,6 +239,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'Wraps drift\'s WasmDatabase/IndexedDB wiring, which cannot run '
         'under flutter test regardless.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/gate/gate_unsupported.dart',
     'The neither-native-nor-web branch of lib/startup/gate/gate.dart\'s '
@@ -200,14 +249,18 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'native/VM target always selects local_auth_gate.dart instead, so '
         'this one-line UnsupportedError throw never loads.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/gate/web_gate.dart',
     'The web branch of lib/startup/gate/gate.dart\'s conditional export -- '
         'flutter test\'s native/VM target selects local_auth_gate.dart '
-        'instead, so this file never loads (same reasoning as '
-        'lib/data/db/web_db.dart above). A no-op gate with no browser '
-        'storage to exercise under flutter test regardless.',
+        'instead, so this file never loads (same reasoning as web_db.dart '
+        'above). A no-op gate with no browser storage to exercise under '
+        'flutter test regardless.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/startup_unsupported.dart',
     'The neither-native-nor-web branch of lib/startup/startup.dart\'s '
@@ -216,6 +269,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'startup_native.dart instead, so these three one-line '
         'UnsupportedError throws never load.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/startup_web.dart',
     'The web branch of lib/startup/startup.dart\'s conditional export -- '
@@ -224,6 +279,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'above). Wraps web_db.dart\'s WASM/IndexedDB wiring, which cannot '
         'run under flutter test regardless.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/main.dart',
     'The app entry point: runApp, runWithSentry, and the real '
@@ -233,6 +290,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'main.dart. No test in this suite imports it, so it carries no '
         'lcov record at all rather than a partial one.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/supabase_bootstrap.dart',
     'bootstrapSupabase wires together Supabase.initialize (a real '

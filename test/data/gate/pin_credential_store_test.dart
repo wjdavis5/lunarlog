@@ -3,10 +3,24 @@
 /// covers the KDF itself; this suite exercises the store's own contract
 /// against an in-memory fake of `FlutterSecureStorage`, mirroring
 /// `test/data/secure_local_storage_test.dart`'s fake shape.
+///
+/// Every test below (other than the dedicated "production wiring" group)
+/// injects [_fastPbkdf2Runner] instead of the real, isolate-hopping
+/// [defaultPbkdf2Runner] — it runs synchronously, in-process, at a
+/// deliberately low round count, so this suite's many lockout-loop tests
+/// (several `setPin`/`verifyPin` calls each) stay fast. This never touches
+/// [kPbkdf2DefaultIterations] itself: [PinCredentialStore.setPin] always
+/// requests that exact count from whichever runner is configured — a test
+/// runner is simply free to ignore the round count it's asked for, the way
+/// [_fastPbkdf2Runner] does, precisely so a test never has to (and never
+/// does) turn that production constant down to get a fast suite.
 library;
+
+import 'dart:typed_data';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/data/gate/pbkdf2.dart';
 import 'package:lunarlog/data/gate/pin_credential_store.dart';
 import 'package:lunarlog/domain/gate/pin_credential_service.dart';
 
@@ -72,6 +86,28 @@ class FakeSecureStorage implements FlutterSecureStorage {
       throw UnimplementedError('${invocation.memberName}');
 }
 
+/// A fast, synchronous, in-process [Pbkdf2Runner] for this suite (see the
+/// library doc comment above): always hashes at [_fastTestIterations]
+/// rounds, whatever [iterations] it's actually called with — so [setPin]'s
+/// hard-coded [kPbkdf2DefaultIterations] request never slows this suite
+/// down, while `setPin`/`verifyPin` still stay internally consistent (both
+/// go through this same substitution, so a correct PIN still verifies and
+/// a wrong one still doesn't).
+const int _fastTestIterations = 10;
+
+Future<Uint8List> _fastPbkdf2Runner({
+  required List<int> password,
+  required List<int> salt,
+  required int iterations,
+  required int keyLengthBytes,
+}) async =>
+    pbkdf2HmacSha256(
+      password: password,
+      salt: salt,
+      iterations: _fastTestIterations,
+      keyLengthBytes: keyLengthBytes,
+    );
+
 void main() {
   late FakeSecureStorage backing;
   late DateTime now;
@@ -80,7 +116,11 @@ void main() {
   setUp(() {
     backing = FakeSecureStorage();
     now = DateTime(2026, 1, 1, 12);
-    store = PinCredentialStore(storage: backing, now: () => now);
+    store = PinCredentialStore(
+      storage: backing,
+      now: () => now,
+      derive: _fastPbkdf2Runner,
+    );
   });
 
   test('no PIN set initially', () async {
@@ -111,9 +151,11 @@ void main() {
   test('two PinCredentialStores over the same storage use different salts '
       'for the same PIN', () async {
     final backingA = FakeSecureStorage();
-    final storeA = PinCredentialStore(storage: backingA);
+    final storeA =
+        PinCredentialStore(storage: backingA, derive: _fastPbkdf2Runner);
     final backingB = FakeSecureStorage();
-    final storeB = PinCredentialStore(storage: backingB);
+    final storeB =
+        PinCredentialStore(storage: backingB, derive: _fastPbkdf2Runner);
     await storeA.setPin('1234');
     await storeB.setPin('1234');
     expect(
@@ -255,6 +297,53 @@ void main() {
         lockout.isLockedOutAt(lockout.lockedUntil!.add(const Duration(seconds: 1))),
         isFalse,
       );
+    });
+  });
+
+  group('production wiring (off-UI-isolate PBKDF2)', () {
+    test(
+        'defaultPbkdf2Runner (the real, isolate-hopping runner) returns the '
+        'same digest as calling pbkdf2HmacSha256 directly', () async {
+      final direct = pbkdf2HmacSha256(
+        password: [1, 2, 3],
+        salt: [4, 5, 6],
+        iterations: 1000,
+        keyLengthBytes: 32,
+      );
+
+      final viaIsolate = await defaultPbkdf2Runner(
+        password: [1, 2, 3],
+        salt: [4, 5, 6],
+        iterations: 1000,
+        keyLengthBytes: 32,
+      );
+
+      expect(viaIsolate, direct,
+          reason: 'crossing the isolate boundary must not change the '
+              'digest — only plain List<int>/int data crosses it');
+    });
+
+    test(
+        'a PinCredentialStore built with no explicit derive: uses the real '
+        'production runner and the fixed default iteration count, end to '
+        'end (setPin -> verifyPin, off the UI isolate)', () async {
+      final backing = FakeSecureStorage();
+      // No `derive:` override — this is the exact production default,
+      // including the real Isolate.run hop and the real 210,000-round
+      // count (kPbkdf2DefaultIterations), so this one test is deliberately
+      // slower than the rest of the suite.
+      final productionStore = PinCredentialStore(storage: backing);
+
+      await productionStore.setPin('4242');
+      final stored = backing.values['lunarlog.pin.credential']!;
+      expect(stored, contains('"iterations":$kPbkdf2DefaultIterations'),
+          reason: 'the production default must never be silently lowered');
+
+      final correct = await productionStore.verifyPin('4242');
+      final wrong = await productionStore.verifyPin('0000');
+
+      expect(correct.outcome, PinCheckOutcome.correct);
+      expect(wrong.outcome, PinCheckOutcome.incorrect);
     });
   });
 }

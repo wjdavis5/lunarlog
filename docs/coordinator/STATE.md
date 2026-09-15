@@ -1,4 +1,4 @@
-# Coordinator state
+# Coordinator state (claude-orch — ARCHIVED 2026-09-15T14:00Z; the live ZCode coordinator state moved to [zcode-orch/STATE.md](zcode-orch/STATE.md) after the owner flagged cross-engine id sharing. Rows below are the pre-migration record.)
 
 ## In progress
 | issue | branch | worktree | coder started | PR | status |

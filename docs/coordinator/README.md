@@ -21,6 +21,7 @@ else.
 | id | Engine | Branch prefix | Worktree root | State dir |
 |---|---|---|---|---|
 | `claude-orch` | Claude Code (interactive, owner-driven sessions) | `feat/<n>-<slug>` / `fix/<n>-<slug>` (pre-existing branches keep this until they merge — see `claude-orch`'s `PROCESS.md`) | `../lunarlog-wt/<n>-<slug>` (legacy; new worktrees go to `.worktrees/claude-orch/<n>-<slug>`) | [`STATE.md`](STATE.md)/[`log.md`](log.md)/[`briefs/`](briefs/) — flat, **not** `docs/coordinator/claude-orch/`; see "Why one coordinator's state isn't in its own directory" below |
+| `zcode-orch` | ZCode (interactive, owner-driven sessions) | `zcode-orch/<n>-<slug>` | `.worktrees/zcode-orch/<n>-<slug>` | [`zcode-orch/`](zcode-orch/) — see its PROCESS.md for the 2026-09-15 migration off the shared `claude-orch` id |
 | `opencode-<model>` | OpenCode — one coordinator per model; the id is `opencode-` + the model's family (`opencode/muse-spark-1.3-contributor-free` → `opencode-muse`, `deepseek/deepseek-v4-flash` → `opencode-deepseek`) | `opencode-<model>/<n>-<slug>` (`opencode-<model>/fix-<n>-<slug>` for bugs) | `.worktrees/opencode-<model>/<n>-<slug>` | `docs/coordinator/opencode-<model>/` |
 
 ### Why one coordinator's state isn't in its own directory
