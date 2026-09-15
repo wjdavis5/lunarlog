@@ -114,7 +114,29 @@ const Duration kTombstoneRetentionHorizon = Duration(hours: 48);
 /// behavior converges with the server without a local sweep job.
 const Duration kDayEntryMergeEventRetention = Duration(days: 30);
 
-class LunarLogStorage with LunarLogStorageQueries, LunarLogStorageLocalWrites, LunarLogStorageRemoteApply {
+/// Issue #42: how many rows one batched statement may cover — the ceiling
+/// for a page prefetch's `IN (...)` lookup and for a
+/// [LunarLogStorage.markPushedBatch] chunk. SQLite's default
+/// `SQLITE_MAX_VARIABLE_NUMBER` is 999 on the builds this app targets (a
+/// markPushed chunk binds *two* variables per row, so 400 rows = 800
+/// bindings), and staying well under it costs nothing meaningful per chunk.
+const int kSyncBatchChunkSize = 400;
+
+/// Issue #42: splits [rows] into runs of at most [size] entries, so a
+/// batched statement never binds more variables than SQLite allows.
+List<List<T>> chunkedBy<T>(List<T> rows, int size) {
+  if (rows.length <= size) return [rows];
+  return [
+    for (var i = 0; i < rows.length; i += size)
+      rows.sublist(i, i + size > rows.length ? rows.length : i + size),
+  ];
+}
+
+class LunarLogStorage
+    with
+        LunarLogStorageQueries,
+        LunarLogStorageLocalWrites,
+        LunarLogStorageRemoteApply {
   LunarLogStorage(this.db, {DateTime Function()? clock, UlidGenerator? ulid})
       : _clock = clock ?? (() => DateTime.now().toUtc()),
         _generator = ulid ?? _ulid;

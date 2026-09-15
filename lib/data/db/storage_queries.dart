@@ -545,6 +545,13 @@ mixin LunarLogStorageQueries {
     return query.get();
   }
 
+  /// Merge event by id or null (Issue #130) — the live fallback behind
+  /// `storage_remote_apply.dart`'s cached own-row lookup (Issue #42's
+  /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
+  Future<DayEntryMergeEventData?> _dayEntryMergeEventOrNull(String id) =>
+      (db.select(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
   /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
@@ -718,6 +725,13 @@ mixin LunarLogStorageQueries {
       (db.select(db.dayEntries)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
+  /// Issue #42: the per-row live fallback behind
+  /// `LunarLogStorageRemoteApply`'s batched guardians prefetch — the exact
+  /// select `_applyProfileGuardian` used to issue inline.
+  Future<ProfileGuardianData?> _guardianOrNull(String id) => (db.select(
+    db.profileGuardians,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<Profile?> _profileOrNull(String id) =>
       (db.select(db.profiles)..where((t) => t.id.equals(id))).getSingleOrNull();
 
@@ -752,6 +766,14 @@ mixin LunarLogStorageQueries {
       (db.select(db.cycleOverrides)
             ..where((t) => t.id.equals(id) & t.profileId.equals(profileId)))
           .getSingleOrNull();
+
+  /// Issue #42: the single-argument live fallback behind the batched
+  /// cycle-overrides prefetch — ids are client ULIDs, globally unique in
+  /// practice (the same id-alone-identifies-the-row precedent `markPushed`
+  /// uses), so the id alone reaches at most one row.
+  Future<CycleOverrideData?> _cycleOverrideOrNullById(String id) => (db.select(
+    db.cycleOverrides,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<CycleOverrideData> _cycleOverrideById(
       String id, String profileId) async {

@@ -7,6 +7,128 @@ part of 'storage.dart';
 // winner's timestamp.
 // Moved verbatim from `storage.dart` (#434).
 
+/// Issue #42: the per-page batched lookup cache behind
+/// [LunarLogStorageRemoteApply.applyRemotePage] /
+/// [LunarLogStorageRemoteApply.applyRemoteRows]. A pull page used to run
+/// three individual SELECTs per row inside its transaction — the row's own
+/// local copy by id, its referenced parent (profile / day entry) by id, and
+/// the same-date live peers — up to ~1500 statements per 500-row page.
+/// [LunarLogStorageRemoteApply._prefetchPageRows] now batch-reads all of
+/// them into this cache with chunked `IN (...)` selects before the row loop
+/// starts, and every write in the apply path stores what it wrote back into
+/// the cache (via SQL `RETURNING`, at zero extra statement cost) so later
+/// rows in the same page see exactly what a live SELECT would have seen.
+///
+/// The maps hold `null` values for ids that were prefetched and found
+/// absent — a *known-absent* row must not re-run a SELECT (new-row-heavy
+/// first-sync pages are the ones with the most misses) — and a key that is
+/// simply not present means "not prefetched", for which every read falls
+/// back to the live per-row SELECT (the pre-#42 behavior, always correct).
+/// [evictProfile] drops everything cached about one profile after a
+/// revocation/purge wipe rewrote it wholesale, for the same reason: fall
+/// back to live reads rather than reason about staleness.
+class _PageLookup {
+  /// Live same-date peers, keyed by [peerKey] (`profileId|localDate`),
+  /// ordered by id exactly like the live `_liveDayEntries` query the
+  /// same-date resolver used to issue per row.
+  final Map<String, List<DayEntry>> livePeers = {};
+
+  final Map<String, Profile?> profiles = {};
+  final Map<String, DayEntry?> dayEntries = {};
+  final Map<String, Observation?> observations = {};
+  final Map<String, ProfileModeData?> profileModes = {};
+  final Map<String, CycleOverrideData?> cycleOverrides = {};
+  final Map<String, CareNoteData?> careNotes = {};
+  final Map<String, VisitPrepItemData?> visitPrepItems = {};
+
+  /// Issue #130's tenth synced table, prefetched by id exactly like the
+  /// care tables (Issue #42's pattern applied when the table landed).
+  final Map<String, DayEntryMergeEventData?> dayEntryMergeEvents = {};
+
+  final Map<String, ProfileGuardianData?> guardians = {};
+
+  static String peerKey(String profileId, String localDate) =>
+      '$profileId|$localDate';
+
+  /// [LunarLogStorageRemoteApply._prefetchLivePeers]'s known-pair filler:
+  /// a (profile, date) with no live row must read as an empty list, not as
+  /// an unknown key (which would fall back to a live SELECT).
+  void noteLivePeerPair(String profileId, String localDate) {
+    livePeers.putIfAbsent(peerKey(profileId, localDate), () => const []);
+  }
+
+  /// One row collected by the live-peer prefetch.
+  void addLivePeer(DayEntry row) {
+    final key = peerKey(row.profileId, row.localDate);
+    final list = livePeers.putIfAbsent(key, () => []);
+    livePeers[key] = [...list, row];
+  }
+
+  /// The write-through for every day-entry write in the apply path: the
+  /// row's own by-id entry, plus its slot in the (profile, date) live-peer
+  /// list (replaced in id order when live, removed when tombstoned) so a
+  /// later row in the same page resolves against what this write left.
+  void storeDayEntry(DayEntry row) {
+    dayEntries[row.id] = row;
+    final key = peerKey(row.profileId, row.localDate);
+    if (!livePeers.containsKey(key)) return;
+    final live = livePeers[key]!;
+    final next = row.deletedAt == null
+        ? _replaceById(live, row)
+        : _removeById(live, row.id);
+    livePeers[key] = next;
+  }
+
+  /// Replaces [row]'s entry (or inserts it in id order — the lists mirror
+  /// the live query's `ORDER BY id`, which the resolver's outcome can
+  /// depend on when several peers compete).
+  static List<DayEntry> _replaceById(List<DayEntry> rows, DayEntry row) {
+    final next = <DayEntry>[];
+    var inserted = false;
+    for (final existing in rows) {
+      if (existing.id == row.id) {
+        next.add(row);
+        inserted = true;
+      } else {
+        next.add(existing);
+      }
+    }
+    if (!inserted) {
+      var i = 0;
+      while (i < next.length && next[i].id.compareTo(row.id) < 0) {
+        i++;
+      }
+      next.insert(i, row);
+    }
+    return next;
+  }
+
+  static List<DayEntry> _removeById(List<DayEntry> rows, String id) => [
+    for (final row in rows)
+      if (row.id != id) row,
+  ];
+
+  /// The revocation/purge wipe
+  /// ([LunarLogStorageRemoteApply._tombstoneRevokedSharedProfile]) rewrites
+  /// every row of [profileId] across seven tables with bulk UPDATEs whose
+  /// affected rows this cache cannot enumerate. Rather than reason about
+  /// which cached copies stay decision-equivalent, drop everything cached
+  /// about the profile: every later read in the same page falls back to a
+  /// live SELECT, which is always correct.
+  void evictProfile(String profileId) {
+    final prefix = '$profileId|';
+    livePeers.removeWhere((key, _) => key.startsWith(prefix));
+    dayEntries.removeWhere((_, row) => row?.profileId == profileId);
+    observations.removeWhere((_, row) => row?.profileId == profileId);
+    profileModes.remove(profileId);
+    cycleOverrides.removeWhere((_, row) => row?.profileId == profileId);
+    careNotes.removeWhere((_, row) => row?.profileId == profileId);
+    visitPrepItems.removeWhere((_, row) => row?.profileId == profileId);
+    dayEntryMergeEvents.removeWhere((_, row) => row?.profileId == profileId);
+    profiles.remove(profileId);
+  }
+}
+
 /// Remote-apply members mixed into [LunarLogStorage].
 mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocalWrites {
   // ---------------------------------------------------- sync: remote applies
@@ -80,7 +202,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
   /// skip them (KTD2). A throwing row rolls the whole page back, cursor
-  /// included.
+  /// included. Issue #42: the per-row lookups run against a page-wide
+  /// batched prefetch (see [_PageLookup]) built inside the same
+  /// transaction.
   Future<void> applyRemotePage({
     required SyncTable table,
     required List<RemoteRow> rows,
@@ -93,33 +217,240 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
     }
     await db.transaction(() async {
+      final cache = await _prefetchPageRows(rows);
       for (final row in rows) {
-        await _applyPageRow(row);
+        await _applyPageRow(row, cache);
       }
       await _updateTableCursor(table, newCursor);
     });
   }
 
-  Future<void> _applyPageRow(RemoteRow row) =>
-      _pageRowAppliers[row.runtimeType]!(row);
+  Future<void> _applyPageRow(RemoteRow row, _PageLookup cache) =>
+      _pageRowAppliers[row.runtimeType]!(row, cache);
 
   /// Per-runtime-type dispatch for [_applyPageRow] — a map rather than an
   /// exhaustive type switch since Issue #130's tenth row type: the switch
   /// sat permanently over the quality gate's per-method complexity
-  /// ceiling, while a lookup stays flat as row types are added (the same
-  /// growth rationale as row_codec.dart's `_syncTableNames`).
-  late final Map<Type, Future<void> Function(RemoteRow)> _pageRowAppliers = {
-    RemoteProfileRow: (r) => _applyProfile(r as RemoteProfileRow, onlyExisting: false),
-    RemoteDayEntryRow: (r) => _applyDayEntry(r as RemoteDayEntryRow, onlyExisting: false),
-    RemoteProfileGuardianRow: (r) => _applyProfileGuardian(r as RemoteProfileGuardianRow),
-    RemoteObservationRow: (r) => _applyObservation(r as RemoteObservationRow, onlyExisting: false),
-    RemoteProfileModeRow: (r) => _applyProfileMode(r as RemoteProfileModeRow, onlyExisting: false),
-    RemoteCycleOverrideRow: (r) => _applyCycleOverride(r as RemoteCycleOverrideRow, onlyExisting: false),
-    RemoteCareNoteRow: (r) => _applyCareNote(r as RemoteCareNoteRow, onlyExisting: false),
-    RemoteVisitPrepItemRow: (r) => _applyVisitPrepItem(r as RemoteVisitPrepItemRow, onlyExisting: false),
-    RemoteDayEntryMergeEventRow: (r) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false),
-    RemoteDeletedProfileRow: (r) => _applyDeletedProfile(r as RemoteDeletedProfileRow),
+  /// ceiling (ten pattern cases score complexity 11, and CRAP's `+ comp`
+  /// term alone exceeds the 10.0 threshold at any coverage), while a
+  /// lookup stays flat as row types are added (the same growth rationale
+  /// as row_codec.dart's `_syncTableNames`). Issue #42: every closure
+  /// threads the page-wide [_PageLookup] into its applier exactly as the
+  /// pre-#130 switch did, so the prefetch is never dropped on dispatch.
+  late final Map<Type, Future<void> Function(RemoteRow, _PageLookup)>
+      _pageRowAppliers = {
+    RemoteProfileRow: (r, c) => _applyProfile(r as RemoteProfileRow, onlyExisting: false, cache: c),
+    RemoteDayEntryRow: (r, c) => _applyDayEntry(r as RemoteDayEntryRow, onlyExisting: false, cache: c),
+    RemoteProfileGuardianRow: (r, c) => _applyProfileGuardian(r as RemoteProfileGuardianRow, cache: c),
+    RemoteObservationRow: (r, c) => _applyObservation(r as RemoteObservationRow, onlyExisting: false, cache: c),
+    RemoteProfileModeRow: (r, c) => _applyProfileMode(r as RemoteProfileModeRow, onlyExisting: false, cache: c),
+    RemoteCycleOverrideRow: (r, c) => _applyCycleOverride(r as RemoteCycleOverrideRow, onlyExisting: false, cache: c),
+    RemoteCareNoteRow: (r, c) => _applyCareNote(r as RemoteCareNoteRow, onlyExisting: false, cache: c),
+    RemoteVisitPrepItemRow: (r, c) => _applyVisitPrepItem(r as RemoteVisitPrepItemRow, onlyExisting: false, cache: c),
+    RemoteDayEntryMergeEventRow: (r, c) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false, cache: c),
+    RemoteDeletedProfileRow: (r, c) => _applyDeletedProfile(r as RemoteDeletedProfileRow, cache: c),
   };
+
+  /// Issue #42: builds the page-wide [_PageLookup] — one chunked
+  /// `IN (...)` select per referenced table, plus one live-peers fetch for
+  /// the page's live (profile, date) pairs — replacing the three per-row
+  /// SELECTs the row loop used to issue (own copy, referenced parent,
+  /// same-date peers; up to ~1500 statements per 500-row page). Runs inside
+  /// the caller's page transaction; reads only.
+  Future<_PageLookup> _prefetchPageRows(List<RemoteRow> rows) async {
+    final cache = _PageLookup();
+    final profileIds = <String>{
+      for (final row in rows.whereType<RemoteProfileRow>()) row.id,
+    };
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteDayEntryRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteProfileGuardianRow>())
+        row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteObservationRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteProfileModeRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteCycleOverrideRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteCareNoteRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteDayEntryMergeEventRow>())
+        row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteDeletedProfileRow>())
+        row.profileId,
+    ]);
+    final dayEntryIds = <String>{
+      for (final row in rows.whereType<RemoteDayEntryRow>()) row.id,
+    };
+    dayEntryIds.addAll([
+      for (final row in rows.whereType<RemoteObservationRow>()) row.dayEntryId,
+    ]);
+    await _prefetchByIds(
+      cache.profiles,
+      profileIds,
+      readChunk: (ids) =>
+          (db.select(db.profiles)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.dayEntries,
+      dayEntryIds,
+      readChunk: (ids) =>
+          (db.select(db.dayEntries)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.observations,
+      {for (final row in rows.whereType<RemoteObservationRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.observations)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.profileModes,
+      {for (final row in rows.whereType<RemoteProfileModeRow>()) row.profileId},
+      readChunk: (ids) => (db.select(
+        db.profileModes,
+      )..where((t) => t.profileId.isIn(ids))).get(),
+      idOf: (row) => row.profileId,
+    );
+    await _prefetchByIds(
+      cache.cycleOverrides,
+      {for (final row in rows.whereType<RemoteCycleOverrideRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.cycleOverrides)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.careNotes,
+      {for (final row in rows.whereType<RemoteCareNoteRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.careNotes)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.visitPrepItems,
+      {for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.visitPrepItems)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.dayEntryMergeEvents,
+      {for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) row.id},
+      readChunk: (ids) => (db.select(db.dayEntryMergeEvents)
+            ..where((t) => t.id.isIn(ids)))
+          .get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.guardians,
+      {for (final row in rows.whereType<RemoteProfileGuardianRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.profileGuardians)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchLivePeers(cache, rows);
+    return cache;
+  }
+
+  /// [_prefetchPageRows]'s per-table filler: chunked `IN (...)` selects,
+  /// every prefetched id ending up a map key (found rows, or `null` for
+  /// known-absent).
+  Future<void> _prefetchByIds<T extends DataClass>(
+    Map<String, T?> into,
+    Set<String> ids, {
+    required Future<List<T>> Function(List<String> ids) readChunk,
+    required String Function(T row) idOf,
+  }) async {
+    if (ids.isEmpty) return;
+    for (final chunk in chunkedBy(ids.toList(), kSyncBatchChunkSize)) {
+      for (final row in await readChunk(chunk)) {
+        into[idOf(row)] = row;
+      }
+    }
+    for (final id in ids) {
+      into.putIfAbsent(id, () => null);
+    }
+  }
+
+  /// [_prefetchPageRows]'s same-date peer fetch: one chunked select over
+  /// the page's live rows' profiles (all live entries of those profiles,
+  /// id-ordered like the live query it replaces), kept only for the
+  /// (profile, date) pairs the page actually resolves.
+  Future<void> _prefetchLivePeers(
+    _PageLookup cache,
+    List<RemoteRow> rows,
+  ) async {
+    final datesByProfile = <String, Set<String>>{};
+    for (final row in rows.whereType<RemoteDayEntryRow>()) {
+      if (row.deletedAt == null) {
+        datesByProfile.putIfAbsent(row.profileId, () => {}).add(row.localDate);
+      }
+    }
+    if (datesByProfile.isEmpty) return;
+    for (final chunk in chunkedBy(
+      datesByProfile.keys.toList(),
+      kSyncBatchChunkSize,
+    )) {
+      final live =
+          await (db.select(db.dayEntries)
+                ..where((t) => t.profileId.isIn(chunk) & t.deletedAt.isNull())
+                ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+              .get();
+      for (final row in live) {
+        if (datesByProfile[row.profileId]?.contains(row.localDate) ?? false) {
+          cache.addLivePeer(row);
+        }
+      }
+    }
+    for (final entry in datesByProfile.entries) {
+      for (final date in entry.value) {
+        cache.noteLivePeerPair(entry.key, date);
+      }
+    }
+  }
+
+  /// Issue #42: the cached read every per-row by-id lookup in the apply
+  /// path funnels through — the prefetched value when the page prefetched
+  /// [id] (found *or* known-absent), otherwise the live per-row SELECT the
+  /// pre-#42 code always issued (never wrong, just unbatched).
+  Future<T?> _lookupCached<T extends DataClass>(
+    _PageLookup? cache,
+    Map<String, T?> Function(_PageLookup) mapOf,
+    String id,
+    Future<T?> Function(String) live,
+  ) async {
+    final known = cache == null ? null : mapOf(cache);
+    if (known == null || !known.containsKey(id)) return live(id);
+    return known[id];
+  }
+
+  /// Issue #42: the cached same-date peer read — the prefetched,
+  /// write-through-maintained list when the page prefetched the pair,
+  /// otherwise the live `_liveDayEntries` query.
+  Future<List<DayEntry>> _livePeersCached(
+    _PageLookup? cache,
+    String profileId,
+    String localDate,
+  ) async {
+    if (cache == null) return _liveDayEntries(profileId, localDate);
+    return cache.livePeers[_PageLookup.peerKey(profileId, localDate)] ??
+        _liveDayEntries(profileId, localDate);
+  }
 
   Future<void> _updateTableCursor(SyncTable table, int newCursor) async {
     await _ensureSyncStateRow();
@@ -153,33 +484,68 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// #188 tables (both reference only a profile, which is already applied
   /// by the time their turns come). A throwing row rolls the page back —
   /// callers that need per-row independence fall back to the single-row
-  /// applies.
+  /// applies. Issue #42: the per-row lookups run against a page-wide
+  /// batched prefetch (see [_PageLookup]) built inside the same
+  /// transaction.
   Future<void> applyRemoteRows(List<RemoteRow> rows) async {
     await db.transaction(() async {
+      final cache = await _prefetchPageRows(rows);
       await _applyEach<RemoteProfileRow>(
-          rows, (row) => _applyProfile(row, onlyExisting: false));
-      await _applyEach<RemoteProfileGuardianRow>(rows, _applyProfileGuardian);
+        rows,
+        cache,
+        (row, c) => _applyProfile(row, onlyExisting: false, cache: c),
+      );
+      await _applyEach<RemoteProfileGuardianRow>(
+        rows,
+        cache,
+        (row, c) => _applyProfileGuardian(row, cache: c),
+      );
       await _applyEach<RemoteDayEntryRow>(
-          rows, (row) => _applyDayEntry(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyDayEntry(row, onlyExisting: false, cache: c),
+      );
       await _applyEach<RemoteObservationRow>(
-          rows, (row) => _applyObservation(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyObservation(row, onlyExisting: false, cache: c),
+      );
       await _applyEach<RemoteProfileModeRow>(
-          rows, (row) => _applyProfileMode(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyProfileMode(row, onlyExisting: false, cache: c),
+      );
       await _applyEach<RemoteCycleOverrideRow>(
-          rows, (row) => _applyCycleOverride(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyCycleOverride(row, onlyExisting: false, cache: c),
+      );
       await _applyEach<RemoteCareNoteRow>(
-          rows, (row) => _applyCareNote(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyCareNote(row, onlyExisting: false, cache: c),
+      );
       await _applyEach<RemoteVisitPrepItemRow>(
-          rows, (row) => _applyVisitPrepItem(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyVisitPrepItem(row, onlyExisting: false, cache: c),
+      );
       // Issue #130: merge events follow the care tables (a row references
       // only a profile, already applied by the time its turn comes).
       await _applyEach<RemoteDayEntryMergeEventRow>(
-          rows, (row) => _applyMergeEvent(row, onlyExisting: false));
+        rows,
+        cache,
+        (row, c) => _applyMergeEvent(row, onlyExisting: false, cache: c),
+      );
       // Issue #522: last, so a deletion signal for a profile that also had
       // ordinary content rows in this same heterogeneous batch wins over
       // them — the wipe is the final word, never undone by a row applied
       // earlier in this loop.
-      await _applyEach<RemoteDeletedProfileRow>(rows, _applyDeletedProfile);
+      await _applyEach<RemoteDeletedProfileRow>(
+        rows,
+        cache,
+        (row, c) => _applyDeletedProfile(row, cache: c),
+      );
     });
   }
 
@@ -190,10 +556,11 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// This one loop is exercised once per type instead.
   Future<void> _applyEach<T extends RemoteRow>(
     List<RemoteRow> rows,
-    Future<void> Function(T row) apply,
+    _PageLookup cache,
+    Future<void> Function(T row, _PageLookup cache) apply,
   ) async {
     for (final row in rows.whereType<T>()) {
-      await apply(row);
+      await apply(row, cache);
     }
   }
 
@@ -264,12 +631,12 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     required List<RemoteRow> resolved,
   }) async {
     await db.transaction(() async {
-      for (final item in accepted) {
-        await markPushed(
-          table: item.table,
-          id: item.id,
-          localRevAtPush: item.localRevAtPush,
-        );
+      // Issue #42: the per-row `markPushed` loop this replaced issued one
+      // UPDATE per accepted row (up to PushBatch.maxRows per table per
+      // batch); [markPushedBatch] folds the same guarded UPDATEs into one
+      // statement per chunk, with the identical `local_rev` guard.
+      if (accepted.isNotEmpty) {
+        await markPushedBatch(accepted);
       }
       if (resolved.isNotEmpty) {
         await applyResolved(resolved);
@@ -279,9 +646,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
 
   // ---------------------------------------------------------------- internal
 
-  Future<bool> _applyProfile(RemoteProfileRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _profileOrNull(remote.id);
+  Future<bool> _applyProfile(
+    RemoteProfileRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.profiles,
+      remote.id,
+      _profileOrNull,
+    );
     if (local == null && onlyExisting) return false;
     // LLA-041: a row `_tombstoneRevokedSharedProfile` wiped for a guardian
     // revocation carries `accessRevokedAt` non-null and, deliberately, an
@@ -305,17 +680,57 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     if (local == null) {
-      await db.into(db.profiles).insert(ProfilesCompanion.insert(
-            id: remote.id,
-            displayName: tombstone ? '' : remote.displayName,
-            isMinor: remote.isMinor,
+      // Issue #42: insertReturning (SQL RETURNING, no extra statement)
+      // yields the stored row for the page cache — a day entry later in
+      // the same heterogeneous page reads its profile through the cache
+      // and must see this insert.
+      final written = await db
+          .into(db.profiles)
+          .insertReturning(
+            ProfilesCompanion.insert(
+              id: remote.id,
+              displayName: tombstone ? '' : remote.displayName,
+              isMinor: remote.isMinor,
+              sortOrder: Value(remote.sortOrder),
+              archivedAt: Value(remote.archivedAt?.toUtc()),
+              createdAt: remote.createdAt.toUtc(),
+              updatedAt: updatedAt,
+              deletedAt: Value(deletedAt),
+              dirty: const Value(false),
+              localRev: const Value(0),
+              mode: Value(remote.mode),
+              bbtUnit: Value(remote.bbtUnit),
+              weightUnit: Value(remote.weightUnit),
+              trackingPreferences: Value(remote.trackingPreferences),
+              birthYear: Value(remote.birthYear),
+              relationship: Value(remote.relationship),
+              transferredAt: Value(remote.transferredAt?.toUtc()),
+              transferredToUserId: Value(remote.transferredToUserId),
+              lastPeriodStart: Value(remote.lastPeriodStart),
+              typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
+              typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
+              // Issue #637, LLA-039: a fresh local row from a genuine remote
+              // delivery has, by definition, just been confirmed against
+              // the server's real bbt_unit/weight_unit.
+              unitsUnconfirmed: const Value(false),
+            ),
+          );
+      cache?.profiles[written.id] = written;
+      return true;
+    }
+    final written =
+        await (db.update(
+          db.profiles,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          ProfilesCompanion(
+            displayName: Value(tombstone ? '' : remote.displayName),
+            isMinor: Value(remote.isMinor),
             sortOrder: Value(remote.sortOrder),
             archivedAt: Value(remote.archivedAt?.toUtc()),
-            createdAt: remote.createdAt.toUtc(),
-            updatedAt: updatedAt,
+            createdAt: Value(remote.createdAt.toUtc()),
+            updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
-            localRev: const Value(0),
             mode: Value(remote.mode),
             bbtUnit: Value(remote.bbtUnit),
             weightUnit: Value(remote.weightUnit),
@@ -327,50 +742,26 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             lastPeriodStart: Value(remote.lastPeriodStart),
             typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
             typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
-            // Issue #637, LLA-039: a fresh local row from a genuine remote
-            // delivery has, by definition, just been confirmed against the
-            // server's real bbt_unit/weight_unit.
+            // LLA-041: any remote delivery reaching this write — including the
+            // bypass path above — is a genuine server value, so the eviction
+            // marker (if any) is cleared and ordinary per-id LWW resumes for
+            // whatever comes next.
+            accessRevokedAt: const Value(null),
+            // Issue #637, LLA-039: this write is a genuine remote delivery
+            // (the per-id rule already said remote beats — or bypasses — the
+            // local copy), so bbt_unit/weight_unit above are the server's real
+            // values now, confirmed.
             unitsUnconfirmed: const Value(false),
-          ));
-      return true;
-    }
-    await (db.update(db.profiles)..where((t) => t.id.equals(remote.id))).write(
-      ProfilesCompanion(
-        displayName: Value(tombstone ? '' : remote.displayName),
-        isMinor: Value(remote.isMinor),
-        sortOrder: Value(remote.sortOrder),
-        archivedAt: Value(remote.archivedAt?.toUtc()),
-        createdAt: Value(remote.createdAt.toUtc()),
-        updatedAt: Value(updatedAt),
-        deletedAt: Value(deletedAt),
-        dirty: const Value(false),
-        mode: Value(remote.mode),
-        bbtUnit: Value(remote.bbtUnit),
-        weightUnit: Value(remote.weightUnit),
-        trackingPreferences: Value(remote.trackingPreferences),
-        birthYear: Value(remote.birthYear),
-        relationship: Value(remote.relationship),
-        transferredAt: Value(remote.transferredAt?.toUtc()),
-        transferredToUserId: Value(remote.transferredToUserId),
-        lastPeriodStart: Value(remote.lastPeriodStart),
-        typicalCycleLengthDays: Value(remote.typicalCycleLengthDays),
-        typicalPeriodLengthDays: Value(remote.typicalPeriodLengthDays),
-        // LLA-041: any remote delivery reaching this write — including the
-        // bypass path above — is a genuine server value, so the eviction
-        // marker (if any) is cleared and ordinary per-id LWW resumes for
-        // whatever comes next.
-        accessRevokedAt: const Value(null),
-        // Issue #637, LLA-039: this write is a genuine remote delivery
-        // (the per-id rule already said remote beats — or bypasses — the
-        // local copy), so bbt_unit/weight_unit above are the server's real
-        // values now, confirmed.
-        unitsUnconfirmed: const Value(false),
-      ),
-    );
+          ),
+        );
+    cache?.profiles[written.first.id] = written.first;
     return true;
   }
 
-  Future<bool> _applyProfileGuardian(RemoteProfileGuardianRow remote) async {
+  Future<bool> _applyProfileGuardian(
+    RemoteProfileGuardianRow remote, {
+    _PageLookup? cache,
+  }) async {
     // Referential integrity up front, mirroring the day-entry rule: a
     // guardian row whose profile is not held locally yet (invite accepted
     // on another device, profile page still in flight) is a typed,
@@ -385,15 +776,24 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     // one transaction per page with no persisted guardian cursor - throwing
     // here would roll the whole page back and re-fail identically forever
     // (finding #8). Skipped instead: nothing to apply, nothing lost.
-    if (await _profileOrNull(remote.profileId) == null) {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
       if (remote.status != 'accepted') return false;
       throw RetryableSyncApplyError(
           'profile_guardian ${remote.id} references a profile not held locally');
     }
 
-    final existing = await (db.select(db.profileGuardians)
-          ..where((t) => t.id.equals(remote.id)))
-        .getSingleOrNull();
+    final existing = await _lookupCached(
+      cache,
+      (c) => c.guardians,
+      remote.id,
+      _guardianOrNull,
+    );
 
     // LLA-035: ordered by the server-owned `server_version`, not
     // `updated_at` — this table's `updated_at` is directly client-writable
@@ -416,10 +816,19 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     if (boundUserId != null &&
         remote.userId == boundUserId &&
         remote.status != 'accepted') {
-      await _tombstoneRevokedSharedProfile(remote.profileId, remote.updatedAt);
+      await _tombstoneRevokedSharedProfile(
+        remote.profileId,
+        remote.updatedAt,
+        cache: cache,
+      );
     }
 
-    await db.into(db.profileGuardians).insertOnConflictUpdate(
+    // Issue #42: insertReturning + DoUpdate is exactly insertOnConflictUpdate
+    // (see drift's own doc on the latter) while also yielding the written
+    // row for the page cache at no extra statement cost.
+    final written = await db
+        .into(db.profileGuardians)
+        .insertReturning(
           ProfileGuardiansCompanion.insert(
             id: remote.id,
             profileId: remote.profileId,
@@ -432,7 +841,22 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             updatedAt: remote.updatedAt.toUtc(),
             serverVersion: Value(remote.serverVersion),
           ),
+          onConflict: DoUpdate(
+            (_) => ProfileGuardiansCompanion.insert(
+              id: remote.id,
+              profileId: remote.profileId,
+              userId: remote.userId,
+              role: remote.role,
+              status: Value(remote.status),
+              displayName: Value(remote.displayName),
+              invitedBy: Value(remote.invitedBy),
+              createdAt: remote.createdAt.toUtc(),
+              updatedAt: remote.updatedAt.toUtc(),
+              serverVersion: Value(remote.serverVersion),
+            ),
+          ),
         );
+    cache?.guardians[written.id] = written;
     return true;
   }
 
@@ -495,7 +919,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// unconditionally rather than losing to a stale local timestamp that
   /// was never a legitimate LWW competitor in the first place.
   Future<void> _tombstoneRevokedSharedProfile(
-      String profileId, DateTime revokedAt) async {
+    String profileId,
+    DateTime revokedAt, {
+    _PageLookup? cache,
+  }) async {
+    // Issue #42: the bulk UPDATEs below rewrite every row of [profileId]
+    // across seven tables — rows a page-wide lookup cache may hold copies
+    // of. Evicting the profile from the cache (rather than reasoning about
+    // which stale copies stay decision-equivalent) makes every later read
+    // in the same page fall back to a live SELECT, which is always
+    // correct.
+    cache?.evictProfile(profileId);
     final stamp = revokedAt.toUtc();
     await (db.update(db.dayEntries)
           ..where((t) =>
@@ -600,8 +1034,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// "leave `updated_at` alone so a later re-share can win normally" concern
   /// here — a hard-purged profile's server row is gone permanently, so
   /// nothing will ever compete with this tombstone under KTD5's per-id rule.
-  Future<void> _applyDeletedProfile(RemoteDeletedProfileRow remote) =>
-      _tombstoneRevokedSharedProfile(remote.profileId, remote.deletedAt);
+  Future<void> _applyDeletedProfile(
+    RemoteDeletedProfileRow remote, {
+    _PageLookup? cache,
+  }) => _tombstoneRevokedSharedProfile(
+    remote.profileId,
+    remote.deletedAt,
+    cache: cache,
+  );
 
   /// Issue #472: the local half of `ProfilesRepository.applyServerPurge` —
   /// applies the SAME tombstone wipe [_applyDeletedProfile] applies for a
@@ -617,80 +1057,108 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   Future<void> applyLocalProfilePurge(String profileId) =>
       _tombstoneRevokedSharedProfile(profileId, _now());
 
-  Future<bool> _applyDayEntry(RemoteDayEntryRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _dayEntryOrNull(remote.id);
+  Future<bool> _applyDayEntry(
+    RemoteDayEntryRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.dayEntries,
+      remote.id,
+      _dayEntryOrNull,
+    );
     if (_shouldSkipDayEntryApply(
         local: local, onlyExisting: onlyExisting, remote: remote)) {
       return false;
     }
     // Referential integrity is checked up front so the failure is a typed,
     // retryable one rather than a raw constraint exception from sqlite.
-    await _ensureDayEntryProfileExists(remote);
-    await _recordResolvedOverwriteIfAny(remote,
-        local: local, onlyExisting: onlyExisting);
+    await _ensureDayEntryProfileExists(remote, cache: cache);
+    await _recordResolvedOverwriteIfAny(
+      remote,
+      local: local,
+      onlyExisting: onlyExisting,
+    );
 
     var updatedAt = remote.updatedAt.toUtc();
     var deletedAt = remote.deletedAt?.toUtc();
     var tags = remote.tags;
     var dirty = false;
     if (deletedAt == null) {
-      (updatedAt, deletedAt, tags, dirty) =
-          await _resolveSameDateConflicts(remote, updatedAt);
+      (updatedAt, deletedAt, tags, dirty) = await _resolveSameDateConflicts(
+        remote,
+        updatedAt,
+        cache: cache,
+      );
     }
     final tombstone = deletedAt != null;
     if (local == null) {
-      await db.into(db.dayEntries).insert(DayEntriesCompanion.insert(
-            id: remote.id,
-            profileId: remote.profileId,
-            localDate: remote.localDate,
-            tz: remote.tz,
-            flow: _dayEntryFlow(tombstone, remote),
+      final written = await db
+          .into(db.dayEntries)
+          .insertReturning(
+            DayEntriesCompanion.insert(
+              id: remote.id,
+              profileId: remote.profileId,
+              localDate: remote.localDate,
+              tz: remote.tz,
+              flow: _dayEntryFlow(tombstone, remote),
+              tags: Value(_dayEntryTags(tombstone, tags)),
+              note: Value(_dayEntryNote(tombstone, remote)),
+              pms: Value(_dayEntryPms(tombstone, remote)),
+              updatedAt: updatedAt,
+              deletedAt: Value(deletedAt),
+              dirty: Value(dirty),
+              localRev: Value(dirty ? 1 : 0),
+              loggedByUserId: Value(remote.loggedByUserId),
+              lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+              // Issue #159: never cleared for a tombstone (unlike
+              // flow/tags/note above) -- provenance survives a delete.
+              source: Value(remote.source),
+              sourceId: Value(remote.sourceId),
+              importId: Value(remote.importId),
+              // Issue #637, LLA-039: a fresh local row from a genuine remote
+              // delivery has, by definition, just been confirmed against
+              // the server's real pms.
+              pmsUnconfirmed: const Value(false),
+            ),
+          );
+      cache?.storeDayEntry(written);
+      return true;
+    }
+    final written =
+        await (db.update(
+          db.dayEntries,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          DayEntriesCompanion(
+            profileId: Value(remote.profileId),
+            localDate: Value(remote.localDate),
+            tz: Value(remote.tz),
+            flow: Value(_dayEntryFlow(tombstone, remote)),
             tags: Value(_dayEntryTags(tombstone, tags)),
             note: Value(_dayEntryNote(tombstone, remote)),
             pms: Value(_dayEntryPms(tombstone, remote)),
-            updatedAt: updatedAt,
+            updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
             dirty: Value(dirty),
-            localRev: Value(dirty ? 1 : 0),
-            loggedByUserId: Value(remote.loggedByUserId),
-            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
-            // Issue #159: never cleared for a tombstone (unlike
-            // flow/tags/note above) -- provenance survives a delete.
+            localRev: dirty ? Value(local.localRev + 1) : const Value.absent(),
+            loggedByUserId: Value(
+              remote.loggedByUserId ?? local.loggedByUserId,
+            ),
+            lastModifiedByUserId: Value(
+              remote.lastModifiedByUserId ?? local.lastModifiedByUserId,
+            ),
             source: Value(remote.source),
             sourceId: Value(remote.sourceId),
             importId: Value(remote.importId),
-            // Issue #637, LLA-039: a fresh local row from a genuine remote
-            // delivery has, by definition, just been confirmed against the
-            // server's real pms.
+            // Issue #637, LLA-039: this write is a genuine remote delivery (the
+            // per-id rule already said remote beats the local copy, or this is
+            // the same-date resolver's outcome), so `pms` above is the server's
+            // real value now, confirmed.
             pmsUnconfirmed: const Value(false),
-          ));
-      return true;
-    }
-    await (db.update(db.dayEntries)..where((t) => t.id.equals(remote.id)))
-        .write(DayEntriesCompanion(
-      profileId: Value(remote.profileId),
-      localDate: Value(remote.localDate),
-      tz: Value(remote.tz),
-      flow: Value(_dayEntryFlow(tombstone, remote)),
-      tags: Value(_dayEntryTags(tombstone, tags)),
-      note: Value(_dayEntryNote(tombstone, remote)),
-      pms: Value(_dayEntryPms(tombstone, remote)),
-      updatedAt: Value(updatedAt),
-      deletedAt: Value(deletedAt),
-      dirty: Value(dirty),
-      localRev: dirty ? Value(local.localRev + 1) : const Value.absent(),
-      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
-      lastModifiedByUserId: Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
-      source: Value(remote.source),
-      sourceId: Value(remote.sourceId),
-      importId: Value(remote.importId),
-      // Issue #637, LLA-039: this write is a genuine remote delivery (the
-      // per-id rule already said remote beats the local copy, or this is
-      // the same-date resolver's outcome), so `pms` above is the server's
-      // real value now, confirmed.
-      pmsUnconfirmed: const Value(false),
-    ));
+          ),
+        );
+    cache?.storeDayEntry(written.first);
     return true;
   }
 
@@ -746,10 +1214,40 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// Throws [RetryableSyncApplyError] when [remote]'s profile is not held
   /// locally yet, checked up front so the failure is a typed, retryable one
   /// rather than a raw constraint exception from sqlite.
-  Future<void> _ensureDayEntryProfileExists(RemoteDayEntryRow remote) async {
-    if (await _profileOrNull(remote.profileId) == null) {
+  Future<void> _ensureDayEntryProfileExists(
+    RemoteDayEntryRow remote, {
+    _PageLookup? cache,
+  }) async {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
       throw RetryableSyncApplyError(
           'day entry ${remote.id} references a profile not held locally');
+    }
+  }
+
+  /// [_applyObservation]'s referential check, split out for the same CRAP-
+  /// gate reason as [_ensureDayEntryProfileExists] (issue #42 review):
+  /// throws [RetryableSyncApplyError] when the observation's day entry is
+  /// not held locally yet.
+  Future<void> _ensureObservationDayEntryExists(
+    RemoteObservationRow remote, {
+    _PageLookup? cache,
+  }) async {
+    if (await _lookupCached(
+          cache,
+          (c) => c.dayEntries,
+          remote.dayEntryId,
+          _dayEntryOrNull,
+        ) ==
+        null) {
+      throw RetryableSyncApplyError(
+        'observation ${remote.id} references a day entry not held locally',
+      );
     }
   }
 
@@ -829,9 +1327,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// (unlike [_applyDayEntry]): multiple live rows per (profile, date,
   /// category) are the entire point of this child table, so no local
   /// uniqueness constraint ever competes for one to win against.
-  Future<bool> _applyObservation(RemoteObservationRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _observationOrNull(remote.id);
+  Future<bool> _applyObservation(
+    RemoteObservationRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.observations,
+      remote.id,
+      _observationOrNull,
+    );
     if (local == null && onlyExisting) return false;
     if (local != null &&
         !remoteWinsById(
@@ -841,22 +1347,60 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     }
     // Referential integrity up front, mirroring [_ensureDayEntryProfileExists]:
     // a typed, retryable failure rather than a raw constraint exception.
-    if (await _dayEntryOrNull(remote.dayEntryId) == null) {
-      throw RetryableSyncApplyError(
-          'observation ${remote.id} references a day entry not held locally');
-    }
+    await _ensureObservationDayEntryExists(remote, cache: cache);
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     final payload = _observationPayload(remote, tombstone);
     if (local == null) {
-      await db.into(db.observations).insert(ObservationsCompanion.insert(
-            id: remote.id,
-            dayEntryId: remote.dayEntryId,
-            profileId: remote.profileId,
-            localDate: remote.localDate,
+      final written = await db
+          .into(db.observations)
+          .insertReturning(
+            ObservationsCompanion.insert(
+              id: remote.id,
+              dayEntryId: remote.dayEntryId,
+              profileId: remote.profileId,
+              localDate: remote.localDate,
+              observedAt: Value(payload.observedAt),
+              tz: remote.tz,
+              category: Value(payload.category),
+              code: Value(payload.code),
+              valueNum: Value(payload.valueNum),
+              valueText: Value(payload.valueText),
+              unit: Value(payload.unit),
+              intensity: Value(payload.intensity),
+              excluded: Value(payload.excluded),
+              source: Value(remote.source),
+              // Issue #159: sourceId/importId are never cleared for a
+              // tombstone (unlike every column in `payload` above) --
+              // written from `remote` directly regardless of tombstone.
+              sourceId: Value(remote.sourceId),
+              importId: Value(remote.importId),
+              // Issue #186: the round-trip marker rides with the other
+              // provenance columns (never cleared on a tombstone).
+              exportedToPlatformAt: Value(remote.exportedToPlatformAt?.toUtc()),
+              raw: Value(payload.raw),
+              updatedAt: updatedAt,
+              deletedAt: Value(deletedAt),
+              dirty: const Value(false),
+              localRev: const Value(0),
+              loggedByUserId: Value(remote.loggedByUserId),
+              lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+            ),
+          );
+      cache?.observations[written.id] = written;
+      return true;
+    }
+    final written =
+        await (db.update(
+          db.observations,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          ObservationsCompanion(
+            dayEntryId: Value(remote.dayEntryId),
+            profileId: Value(remote.profileId),
+            localDate: Value(remote.localDate),
             observedAt: Value(payload.observedAt),
-            tz: remote.tz,
+            tz: Value(remote.tz),
             category: Value(payload.category),
             code: Value(payload.code),
             valueNum: Value(payload.valueNum),
@@ -865,52 +1409,25 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             intensity: Value(payload.intensity),
             excluded: Value(payload.excluded),
             source: Value(remote.source),
-            // Issue #159: sourceId/importId are never cleared for a
-            // tombstone (unlike every column in `payload` above) --
-            // written from `remote` directly regardless of tombstone.
             sourceId: Value(remote.sourceId),
             importId: Value(remote.importId),
-            // Issue #186: the round-trip marker rides with the other
-            // provenance columns (never cleared on a tombstone).
-            exportedToPlatformAt:
-                Value(remote.exportedToPlatformAt?.toUtc()),
+            exportedToPlatformAt: Value(
+              remote.exportedToPlatformAt?.toUtc() ??
+                  local.exportedToPlatformAt,
+            ),
             raw: Value(payload.raw),
-            updatedAt: updatedAt,
+            updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
-            localRev: const Value(0),
-            loggedByUserId: Value(remote.loggedByUserId),
-            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
-          ));
-      return true;
-    }
-    await (db.update(db.observations)..where((t) => t.id.equals(remote.id)))
-        .write(ObservationsCompanion(
-      dayEntryId: Value(remote.dayEntryId),
-      profileId: Value(remote.profileId),
-      localDate: Value(remote.localDate),
-      observedAt: Value(payload.observedAt),
-      tz: Value(remote.tz),
-      category: Value(payload.category),
-      code: Value(payload.code),
-      valueNum: Value(payload.valueNum),
-      valueText: Value(payload.valueText),
-      unit: Value(payload.unit),
-      intensity: Value(payload.intensity),
-      excluded: Value(payload.excluded),
-      source: Value(remote.source),
-      sourceId: Value(remote.sourceId),
-      importId: Value(remote.importId),
-      exportedToPlatformAt:
-          Value(remote.exportedToPlatformAt?.toUtc() ?? local.exportedToPlatformAt),
-      raw: Value(payload.raw),
-      updatedAt: Value(updatedAt),
-      deletedAt: Value(deletedAt),
-      dirty: const Value(false),
-      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
-      lastModifiedByUserId:
-          Value(remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
-    ));
+            loggedByUserId: Value(
+              remote.loggedByUserId ?? local.loggedByUserId,
+            ),
+            lastModifiedByUserId: Value(
+              remote.lastModifiedByUserId ?? local.lastModifiedByUserId,
+            ),
+          ),
+        );
+    cache?.observations[written.first.id] = written.first;
     return true;
   }
 
@@ -920,9 +1437,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// the profile is not held locally yet (checked up front so the failure
   /// is typed rather than a raw constraint exception, mirroring
   /// [_ensureDayEntryProfileExists]).
-  Future<bool> _applyProfileMode(RemoteProfileModeRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _profileModeOrNull(remote.profileId);
+  Future<bool> _applyProfileMode(
+    RemoteProfileModeRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.profileModes,
+      remote.profileId,
+      _profileModeOrNull,
+    );
     if (local == null && onlyExisting) return false;
     if (local != null &&
         !remoteWinsById(
@@ -930,38 +1455,53 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             remoteUpdatedAt: remote.updatedAt)) {
       return false;
     }
-    if (await _profileOrNull(remote.profileId) == null) {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
       throw RetryableSyncApplyError(
           'profile mode ${remote.profileId} references a profile not held locally');
     }
     final updatedAt = remote.updatedAt.toUtc();
     if (local == null) {
-      await db.into(db.profileModes).insert(ProfileModesCompanion.insert(
-            profileId: remote.profileId,
+      final written = await db
+          .into(db.profileModes)
+          .insertReturning(
+            ProfileModesCompanion.insert(
+              profileId: remote.profileId,
+              mode: Value(remote.mode),
+              modeStartedOn: Value(remote.modeStartedOn),
+              birthControlMethod: Value(remote.birthControlMethod),
+              birthControlStartedOn: Value(remote.birthControlStartedOn),
+              birthControlStoppedOn: Value(remote.birthControlStoppedOn),
+              healthSyncConsent: Value(remote.healthSyncConsent),
+              updatedAt: updatedAt,
+              dirty: const Value(false),
+              localRev: const Value(0),
+            ),
+          );
+      cache?.profileModes[written.profileId] = written;
+      return true;
+    }
+    final written =
+        await (db.update(
+          db.profileModes,
+        )..where((t) => t.profileId.equals(remote.profileId))).writeReturning(
+          ProfileModesCompanion(
             mode: Value(remote.mode),
             modeStartedOn: Value(remote.modeStartedOn),
             birthControlMethod: Value(remote.birthControlMethod),
             birthControlStartedOn: Value(remote.birthControlStartedOn),
             birthControlStoppedOn: Value(remote.birthControlStoppedOn),
             healthSyncConsent: Value(remote.healthSyncConsent),
-            updatedAt: updatedAt,
+            updatedAt: Value(updatedAt),
             dirty: const Value(false),
-            localRev: const Value(0),
-          ));
-      return true;
-    }
-    await (db.update(db.profileModes)
-          ..where((t) => t.profileId.equals(remote.profileId)))
-        .write(ProfileModesCompanion(
-      mode: Value(remote.mode),
-      modeStartedOn: Value(remote.modeStartedOn),
-      birthControlMethod: Value(remote.birthControlMethod),
-      birthControlStartedOn: Value(remote.birthControlStartedOn),
-      birthControlStoppedOn: Value(remote.birthControlStoppedOn),
-      healthSyncConsent: Value(remote.healthSyncConsent),
-      updatedAt: Value(updatedAt),
-      dirty: const Value(false),
-    ));
+          ),
+        );
+    cache?.profileModes[written.first.profileId] = written.first;
     return true;
   }
 
@@ -985,9 +1525,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// (id, profile id) — the same per-id LWW rule [_applyObservation] uses,
   /// with no same-date resolver. A tombstone clears the payload columns
   /// (see [_cycleOverridePayload]).
-  Future<bool> _applyCycleOverride(RemoteCycleOverrideRow remote,
-      {required bool onlyExisting}) async {
-    final local = await _cycleOverrideOrNull(remote.id, remote.profileId);
+  Future<bool> _applyCycleOverride(
+    RemoteCycleOverrideRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.cycleOverrides,
+      remote.id,
+      _cycleOverrideOrNullById,
+    );
     if (local == null && onlyExisting) return false;
     if (local != null &&
         !remoteWinsById(
@@ -995,7 +1543,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             remoteUpdatedAt: remote.updatedAt)) {
       return false;
     }
-    if (await _profileOrNull(remote.profileId) == null) {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
       throw RetryableSyncApplyError(
           'cycle override ${remote.id} references a profile not held locally');
     }
@@ -1004,32 +1558,42 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final deletedAt = remote.deletedAt?.toUtc();
     final payload = _cycleOverridePayload(remote, tombstone);
     if (local == null) {
-      await db.into(db.cycleOverrides).insert(CycleOverridesCompanion.insert(
-            id: remote.id,
-            profileId: remote.profileId,
-            cycleStartDate: remote.cycleStartDate,
-            excludedFromAverage: Value(payload.excludedFromAverage),
-            manualStart: Value(payload.manualStart),
-            noteId: Value(payload.noteId),
-            updatedAt: updatedAt,
-            deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
-          ));
+      final written = await db
+          .into(db.cycleOverrides)
+          .insertReturning(
+            CycleOverridesCompanion.insert(
+              id: remote.id,
+              profileId: remote.profileId,
+              cycleStartDate: remote.cycleStartDate,
+              excludedFromAverage: Value(payload.excludedFromAverage),
+              manualStart: Value(payload.manualStart),
+              noteId: Value(payload.noteId),
+              updatedAt: updatedAt,
+              deletedAt: Value(deletedAt),
+              dirty: const Value(false),
+              localRev: const Value(0),
+            ),
+          );
+      cache?.cycleOverrides[written.id] = written;
       return true;
     }
-    await (db.update(db.cycleOverrides)
-          ..where((t) =>
-              t.id.equals(remote.id) & t.profileId.equals(remote.profileId)))
-        .write(CycleOverridesCompanion(
-      cycleStartDate: Value(remote.cycleStartDate),
-      excludedFromAverage: Value(payload.excludedFromAverage),
-      manualStart: Value(payload.manualStart),
-      noteId: Value(payload.noteId),
-      updatedAt: Value(updatedAt),
-      deletedAt: Value(deletedAt),
-      dirty: const Value(false),
-    ));
+    final written =
+        await (db.update(db.cycleOverrides)..where(
+              (t) =>
+                  t.id.equals(remote.id) & t.profileId.equals(remote.profileId),
+            ))
+            .writeReturning(
+              CycleOverridesCompanion(
+                cycleStartDate: Value(remote.cycleStartDate),
+                excludedFromAverage: Value(payload.excludedFromAverage),
+                manualStart: Value(payload.manualStart),
+                noteId: Value(payload.noteId),
+                updatedAt: Value(updatedAt),
+                deletedAt: Value(deletedAt),
+                dirty: const Value(false),
+              ),
+            );
+    cache?.cycleOverrides[written.first.id] = written.first;
     return true;
   }
 
@@ -1044,7 +1608,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// shaping (e.g. redacting a tombstone's body) inside those callbacks —
   /// this only centralises the guard/bail/retryable clauses that were
   /// hand-written identically at every one of these call sites.
-  Future<bool> _applyKeyedRow<TRemote, TLocal>({
+  Future<bool> _applyKeyedRow<TRemote, TLocal extends DataClass>({
     required TRemote remote,
     required Future<TLocal?> Function() readLocal,
     required bool onlyExisting,
@@ -1055,6 +1619,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     required String remoteId,
     required Future<void> Function(TRemote remote) insert,
     required Future<void> Function(TRemote remote, TLocal local) update,
+    _PageLookup? cache,
   }) async {
     final local = await readLocal();
     if (local == null && onlyExisting) return false;
@@ -1064,7 +1629,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             remoteUpdatedAt: remoteUpdatedAt(remote))) {
       return false;
     }
-    if (await _profileOrNull(parentProfileId(remote)) == null) {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          parentProfileId(remote),
+          _profileOrNull,
+        ) ==
+        null) {
       throw RetryableSyncApplyError(
           '$entityLabel $remoteId references a profile not held locally');
     }
@@ -1080,23 +1651,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// same per-id LWW rule [_applyCycleOverride] uses, with no resolver. A
   /// tombstone clears `body` (mirroring the server's
   /// `care_notes_tombstone_payload_check`).
-  Future<bool> _applyCareNote(RemoteCareNoteRow remote,
-      {required bool onlyExisting}) {
+  Future<bool> _applyCareNote(
+    RemoteCareNoteRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     return _applyKeyedRow<RemoteCareNoteRow, CareNoteData>(
       remote: remote,
-      readLocal: () => _careNoteOrNull(remote.id),
+      readLocal: () =>
+          _lookupCached(cache, (c) => c.careNotes, remote.id, _careNoteOrNull),
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
       parentProfileId: (r) => r.profileId,
       entityLabel: 'care note',
       remoteId: remote.id,
-      insert: (r) => _insertCareNote(r, tombstone, updatedAt, deletedAt),
+      insert: (r) => _insertCareNote(r, tombstone, updatedAt, deletedAt, cache),
       update: (r, local) =>
-          _updateCareNote(r, local, tombstone, updatedAt, deletedAt),
+          _updateCareNote(r, local, tombstone, updatedAt, deletedAt, cache),
+      cache: cache,
     );
   }
 
@@ -1107,18 +1683,24 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    _PageLookup? cache,
   ) async {
-    await db.into(db.careNotes).insert(CareNotesCompanion.insert(
-          id: remote.id,
-          profileId: remote.profileId,
-          body: tombstone ? '' : remote.body,
-          updatedAt: updatedAt,
-          deletedAt: Value(deletedAt),
-          dirty: const Value(false),
-          localRev: const Value(0),
-          loggedByUserId: Value(remote.loggedByUserId),
-          lastModifiedByUserId: Value(remote.lastModifiedByUserId),
-        ));
+    final written = await db
+        .into(db.careNotes)
+        .insertReturning(
+          CareNotesCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            body: tombstone ? '' : remote.body,
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+          ),
+        );
+    cache?.careNotes[written.id] = written;
   }
 
   /// The update half of [_applyCareNote], split out for the same reason. A
@@ -1131,17 +1713,26 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    _PageLookup? cache,
   ) async {
-    await (db.update(db.careNotes)..where((t) => t.id.equals(remote.id)))
-        .write(CareNotesCompanion(
-      body: Value(tombstone ? '' : remote.body),
-      updatedAt: Value(updatedAt),
-      deletedAt: Value(deletedAt),
-      dirty: const Value(false),
-      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
-      lastModifiedByUserId: Value(
-          remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
-    ));
+    final written =
+        await (db.update(
+          db.careNotes,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          CareNotesCompanion(
+            body: Value(tombstone ? '' : remote.body),
+            updatedAt: Value(updatedAt),
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            loggedByUserId: Value(
+              remote.loggedByUserId ?? local.loggedByUserId,
+            ),
+            lastModifiedByUserId: Value(
+              remote.lastModifiedByUserId ?? local.lastModifiedByUserId,
+            ),
+          ),
+        );
+    cache?.careNotes[written.first.id] = written.first;
   }
 
   /// The redacted payload columns for a visit-prep item row: the cleared
@@ -1183,14 +1774,22 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// the same per-id LWW rule [_applyCareNote] uses. A tombstone clears
   /// `body` and resets the check state (mirroring the server's
   /// `visit_prep_items_tombstone_payload_check`).
-  Future<bool> _applyVisitPrepItem(RemoteVisitPrepItemRow remote,
-      {required bool onlyExisting}) {
+  Future<bool> _applyVisitPrepItem(
+    RemoteVisitPrepItemRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     return _applyKeyedRow<RemoteVisitPrepItemRow, VisitPrepItemData>(
       remote: remote,
-      readLocal: () => _visitPrepItemOrNull(remote.id),
+      readLocal: () => _lookupCached(
+        cache,
+        (c) => c.visitPrepItems,
+        remote.id,
+        _visitPrepItemOrNull,
+      ),
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
@@ -1198,9 +1797,21 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       entityLabel: 'visit prep item',
       remoteId: remote.id,
       insert: (r) => _insertVisitPrepItem(
-          r, _visitPrepItemPayload(r, tombstone), updatedAt, deletedAt),
-      update: (r, local) => _updateVisitPrepItem(r, local,
-          _visitPrepItemPayload(r, tombstone), updatedAt, deletedAt),
+        r,
+        _visitPrepItemPayload(r, tombstone),
+        updatedAt,
+        deletedAt,
+        cache,
+      ),
+      update: (r, local) => _updateVisitPrepItem(
+        r,
+        local,
+        _visitPrepItemPayload(r, tombstone),
+        updatedAt,
+        deletedAt,
+        cache,
+      ),
+      cache: cache,
     );
   }
 
@@ -1211,21 +1822,27 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
+    _PageLookup? cache,
   ) async {
-    await db.into(db.visitPrepItems).insert(VisitPrepItemsCompanion.insert(
-          id: remote.id,
-          profileId: remote.profileId,
-          body: payload.body,
-          isChecked: Value(payload.isChecked),
-          checkedByUserId: Value(payload.checkedByUserId),
-          checkedAt: Value(payload.checkedAt),
-          updatedAt: updatedAt,
-          deletedAt: Value(deletedAt),
-          dirty: const Value(false),
-          localRev: const Value(0),
-          loggedByUserId: Value(remote.loggedByUserId),
-          lastModifiedByUserId: Value(remote.lastModifiedByUserId),
-        ));
+    final written = await db
+        .into(db.visitPrepItems)
+        .insertReturning(
+          VisitPrepItemsCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            body: payload.body,
+            isChecked: Value(payload.isChecked),
+            checkedByUserId: Value(payload.checkedByUserId),
+            checkedAt: Value(payload.checkedAt),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+          ),
+        );
+    cache?.visitPrepItems[written.id] = written;
   }
 
   /// The update half of [_applyVisitPrepItem], split out for the same
@@ -1237,21 +1854,29 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
+    _PageLookup? cache,
   ) async {
-    await (db.update(db.visitPrepItems)
-          ..where((t) => t.id.equals(remote.id)))
-        .write(VisitPrepItemsCompanion(
-      body: Value(payload.body),
-      isChecked: Value(payload.isChecked),
-      checkedByUserId: Value(payload.checkedByUserId),
-      checkedAt: Value(payload.checkedAt),
-      updatedAt: Value(updatedAt),
-      deletedAt: Value(deletedAt),
-      dirty: const Value(false),
-      loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
-      lastModifiedByUserId: Value(
-          remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
-    ));
+    final written =
+        await (db.update(
+          db.visitPrepItems,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          VisitPrepItemsCompanion(
+            body: Value(payload.body),
+            isChecked: Value(payload.isChecked),
+            checkedByUserId: Value(payload.checkedByUserId),
+            checkedAt: Value(payload.checkedAt),
+            updatedAt: Value(updatedAt),
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            loggedByUserId: Value(
+              remote.loggedByUserId ?? local.loggedByUserId,
+            ),
+            lastModifiedByUserId: Value(
+              remote.lastModifiedByUserId ?? local.lastModifiedByUserId,
+            ),
+          ),
+        );
+    cache?.visitPrepItems[written.first.id] = written.first;
   }
 
   static bool _tagsEqual(List<String> a, List<String> b) {
@@ -1296,12 +1921,18 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// that bump happens for why a tied stamp silently loses the merge to a
   /// replay or a declined equal-timestamp push.
   Future<(DateTime, DateTime?, List<String>, bool)> _resolveSameDateConflicts(
-      RemoteDayEntryRow remote, DateTime updatedAt) async {
+    RemoteDayEntryRow remote,
+    DateTime updatedAt, {
+    _PageLookup? cache,
+  }) async {
     DateTime? deletedAt;
     var tags = remote.tags;
     final incoming = DayEntryCandidate(id: remote.id, updatedAt: updatedAt);
-    final others = (await _liveDayEntries(remote.profileId, remote.localDate))
-        .where((row) => row.id != remote.id);
+    final others = (await _livePeersCached(
+      cache,
+      remote.profileId,
+      remote.localDate,
+    )).where((row) => row.id != remote.id);
     for (final other in others) {
       final winner = sameDateWinner(
         incoming,
@@ -1343,16 +1974,21 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           winnerFlow: remote.flow,
         );
         tags = mergeTags(tags, other.tags);
-        await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
-            .write(DayEntriesCompanion(
-          flow: const Value(FlowLevel.none),
-          note: const Value(null),
-          tags: const Value(<String>[]),
-          updatedAt: Value(updatedAt),
-          deletedAt: Value(updatedAt),
-          dirty: const Value(true),
-          localRev: Value(other.localRev + 1),
-        ));
+        final written =
+            await (db.update(
+              db.dayEntries,
+            )..where((t) => t.id.equals(other.id))).writeReturning(
+              DayEntriesCompanion(
+                flow: const Value(FlowLevel.none),
+                note: const Value(null),
+                tags: const Value(<String>[]),
+                updatedAt: Value(updatedAt),
+                deletedAt: Value(updatedAt),
+                dirty: const Value(true),
+                localRev: Value(other.localRev + 1),
+              ),
+            );
+        cache?.storeDayEntry(written.first);
       } else {
         // Remote loser: store it as a tombstone stamped with the local
         // winner's timestamp (>= remote.updatedAt by the rule). R7/R11: the
@@ -1410,13 +2046,18 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         final otherUpdatedAt = otherGainedTags
             ? other.updatedAt.toUtc().add(const Duration(milliseconds: 1))
             : other.updatedAt.toUtc();
-        await (db.update(db.dayEntries)..where((t) => t.id.equals(other.id)))
-            .write(DayEntriesCompanion(
-          tags: Value(mergedOtherTags),
-          updatedAt: Value(otherUpdatedAt),
-          dirty: const Value(true),
-          localRev: Value(other.localRev + 1),
-        ));
+        final written =
+            await (db.update(
+              db.dayEntries,
+            )..where((t) => t.id.equals(other.id))).writeReturning(
+              DayEntriesCompanion(
+                tags: Value(mergedOtherTags),
+                updatedAt: Value(otherUpdatedAt),
+                dirty: const Value(true),
+                localRev: Value(other.localRev + 1),
+              ),
+            );
+        cache?.storeDayEntry(written.first);
         updatedAt = otherUpdatedAt;
         deletedAt = updatedAt;
       }
@@ -1604,11 +2245,21 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// per discard. Throws [RetryableSyncApplyError] when the profile is not
   /// held locally yet (checked up front so the failure is typed rather
   /// than a raw FK exception, mirroring [_ensureDayEntryProfileExists]).
+  /// Issue #42: the own-row and parent-profile reads go through
+  /// [_lookupCached] like every other applier; the natural-key check stays
+  /// a live SELECT (keyed by (profile, losing row, field), not by id, so
+  /// the id-keyed prefetch cannot serve it), and the write needs no
+  /// RETURNING write-through — no later row in the same page can look a
+  /// merge event up by an id that appeared earlier in it (ids are unique
+  /// within a page, and the natural-key read above is live).
   Future<bool> _applyMergeEvent(RemoteDayEntryMergeEventRow remote,
-      {required bool onlyExisting}) async {
-    final local = await (db.select(db.dayEntryMergeEvents)
-          ..where((t) => t.id.equals(remote.id)))
-        .getSingleOrNull();
+      {required bool onlyExisting, _PageLookup? cache}) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.dayEntryMergeEvents,
+      remote.id,
+      _dayEntryMergeEventOrNull,
+    );
     if (local == null && onlyExisting) return false;
     if (local != null &&
         !remoteWinsById(
@@ -1616,7 +2267,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             remoteUpdatedAt: remote.updatedAt)) {
       return false;
     }
-    if (await _profileOrNull(remote.profileId) == null) {
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
       throw RetryableSyncApplyError(
           'merge event ${remote.id} references a profile not held locally');
     }

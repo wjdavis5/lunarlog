@@ -689,22 +689,26 @@ jobs:
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests on the simulator
-        # Scoped to the tests confirmed safe against a real device (issue
-        # #121): any test that manually drives the binding to
-        # AppLifecycleState.paused/hidden (transitionTo in this file)
-        # triggers genuine OS-level app suspension here, unlike host-mode
-        # where it is a pure Dart-level notification -- once suspended for
-        # real, the VM service connection this job's `flutter test`
-        # depends on hangs forever. The excluded tests ("backgrounding
-        # re-locks...", "inactivity timeout re-locks...") are still
-        # covered by test/ui/gate_test.dart's host-mode GateController
-        # tests, which exercise the same scenarios without a full
-        # on-device widget tree.
+        # Issue #121: this step used to be scoped with a --name filter to
+        # the four tests that never drive the binding into
+        # AppLifecycleState.paused/hidden. Driving the binding there was
+        # believed to trigger real OS-level app suspension, hanging the
+        # VM-service-driven run forever; in fact the manual binding call
+        # never reaches the OS at all — SchedulerBinding disables frame
+        # scheduling for exactly hidden/paused, and the live integration
+        # binding's pump() then waits for a real engine frame that
+        # scheduleFrame() can no longer request. gate_test.dart's
+        # transitionTo/disposeDb helpers now call scheduleForcedFrame()
+        # while frames are disabled (the framework's documented escape
+        # hatch for scheduling a frame regardless of lifecycle state), so
+        # the full file — lifecycle-driving tests included — runs here.
+        # The step timeout bounds a regression: a reintroduced hang fails
+        # in minutes instead of parking until the job-level timeout.
+        timeout-minutes: 15
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          flutter test integration_test/gate_test.dart -d "$SIM_UDID" \
-            --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
+          flutter test integration_test/gate_test.dart -d "$SIM_UDID"
 
       - name: Shut down simulator
         if: always()
