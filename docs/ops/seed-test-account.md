@@ -129,9 +129,11 @@ Success looks like `rejected == []` on every `sync_push` call plus a
 read-back line reporting the seeded row counts. Re-running the same command
 exercises the reset path (guard → `delete_profile_data` → re-seed).
 
-**Do not create `supabase/seed.sql`**: `supabase/config.toml`'s `[db.seed]`
-points at it, so adding one would feed **every** `db reset` — the seeder is
-deliberately an explicit, operator-run command instead.
+**Do not create `supabase/seed.sql`** (and do not re-enable `[db.seed]`):
+`supabase/config.toml`'s `[db.seed]` is deliberately disabled (issue #99)
+with an empty `sql_paths` — it used to point at a `seed.sql` that never
+existed — so a stray seed file can never silently feed **every** `db reset`.
+The seeder is deliberately an explicit, operator-run command instead.
 
 ## Cloud flow
 
