@@ -151,6 +151,20 @@ jobs:
     # jobs (issue #514), which guard against the pull_request case this
     # runner also executes.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Issue #583 / PR #586: deliberately the ephemeral GitHub-hosted runner,
+    # NOT the self-hosted build Mac. On that Mac (runner "williams-mini") the
+    # job fails at Export IPA with `Provisioning profile "Lunarlog" doesn't
+    # include signing certificate "Apple Distribution: William Davis
+    # (5273C9R3V4)"`: its persistent keychains carry a distribution identity
+    # that the static IOS_PROVISION_PROFILE_BASE64 secret does not embed, and
+    # xcodebuild can resolve that identity instead of the
+    # IOS_DIST_CERT_P12_BASE64 one. The two secrets are mutually consistent
+    # -- they export and upload cleanly on a fresh runner. Moving this job
+    # back to [self-hosted, macOS] requires reconciling that Mac's local
+    # signing state with the repo secrets first; the self-hosted
+    # accommodations kept below (UTF-8 locale for `pod install`, exact-path
+    # profile cleanup) are for that future switch, not a signal that the job
+    # belongs there today.
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -483,11 +497,18 @@ jobs:
           ipa="$(find build/ios/ipa -name '*.ipa' -maxdepth 1 | head -1)"
           [ -n "$ipa" ] || { echo "::error::no .ipa produced by the export step"; exit 1; }
 
+          # Altool error 90592 ("Invalid Export Compliance Code") is an
+          # operator-side App Store Connect filing issue, not a code bug
+          # (see docs/ops/ios-export-compliance.md) -- point a failing run
+          # at the runbook instead of leaving a bare altool exit code.
           xcrun altool --upload-app \
             --type ios \
             --file "$ipa" \
             --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
+            --apiIssuer "$ASC_ISSUER_ID" || {
+            echo "::error::TestFlight upload failed (details above). If the error mentions 90592 / Invalid Export Compliance Code, see docs/ops/ios-export-compliance.md for the operator-side fix."
+            exit 1
+          }
 
       - name: Submit for App Store review
         if: steps.bump.outputs.submit == 'true' && steps.gate.outputs.gate_open != 'false'
