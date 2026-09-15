@@ -656,6 +656,13 @@ mixin LunarLogStorageQueries {
       (db.select(db.dayEntries)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
+  /// Issue #42: the per-row live fallback behind
+  /// `LunarLogStorageRemoteApply`'s batched guardians prefetch — the exact
+  /// select `_applyProfileGuardian` used to issue inline.
+  Future<ProfileGuardianData?> _guardianOrNull(String id) => (db.select(
+    db.profileGuardians,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<Profile?> _profileOrNull(String id) =>
       (db.select(db.profiles)..where((t) => t.id.equals(id))).getSingleOrNull();
 
@@ -690,6 +697,14 @@ mixin LunarLogStorageQueries {
       (db.select(db.cycleOverrides)
             ..where((t) => t.id.equals(id) & t.profileId.equals(profileId)))
           .getSingleOrNull();
+
+  /// Issue #42: the single-argument live fallback behind the batched
+  /// cycle-overrides prefetch — ids are client ULIDs, globally unique in
+  /// practice (the same id-alone-identifies-the-row precedent `markPushed`
+  /// uses), so the id alone reaches at most one row.
+  Future<CycleOverrideData?> _cycleOverrideOrNullById(String id) => (db.select(
+    db.cycleOverrides,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<CycleOverrideData> _cycleOverrideById(
       String id, String profileId) async {

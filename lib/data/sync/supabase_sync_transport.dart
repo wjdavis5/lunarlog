@@ -166,6 +166,36 @@ class SupabaseSyncTransport implements SyncTransport {
 
   static const String _pullRpc = 'sync_pull';
 
+  /// Issue #42: [SyncTransport.fetchMaxVersion] over a plain PostgREST
+  /// select — the newest visible row's `server_version`, via
+  /// `order by server_version desc limit 1` (one index-ordered lookup, no
+  /// aggregate support required). Answers `0` for a table with nothing
+  /// visible and `null` on any failure, per the interface contract.
+  @override
+  Future<int?> fetchMaxVersion(SyncTable table) async {
+    final List<Map<String, dynamic>> data;
+    try {
+      data = await _client
+          .from(syncTableName(table))
+          .select(_versionColumn)
+          .order(_versionColumn, ascending: false)
+          .limit(1);
+    } catch (_) {
+      // The probe is an optimization for the scheduled daily reconcile
+      // only: any failure means "unknown", and the caller falls back to
+      // the full re-pull rather than silently skipping sync.
+      return null;
+    }
+    if (data.isEmpty) return 0;
+    final value = data.first[_versionColumn];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    // A bigint's wire representation is not guaranteed never to be a
+    // quoted string (the same leniency fetchWatermark applies).
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
   @override
   Future<void> primePullCycle(Map<SyncTable, int> cursors) async {
     _pullCache = null;

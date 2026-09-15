@@ -1696,6 +1696,129 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     return changed > 0;
   }
 
+  /// Issue #42: [markPushed] for a whole push batch's accepted rows in
+  /// batched UPDATE statements — one statement per [kSyncBatchChunkSize]
+  /// rows per table, instead of one statement per row (up to
+  /// [PushBatch.maxRows] autocommit-by-autocommit UPDATEs per push batch
+  /// before this; the single `db.transaction()` around them is issue #523's
+  /// `applyPushResult`, which is also this method's only caller). The
+  /// `local_rev` guard is preserved exactly: every chunked statement OR-folds
+  /// the same per-row `key = ? AND local_rev = ?` predicate [markPushed]
+  /// uses, so a row whose local revision changed while the push was in
+  /// flight still matches no predicate and stays dirty (AE11) — its next
+  /// push re-sends it. Returns how many rows were cleared.
+  Future<int> markPushedBatch(
+    List<({SyncTable table, String id, int localRevAtPush})> items,
+  ) async {
+    final byTable = <SyncTable, List<({String id, int localRevAtPush})>>{};
+    for (final item in items) {
+      byTable.putIfAbsent(item.table, () => []).add((
+        id: item.id,
+        localRevAtPush: item.localRevAtPush,
+      ));
+    }
+    var cleared = 0;
+    for (final entry in byTable.entries) {
+      final target = _pushWriteTarget(entry.key);
+      // profileGuardians / deletedProfiles never push: nothing to clear,
+      // matching [markPushed]'s own no-op cases.
+      if (target == null) continue;
+      for (final chunk in chunkedBy(entry.value, kSyncBatchChunkSize)) {
+        cleared += await _markPushedChunk(target, chunk);
+      }
+    }
+    return cleared;
+  }
+
+  /// The drift table (and its key/revision column names, read off the typed
+  /// schema so a rename cannot drift) one batched markPushed chunk writes
+  /// for [table], or `null` for the two pull-only tables that never push.
+  ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})?
+  _pushWriteTarget(SyncTable table) {
+    if (_neverPushed(table)) return null;
+    return _pushedTableTarget(table);
+  }
+
+  /// The two pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles]): nothing is ever pushed for them, so
+  /// there is no `dirty` flag for [markPushedBatch] to clear — the same
+  /// no-op cases [markPushed] carries.
+  static bool _neverPushed(SyncTable table) => switch (table) {
+    SyncTable.profileGuardians || SyncTable.deletedProfiles => true,
+    _ => false,
+  };
+
+  /// [_pushWriteTarget]'s table switch, split from the pull-only filter so
+  /// neither method carries enough branches to trouble the CRAP gate.
+  ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+  _pushedTableTarget(SyncTable table) => switch (table) {
+    SyncTable.profiles => (
+      table: db.profiles,
+      keyColumn: db.profiles.id.$name,
+      revColumn: db.profiles.localRev.$name,
+    ),
+    SyncTable.dayEntries => (
+      table: db.dayEntries,
+      keyColumn: db.dayEntries.id.$name,
+      revColumn: db.dayEntries.localRev.$name,
+    ),
+    SyncTable.observations => (
+      table: db.observations,
+      keyColumn: db.observations.id.$name,
+      revColumn: db.observations.localRev.$name,
+    ),
+    SyncTable.profileModes => (
+      table: db.profileModes,
+      keyColumn: db.profileModes.profileId.$name,
+      revColumn: db.profileModes.localRev.$name,
+    ),
+    SyncTable.cycleOverrides => (
+      table: db.cycleOverrides,
+      keyColumn: db.cycleOverrides.id.$name,
+      revColumn: db.cycleOverrides.localRev.$name,
+    ),
+    SyncTable.careNotes => (
+      table: db.careNotes,
+      keyColumn: db.careNotes.id.$name,
+      revColumn: db.careNotes.localRev.$name,
+    ),
+    SyncTable.visitPrepItems => (
+      table: db.visitPrepItems,
+      keyColumn: db.visitPrepItems.id.$name,
+      revColumn: db.visitPrepItems.localRev.$name,
+    ),
+    // Unreachable behind [_neverPushed]; the cases exist only to
+    // keep the switch exhaustive.
+    SyncTable.profileGuardians || SyncTable.deletedProfiles => throw StateError(
+      'pull-only table $table never pushes',
+    ),
+  };
+
+  /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
+  /// OR ...` statement covering [chunk] rows of [target] — semantically the
+  /// per-row [markPushed] UPDATEs it replaces, folded into one statement.
+  Future<int> _markPushedChunk(
+    ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+    target,
+    List<({String id, int localRevAtPush})> chunk,
+  ) {
+    final predicates = [
+      for (final _ in chunk)
+        '(${target.keyColumn} = ? AND ${target.revColumn} = ?)',
+    ].join(' OR ');
+    return db.customUpdate(
+      'UPDATE ${target.table.actualTableName} SET dirty = 0 WHERE '
+      '$predicates',
+      variables: [
+        for (final item in chunk) ...[
+          Variable(item.id),
+          Variable(item.localRevAtPush),
+        ],
+      ],
+      updates: {target.table},
+    );
+  }
+
   /// Issue #568: bumps `local_rev` on the row [id] of [table] and marks it
   /// dirty again — the retry affordance for a row the server rejected. A
   /// pure no-op write as far as content goes: no payload column changes,
