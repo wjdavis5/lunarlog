@@ -582,4 +582,52 @@ void main() {
       expect(platformSpecifics['actions'], isNull);
     });
   });
+
+  group('Custom notification text (Issue #184)', () {
+    test(
+        'the built notification carries the resolved custom '
+        'title and body verbatim', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.upcoming,
+          title: 'Tea time',
+          body: 'Bring the blue bottle.',
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], 'Tea time',
+          reason: 'the custom title reaches the OS exactly as configured');
+      expect(args['body'], 'Bring the blue bottle.');
+      expect(args['title'], isNot(contains('profile-1')));
+      expect(args['body'], isNot(contains('2026')));
+    });
+
+    test('a reminder with no custom text still carries the generic copy',
+        () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.log,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], kReminderTitle);
+      expect(args['body'], kReminderBody);
+    });
+  });
 }

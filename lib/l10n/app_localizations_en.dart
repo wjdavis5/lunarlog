@@ -1368,4 +1368,38 @@ class AppLocalizationsEn extends AppLocalizations {
   String pinLockScreenLockedOut(String time) {
     return 'Too many attempts. Try again after $time.';
   }
+
+  @override
+  String get reminderTextTileTitle => 'Notification text';
+
+  @override
+  String get reminderTextTileDefaultSubtitle => 'Using the default text';
+
+  @override
+  String get reminderTextEditorAppBarTitle => 'Notification text';
+
+  @override
+  String get reminderTextPreviewSection => 'Preview';
+
+  @override
+  String get reminderTextPreviewAppName => 'Lunarlog';
+
+  @override
+  String get reminderTextPreviewNow => 'now';
+
+  @override
+  String get reminderTextTitleLabel => 'Title';
+
+  @override
+  String get reminderTextBodyLabel => 'Body';
+
+  @override
+  String get reminderTextSaveButton => 'Save';
+
+  @override
+  String get reminderTextResetButton => 'Reset to default';
+
+  @override
+  String get reminderTextDiscretionNote =>
+      'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.';
 }

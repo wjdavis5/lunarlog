@@ -16,6 +16,8 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart'
+    show kReminderBody, kReminderTitle;
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -166,6 +168,16 @@ String _timeLabel(WidgetTester tester, ReminderKind kind) {
 SwitchListTile _switchOf(WidgetTester tester, String key) =>
     tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
 
+/// The rendered subtitle text inside a type's Notification text row
+/// (Issue #184) — scoped to that one tile, since several text rows share
+/// the default-subtitle copy on screen at once.
+String _textTileSubtitle(WidgetTester tester, ReminderKind kind) {
+  final row = tester.widget<ListTile>(
+    find.byKey(ValueKey('reminder-text-${kind.name}')),
+  );
+  return (row.subtitle as Text).data!;
+}
+
 void main() {
   testWidgets('renders every reminder type with its defaults', (tester) async {
     final store = FakeSettingsStore();
@@ -218,6 +230,10 @@ void main() {
     // No birth-control method recorded: the group renders its explainer
     // row, not a toggle for a reminder that could never plan.
     await _scrollTo(tester, const ValueKey('reminder-birth-control-none'));
+    // The #184 text rows made the list taller: nudge back up so the group
+    // header above the (now on-screen) explainer row is built too.
+    await tester.drag(find.byType(ListView), const Offset(0, 200));
+    await tester.pumpAndSettle();
     expect(find.text('Your birth control'), findsOneWidget);
     expect(find.text('Birth-control reminders'), findsOneWidget);
     expect(
@@ -532,6 +548,7 @@ void main() {
       },
     );
 
+    await _scrollTo(tester, const ValueKey('reminder-time-upcoming'));
     await tester.tap(find.byKey(const ValueKey('reminder-time-upcoming')));
     await tester.pumpAndSettle();
 
@@ -550,6 +567,7 @@ void main() {
       timePicker: (context, initialTime) async => null,
     );
 
+    await _scrollTo(tester, const ValueKey('reminder-time-upcoming'));
     await tester.tap(find.byKey(const ValueKey('reminder-time-upcoming')));
     await tester.pumpAndSettle();
 
@@ -596,6 +614,174 @@ void main() {
     expect(stored.quietHours!.endMinutes, 6 * 60 + 30);
     expect(find.text('23:45'), findsOneWidget);
     expect(find.text('06:30'), findsOneWidget);
+  });
+
+  testWidgets('issue #184: the Notification text tile defaults to the '
+      'generic copy and opens the editor', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Using the default text');
+
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('reminder-text-preview')),
+      findsOneWidget,
+      reason: 'the editor opened with its OS-notification-styled preview',
+    );
+
+    // Dismissing without saving stores nothing.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(await service.load('alice'), isNull);
+  });
+
+  testWidgets('issue #184: the live preview renders the generic defaults '
+      'and updates on every keystroke', (tester) async {
+    final store = FakeSettingsStore();
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+
+    // Empty fields show exactly what the OS will present: the defaults.
+    Text previewTitle() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-title')));
+    Text previewBody() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-body')));
+    expect(previewTitle().data, kReminderTitle);
+    expect(previewBody().data, kReminderBody);
+
+    // Typing updates the preview immediately — before any save.
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-title-field')),
+      'Heads up',
+    );
+    await tester.pump();
+    expect(previewTitle().data, 'Heads up');
+    expect(previewBody().data, kReminderBody,
+        reason: 'the untouched half keeps its default');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-body-field')),
+      'Nothing to see here.',
+    );
+    await tester.pump();
+    expect(previewTitle().data, 'Heads up');
+    expect(previewBody().data, 'Nothing to see here.');
+
+    // The preview never shows anything beyond the two fields.
+    expect(find.text('Alice'), findsNothing,
+        reason: 'no profile name in the editor');
+  });
+
+  testWidgets('issue #184: saving persists custom text for that type only '
+      '(per-type independence)', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-title-field')),
+      '  Tea time  ',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-body-field')),
+      'Bring the blue bottle.',
+    );
+    await tester.tap(find.byKey(const ValueKey('reminder-text-save')));
+    await tester.pumpAndSettle();
+
+    final stored = await service.load('alice');
+    expect(stored!.upcoming.customTitle, 'Tea time',
+        reason: 'saved trimmed');
+    expect(stored.upcoming.customBody, 'Bring the blue bottle.');
+    expect(stored.late.customTitle, isNull,
+        reason: 'editing one type never touches another');
+    expect(stored.log.customTitle, isNull);
+    expect(stored.pms.customTitle, isNull);
+
+    // The row now shows the custom title instead of the default note.
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(find.text('Tea time'), findsOneWidget);
+  });
+
+  testWidgets('issue #184: custom text is per profile — Bea keeps the '
+      'default while Alice carries hers', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await service.save(
+      'alice',
+      ReminderConfig.standard.copyWith(
+        upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'Alice-only title'),
+      ),
+    );
+    final alice = _profile('alice', 'Alice');
+    final bea = _profile('bea', 'Bea');
+    await store.set(SettingsKeys.lastActiveProfile, 'alice');
+    await _pump(tester, [alice, bea], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Alice-only title');
+
+    await _scrollToTop(tester);
+    await tester.tap(find.byKey(const ValueKey('reminder-profile-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bea').last);
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Using the default text',
+        reason: 'Bea never configured custom text');
+    final beaConfig = await service.load('bea');
+    expect(beaConfig, isNull,
+        reason: 'switching profiles stored nothing for Bea');
+    expect((await service.load('alice'))!.upcoming.customTitle,
+        'Alice-only title',
+        reason: 'the switch never disturbed Alice text');
+  });
+
+  testWidgets('issue #184: reset to default clears the custom text on save',
+      (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await service.save(
+      'alice',
+      ReminderConfig.standard.copyWith(
+        upcoming: ReminderTypeConfig.upcoming
+            .copyWith(customTitle: 'Old title', customBody: 'Old body'),
+      ),
+    );
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('reminder-text-reset')));
+    await tester.pumpAndSettle();
+    Text previewTitle() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-title')));
+    expect(previewTitle().data, kReminderTitle,
+        reason: 'reset shows the default in the live preview');
+
+    await tester.tap(find.byKey(const ValueKey('reminder-text-save')));
+    await tester.pumpAndSettle();
+
+    final stored = await service.load('alice');
+    expect(stored!.upcoming.customTitle, isNull);
+    expect(stored.upcoming.customBody, isNull);
   });
 
   testWidgets(

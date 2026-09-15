@@ -159,6 +159,11 @@ const String kRoutePurgeImportedDataDialog = 'PurgeImportedDataDialog';
 /// per-profile local reminder configuration, pushed from Settings.
 const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
 
+/// `lib/ui/settings/reminder_text_editor_screen.dart` (Issue #184) — the
+/// per-type custom notification text editor with live preview, pushed
+/// from a reminder type's row in the reminder settings.
+const String kRouteReminderTextEditorScreen = 'ReminderTextEditorScreen';
+
 /// `lib/ui/help/help_library_screen.dart` (Issue #139) — offline help cards.
 const String kRouteHelpLibraryScreen = 'HelpLibraryScreen';
 
@@ -261,6 +266,7 @@ const Set<String> kSentryRouteNames = {
   kRouteDeleteProfileFinalConfirmDialog,
   kRoutePurgeImportedDataDialog,
   kRouteReminderSettingsScreen,
+  kRouteReminderTextEditorScreen,
   kRouteHelpLibraryScreen,
   kRouteHelpCardSheet,
   kRouteCycleLiteracyLibraryScreen,

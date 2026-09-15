@@ -449,8 +449,14 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       final hasActions = reminderHasActions(reminder.kind);
       await _plugin.zonedSchedule(
         id: reminder.id,
-        title: kReminderTitle,
-        body: kReminderBody,
+        // Issue #184: the reminder's own resolved text — custom per-type
+        // copy when the profile configured it, else the generic defaults.
+        // The text is baked in here at schedule time (local notifications
+        // have no Dart callback at fire time) and stays current through
+        // #136's replan-on-every-change machinery, which cancels and
+        // re-arms the whole plan the moment stored text changes.
+        title: reminder.title,
+        body: reminder.body,
         scheduledDate: fireAt,
         // Issue #136/#178/#183: the shared reminder presentation (channel,
         // lock-screen privacy) plus this reminder's action buttons, when it

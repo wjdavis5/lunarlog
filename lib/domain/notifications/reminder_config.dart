@@ -17,6 +17,14 @@
 /// the cycle-omission list made (also device-local, also noted as a
 /// tension with the sync-first direction). Revisit only if a user actually
 /// wants their reminder schedule to follow them across devices.
+///
+/// Issue #184 (per-reminder custom notification text) follows that same
+/// decision rather than making an independent one: each type's
+/// `customTitle`/`customBody` ride the very same device-local
+/// `ReminderConfig` document — per-profile (two profiles on one device
+/// hold independent text), per-type, and never synced. The text is
+/// manual user-authored copy only; the resolver (`resolveReminderText` in
+/// `scheduling.dart`) never concatenates a profile name or date into it.
 library;
 
 import 'dart:convert';
@@ -75,6 +83,15 @@ const int kMaxLeadDays = 7;
 const int kMinTimeOfDayMinutes = 0;
 const int kMaxTimeOfDayMinutes = 23 * 60 + 59;
 
+/// Length bound for a custom notification title or body (Issue #184),
+/// applied where the value enters the system: the editor's `maxLength`
+/// and [ReminderTypeConfig.fromJson]'s tolerant decode (a hand-edited or
+/// partially-written store value is truncated, never thrown on). Generous
+/// past what any OS banner renders — the OS truncates visually, storage
+/// truncates structurally, and no reminder type is ever left without
+/// valid text.
+const int kMaxReminderCustomTextLength = 180;
+
 int _clampInt(int value, int min, int max) =>
     value < min ? min : (value > max ? max : value);
 
@@ -121,6 +138,8 @@ class ReminderTypeConfig {
     required this.timeOfDayMinutes,
     this.cadence = ReminderCadence.daily,
     this.anchorDate,
+    this.customTitle,
+    this.customBody,
   });
 
   /// The defaults for the types that are on out of the box (the pre-#136
@@ -210,13 +229,36 @@ class ReminderTypeConfig {
   /// Anchor date for non-daily cadences (the day cadence was set).
   final LocalDate? anchorDate;
 
+  /// The user-authored notification title for this type (Issue #184), or
+  /// null when the type falls back to the generic default
+  /// (`kReminderTitle`). Manual text only — never auto-filled, never
+  /// interpolated with a profile name or date; see `resolveReminderText`.
+  final String? customTitle;
+
+  /// The user-authored notification body for this type (Issue #184), or
+  /// null when the type falls back to the generic default
+  /// (`kReminderBody`).
+  final String? customBody;
+
+  /// Resolves a `copyWith` parameter for a nullable-clearable field: an
+  /// explicit clear wins, then a passed value, else the current one.
+  /// Pulling the branch out of [copyWith] keeps that method's complexity
+  /// — and so its CRAP-gate score — flat as nullable fields are added,
+  /// the same move `ReminderConfig._resolveType` made.
+  static String? _resolveCustom(String? next, bool clear, String? current) =>
+      clear ? null : (next ?? current);
+
   ReminderTypeConfig copyWith({
     bool? enabled,
     int? leadDays,
     int? timeOfDayMinutes,
     ReminderCadence? cadence,
     LocalDate? anchorDate,
+    String? customTitle,
+    String? customBody,
     bool clearAnchorDate = false,
+    bool clearCustomTitle = false,
+    bool clearCustomBody = false,
   }) =>
       ReminderTypeConfig(
         enabled: enabled ?? this.enabled,
@@ -224,6 +266,10 @@ class ReminderTypeConfig {
         timeOfDayMinutes: timeOfDayMinutes ?? this.timeOfDayMinutes,
         cadence: cadence ?? this.cadence,
         anchorDate: clearAnchorDate ? null : (anchorDate ?? this.anchorDate),
+        customTitle:
+            _resolveCustom(customTitle, clearCustomTitle, this.customTitle),
+        customBody:
+            _resolveCustom(customBody, clearCustomBody, this.customBody),
       );
 
   /// The lead days the planner should use: this config's value for the
@@ -237,6 +283,8 @@ class ReminderTypeConfig {
         'timeOfDay': timeOfDayMinutes,
         if (cadence != ReminderCadence.daily) 'cadence': cadence.toJson(),
         if (anchorDate != null) 'anchorDate': anchorDate!.iso,
+        if (customTitle != null) 'customTitle': customTitle,
+        if (customBody != null) 'customBody': customBody,
       };
 
   /// Tolerant decode: a malformed or out-of-range stored value falls back
@@ -265,25 +313,61 @@ class ReminderTypeConfig {
         anchorDate: json['anchorDate'] is String
             ? _tryParseIso(json['anchorDate'] as String)
             : defaults.anchorDate,
+        customTitle: _decodeCustomText(json['customTitle']) ??
+            defaults.customTitle,
+        customBody: _decodeCustomText(json['customBody']) ??
+            defaults.customBody,
+      );
+
+  /// Decodes one stored custom-text value (Issue #184): a non-string is
+  /// unset; a string is trimmed, with blank degrading to unset (so a
+  /// stored `""` or `"   "` can never leave a reminder with an empty
+  /// title/body) and an over-length value truncated to
+  /// [kMaxReminderCustomTextLength]. Never throws.
+  static String? _decodeCustomText(Object? raw) {
+    if (raw is! String) return null;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.length <= kMaxReminderCustomTextLength
+        ? trimmed
+        : trimmed.substring(0, kMaxReminderCustomTextLength);
+  }
+
+  /// Every field as one structural record: [==] and [hashCode] compare
+  /// records, so adding a field means adding it to the record once instead
+  /// of growing an `&&` chain past the CRAP gate's complexity bound (the
+  /// same move [ReminderConfig._fields] made).
+  (
+    bool,
+    int?,
+    int,
+    ReminderCadence,
+    LocalDate?,
+    String?,
+    String?,
+  ) get _fields =>
+      (
+        enabled,
+        leadDays,
+        timeOfDayMinutes,
+        cadence,
+        anchorDate,
+        customTitle,
+        customBody,
       );
 
   @override
   bool operator ==(Object other) =>
-      other is ReminderTypeConfig &&
-      other.enabled == enabled &&
-      other.leadDays == leadDays &&
-      other.timeOfDayMinutes == timeOfDayMinutes &&
-      other.cadence == cadence &&
-      other.anchorDate == anchorDate;
+      other is ReminderTypeConfig && other._fields == _fields;
 
   @override
-  int get hashCode =>
-      Object.hash(enabled, leadDays, timeOfDayMinutes, cadence, anchorDate);
+  int get hashCode => _fields.hashCode;
 
   @override
   String toString() =>
       'ReminderTypeConfig(enabled: $enabled, leadDays: $leadDays, '
-      'timeOfDayMinutes: $timeOfDayMinutes, cadence: $cadence, anchorDate: $anchorDate)';
+      'timeOfDayMinutes: $timeOfDayMinutes, cadence: $cadence, anchorDate: '
+      '$anchorDate, customTitle: $customTitle, customBody: $customBody)';
 }
 
 /// One profile's full local reminder configuration (Issue #136, widened by
