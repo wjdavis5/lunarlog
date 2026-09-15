@@ -221,6 +221,154 @@ void main() {
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
     });
 
+    group('issue #42: scheduled-reconcile version probe', () {
+      /// A probe that answers "nothing changed" for the persisted cursors:
+      /// every table's max at or below its cursor.
+      Map<SyncTable, int> unchangedProbe() => {
+        SyncTable.profiles: 100,
+        SyncTable.profileGuardians: 0,
+        SyncTable.dayEntries: 0,
+        SyncTable.observations: 0,
+        SyncTable.profileModes: 0,
+        SyncTable.cycleOverrides: 0,
+        SyncTable.careNotes: 0,
+        SyncTable.visitPrepItems: 0,
+        SyncTable.deletedProfiles: 0,
+      };
+
+      Future<void> bindStale(Rig rig) => rig.storage.writeSyncState(
+        kDefaultSyncState.copyWith(
+          boundUserId: const Value(uidA),
+          deviceId: 'device-1',
+          cursorProfiles: 100,
+          lastFullPullAt: Value(t0.subtract(const Duration(hours: 25))),
+        ),
+      );
+
+      test('an unchanged probe skips the scheduled re-pull while still '
+          'stamping a clean reconcile', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        rig.transport.maxVersions = unchangedProbe();
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(9),
+          reason:
+              'incremental only — the 9 reconcile re-pulls were '
+              'skipped because nothing changed server-side',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          hasLength(9),
+          reason: 'one probe per pull table before the reconcile',
+        );
+        expect(
+          (await rig.state()).lastFullPullAt?.toUtc(),
+          t0,
+          reason:
+              'the skipped reconcile still counts: the staleness '
+              'window restarts and the maintenance cadence is preserved',
+        );
+      });
+
+      test('a probe above a cursor (the clamp lookback, or a real change) '
+          'runs the full re-pull', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        final probe = unchangedProbe();
+        probe[SyncTable.dayEntries] = 1; // above the persisted cursor 0
+        rig.transport.maxVersions = probe;
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(18),
+          reason:
+              '9 incremental + 9 reconcile: the probe reported a '
+              'change, so the full re-pull runs',
+        );
+        expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
+      });
+
+      test('a failed probe (null) falls back to the full re-pull — sync is '
+          'never silently skipped', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        rig.transport.maxVersions = {}; // every table answers null ("unknown")
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(18),
+          reason: 'a probe failure is conservative: the full re-pull runs',
+        );
+        expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
+      });
+
+      test('a forced reconcile is never skipped by the probe', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.storage.writeSyncState(
+          kDefaultSyncState.copyWith(
+            boundUserId: const Value(uidA),
+            deviceId: 'device-1',
+            cursorProfiles: 100,
+            lastFullPullAt: Value(t0),
+          ),
+        );
+        rig.transport.maxVersions = unchangedProbe();
+        await rig.start(); // incremental only; nothing is due
+        rig.transport.pulls.clear();
+
+        rig.engine.triggerFullReconcile();
+        await rig.engine.flush();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(18),
+          reason:
+              '9 incremental + 9 reconcile: the forced reconcile '
+              're-pulled even though the probe says nothing changed',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          isEmpty,
+          reason: 'an explicit repair request never consults the probe',
+        );
+      });
+
+      test('a fresh-bind reconcile is never skipped by the probe', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        rig.transport.maxVersions = {
+          for (final table in SyncTable.values) table: 0,
+        };
+
+        await rig.start(); // binds on the empty database, reconciles
+
+        expect(
+          rig.transport.pulls,
+          hasLength(18),
+          reason:
+              'a bind-time reconcile re-pulls everything regardless '
+              'of the probe',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          isEmpty,
+          reason: 'a bind never consults the probe',
+        );
+      });
+    });
+
     test('a retryable apply failure on pull leaves the cursor and is retried '
         'next cycle once the profile is held', () async {
       final rig = Rig();

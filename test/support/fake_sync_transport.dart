@@ -80,6 +80,16 @@ class FakeSyncTransport implements SyncTransport {
   /// Every [fetchWatermark] call, recorded in order.
   int fetchWatermarkCount = 0;
 
+  /// Issue #42: scripted answers for [fetchMaxVersion], keyed by table. A
+  /// missing table (or a `null` map, the default) answers `null` — the
+  /// conservative "probe failed" answer that keeps the engine's full
+  /// re-pull running, which is also exactly the pre-#42 behavior every
+  /// existing reconcile test pins.
+  Map<SyncTable, int>? maxVersions;
+
+  /// Every [fetchMaxVersion] call, recorded in order.
+  final fetchMaxVersionCalls = <SyncTable>[];
+
   int get pushCount => pushes.length;
   int get pullCount => pulls.length;
 
@@ -156,6 +166,12 @@ class FakeSyncTransport implements SyncTransport {
   Future<int?> fetchWatermark() async {
     fetchWatermarkCount++;
     return watermark;
+  }
+
+  @override
+  Future<int?> fetchMaxVersion(SyncTable table) async {
+    fetchMaxVersionCalls.add(table);
+    return maxVersions?[table];
   }
 
   /// Every [primePullCycle] call, recorded in order (issue #598) so a test

@@ -4,6 +4,12 @@
 /// fully on bind / daily, and enforces the device binding guard with a
 /// non-destructive mismatch state.
 ///
+/// Issue #42: the *scheduled* daily reconcile probes the server's
+/// per-table `max(server_version)` first ([_serverUnchangedSinceCursors])
+/// and skips the full re-pull when nothing changed since the incremental
+/// cursors; forced and bind-time reconciles always re-pull, and any probe
+/// failure falls back to the full re-pull.
+///
 /// Issue #525: a push batch's `resolved` rows are no longer, on their own,
 /// a reason to run a full reconcile — [SupabaseSyncApply.applyPushResult]
 /// already applies every resolved row as the correct per-row response
@@ -124,6 +130,29 @@ const int kCursorLookback = 50;
 /// storage clock to it. `1.0` would disable smoothing entirely (every
 /// sample replaces the previous one outright, the pre-#566 behavior).
 const double kClockOffsetSmoothingAlpha = 0.2;
+
+/// The pull table order [SupabaseSyncEngine._pullIncremental],
+/// [SupabaseSyncEngine._reconcile], and (issue #42) the pre-reconcile
+/// version probe all share. Profiles first (everything else references
+/// one); day entries, then observations (an observation references a day
+/// entry, which references a profile — both must already be applied for
+/// the referential check to succeed without a retry); the two mode tables
+/// and two care tables after every content table (both reference only a
+/// profile); deletedProfiles last (issue #522: it only ever tombstones a
+/// profile — and cascades the wipe — that this same cycle may have just
+/// pulled fresh content for above; running it last means the deletion
+/// always wins).
+const List<SyncTable> _pullTableOrder = [
+  SyncTable.profiles,
+  SyncTable.profileGuardians,
+  SyncTable.dayEntries,
+  SyncTable.observations,
+  SyncTable.profileModes,
+  SyncTable.cycleOverrides,
+  SyncTable.careNotes,
+  SyncTable.visitPrepItems,
+  SyncTable.deletedProfiles,
+];
 
 final Random _jitter = Random();
 
@@ -611,14 +640,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       // rejections) before the
       // push so a previously-rejected row is retried once the reconcile
       // that follows re-evaluates it.
-      final reconcileDueBeforePush = _reconcileDueBeforePush(bindNow, state);
+      final reconcileDue = _reconcileDueBeforePush(bindNow, state);
 
       await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
       final reconcileRetry = await _reconcileIfDue(
         uid: uid,
-        reconcileDueBeforePush: reconcileDueBeforePush,
+        reconcileDueBeforePush: reconcileDue.due,
+        scheduledOnly: reconcileDue.scheduledOnly,
       );
       _logRetryIfNeeded(pullRetry: pullRetry, reconcileRetry: reconcileRetry);
 
@@ -712,7 +742,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// row is retried once the reconcile that follows re-evaluates it) —
   /// this must run before the push, so it lives here rather than in
   /// [_reconcileIfDue], which only sees post-push state.
-  bool _reconcileDueBeforePush(bool bindNow, SyncStateRow state) {
+  ///
+  /// Issue #42: also reports whether the reconcile is due *only* by the
+  /// 24h staleness window — the "scheduled daily reconcile" — as opposed
+  /// to a forced reconcile, a fresh bind, or a first-ever pull. Only the
+  /// scheduled kind may be skipped by [_serverUnchangedSinceCursors]'s
+  /// version probe: the others are explicit repair requests whose whole
+  /// point is to re-page everything regardless.
+  ({bool due, bool scheduledOnly}) _reconcileDueBeforePush(
+    bool bindNow,
+    SyncStateRow state,
+  ) {
     final now = _clock().toUtc();
     final lastFull = state.lastFullPullAt?.toUtc();
     final forced = _forceFullReconcile;
@@ -722,7 +762,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         lastFull == null ||
         now.difference(lastFull) > kSyncFullPullInterval;
     if (due) _apply.clearRejected();
-    return due;
+    return (due: due, scheduledOnly: !forced && !bindNow && lastFull != null);
   }
 
   /// [_cycle]'s reconcile dispatch, split out verbatim. Due exactly when
@@ -732,12 +772,27 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// already applies every one of them as the correct per-row response, so
   /// this method no longer needs to know whether the push saw any. Returns
   /// whether the reconcile (if it ran) hit a retryable apply failure.
+  ///
+  /// Issue #42: a due *scheduled* reconcile first probes the server
+  /// ([_serverUnchangedSinceCursors]); when nothing changed server-side
+  /// since the incremental pull's persisted cursors, the network re-pull
+  /// and re-apply of every row is skipped — every remote apply is
+  /// LWW-idempotent, so re-paging unchanged rows could only ever be a
+  /// no-op — while everything local that rides a clean reconcile still
+  /// runs (the `lastFullPullAt` advance and the issue #203 maintenance
+  /// sweep, so the tombstone-retention cadence is preserved). Any probe
+  /// failure answers "changed" and the full re-pull runs; sync is never
+  /// silently skipped.
   Future<bool> _reconcileIfDue({
     required String uid,
     required bool reconcileDueBeforePush,
+    required bool scheduledOnly,
   }) async {
     if (!reconcileDueBeforePush) return false;
-    final reconcileRetry = await _reconcile(uid);
+    var reconcileRetry = false;
+    if (!scheduledOnly || !await _serverUnchangedSinceCursors()) {
+      reconcileRetry = await _reconcile(uid);
+    }
     if (!reconcileRetry) {
       _consecutiveReconcileRetries = 0;
       await _updateState(
@@ -757,7 +812,42 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return reconcileRetry;
   }
 
-  void _logRetryIfNeeded({required bool pullRetry, required bool reconcileRetry}) {
+  /// Issue #42: the scheduled reconcile's version probe — `max =
+  /// fetchMaxVersion(table) <= startingCursor(table)` for *every* pull
+  /// table, read from the persisted post-incremental-pull state. Every
+  /// synced table stamps `server_version` from a trigger on every write
+  /// (including the RPCs `sync_push` never touches — see
+  /// [SyncTransport.fetchMaxVersion]), so a maximum at or below the cursor
+  /// proves the incremental pull already saw everything; anything else —
+  /// a higher maximum, an unknown probe, or a transport that throws
+  /// instead of answering `null` — reports "changed" so the caller runs
+  /// the full re-pull.
+  Future<bool> _serverUnchangedSinceCursors() async {
+    final state = await _storage.readSyncState();
+    for (final table in _pullTableOrder) {
+      final max = await _probeMaxVersion(table);
+      if (max == null || max > _startingCursor(table, state)) return false;
+    }
+    return true;
+  }
+
+  /// [_serverUnchangedSinceCursors]'s per-table probe, wrapped so a
+  /// transport that forgets [SyncTransport.fetchMaxVersion]'s own
+  /// never-throws contract still degrades to "unknown" (full re-pull)
+  /// instead of failing the whole cycle — the probe is an optimization,
+  /// never a correctness requirement.
+  Future<int?> _probeMaxVersion(SyncTable table) async {
+    try {
+      return await _transport.fetchMaxVersion(table);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _logRetryIfNeeded({
+    required bool pullRetry,
+    required bool reconcileRetry,
+  }) {
     if (pullRetry || reconcileRetry) {
       debugPrint('lunarlog sync: a remote row waits for its profile; '
           'retrying next cycle');
@@ -1106,34 +1196,14 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// are split into [_pullTable]/[_onTablePullFailure]/
   /// [_onTablePullSettled] (finding #4 follow-up) so this stays a plain
   /// orchestrator: each extracted piece is small enough to score well
-  /// under the CRAP gate on its own, instead of one method carrying all of
-  /// it.
+  /// under the CRAP gate on its own, instead of one method carrying all
+  /// of it.
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
     final watermark = await _fetchWatermark();
     await _primePullCycle(await _incrementalCycleCursors());
     var retry = false;
-    for (final table in const [
-      SyncTable.profiles,
-      SyncTable.profileGuardians,
-      SyncTable.dayEntries,
-      // Issue #240: pulled last — an observation references a day entry,
-      // which references a profile, so both must already be applied for
-      // applyRemoteObservation's referential check to succeed without a
-      // retry. Issue #188: the two mode tables follow for the same reason
-      // (both reference a profile), after every content table. Issue #128:
-      // care notes and visit-prep items follow last for the same reason
-      // (both reference only a profile).
-      SyncTable.observations,
-      SyncTable.profileModes,
-      SyncTable.cycleOverrides,
-      SyncTable.careNotes,
-      SyncTable.visitPrepItems,
-      // Issue #522: pulled last — it only ever tombstones a profile (and
-      // cascades the wipe) that this same cycle may have just pulled fresh
-      // content for above; running it last means the deletion always wins.
-      SyncTable.deletedProfiles,
-    ]) {
+    for (final table in _pullTableOrder) {
       if (await _pullTable(table, uid, watermark: watermark)) retry = true;
     }
     return retry;
@@ -1312,21 +1382,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     // _pullIncremental's snapshot.
     await _primePullCycle({for (final table in _pullRpcTables) table: 0});
     var retry = false;
-    for (final table in const [
-      SyncTable.profiles,
-      SyncTable.profileGuardians,
-      SyncTable.dayEntries,
-      // Issue #240: same ordering rationale as _pullIncremental; Issue
-      // #188's two mode tables follow (both reference only a profile);
-      // Issue #128's two care tables follow last (same reason).
-      SyncTable.observations,
-      SyncTable.profileModes,
-      SyncTable.cycleOverrides,
-      SyncTable.careNotes,
-      SyncTable.visitPrepItems,
-      // Issue #522: last, same reason as _pullIncremental above.
-      SyncTable.deletedProfiles,
-    ]) {
+    for (final table in _pullTableOrder) {
       var after = 0;
       while (true) {
         _checkpoint(uid);
