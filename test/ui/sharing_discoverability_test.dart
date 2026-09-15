@@ -198,6 +198,19 @@ RemoteProfileGuardianRow _row(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
+
+/// Issue #226: the Family & sharing section sits further down the
+/// restructured Settings list (fifth of eight sections) — scroll it into
+/// view before asserting, the way a person would.
+Future<void> _scrollToSharingSection(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.byKey(const ValueKey('family-sharing-section')),
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<LunarLogDatabase> _pumpApp(
   WidgetTester tester, {
   FakeAuthService? auth,
@@ -1050,6 +1063,7 @@ void main() {
 
         await tester.tap(find.byTooltip('Settings'));
         await tester.pumpAndSettle();
+        await _scrollToSharingSection(tester);
 
         expect(find.byKey(const ValueKey('family-sharing-section')),
             findsOneWidget);
@@ -1121,6 +1135,7 @@ void main() {
 
         await tester.tap(find.byTooltip('Settings'));
         await tester.pumpAndSettle();
+        await _scrollToSharingSection(tester);
 
         final section =
             find.byKey(const ValueKey('family-sharing-section'));
@@ -1280,6 +1295,7 @@ void main() {
 
         await tester.tap(find.byTooltip('Settings'));
         await tester.pumpAndSettle();
+        await _scrollToSharingSection(tester);
 
         // One tap from Settings lands on the labeled section.
         expect(find.byKey(const ValueKey('family-sharing-section')),
@@ -1311,6 +1327,15 @@ void main() {
         await tester.pumpAndSettle();
 
         await tester.tap(find.byTooltip('Settings'));
+        await tester.pumpAndSettle();
+        // No scroll-to-find here on purpose: the section must be absent,
+        // and `scrollUntilVisible` would itself throw on a hidden target.
+        // Scrolling the list to its end instead still proves the section
+        // never renders anywhere down the restructured #226 layout.
+        await tester.drag(
+          find.byType(Scrollable).first,
+          const Offset(0, -1200),
+        );
         await tester.pumpAndSettle();
 
         expect(find.byKey(const ValueKey('family-sharing-section')),

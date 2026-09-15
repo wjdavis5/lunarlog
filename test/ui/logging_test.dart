@@ -29,6 +29,7 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
@@ -3711,6 +3712,25 @@ void main() {
         daySheetDateLabel(LocalDate(2024, 12, 31), today),
         'Tue 31 Dec 2024',
       );
+    });
+
+    test(
+        'daySheetDateLabel forwards the Issue #226 date-format preference '
+        '(the sheet resolves it from SettingsKeys.dateFormat)', () {
+      final today = LocalDate(2026, 8, 30);
+      expect(
+        daySheetDateLabel(today, today,
+            preference: DateFormatPreference.monthDay),
+        'Today · Sun Aug 30',
+      );
+      expect(
+        daySheetDateLabel(LocalDate(2026, 3, 5), today,
+            preference: DateFormatPreference.monthDay),
+        'Thu Mar 5 2026',
+      );
+      // The default is the system order — the exact pre-#226 rendering.
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
+          'Thu 5 Mar 2026');
     });
 
     testWidgets('keyboard inset: the note field and the pinned autosave area '

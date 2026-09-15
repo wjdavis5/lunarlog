@@ -53,9 +53,11 @@ import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
+import 'package:lunarlog/ui/components/settings_section.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
@@ -152,32 +154,29 @@ class _YourDataSectionState extends State<YourDataSection> {
     // A `passwordRecovery` session counts as signed in for rendering
     // purposes here too (issue #23, AC4).
     final signedIn = auth?.state.hasUsableSession ?? false;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return SettingsSection(
+      id: 'your-data',
+      title: AppLocalizations.of(context).settingsSectionYourData,
       children: _sectionChildren(context, profiles, signedIn),
     );
   }
 
-  /// The full "Your data" section body: heading, [_exportTile], [_importTile],
-  /// trailing divider (Issue #140 review, item 1 — split out of [build]
-  /// itself so no single method carries every tile's conditionals).
+  /// The full "Your data" section body: [_exportTile], [_importTile] and
+  /// the tiles that follow (Issue #140 review, item 1 — split out of
+  /// [build] itself so no single method carries every tile's
+  /// conditionals). Issue #226: the heading itself moved up into
+  /// [SettingsSection], so this list is body-only.
   List<Widget> _sectionChildren(
     BuildContext context,
     List<Profile> profiles,
     bool signedIn,
   ) {
-    final theme = Theme.of(context);
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text('Your data', style: theme.textTheme.titleSmall),
-      ),
       ..._exportTile(context, profiles, signedIn),
       ..._importTile(context),
       CsvExportTile(exportCsv: widget.exportCsv), // Issue #469
       const ClinicalExportTile(), // Issue #157
       ..._purgeImportedDataTile(context, profiles), // Issue #472
-      const Divider(),
     ];
   }
 
