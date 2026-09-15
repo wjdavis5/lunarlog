@@ -1063,7 +1063,10 @@ build), always with a throwaway account and fabricated profiles only.
       reminders (issue #5)" section above: an alert received with the app
       killed proves the initialize → requestPermission → getToken
       sequencing, and its tap-routing item proves the opened-app/initial
-      message streams. Running that section satisfies this entry.
+      message streams. Issue #174's
+      `setForegroundNotificationPresentationOptions` call is proven by the
+      "Foreground alert shows a banner (issue #174, iOS)" item above.
+      Running those sections satisfies this entry.
 - [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
       MethodChannel pin.** Inert in every current build
       (`AppConfig.hasHealthSync` is false): confirm a normal build shows no
