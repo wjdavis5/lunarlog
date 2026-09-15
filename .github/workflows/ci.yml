@@ -469,6 +469,9 @@ jobs:
       - name: Start local Supabase (database-only services)
         # pgTAP only needs Postgres; skip the services that would otherwise
         # pull images and consume runner time. Migrations are applied on start.
+        # The same stack also serves the Dart round-trip test below (issue
+        # #102): the `-x` list keeps REST (PostgREST) and Auth (GoTrue)
+        # running, which is exactly what that test needs on top of Postgres.
         run: |
           supabase start \
             -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
@@ -476,6 +479,30 @@ jobs:
       - name: Run pgTAP tests
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
         run: supabase test db --local
+
+      # Issue #102: the Dart sync round trip against the live local stack
+      # (real SupabaseSyncTransport + row codec through the real sync_push
+      # RPC and RLS select). Runs after pgTAP on purpose: this test is
+      # RLS-scoped to its own freshly created user, so it is robust to
+      # whatever rows pgTAP leaves behind, while pgTAP is not necessarily
+      # robust to rows this test creates.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Dart <-> local Supabase sync round trip (issue #102)
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env 2>/dev/null)"
+          export LUNARLOG_LOCAL_SUPABASE_URL="$API_URL"
+          export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          flutter test test/data/sync/local_supabase_round_trip_test.dart
 
       - name: Stop local Supabase
         if: always()

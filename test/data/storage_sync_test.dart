@@ -1984,6 +1984,84 @@ void main() {
       expect((await storage.readSyncState()).cursorProfiles, 7);
     });
 
+    // Issue #102: the transaction around a page is load-bearing, and the
+    // test above could not prove that by itself — it pins the real path's
+    // outcome but never demonstrates the divergence shape the transaction
+    // prevents, so a reader (or a refactor) could mistake it for redundant
+    // wrapping. This test runs the SAME mid-page failure both ways:
+    // without a page-level transaction (each row its own committed write —
+    // the public per-row applies, i.e. exactly what a regression that
+    // drops `applyRemotePage`'s `db.transaction()` silently reverts to) a
+    // failure at row k leaves rows <k stored while the cursor write is
+    // never reached — rows and cursor describing different worlds. The
+    // real path under the same failure keeps them together: nothing
+    // lands, the cursor does not move. Removing the transaction (or
+    // moving the cursor write ahead of the row loop so a later row's
+    // failure strands an advanced cursor) fails the second half.
+    test('issue #102: a mid-page failure diverges rows and cursor without '
+        'the one-transaction contract; the real path keeps them together '
+        'under the same failure', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+
+      // The no-transaction variant: the same page shape a pull delivers
+      // (good row, then a row referencing a profile this device does not
+      // hold), applied one committed write per row instead of one page
+      // transaction. This is the documented divergence the transaction
+      // exists to prevent, not a behavior anyone wants.
+      const v1 = '01J0000000000000000000000V';
+      final variantRows = [
+        remoteEntry(v1,
+            profileId: p.id, localDate: '2026-06-01', updatedAt: t0),
+        remoteEntry('01J0000000000000000000000W',
+            profileId: '01J0000000000000000000000Q',
+            localDate: '2026-06-02',
+            updatedAt: t0),
+      ];
+      await storage.applyRemoteDayEntry(variantRows[0]);
+      await expectLater(
+        storage.applyRemoteDayEntry(variantRows[1]),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+      expect(
+        (await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
+        contains(v1),
+        reason: 'the un-transactional variant commits row 1 — this is the '
+            'divergence shape',
+      );
+      expect((await storage.readSyncState()).cursorDayEntries, 0,
+          reason: 'the un-transactional variant never reaches the cursor '
+              'write: rows and cursor have diverged');
+
+      // The real path, same failure injection, distinct row ids (the
+      // variant above already stored v1, and a rollback must be able to
+      // prove a *fresh* row did not land).
+      const r1 = '01J0000000000000000000000X';
+      await expectLater(
+        storage.applyRemotePage(
+          table: SyncTable.dayEntries,
+          rows: [
+            remoteEntry(r1,
+                profileId: p.id, localDate: '2026-06-03', updatedAt: t0),
+            remoteEntry('01J0000000000000000000000Y',
+                profileId: '01J0000000000000000000000Q',
+                localDate: '2026-06-04',
+                updatedAt: t0),
+          ],
+          newCursor: 50,
+        ),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+      expect(
+        (await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
+        isNot(contains(r1)),
+        reason: 'the good row of the failed page rolled back with it — '
+            'had applyRemotePage lost its transaction it would behave like '
+            'the variant above and land',
+      );
+      expect((await storage.readSyncState()).cursorDayEntries, 0,
+          reason: 'the cursor rolled back with the rows: one world, not two');
+    });
+
     test('issue #525: profileGuardians now persists its own cursor, '
         'independent of every other table', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
