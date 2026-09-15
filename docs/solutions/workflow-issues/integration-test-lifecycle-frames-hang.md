@@ -10,6 +10,7 @@ applies_when:
   - an integration test calls handleAppLifecycleStateChanged with AppLifecycleState.paused or hidden
   - "a `flutter test integration_test/... -d <device>` run hangs forever on one specific test"
   - the same test passes host-mode (or in test/ui/ widget tests) without any change
+  - an unlocked-app assertion fails only on a real device (no lock after backgrounding, an unexpected armed timer) — the credential prompt's 3-second settling tail suppressing re-locks
 tags:
   - integration-test
   - app-lifecycle
@@ -60,7 +61,17 @@ called before **every** pump that may run in a frames-disabled state: each `tran
 
 `test/ui/gate_lifecycle_frames_test.dart` pins the whole mechanism host-mode (frames disabled at `hidden`/`paused`, a plain pump renders nothing then, `scheduleForcedFrame` + pump renders, `inactive`/`resumed` re-enable) so a future SDK change that re-breaks the simulator run fails fast in the host suite instead of as a stuck CI job.
 
+## Second finding: the settle-tail race (first real-simulator CI run)
+
+Un-hanging the file exposed a second, behavioral layer: both lifecycle-driving tests then **failed their assertions** on the simulator (`4 tests passed, 2 failed`, in bounded time). Every unlock — cold start's automatic one included — opens a system-UI window for the credential prompt and leaves a 3-second settling tail behind it (`kSystemUiSettleTimeout`, #65 KTD2a), during which a departure covers content but does **not** lock (`_suppressingLock`), and the window-deadline timer stays armed. The host twin never sees this because `test/ui/gate_test.dart`'s `Harness.pump`/`unlockViaButton` expire that tail deterministically after every unlock (`timers.fireWithDelay(kSystemUiSettleTimeout)`) — a fake clock never reaches 3s on its own. The integration file's helpers did neither, so on the live device its assertions raced 3 wall-clock seconds of suppression:
+
+- "backgrounding re-locks...": `transitionTo(paused)` landed inside the tail → departure suppressed → `Found 0 lock-screen`.
+- "inactivity timeout...": the toggle-off half found `timers.anyActive` true — the never-expired tail's window-deadline timer (and, depending on ordering, an inactivity timer the still-in-flight `relockEnabled` watch emission had not yet cancelled).
+
+The fix mirrors the twin: the integration file's `FakeInactivityTimer` now records its `delay` (the duration is what tells the controller's three timer kinds apart), `FakeInactivityTimers` gains `fireWithDelay`, and a new `expireSystemUiSettleTail(tester, timers)` helper (fire the tail, pump, settle, `drainIsolateTraffic`) runs after every unlock whose subsequent assertions depend on the steady-state unlocked app. Verified by re-running the file's exact content as a host widget test (same file minus the `IntegrationTestWidgetsFlutterBinding.ensureInitialized` line): with the expiry calls removed, "backgrounding re-locks" fails on host exactly as it did on the simulator; with them, all six pass.
+
 ## Verification
 
 - `flutter test test/ui/gate_lifecycle_frames_test.dart` (mechanism pin)
+- Host mirror of the integration file (see above): 6/6 with the fix, test 1 fails without it — the failure mode is not device-specific, only previously unobservable because the file could not run host-mode at all on this toolchain.
 - CI "iOS Simulator tests" job runs the full `integration_test/gate_test.dart` (filter removed); the step carries `timeout-minutes: 15` so any regression fails in bounded time rather than parking the job.

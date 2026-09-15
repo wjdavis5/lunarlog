@@ -49,8 +49,14 @@ class FakeGate implements AppGate {
 }
 
 class FakeInactivityTimer implements InactivityTimer {
-  FakeInactivityTimer(this._onTimeout);
+  FakeInactivityTimer(this.delay, this._onTimeout);
 
+  /// The delay this timer was created with. The controller creates three
+  /// kinds of timer through one factory — the inactivity countdown, the
+  /// system-UI window deadline, and the settling tail (#65 U1) — and their
+  /// durations are what tell them apart. Mirrors the host twin in
+  /// `test/ui/gate_test.dart`, which `fireWithDelay` below depends on.
+  final Duration delay;
   final void Function() _onTimeout;
   bool active = true;
 
@@ -68,9 +74,20 @@ class FakeInactivityTimers {
   final created = <FakeInactivityTimer>[];
 
   InactivityTimer create(Duration delay, VoidCallback onTimeout) {
-    final timer = FakeInactivityTimer(onTimeout);
+    final timer = FakeInactivityTimer(delay, onTimeout);
     created.add(timer);
     return timer;
+  }
+
+  /// Fires every active timer created with [delay]; the others stay armed,
+  /// so a test can expire the settling tail without also expiring the
+  /// inactivity countdown or the window deadline. The host twin's Harness
+  /// does exactly this after every unlock — see
+  /// [expireSystemUiSettleTail].
+  void fireWithDelay(Duration delay) {
+    for (final timer in List.of(created)) {
+      if (timer.delay == delay) timer.fire();
+    }
   }
 
   InactivityTimerFactory get factory => create;
@@ -177,6 +194,29 @@ Future<void> main() async {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pumpAndSettle();
     }
+  }
+
+  /// Issue #121's second finding (from the first real-simulator CI run):
+  /// every unlock — cold start's automatic one included — opens a
+  /// system-UI window for the credential prompt and leaves a 3-second
+  /// settling tail behind it (#65 KTD2a), during which a departure covers
+  /// content but does NOT lock, and the window-deadline timer stays armed.
+  /// On the live device binding those are 3 wall-clock seconds the test's
+  /// assertions would race (the first CI run failed exactly there: zero
+  /// lock-screens after transitionTo(paused), and `timers.anyActive` true
+  /// where the toggle-off half expected false). The host twin expires the
+  /// tail deterministically after every unlock — Harness.pump's
+  /// `fireWithDelay(kSystemUiSettleTimeout)` — because a fake clock never
+  /// reaches 3s on its own; do the same here, then drain so the reconcile
+  /// and the settings watch both land before the caller asserts.
+  Future<void> expireSystemUiSettleTail(
+    WidgetTester tester,
+    FakeInactivityTimers timers,
+  ) async {
+    timers.fireWithDelay(kSystemUiSettleTimeout);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    await drainIsolateTraffic(tester);
   }
 
   Future<void> unlockViaButton(WidgetTester tester) async {
@@ -288,13 +328,18 @@ Future<void> main() async {
       'returns', (tester) async {
     final db = await seededDb();
     final gate = FakeGate();
+    // Injected so expireSystemUiSettleTail can expire the cold-start
+    // prompt's settling tail deterministically (issue #121).
+    final timers = FakeInactivityTimers();
 
     await tester.pumpWidget(LunarLogRoot(
       gate: gate,
       dbOpener: () async => db,
+      inactivityTimerFactory: timers.factory,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    await expireSystemUiSettleTail(tester, timers);
     expect(find.text('Alice'), findsOneWidget);
 
     await transitionTo(tester, AppLifecycleState.paused);
@@ -323,6 +368,7 @@ Future<void> main() async {
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    await expireSystemUiSettleTail(tester, timers);
     expect(find.text('Alice'), findsOneWidget);
     expect(timers.anyActive, isTrue);
 
@@ -345,6 +391,12 @@ Future<void> main() async {
     ));
     await tester.pump();
     await tester.pumpAndSettle();
+    // Expiring the settle tail also lets the settings watch's 'false'
+    // emission cancel whatever the reconcile armed, so anyActive is
+    // deterministically false here rather than racing the drift isolate
+    // (issue #121: the first CI run found the window-deadline timer still
+    // armed from the never-expired tail).
+    await expireSystemUiSettleTail(tester, timers);
     expect(timers.anyActive, isFalse);
 
     timers.fireActive();
