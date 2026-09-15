@@ -131,26 +131,30 @@ void main() {
       expect(cycles.first.end, _d(2026, 9, 7));
     });
 
-    test('covers at most the engine''s fixed forecast window (issue #300: '
-        'kPredictionWindowCycles = 12, not the pre-#300 unbounded-until-'
-        'horizon chain) -- a 12-month horizon over 30-day steady cycles '
-        'used to need 13 cycles; the engine now caps the forecast at 12, '
-        'so this fixture is truncated to the engine''s own cap rather than '
-        'the navigable horizon', () {
+    test('the engine''s horizon-sized forecast covers the whole navigable '
+        'horizon (issue #693) -- a 12-month horizon over 30-day steady '
+        'cycles needs 13 cycles, which the pre-#693 fixed 12-cycle cap '
+        'truncated one cycle short of the navigable horizon', () {
       final (cycles, active) = _steadyForecast(
         _d(2026, 8, 30),
         kForecastHorizonMonths,
       );
-      expect(active.forecast.length, 12,
-          reason: 'the engine always emits kPredictionWindowCycles cycles');
-      expect(cycles.length, 12,
+      // Estimate 2026-09-04, horizon ends 2027-08-31, 30-day steps:
+      // 30*(i-1) ≤ 361 days of headroom → 13 cycles, the last starting
+      // 2027-08-30 (a 14th would start 2027-09-29, past the horizon).
+      expect(active.forecast.length, 13,
+          reason: 'the engine emits every cycle up to the horizon '
+              '(kPredictionHorizonMonths), capped by kMaxForecastCycles');
+      expect(cycles.length, 13,
           reason: 'every engine cycle here starts before the 12-month '
-              'horizon ends, so none is truncated by the horizon -- the '
-              'engine''s own fixed cap is what bounds this list');
+              'horizon ends, so the adapter truncates nothing -- engine '
+              'and calendar agree on the horizon by construction (#693)');
       expect(cycles.last.start, active.forecast.last.start);
+      expect(cycles.last.start, _d(2027, 8, 30));
     });
 
-    test('a shorter horizon still truncates below the engine''s own cap', () {
+    test('a shorter horizon still truncates below the engine''s own '
+        'forecast (issue #693 kept this adapter''s horizon cut)', () {
       final (cycles, _) = _steadyForecast(_d(2026, 8, 30), 2);
       // Horizon ends 2026-10-31: starts Sep 4, Oct 4 -> 2 cycles.
       expect(cycles.length, 2);
