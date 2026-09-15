@@ -166,12 +166,14 @@ class _PushCursor {
   String? _cycleOverrideCursor;
   String? _careNoteCursor;
   String? _visitPrepItemCursor;
+  String? _mergeEventCursor;
   bool entriesDone = false;
   bool observationsDone = false;
   bool profileModesDone = false;
   bool cycleOverridesDone = false;
   bool careNotesDone = false;
   bool visitPrepItemsDone = false;
+  bool mergeEventsDone = false;
 
   Future<List<Profile>> readProfilePage() async {
     final page = await _storage.readDirtyProfiles(
@@ -234,6 +236,15 @@ class _PushCursor {
     return page;
   }
 
+  /// Issue #130: same keyset-paging contract as [readEntryPage].
+  Future<List<DayEntryMergeEventData>> readMergeEventPage() async {
+    final page = await _storage.readDirtyDayEntryMergeEvents(
+        limit: batchSize, afterId: _mergeEventCursor);
+    mergeEventsDone = page.length < batchSize;
+    if (page.isNotEmpty) _mergeEventCursor = page.last.id;
+    return page;
+  }
+
   /// Whether every child table's keyset scan is exhausted (the `done` half
   /// of [_readPushRound]'s contract, split out so that method's branch
   /// count stays under the CRAP gate as tables are added).
@@ -243,7 +254,8 @@ class _PushCursor {
       profileModesDone &&
       cycleOverridesDone &&
       careNotesDone &&
-      visitPrepItemsDone;
+      visitPrepItemsDone &&
+      mergeEventsDone;
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -367,6 +379,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           db.cycleOverrides,
           db.careNotes,
           db.visitPrepItems,
+          db.dayEntryMergeEvents,
         ]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
@@ -550,10 +563,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     )) {
       return true;
     }
-    return _hasPushable(
+    if (await _hasPushable(
       readPage: _storage.readDirtyVisitPrepItems,
       id: (i) => i.id,
       localRev: (i) => i.localRev,
+    )) {
+      return true;
+    }
+    return _hasPushable(
+      readPage: _storage.readDirtyDayEntryMergeEvents,
+      id: (e) => e.id,
+      localRev: (e) => e.localRev,
     );
   }
 
@@ -1029,6 +1049,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeVisitPrepItem(row), profileId: row.profileId),
       ]);
     }
+    // Issue #130: merge events ride the same chaining rule, once
+    // visit-prep items are exhausted.
+    if (cursor.visitPrepItemsDone && !cursor.mergeEventsDone) {
+      final mergeEventPage = await cursor.readMergeEventPage();
+      batch.addAll([
+        for (final row in _apply.pushable(mergeEventPage, (e) => e.id, (e) => e.localRev))
+          SyncPushItem(SyncTable.dayEntryMergeEvents, row.id, row.localRev,
+              encodeDayEntryMergeEvent(row), profileId: row.profileId),
+      ]);
+    }
   }
 
   /// One push batch's request/response handling, split out of [_push]
@@ -1063,6 +1093,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         cycleOverrides: [for (final i in batch) if (i.table == SyncTable.cycleOverrides) i.json],
         careNotes: [for (final i in batch) if (i.table == SyncTable.careNotes) i.json],
         visitPrepItems: [for (final i in batch) if (i.table == SyncTable.visitPrepItems) i.json],
+        mergeEvents: [for (final i in batch) if (i.table == SyncTable.dayEntryMergeEvents) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
@@ -1129,6 +1160,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.cycleOverrides,
       SyncTable.careNotes,
       SyncTable.visitPrepItems,
+      // Issue #130: merge events follow the care tables — a row references
+      // only a profile (already applied by the time its turn comes).
+      SyncTable.dayEntryMergeEvents,
       // Issue #522: pulled last — it only ever tombstones a profile (and
       // cascades the wipe) that this same cycle may have just pulled fresh
       // content for above; running it last means the deletion always wins.
@@ -1166,6 +1200,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.cycleOverrides,
     SyncTable.careNotes,
     SyncTable.visitPrepItems,
+    // Issue #130: sync_pull carries this table's pages too (a missing key
+    // in its response would make _decodePullResponse drop the whole cache,
+    // so the server side grew with the client, atomically).
+    SyncTable.dayEntryMergeEvents,
   ];
 
   /// One [_storage.readSyncState] read, turned into the persisted starting
@@ -1254,18 +1292,27 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// cycle used to force a full sequential scan of the global
   /// `profile_guardians` table. Issue #597 applies the identical fix to
   /// `deletedProfiles`, the one table #525 deliberately left un-cursored.
-  int _startingCursor(SyncTable table, SyncStateRow state) => switch (table) {
-        SyncTable.profiles => state.cursorProfiles,
-        SyncTable.dayEntries => state.cursorDayEntries,
-        SyncTable.observations => state.cursorObservations,
-        SyncTable.profileModes => state.cursorProfileModes,
-        SyncTable.cycleOverrides => state.cursorCycleOverrides,
-        SyncTable.careNotes => state.cursorCareNotes,
-        SyncTable.visitPrepItems => state.cursorVisitPrepItems,
-        SyncTable.profileGuardians => state.cursorProfileGuardians,
-        // Issue #597: deletedProfiles now has a persisted cursor too.
-        SyncTable.deletedProfiles => state.cursorDeletedProfiles,
-      };
+  int _startingCursor(SyncTable table, SyncStateRow state) =>
+      _startingCursors[table]!(state);
+
+  /// The per-table persisted-cursor getter for [_startingCursor] — a map
+  /// rather than an exhaustive switch since Issue #130's tenth SyncTable
+  /// (the switch sat permanently over the quality gate's per-method
+  /// complexity ceiling; row_codec.dart's `_syncTableNames` and
+  /// storage_remote_apply.dart's `_pageRowAppliers` grew the same way).
+  /// Issue #597: deletedProfiles has a persisted cursor too.
+  static final Map<SyncTable, int Function(SyncStateRow)> _startingCursors = {
+    SyncTable.profiles: (s) => s.cursorProfiles,
+    SyncTable.dayEntries: (s) => s.cursorDayEntries,
+    SyncTable.observations: (s) => s.cursorObservations,
+    SyncTable.profileModes: (s) => s.cursorProfileModes,
+    SyncTable.cycleOverrides: (s) => s.cursorCycleOverrides,
+    SyncTable.careNotes: (s) => s.cursorCareNotes,
+    SyncTable.visitPrepItems: (s) => s.cursorVisitPrepItems,
+    SyncTable.dayEntryMergeEvents: (s) => s.cursorDayEntryMergeEvents,
+    SyncTable.profileGuardians: (s) => s.cursorProfileGuardians,
+    SyncTable.deletedProfiles: (s) => s.cursorDeletedProfiles,
+  };
 
   /// A page of [table] hit a [RetryableSyncApplyError]. Only profileGuardians
   /// carries follow-up bookkeeping (KTD2 predates a retry story for the
@@ -1324,6 +1371,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       SyncTable.cycleOverrides,
       SyncTable.careNotes,
       SyncTable.visitPrepItems,
+      // Issue #130: same ordering rationale as _pullIncremental.
+      SyncTable.dayEntryMergeEvents,
       // Issue #522: last, same reason as _pullIncremental above.
       SyncTable.deletedProfiles,
     ]) {

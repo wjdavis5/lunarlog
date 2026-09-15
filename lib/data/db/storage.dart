@@ -69,6 +69,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
 import '../sync/conflict_rules.dart';
@@ -83,6 +84,7 @@ export '../sync/remote_rows.dart'
     show
         RemoteCareNoteRow,
         RemoteCycleOverrideRow,
+        RemoteDayEntryMergeEventRow,
         RemoteDayEntryRow,
         RemoteDeletedProfileRow,
         RemoteObservationRow,
@@ -102,6 +104,15 @@ part 'storage_remote_apply.dart';
 /// a 24h safety margin, ensuring tombstones are never swept before every device
 /// has had a chance to reconcile.
 const Duration kTombstoneRetentionHorizon = Duration(hours: 48);
+
+/// Issue #130: how long a same-date merge disclosure stays visible and its
+/// discarded text recoverable — the client mirror of the server-side
+/// `enforce_retention()` purge window (`day_entry_merge_events` rows older
+/// than 30 days are hard-deleted there; 20260916000000's header documents
+/// the choice). Local rows are not deleted — they simply age out of the
+/// day sheet's read (`getDayEntryMergeEventsForDay` filters on it), so
+/// behavior converges with the server without a local sweep job.
+const Duration kDayEntryMergeEventRetention = Duration(days: 30);
 
 class LunarLogStorage with LunarLogStorageQueries, LunarLogStorageLocalWrites, LunarLogStorageRemoteApply {
   LunarLogStorage(this.db, {DateTime Function()? clock, UlidGenerator? ulid})

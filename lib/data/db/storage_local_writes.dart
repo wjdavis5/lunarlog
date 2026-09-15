@@ -1635,6 +1635,22 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  /// Issue #130: dismisses one merge notice on THIS device only — the
+  /// event id joins the profile's device-local dismissal list and the day
+  /// sheet stops showing it. Never synced and never a tombstone: the
+  /// server row stays until its 30-day retention purge, so another
+  /// guardian (or this guardian's other device) keeps their notice.
+  Future<void> dismissDayEntryMergeEvent({
+    required String profileId,
+    required String eventId,
+  }) async {
+    final key = mergeNoticeDismissalsKey(profileId);
+    final stored = await getSetting(key);
+    final dismissed = appendMergeNoticeDismissal(
+        decodeMergeNoticeDismissals(stored), eventId);
+    await setSetting(key: key, value: encodeMergeNoticeDismissals(dismissed));
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -1686,11 +1702,17 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const VisitPrepItemsCompanion(dirty: Value(false)));
-      case SyncTable.profileGuardians:
-        changed = 0;
-      case SyncTable.deletedProfiles:
-        // Issue #522: pull-only, like profileGuardians above — never
-        // pushed, so there is nothing for this table to clear.
+      case SyncTable.dayEntryMergeEvents:
+        changed = await (db.update(db.dayEntryMergeEvents)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const DayEntryMergeEventsCompanion(dirty: Value(false)));
+      // Issue #522: profileGuardians and deletedProfiles are pull-only —
+      // never pushed, so there is nothing for either table to clear. One
+      // or-pattern case (rather than two labels) keeps this switch at the
+      // quality gate's complexity ceiling now that Issue #130's tenth
+      // SyncTable arrived.
+      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
         changed = 0;
     }
     return changed > 0;
@@ -1748,8 +1770,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             .write(VisitPrepItemsCompanion.custom(
                 dirty: const Constant(true),
                 localRev: db.visitPrepItems.localRev + const Constant(1)));
-      case SyncTable.profileGuardians:
-      case SyncTable.deletedProfiles:
+      case SyncTable.dayEntryMergeEvents:
+        await (db.update(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+            .write(DayEntryMergeEventsCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.dayEntryMergeEvents.localRev + const Constant(1)));
+      // Pull-only tables (see the doc comment) — one or-pattern case
+      // rather than two labels, keeping this switch at the quality gate's
+      // complexity ceiling now that Issue #130's tenth SyncTable arrived.
+      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
         break;
     }
   }
@@ -1785,6 +1814,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       await db.update(db.visitPrepItems).write(VisitPrepItemsCompanion.custom(
             dirty: const Constant(true),
             localRev: db.visitPrepItems.localRev + const Constant(1),
+          ));
+      await db.update(db.dayEntryMergeEvents)
+          .write(DayEntryMergeEventsCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
           ));
     });
   }

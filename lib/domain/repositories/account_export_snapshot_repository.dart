@@ -26,6 +26,7 @@
 /// `lib/data/repositories/drift_account_export_snapshot_repository.dart`.
 library;
 
+import '../logging/day_entry_merge_event.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
 import '../models/observation.dart';
@@ -38,11 +39,15 @@ typedef AccountExportSnapshot = ({
   List<Observation> observations,
   ProfileLifecycleMode? profileMode,
   List<CycleOverride> cycleOverrides,
+  List<DayEntryMergeEvent> mergeEvents,
 });
 
 abstract interface class AccountExportSnapshotRepository {
   /// [profileId]'s live day entries, observations, life-stage mode (null
-  /// when no `profile_modes` row was ever written for it), and cycle
-  /// overrides, read together as one atomic, point-in-time snapshot.
+  /// when no `profile_modes` row was ever written for it), cycle
+  /// overrides, and window-live same-date merge disclosures (Issue #130
+  /// — the 30-day recovery window, so an export never carries retained
+  /// losing text the server has already purged), read together as one
+  /// atomic, point-in-time snapshot.
   Future<AccountExportSnapshot> forProfile(String profileId);
 }

@@ -7205,6 +7205,823 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
   }
 }
 
+class $DayEntryMergeEventsTable extends DayEntryMergeEvents
+    with TableInfo<$DayEntryMergeEventsTable, DayEntryMergeEventData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DayEntryMergeEventsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _localDateMeta = const VerificationMeta(
+    'localDate',
+  );
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+    'local_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _winningRowIdMeta = const VerificationMeta(
+    'winningRowId',
+  );
+  @override
+  late final GeneratedColumn<String> winningRowId = GeneratedColumn<String>(
+    'winning_row_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _losingRowIdMeta = const VerificationMeta(
+    'losingRowId',
+  );
+  @override
+  late final GeneratedColumn<String> losingRowId = GeneratedColumn<String>(
+    'losing_row_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fieldMeta = const VerificationMeta('field');
+  @override
+  late final GeneratedColumn<String> field = GeneratedColumn<String>(
+    'field',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _losingValueTextMeta = const VerificationMeta(
+    'losingValueText',
+  );
+  @override
+  late final GeneratedColumn<String> losingValueText = GeneratedColumn<String>(
+    'losing_value_text',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _losingAuthorUserIdMeta =
+      const VerificationMeta('losingAuthorUserId');
+  @override
+  late final GeneratedColumn<String> losingAuthorUserId =
+      GeneratedColumn<String>(
+        'losing_author_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _winningAuthorUserIdMeta =
+      const VerificationMeta('winningAuthorUserId');
+  @override
+  late final GeneratedColumn<String> winningAuthorUserId =
+      GeneratedColumn<String>(
+        'winning_author_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    localDate,
+    winningRowId,
+    losingRowId,
+    field,
+    losingValueText,
+    losingAuthorUserId,
+    winningAuthorUserId,
+    createdAt,
+    updatedAt,
+    dirty,
+    localRev,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'day_entry_merge_events';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DayEntryMergeEventData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(
+        _localDateMeta,
+        localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('winning_row_id')) {
+      context.handle(
+        _winningRowIdMeta,
+        winningRowId.isAcceptableOrUnknown(
+          data['winning_row_id']!,
+          _winningRowIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_winningRowIdMeta);
+    }
+    if (data.containsKey('losing_row_id')) {
+      context.handle(
+        _losingRowIdMeta,
+        losingRowId.isAcceptableOrUnknown(
+          data['losing_row_id']!,
+          _losingRowIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_losingRowIdMeta);
+    }
+    if (data.containsKey('field')) {
+      context.handle(
+        _fieldMeta,
+        field.isAcceptableOrUnknown(data['field']!, _fieldMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fieldMeta);
+    }
+    if (data.containsKey('losing_value_text')) {
+      context.handle(
+        _losingValueTextMeta,
+        losingValueText.isAcceptableOrUnknown(
+          data['losing_value_text']!,
+          _losingValueTextMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_losingValueTextMeta);
+    }
+    if (data.containsKey('losing_author_user_id')) {
+      context.handle(
+        _losingAuthorUserIdMeta,
+        losingAuthorUserId.isAcceptableOrUnknown(
+          data['losing_author_user_id']!,
+          _losingAuthorUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('winning_author_user_id')) {
+      context.handle(
+        _winningAuthorUserIdMeta,
+        winningAuthorUserId.isAcceptableOrUnknown(
+          data['winning_author_user_id']!,
+          _winningAuthorUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DayEntryMergeEventData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DayEntryMergeEventData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      localDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_date'],
+      )!,
+      winningRowId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}winning_row_id'],
+      )!,
+      losingRowId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}losing_row_id'],
+      )!,
+      field: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}field'],
+      )!,
+      losingValueText: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}losing_value_text'],
+      )!,
+      losingAuthorUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}losing_author_user_id'],
+      ),
+      winningAuthorUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}winning_author_user_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+    );
+  }
+
+  @override
+  $DayEntryMergeEventsTable createAlias(String alias) {
+    return $DayEntryMergeEventsTable(attachedDatabase, alias);
+  }
+}
+
+class DayEntryMergeEventData extends DataClass
+    implements Insertable<DayEntryMergeEventData> {
+  /// Client-generated ULID (stable across devices/sync).
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` the colliding entries were both for.
+  final String localDate;
+
+  /// The surviving row's id at merge time.
+  final String winningRowId;
+
+  /// The tombstoned row's id at merge time (half of the natural key: a
+  /// losing row is tombstoned by the very merge being disclosed, so it can
+  /// lose at most one value per field).
+  final String losingRowId;
+
+  /// 'flow' | 'note' — which value kind was discarded.
+  final String field;
+
+  /// The discarded value itself: the losing note's text, or the losing flow
+  /// level's wire string. Health content — bounded (the server CHECKs
+  /// 2000), never in a notification, kept out of crash reports.
+  final String losingValueText;
+
+  /// Display attribution only: whose value was discarded / survived.
+  final String? losingAuthorUserId;
+  final String? winningAuthorUserId;
+
+  /// The UTC instant the merge was recorded (the resolution stamp for a
+  /// locally-emitted row; the server's `created_at` for a pulled one).
+  /// Drives the 30-day display/recovery window, in lockstep with the
+  /// server-side retention purge.
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  /// See [Profiles.dirty].
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+  const DayEntryMergeEventData({
+    required this.id,
+    required this.profileId,
+    required this.localDate,
+    required this.winningRowId,
+    required this.losingRowId,
+    required this.field,
+    required this.losingValueText,
+    this.losingAuthorUserId,
+    this.winningAuthorUserId,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.dirty,
+    required this.localRev,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['local_date'] = Variable<String>(localDate);
+    map['winning_row_id'] = Variable<String>(winningRowId);
+    map['losing_row_id'] = Variable<String>(losingRowId);
+    map['field'] = Variable<String>(field);
+    map['losing_value_text'] = Variable<String>(losingValueText);
+    if (!nullToAbsent || losingAuthorUserId != null) {
+      map['losing_author_user_id'] = Variable<String>(losingAuthorUserId);
+    }
+    if (!nullToAbsent || winningAuthorUserId != null) {
+      map['winning_author_user_id'] = Variable<String>(winningAuthorUserId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    return map;
+  }
+
+  DayEntryMergeEventsCompanion toCompanion(bool nullToAbsent) {
+    return DayEntryMergeEventsCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      localDate: Value(localDate),
+      winningRowId: Value(winningRowId),
+      losingRowId: Value(losingRowId),
+      field: Value(field),
+      losingValueText: Value(losingValueText),
+      losingAuthorUserId: losingAuthorUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(losingAuthorUserId),
+      winningAuthorUserId: winningAuthorUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(winningAuthorUserId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+    );
+  }
+
+  factory DayEntryMergeEventData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DayEntryMergeEventData(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      winningRowId: serializer.fromJson<String>(json['winningRowId']),
+      losingRowId: serializer.fromJson<String>(json['losingRowId']),
+      field: serializer.fromJson<String>(json['field']),
+      losingValueText: serializer.fromJson<String>(json['losingValueText']),
+      losingAuthorUserId: serializer.fromJson<String?>(
+        json['losingAuthorUserId'],
+      ),
+      winningAuthorUserId: serializer.fromJson<String?>(
+        json['winningAuthorUserId'],
+      ),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'localDate': serializer.toJson<String>(localDate),
+      'winningRowId': serializer.toJson<String>(winningRowId),
+      'losingRowId': serializer.toJson<String>(losingRowId),
+      'field': serializer.toJson<String>(field),
+      'losingValueText': serializer.toJson<String>(losingValueText),
+      'losingAuthorUserId': serializer.toJson<String?>(losingAuthorUserId),
+      'winningAuthorUserId': serializer.toJson<String?>(winningAuthorUserId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+    };
+  }
+
+  DayEntryMergeEventData copyWith({
+    String? id,
+    String? profileId,
+    String? localDate,
+    String? winningRowId,
+    String? losingRowId,
+    String? field,
+    String? losingValueText,
+    Value<String?> losingAuthorUserId = const Value.absent(),
+    Value<String?> winningAuthorUserId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? dirty,
+    int? localRev,
+  }) => DayEntryMergeEventData(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    localDate: localDate ?? this.localDate,
+    winningRowId: winningRowId ?? this.winningRowId,
+    losingRowId: losingRowId ?? this.losingRowId,
+    field: field ?? this.field,
+    losingValueText: losingValueText ?? this.losingValueText,
+    losingAuthorUserId: losingAuthorUserId.present
+        ? losingAuthorUserId.value
+        : this.losingAuthorUserId,
+    winningAuthorUserId: winningAuthorUserId.present
+        ? winningAuthorUserId.value
+        : this.winningAuthorUserId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+  );
+  DayEntryMergeEventData copyWithCompanion(DayEntryMergeEventsCompanion data) {
+    return DayEntryMergeEventData(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      winningRowId: data.winningRowId.present
+          ? data.winningRowId.value
+          : this.winningRowId,
+      losingRowId: data.losingRowId.present
+          ? data.losingRowId.value
+          : this.losingRowId,
+      field: data.field.present ? data.field.value : this.field,
+      losingValueText: data.losingValueText.present
+          ? data.losingValueText.value
+          : this.losingValueText,
+      losingAuthorUserId: data.losingAuthorUserId.present
+          ? data.losingAuthorUserId.value
+          : this.losingAuthorUserId,
+      winningAuthorUserId: data.winningAuthorUserId.present
+          ? data.winningAuthorUserId.value
+          : this.winningAuthorUserId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayEntryMergeEventData(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('winningRowId: $winningRowId, ')
+          ..write('losingRowId: $losingRowId, ')
+          ..write('field: $field, ')
+          ..write('losingValueText: $losingValueText, ')
+          ..write('losingAuthorUserId: $losingAuthorUserId, ')
+          ..write('winningAuthorUserId: $winningAuthorUserId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    localDate,
+    winningRowId,
+    losingRowId,
+    field,
+    losingValueText,
+    losingAuthorUserId,
+    winningAuthorUserId,
+    createdAt,
+    updatedAt,
+    dirty,
+    localRev,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DayEntryMergeEventData &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.localDate == this.localDate &&
+          other.winningRowId == this.winningRowId &&
+          other.losingRowId == this.losingRowId &&
+          other.field == this.field &&
+          other.losingValueText == this.losingValueText &&
+          other.losingAuthorUserId == this.losingAuthorUserId &&
+          other.winningAuthorUserId == this.winningAuthorUserId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev);
+}
+
+class DayEntryMergeEventsCompanion
+    extends UpdateCompanion<DayEntryMergeEventData> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> localDate;
+  final Value<String> winningRowId;
+  final Value<String> losingRowId;
+  final Value<String> field;
+  final Value<String> losingValueText;
+  final Value<String?> losingAuthorUserId;
+  final Value<String?> winningAuthorUserId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<int> rowid;
+  const DayEntryMergeEventsCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.winningRowId = const Value.absent(),
+    this.losingRowId = const Value.absent(),
+    this.field = const Value.absent(),
+    this.losingValueText = const Value.absent(),
+    this.losingAuthorUserId = const Value.absent(),
+    this.winningAuthorUserId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DayEntryMergeEventsCompanion.insert({
+    required String id,
+    required String profileId,
+    required String localDate,
+    required String winningRowId,
+    required String losingRowId,
+    required String field,
+    required String losingValueText,
+    this.losingAuthorUserId = const Value.absent(),
+    this.winningAuthorUserId = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       localDate = Value(localDate),
+       winningRowId = Value(winningRowId),
+       losingRowId = Value(losingRowId),
+       field = Value(field),
+       losingValueText = Value(losingValueText),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DayEntryMergeEventData> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? localDate,
+    Expression<String>? winningRowId,
+    Expression<String>? losingRowId,
+    Expression<String>? field,
+    Expression<String>? losingValueText,
+    Expression<String>? losingAuthorUserId,
+    Expression<String>? winningAuthorUserId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (localDate != null) 'local_date': localDate,
+      if (winningRowId != null) 'winning_row_id': winningRowId,
+      if (losingRowId != null) 'losing_row_id': losingRowId,
+      if (field != null) 'field': field,
+      if (losingValueText != null) 'losing_value_text': losingValueText,
+      if (losingAuthorUserId != null)
+        'losing_author_user_id': losingAuthorUserId,
+      if (winningAuthorUserId != null)
+        'winning_author_user_id': winningAuthorUserId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DayEntryMergeEventsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? localDate,
+    Value<String>? winningRowId,
+    Value<String>? losingRowId,
+    Value<String>? field,
+    Value<String>? losingValueText,
+    Value<String?>? losingAuthorUserId,
+    Value<String?>? winningAuthorUserId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<int>? rowid,
+  }) {
+    return DayEntryMergeEventsCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      localDate: localDate ?? this.localDate,
+      winningRowId: winningRowId ?? this.winningRowId,
+      losingRowId: losingRowId ?? this.losingRowId,
+      field: field ?? this.field,
+      losingValueText: losingValueText ?? this.losingValueText,
+      losingAuthorUserId: losingAuthorUserId ?? this.losingAuthorUserId,
+      winningAuthorUserId: winningAuthorUserId ?? this.winningAuthorUserId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (winningRowId.present) {
+      map['winning_row_id'] = Variable<String>(winningRowId.value);
+    }
+    if (losingRowId.present) {
+      map['losing_row_id'] = Variable<String>(losingRowId.value);
+    }
+    if (field.present) {
+      map['field'] = Variable<String>(field.value);
+    }
+    if (losingValueText.present) {
+      map['losing_value_text'] = Variable<String>(losingValueText.value);
+    }
+    if (losingAuthorUserId.present) {
+      map['losing_author_user_id'] = Variable<String>(losingAuthorUserId.value);
+    }
+    if (winningAuthorUserId.present) {
+      map['winning_author_user_id'] = Variable<String>(
+        winningAuthorUserId.value,
+      );
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayEntryMergeEventsCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('winningRowId: $winningRowId, ')
+          ..write('losingRowId: $losingRowId, ')
+          ..write('field: $field, ')
+          ..write('losingValueText: $losingValueText, ')
+          ..write('losingAuthorUserId: $losingAuthorUserId, ')
+          ..write('winningAuthorUserId: $winningAuthorUserId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AppSettingsTable extends AppSettings
     with TableInfo<$AppSettingsTable, AppSetting> {
   @override
@@ -7608,6 +8425,18 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorDayEntryMergeEventsMeta =
+      const VerificationMeta('cursorDayEntryMergeEvents');
+  @override
+  late final GeneratedColumn<int> cursorDayEntryMergeEvents =
+      GeneratedColumn<int>(
+        'cursor_day_entry_merge_events',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -7666,6 +8495,7 @@ class $SyncStateTable extends SyncState
     cursorVisitPrepItems,
     cursorProfileGuardians,
     cursorDeletedProfiles,
+    cursorDayEntryMergeEvents,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -7782,6 +8612,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_day_entry_merge_events')) {
+      context.handle(
+        _cursorDayEntryMergeEventsMeta,
+        cursorDayEntryMergeEvents.isAcceptableOrUnknown(
+          data['cursor_day_entry_merge_events']!,
+          _cursorDayEntryMergeEventsMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -7872,6 +8711,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_deleted_profiles'],
       )!,
+      cursorDayEntryMergeEvents: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_day_entry_merge_events'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -7950,6 +8793,10 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// table stayed small enough for a full scan to be cheap at the time,
   /// but the same per-cycle full-scan cost applies as it grows.
   final int cursorDeletedProfiles;
+
+  /// Issue #130: the `day_entry_merge_events` pull cursor, same shape as
+  /// [cursorDayEntries].
+  final int cursorDayEntryMergeEvents;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -7972,6 +8819,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorVisitPrepItems,
     required this.cursorProfileGuardians,
     required this.cursorDeletedProfiles,
+    required this.cursorDayEntryMergeEvents,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -7994,6 +8842,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_visit_prep_items'] = Variable<int>(cursorVisitPrepItems);
     map['cursor_profile_guardians'] = Variable<int>(cursorProfileGuardians);
     map['cursor_deleted_profiles'] = Variable<int>(cursorDeletedProfiles);
+    map['cursor_day_entry_merge_events'] = Variable<int>(
+      cursorDayEntryMergeEvents,
+    );
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -8025,6 +8876,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorVisitPrepItems: Value(cursorVisitPrepItems),
       cursorProfileGuardians: Value(cursorProfileGuardians),
       cursorDeletedProfiles: Value(cursorDeletedProfiles),
+      cursorDayEntryMergeEvents: Value(cursorDayEntryMergeEvents),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -8066,6 +8918,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDeletedProfiles: serializer.fromJson<int>(
         json['cursorDeletedProfiles'],
       ),
+      cursorDayEntryMergeEvents: serializer.fromJson<int>(
+        json['cursorDayEntryMergeEvents'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -8090,6 +8945,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorVisitPrepItems': serializer.toJson<int>(cursorVisitPrepItems),
       'cursorProfileGuardians': serializer.toJson<int>(cursorProfileGuardians),
       'cursorDeletedProfiles': serializer.toJson<int>(cursorDeletedProfiles),
+      'cursorDayEntryMergeEvents': serializer.toJson<int>(
+        cursorDayEntryMergeEvents,
+      ),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -8110,6 +8968,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorVisitPrepItems,
     int? cursorProfileGuardians,
     int? cursorDeletedProfiles,
+    int? cursorDayEntryMergeEvents,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -8128,6 +8987,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorProfileGuardians:
         cursorProfileGuardians ?? this.cursorProfileGuardians,
     cursorDeletedProfiles: cursorDeletedProfiles ?? this.cursorDeletedProfiles,
+    cursorDayEntryMergeEvents:
+        cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -8171,6 +9032,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDeletedProfiles: data.cursorDeletedProfiles.present
           ? data.cursorDeletedProfiles.value
           : this.cursorDeletedProfiles,
+      cursorDayEntryMergeEvents: data.cursorDayEntryMergeEvents.present
+          ? data.cursorDayEntryMergeEvents.value
+          : this.cursorDayEntryMergeEvents,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -8199,6 +9063,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
+          ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -8221,6 +9086,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorVisitPrepItems,
     cursorProfileGuardians,
     cursorDeletedProfiles,
+    cursorDayEntryMergeEvents,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -8242,6 +9108,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorVisitPrepItems == this.cursorVisitPrepItems &&
           other.cursorProfileGuardians == this.cursorProfileGuardians &&
           other.cursorDeletedProfiles == this.cursorDeletedProfiles &&
+          other.cursorDayEntryMergeEvents == this.cursorDayEntryMergeEvents &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -8261,6 +9128,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorVisitPrepItems;
   final Value<int> cursorProfileGuardians;
   final Value<int> cursorDeletedProfiles;
+  final Value<int> cursorDayEntryMergeEvents;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -8278,6 +9146,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorVisitPrepItems = const Value.absent(),
     this.cursorProfileGuardians = const Value.absent(),
     this.cursorDeletedProfiles = const Value.absent(),
+    this.cursorDayEntryMergeEvents = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -8296,6 +9165,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorVisitPrepItems = const Value.absent(),
     this.cursorProfileGuardians = const Value.absent(),
     this.cursorDeletedProfiles = const Value.absent(),
+    this.cursorDayEntryMergeEvents = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -8314,6 +9184,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorVisitPrepItems,
     Expression<int>? cursorProfileGuardians,
     Expression<int>? cursorDeletedProfiles,
+    Expression<int>? cursorDayEntryMergeEvents,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -8337,6 +9208,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         'cursor_profile_guardians': cursorProfileGuardians,
       if (cursorDeletedProfiles != null)
         'cursor_deleted_profiles': cursorDeletedProfiles,
+      if (cursorDayEntryMergeEvents != null)
+        'cursor_day_entry_merge_events': cursorDayEntryMergeEvents,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -8358,6 +9231,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorVisitPrepItems,
     Value<int>? cursorProfileGuardians,
     Value<int>? cursorDeletedProfiles,
+    Value<int>? cursorDayEntryMergeEvents,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -8378,6 +9252,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           cursorProfileGuardians ?? this.cursorProfileGuardians,
       cursorDeletedProfiles:
           cursorDeletedProfiles ?? this.cursorDeletedProfiles,
+      cursorDayEntryMergeEvents:
+          cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -8430,6 +9306,11 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorDeletedProfiles.value,
       );
     }
+    if (cursorDayEntryMergeEvents.present) {
+      map['cursor_day_entry_merge_events'] = Variable<int>(
+        cursorDayEntryMergeEvents.value,
+      );
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -8460,6 +9341,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorVisitPrepItems: $cursorVisitPrepItems, ')
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
+          ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -8767,6 +9649,8 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $CycleOverridesTable cycleOverrides = $CycleOverridesTable(this);
   late final $CareNotesTable careNotes = $CareNotesTable(this);
   late final $VisitPrepItemsTable visitPrepItems = $VisitPrepItemsTable(this);
+  late final $DayEntryMergeEventsTable dayEntryMergeEvents =
+      $DayEntryMergeEventsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   late final $HealthSyncStateTable healthSyncState = $HealthSyncStateTable(
@@ -8785,6 +9669,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     cycleOverrides,
     careNotes,
     visitPrepItems,
+    dayEntryMergeEvents,
     appSettings,
     syncState,
     healthSyncState,
@@ -8979,6 +9864,30 @@ final class $$ProfilesTableReferences
     ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_visitPrepItemsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $DayEntryMergeEventsTable,
+    List<DayEntryMergeEventData>
+  >
+  _dayEntryMergeEventsRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.dayEntryMergeEvents,
+        aliasName: 'profiles__id__day_entry_merge_events__profile_id',
+      );
+
+  $$DayEntryMergeEventsTableProcessedTableManager get dayEntryMergeEventsRefs {
+    final manager = $$DayEntryMergeEventsTableTableManager(
+      $_db,
+      $_db.dayEntryMergeEvents,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _dayEntryMergeEventsRefsTable($_db),
+    );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -9275,6 +10184,31 @@ class $$ProfilesTableFilterComposer
           }) => $$VisitPrepItemsTableFilterComposer(
             $db: $db,
             $table: $db.visitPrepItems,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> dayEntryMergeEventsRefs(
+    Expression<bool> Function($$DayEntryMergeEventsTableFilterComposer f) f,
+  ) {
+    final $$DayEntryMergeEventsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayEntryMergeEvents,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntryMergeEventsTableFilterComposer(
+            $db: $db,
+            $table: $db.dayEntryMergeEvents,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -9686,6 +10620,32 @@ class $$ProfilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> dayEntryMergeEventsRefs<T extends Object>(
+    Expression<T> Function($$DayEntryMergeEventsTableAnnotationComposer a) f,
+  ) {
+    final $$DayEntryMergeEventsTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.dayEntryMergeEvents,
+          getReferencedColumn: (t) => t.profileId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$DayEntryMergeEventsTableAnnotationComposer(
+                $db: $db,
+                $table: $db.dayEntryMergeEvents,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -9709,6 +10669,7 @@ class $$ProfilesTableTableManager
             bool cycleOverridesRefs,
             bool careNotesRefs,
             bool visitPrepItemsRefs,
+            bool dayEntryMergeEventsRefs,
           })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
@@ -9843,6 +10804,7 @@ class $$ProfilesTableTableManager
                 cycleOverridesRefs = false,
                 careNotesRefs = false,
                 visitPrepItemsRefs = false,
+                dayEntryMergeEventsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -9854,6 +10816,7 @@ class $$ProfilesTableTableManager
                     if (cycleOverridesRefs) db.cycleOverrides,
                     if (careNotesRefs) db.careNotes,
                     if (visitPrepItemsRefs) db.visitPrepItems,
+                    if (dayEntryMergeEventsRefs) db.dayEntryMergeEvents,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -10005,6 +10968,27 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (dayEntryMergeEventsRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          DayEntryMergeEventData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._dayEntryMergeEventsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dayEntryMergeEventsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -10033,6 +11017,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool cycleOverridesRefs,
         bool careNotesRefs,
         bool visitPrepItemsRefs,
+        bool dayEntryMergeEventsRefs,
       })
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
@@ -13607,6 +14592,503 @@ typedef $$VisitPrepItemsTableProcessedTableManager =
       VisitPrepItemData,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$DayEntryMergeEventsTableCreateCompanionBuilder =
+    DayEntryMergeEventsCompanion Function({
+      required String id,
+      required String profileId,
+      required String localDate,
+      required String winningRowId,
+      required String losingRowId,
+      required String field,
+      required String losingValueText,
+      Value<String?> losingAuthorUserId,
+      Value<String?> winningAuthorUserId,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+typedef $$DayEntryMergeEventsTableUpdateCompanionBuilder =
+    DayEntryMergeEventsCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> localDate,
+      Value<String> winningRowId,
+      Value<String> losingRowId,
+      Value<String> field,
+      Value<String> losingValueText,
+      Value<String?> losingAuthorUserId,
+      Value<String?> winningAuthorUserId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+
+final class $$DayEntryMergeEventsTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $DayEntryMergeEventsTable,
+          DayEntryMergeEventData
+        > {
+  $$DayEntryMergeEventsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) => db.profiles
+      .createAlias('day_entry_merge_events__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DayEntryMergeEventsTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryMergeEventsTable> {
+  $$DayEntryMergeEventsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get winningRowId => $composableBuilder(
+    column: $table.winningRowId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get losingRowId => $composableBuilder(
+    column: $table.losingRowId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get field => $composableBuilder(
+    column: $table.field,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get losingValueText => $composableBuilder(
+    column: $table.losingValueText,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get losingAuthorUserId => $composableBuilder(
+    column: $table.losingAuthorUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get winningAuthorUserId => $composableBuilder(
+    column: $table.winningAuthorUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryMergeEventsTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryMergeEventsTable> {
+  $$DayEntryMergeEventsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get winningRowId => $composableBuilder(
+    column: $table.winningRowId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get losingRowId => $composableBuilder(
+    column: $table.losingRowId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get field => $composableBuilder(
+    column: $table.field,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get losingValueText => $composableBuilder(
+    column: $table.losingValueText,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get losingAuthorUserId => $composableBuilder(
+    column: $table.losingAuthorUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get winningAuthorUserId => $composableBuilder(
+    column: $table.winningAuthorUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryMergeEventsTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryMergeEventsTable> {
+  $$DayEntryMergeEventsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<String> get winningRowId => $composableBuilder(
+    column: $table.winningRowId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get losingRowId => $composableBuilder(
+    column: $table.losingRowId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get field =>
+      $composableBuilder(column: $table.field, builder: (column) => column);
+
+  GeneratedColumn<String> get losingValueText => $composableBuilder(
+    column: $table.losingValueText,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get losingAuthorUserId => $composableBuilder(
+    column: $table.losingAuthorUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get winningAuthorUserId => $composableBuilder(
+    column: $table.winningAuthorUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryMergeEventsTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $DayEntryMergeEventsTable,
+          DayEntryMergeEventData,
+          $$DayEntryMergeEventsTableFilterComposer,
+          $$DayEntryMergeEventsTableOrderingComposer,
+          $$DayEntryMergeEventsTableAnnotationComposer,
+          $$DayEntryMergeEventsTableCreateCompanionBuilder,
+          $$DayEntryMergeEventsTableUpdateCompanionBuilder,
+          (DayEntryMergeEventData, $$DayEntryMergeEventsTableReferences),
+          DayEntryMergeEventData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$DayEntryMergeEventsTableTableManager(
+    _$LunarLogDatabase db,
+    $DayEntryMergeEventsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DayEntryMergeEventsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DayEntryMergeEventsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DayEntryMergeEventsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> localDate = const Value.absent(),
+                Value<String> winningRowId = const Value.absent(),
+                Value<String> losingRowId = const Value.absent(),
+                Value<String> field = const Value.absent(),
+                Value<String> losingValueText = const Value.absent(),
+                Value<String?> losingAuthorUserId = const Value.absent(),
+                Value<String?> winningAuthorUserId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DayEntryMergeEventsCompanion(
+                id: id,
+                profileId: profileId,
+                localDate: localDate,
+                winningRowId: winningRowId,
+                losingRowId: losingRowId,
+                field: field,
+                losingValueText: losingValueText,
+                losingAuthorUserId: losingAuthorUserId,
+                winningAuthorUserId: winningAuthorUserId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String localDate,
+                required String winningRowId,
+                required String losingRowId,
+                required String field,
+                required String losingValueText,
+                Value<String?> losingAuthorUserId = const Value.absent(),
+                Value<String?> winningAuthorUserId = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DayEntryMergeEventsCompanion.insert(
+                id: id,
+                profileId: profileId,
+                localDate: localDate,
+                winningRowId: winningRowId,
+                losingRowId: losingRowId,
+                field: field,
+                losingValueText: losingValueText,
+                losingAuthorUserId: losingAuthorUserId,
+                winningAuthorUserId: winningAuthorUserId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $DayEntryMergeEventsTable,
+                    DayEntryMergeEventData
+                  >(table),
+                  $$DayEntryMergeEventsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$DayEntryMergeEventsTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$DayEntryMergeEventsTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DayEntryMergeEventsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $DayEntryMergeEventsTable,
+      DayEntryMergeEventData,
+      $$DayEntryMergeEventsTableFilterComposer,
+      $$DayEntryMergeEventsTableOrderingComposer,
+      $$DayEntryMergeEventsTableAnnotationComposer,
+      $$DayEntryMergeEventsTableCreateCompanionBuilder,
+      $$DayEntryMergeEventsTableUpdateCompanionBuilder,
+      (DayEntryMergeEventData, $$DayEntryMergeEventsTableReferences),
+      DayEntryMergeEventData,
+      PrefetchHooks Function({bool profileId})
+    >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String key,
@@ -13791,6 +15273,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorVisitPrepItems,
   Value<int> cursorProfileGuardians,
   Value<int> cursorDeletedProfiles,
+  Value<int> cursorDayEntryMergeEvents,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13809,6 +15292,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorVisitPrepItems,
   Value<int> cursorProfileGuardians,
   Value<int> cursorDeletedProfiles,
+  Value<int> cursorDayEntryMergeEvents,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -13881,6 +15365,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorDeletedProfiles => $composableBuilder(
     column: $table.cursorDeletedProfiles,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorDayEntryMergeEvents => $composableBuilder(
+    column: $table.cursorDayEntryMergeEvents,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13974,6 +15463,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorDayEntryMergeEvents => $composableBuilder(
+    column: $table.cursorDayEntryMergeEvents,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -14060,6 +15554,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorDayEntryMergeEvents => $composableBuilder(
+    column: $table.cursorDayEntryMergeEvents,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -14122,6 +15621,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorVisitPrepItems = const Value.absent(),
                 Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<int> cursorDeletedProfiles = const Value.absent(),
+                Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -14139,6 +15639,7 @@ class $$SyncStateTableTableManager
                 cursorVisitPrepItems: cursorVisitPrepItems,
                 cursorProfileGuardians: cursorProfileGuardians,
                 cursorDeletedProfiles: cursorDeletedProfiles,
+                cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -14158,6 +15659,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorVisitPrepItems = const Value.absent(),
                 Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<int> cursorDeletedProfiles = const Value.absent(),
+                Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -14175,6 +15677,7 @@ class $$SyncStateTableTableManager
                 cursorVisitPrepItems: cursorVisitPrepItems,
                 cursorProfileGuardians: cursorProfileGuardians,
                 cursorDeletedProfiles: cursorDeletedProfiles,
+                cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -14417,6 +15920,8 @@ class $LunarLogDatabaseManager {
       $$CareNotesTableTableManager(_db, _db.careNotes);
   $$VisitPrepItemsTableTableManager get visitPrepItems =>
       $$VisitPrepItemsTableTableManager(_db, _db.visitPrepItems);
+  $$DayEntryMergeEventsTableTableManager get dayEntryMergeEvents =>
+      $$DayEntryMergeEventsTableTableManager(_db, _db.dayEntryMergeEvents);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

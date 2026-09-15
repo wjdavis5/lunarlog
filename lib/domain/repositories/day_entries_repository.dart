@@ -2,6 +2,7 @@
 /// operation is scoped to exactly one profile id (R3 isolation).
 library;
 
+import '../logging/day_entry_merge_event.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
@@ -58,4 +59,26 @@ abstract interface class DayEntriesRepository {
 
   /// Tombstones the live entry for (profileId, localDate); idempotent.
   Future<void> delete(String profileId, LocalDate localDate);
+
+  /// Issue #130: the same-date merge disclosures recorded for
+  /// (profileId, date) that THIS device has not dismissed — the day
+  /// sheet's quiet notice list, shown to every guardian. Window-filtered
+  /// to the 30-day recovery window (the client mirror of the server's
+  /// retention purge), so a notice never outlives its documented
+  /// retention.
+  Future<List<DayEntryMergeEvent>> mergeEventsForDay(
+      String profileId, LocalDate date);
+
+  /// Issue #130: dismisses one merge notice on this device only
+  /// (device-local, never synced — another guardian's notice is
+  /// untouched). Idempotent.
+  Future<void> dismissMergeEvent(String profileId, String eventId);
+
+  /// Issue #130: every merge disclosure recorded for the profile inside
+  /// the 30-day recovery window — the local JSON export's read. NOT
+  /// filtered on this device's dismissals (a dismissed notice is a display
+  /// choice, not a deletion of the record), and window-filtered so the
+  /// export never carries retained losing text the server has already
+  /// purged.
+  Future<List<DayEntryMergeEvent>> mergeEventsForProfile(String profileId);
 }

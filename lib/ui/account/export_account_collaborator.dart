@@ -7,6 +7,7 @@
 library;
 
 import '../../domain/export/account_export_writer.dart';
+import '../../domain/logging/day_entry_merge_event.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/cycle_override.dart';
 import '../../domain/models/day_entry.dart';
@@ -38,6 +39,7 @@ typedef ExportAccountCollaborator = Future<void> Function({
   Map<String, List<VisitPrepItem>> visitPrepByProfile,
   Map<String, ProfileLifecycleMode?> profileModesByProfile,
   Map<String, List<CycleOverride>> cycleOverridesByProfile,
+  Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile,
   required String appVersion,
 });
 
@@ -50,7 +52,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// parameter (default `const {}`), so existing test doubles only need that
 /// parameter declared, not necessarily used. Issue #128 widens it the same
 /// way with `careNotesByProfile`/`visitPrepByProfile`; Issue #140 review
-/// (LLA-084) with `profileModesByProfile`/`cycleOverridesByProfile`.
+/// (LLA-084) with `profileModesByProfile`/`cycleOverridesByProfile`;
+/// Issue #130 with `mergeEventsByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportWriter writer,
 ) =>
@@ -62,6 +65,7 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       Map<String, List<VisitPrepItem>> visitPrepByProfile = const {},
       Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
       Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
+      Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
       required String appVersion,
     }) =>
         writer.exportAndShare(
@@ -72,5 +76,6 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
           visitPrepByProfile: visitPrepByProfile,
           profileModesByProfile: profileModesByProfile,
           cycleOverridesByProfile: cycleOverridesByProfile,
+          mergeEventsByProfile: mergeEventsByProfile,
           appVersion: appVersion,
         );

@@ -78,6 +78,13 @@ const String kVisitPrepItemsProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_visit_prep_items_profile_id '
     'ON visit_prep_items (profile_id)';
 
+/// Schema v21 (issue #130): composite index over
+/// `day_entry_merge_events(profile_id, local_date)` — the day sheet's
+/// merge-notice read filters by exactly this pair.
+const String kDayEntryMergeEventsProfileDateIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_day_entry_merge_events_profile_date '
+    'ON day_entry_merge_events (profile_id, local_date)';
+
 /// Schema v19 (issue #625, LLA-101): composite index over
 /// `observations(day_entry_id, id)` — [LunarLogStorageQueries.
 /// getObservationsForDayEntry]/[LunarLogStorageQueries.
@@ -111,6 +118,7 @@ const String kObservationsProfileIndexSql =
   CycleOverrides,
   CareNotes,
   VisitPrepItems,
+  DayEntryMergeEvents,
   AppSettings,
   SyncState,
   HealthSyncState,
@@ -195,8 +203,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   skipped those steps. Also `sync_state.cursor_deleted_profiles`
   ///   (Issue #597: a persisted `deletedProfiles` pull cursor, the same
   ///   fix #525 already applied to `profile_guardians`).
+  /// * 21 — `day_entry_merge_events` table (Issue #130, the same-date
+  ///   merge-disclosure notice substrate) with its
+  ///   `sync_state.cursor_day_entry_merge_events` pull cursor and a
+  ///   `(profile_id, local_date)` index.
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -209,6 +221,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kProfileGuardiansProfileIndexSql);
           await customStatement(kCareNotesProfileIndexSql);
           await customStatement(kVisitPrepItemsProfileIndexSql);
+          await customStatement(kDayEntryMergeEventsProfileDateIndexSql);
           await customStatement(kObservationsDayEntryIndexSql);
           await customStatement(kObservationsProfileIndexSql);
         },
@@ -253,7 +266,10 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// Issue #625 adds `observations.day_entry_id_index`,
   /// `observations.profile_id_index`. Issue #637 adds
   /// `day_entries.pms_unconfirmed`, `profiles.units_unconfirmed`. Issue
-  /// #597 adds `sync_state.cursor_deleted_profiles`. Every version step
+  /// #597 adds `sync_state.cursor_deleted_profiles`. Issue #130 adds
+  /// `day_entry_merge_events`,
+  /// `sync_state.cursor_day_entry_merge_events`,
+  /// `day_entry_merge_events.profile_date_index`. Every version step
   /// also reports its own `schema_version.v<N>` label (Issue #637,
   /// LLA-015) right after `PRAGMA user_version` advances inside that
   /// same step's transaction — a hook that throws there proves the
@@ -475,6 +491,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV19(m, from);
     // Issue #637/#597's v20 step, same shape again.
     await _upgradeToV20(m, from);
+    // Issue #130's v21 step, same shape again.
+    await _upgradeToV21(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -505,6 +523,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // would create them there. A no-op for every real device.
     await customStatement(kObservationsDayEntryIndexSql);
     await customStatement(kObservationsProfileIndexSql);
+    // Issue #130 extends the same unconditional re-assert to the v21
+    // merge-events index, for the identical reason (a schema-verification
+    // fixture that starts at v21+ via `createAll` alone never ran the real
+    // `onCreate` or the `from < 21` step below). A no-op for every real
+    // device.
+    await customStatement(kDayEntryMergeEventsProfileDateIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -824,6 +848,31 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
+  /// The v21 upgrade step (Issue #130): the `day_entry_merge_events` table,
+  /// its `sync_state` pull cursor, and its `(profile_id, local_date)` index.
+  /// Same standalone-method shape as [_upgradeToV9] (including the
+  /// `sync_state` gotcha: the `from < 2` block's `m.createTable(syncState)`
+  /// builds the table from the *current* `SyncState` class, which already
+  /// declares this cursor column — see [_hasColumn]'s doc comment, LLA-015).
+  /// No backfill: a fresh table starts empty — existing merges were never
+  /// recorded, and the notice only ever describes merges recorded from this
+  /// version forward.
+  Future<void> _upgradeToV21(Migrator m, int from) async {
+    if (from >= 21) return;
+    await transaction(() async {
+      await m.createTable(dayEntryMergeEvents);
+      await migrationStepHook?.call('day_entry_merge_events');
+      if (!await _hasColumn('sync_state', 'cursor_day_entry_merge_events')) {
+        await m.addColumn(
+            syncState, syncState.cursorDayEntryMergeEvents);
+        await migrationStepHook?.call('sync_state.cursor_day_entry_merge_events');
+      }
+      await customStatement(kDayEntryMergeEventsProfileDateIndexSql);
+      await migrationStepHook?.call('day_entry_merge_events.profile_date_index');
+      await _advanceSchemaVersion(21);
+    });
+  }
+
   /// Hard-deletes every row in every table, the `sync_state` row included —
   /// the web build's wipe-local-data action and the web half of device
   /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
@@ -831,13 +880,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   Future<void> wipeAllData() async {
     await transaction(() async {
       // observations references day_entries(id) and profiles(id); the two
-      // Issue #188 tables and the two Issue #128 tables reference
-      // profiles(id): all of them must be emptied before their parents or
-      // the FK fails the whole wipe.
+      // Issue #188 tables, the two Issue #128 tables, and Issue #130's
+      // merge-events table reference profiles(id): all of them must be
+      // emptied before their parents or the FK fails the whole wipe.
       await delete(visitPrepItems).go();
       await delete(careNotes).go();
       await delete(cycleOverrides).go();
       await delete(profileModes).go();
+      await delete(dayEntryMergeEvents).go();
       await delete(observations).go();
       await delete(dayEntries).go();
       // profile_guardians references profiles(id): it must be emptied

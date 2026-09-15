@@ -113,6 +113,13 @@ const List<String> sentryDenyListedKeys = [
   'p_profiles',
   'p_care_notes',
   'p_visit_prep_items',
+  // Issue #130: the same-date merge disclosure's retained losing value
+  // (a discarded note's text, or a flow level string) is health content
+  // exactly like `note` — it must never reach a crash report or breadcrumb.
+  'losing_value_text',
+  'merge_event',
+  'merge_events',
+  'p_merge_events',
   'authorization',
   'apikey',
   // Identity payloads (#2 U6; KTD7).

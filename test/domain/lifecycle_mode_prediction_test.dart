@@ -7,6 +7,7 @@
 library;
 
 import 'dart:async';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -69,6 +70,21 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
   @override
   Stream<bool> watchHasAnyEntries(String profileId) =>
       throw UnimplementedError();
+
+  // Issue #130: no merge-notice surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForDay(
+          String profileId, LocalDate date) async =>
+      const [];
+
+  @override
+  Future<void> dismissMergeEvent(String profileId, String eventId) async {}
+
+  // Issue #130: no per-profile export surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
+          String profileId) async =>
+      const [];
 }
 
 /// Three completed, regular cycles (four episode starts) — enough for an
