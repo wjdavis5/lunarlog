@@ -954,6 +954,27 @@ entries only. Nothing here reaches real family data.
       `select public.scan_missed_entry_reminders();` against the cloud
       project, for a faster check) enqueues, and B's device receives, the
       check-in alert.
+- [ ] **Foreground alert shows a banner (issue #174, iOS).** With B's app
+      open in the foreground, A logs an entry on P: B's iPhone shows the
+      fixed generic banner immediately (via
+      `setForegroundNotificationPresentationOptions`) — not silence, and
+      not two banners.
+- [ ] **Foreground alert shows a banner (issue #174, Android).** Same
+      setup on B's Android device: the banner appears (FCM never
+      auto-presents in the foreground; the app presents it through
+      flutter_local_notifications), exactly once, with the same fixed
+      generic copy.
+- [ ] **Android FCM alerts match local reminders visually (issue #174).**
+      Compare an alert delivered while B's app is backgrounded against a
+      locally scheduled reminder: both appear under the app's "Reminders"
+      channel (long-press the notification → channel name) with the same
+      icon, not Android's default "Misc"/"Other" channel with a generic
+      icon.
+- [ ] **Copy stays generic everywhere (issue #174 discretion pin, both
+      platforms, foreground and background).** Every delivered alert reads
+      exactly "A reminder from Lunarlog / Open Lunarlog to see what it is
+      about." — no profile name, date, or health detail on the lock screen
+      or the banner, whatever was logged.
 
 ## Not yet run
 

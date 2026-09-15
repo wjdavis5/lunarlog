@@ -9,6 +9,7 @@
 library;
 
 import 'package:app_links/app_links.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryHttpClient;
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
@@ -18,6 +19,7 @@ import 'config.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
 import 'data/notifications/notification_scheduler.dart';
+import 'data/notifications/push_presentation.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
@@ -86,6 +88,19 @@ Future<void> _runLunarlog() async {
       initialInviteKind = invite.queryParameters['kind'];
     }
     inviteLinks = appLinks.uriLinkStream.where(_isInviteLink);
+  }
+  // Issue #174: register the FCM background handler before runApp() so a
+  // caregiver alert arriving while the app is backgrounded or terminated
+  // is presented instead of dropped — firebase_messaging persists the
+  // callback handles at registration time, which is why this must happen
+  // early in every launch. Gated on [AppConfig.hasPush] like every
+  // firebase_messaging touch (hasPush already excludes web): an
+  // unconfigured build — every CI and fork build, with empty FCM defines —
+  // never reaches the plugin. This registration is also what backs the
+  // `remote-notification` UIBackgroundModes entry in
+  // ios/Runner/Info.plist.
+  if (AppConfig.hasPush) {
+    FirebaseMessaging.onBackgroundMessage(pushBackgroundMessageHandler);
   }
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
