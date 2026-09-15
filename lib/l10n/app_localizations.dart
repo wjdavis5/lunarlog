@@ -358,6 +358,132 @@ abstract class AppLocalizations {
   /// **'Could not load cycle history.'**
   String get cycleHistoryLoadError;
 
+  /// Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare cycles'**
+  String get cycleComparisonToggleButton;
+
+  /// Issue #235: replaces cycleComparisonToggleButton while cycle-comparison selection mode is active, exiting it and clearing the current selection.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cycleComparisonCancelButton;
+
+  /// Issue #235: selection-mode progress hint in the cycle-history list ("0 of 2 selected", "1 of 2 selected", "2 of 2 selected") -- always exactly two are required, so this is a bare count, not a pluralized noun.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} of 2 selected'**
+  String cycleComparisonSelectedCount(int count);
+
+  /// Issue #235: the button that opens the comparison screen once exactly two cycles are selected; disabled otherwise.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare'**
+  String get cycleComparisonOpenButton;
+
+  /// Issue #235: accessibility label on a completed cycle's selection checkbox in the cycle-history list, naming what the checkbox is for (a bare Checkbox otherwise announces only checked/unchecked state).
+  ///
+  /// In en, this message translates to:
+  /// **'Select cycle starting {date} for comparison'**
+  String cycleComparisonSelectCycleSemantic(String date);
+
+  /// Issue #235: same as cycleComparisonSelectCycleSemantic, for the still-open cycle's own selection checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'Select current cycle for comparison'**
+  String get cycleComparisonSelectCurrentCycleSemantic;
+
+  /// Issue #235: app-bar title of the side-by-side cycle comparison screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare cycles'**
+  String get cycleComparisonScreenTitle;
+
+  /// Issue #235: honest empty-state title when the comparison screen has no valid pair of cycles to show (e.g. reached with a stale selection).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to compare yet'**
+  String get cycleComparisonNotEnoughTitle;
+
+  /// Issue #235: body copy paired with cycleComparisonNotEnoughTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Select two cycles from your cycle history to compare them side by side.'**
+  String get cycleComparisonNotEnoughBody;
+
+  /// Issue #235: header above a completed cycle's column in the comparison screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle starting {date}'**
+  String cycleComparisonSideHeading(String date);
+
+  /// Issue #235: header above the still-open cycle's column in the comparison screen, when one side of the comparison is the open cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Current cycle (started {date})'**
+  String cycleComparisonCurrentCycleHeading(String date);
+
+  /// Issue #235 AC4: marks a compared cycle that is in the operator's cycle_overrides exclusion set, so an excluded cycle reads as excluded within the comparison rather than being silently included as if it were a normal one.
+  ///
+  /// In en, this message translates to:
+  /// **'Excluded from averages'**
+  String get cycleComparisonExcludedBadge;
+
+  /// Issue #235: row label above a compared cycle's length (rendered as a day count, or cycleComparisonOngoingLabel for the open cycle).
+  ///
+  /// In en, this message translates to:
+  /// **'Length'**
+  String get cycleComparisonLengthLabel;
+
+  /// Issue #235: the still-open cycle's length value, replacing a day count it does not have yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Ongoing'**
+  String get cycleComparisonOngoingLabel;
+
+  /// Issue #235: row label above a compared cycle's logged bleed-day count (so far, for the open cycle).
+  ///
+  /// In en, this message translates to:
+  /// **'Bleed days'**
+  String get cycleComparisonBleedDaysLabel;
+
+  /// Issue #235: label for the compared statistic showing how many days the two cycle lengths differ by (an unsigned day count -- this view names both cycles by their own start date above it rather than by "longer"/"shorter" wording).
+  ///
+  /// In en, this message translates to:
+  /// **'Length difference'**
+  String get cycleComparisonLengthDifferenceLabel;
+
+  /// Issue #235: same as cycleComparisonLengthDifferenceLabel, for the bleed-day count difference.
+  ///
+  /// In en, this message translates to:
+  /// **'Bleed days difference'**
+  String get cycleComparisonBleedDaysDifferenceLabel;
+
+  /// Issue #235: replaces the length-difference value whenever either compared cycle is still open (its final length isn't known yet, so no difference can be stated).
+  ///
+  /// In en, this message translates to:
+  /// **'Not yet known'**
+  String get cycleComparisonLengthDifferenceUnknown;
+
+  /// Issue #235: the shared cycle-day label each aligned row starts with ("Day 1", "Day 2", ...), and the leading fragment of that row's accessibility label for each side.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day}'**
+  String cycleComparisonDayHeading(int day);
+
+  /// Issue #235: a compared day within a cycle's own length that has no day entry logged at all (distinct from an explicit "not bleeding" assertion, and distinct from cycleComparisonCycleEndedLabel).
+  ///
+  /// In en, this message translates to:
+  /// **'Not logged'**
+  String get cycleComparisonNoEntryLabel;
+
+  /// Issue #235: fills a side's cell past that cycle's own last day, when the two compared cycles differ in length -- text, not a blank cell or a bare dash, so the shorter cycle's end reads as a fact rather than missing data (R9/no information by colour alone).
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle ended'**
+  String get cycleComparisonCycleEndedLabel;
+
   /// Tooltip on the month/year picker's back-year chevron.
   ///
   /// In en, this message translates to:
