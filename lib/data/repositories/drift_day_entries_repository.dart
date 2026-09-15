@@ -3,6 +3,9 @@
 library;
 
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart'
+    as mergelog;
+import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
@@ -115,4 +118,42 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
         profileId: profileId,
         localDate: localDate.iso,
       );
+
+  /// Issue #130: the day sheet's merge-notice list — the window-filtered
+  /// storage read minus this device's dismissed ids. Dismissal filtering
+  /// happens here (not in the SQL) because the dismissal list is a
+  /// device-local `app_settings` value, not a column on the row.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForDay(
+      String profileId, domain.LocalDate date) async {
+    final dismissed = decodeMergeNoticeDismissals(
+        await _storage.getSetting(mergeNoticeDismissalsKey(profileId)));
+    final dismissedSet = dismissed.toSet();
+    final rows =
+        await _storage.getDayEntryMergeEventsForDay(profileId, date.iso);
+    return [
+      for (final row in rows)
+        if (!dismissedSet.contains(row.id)) dayEntryMergeEventToDomain(row),
+    ];
+  }
+
+  @override
+  Future<void> dismissMergeEvent(String profileId, String eventId) =>
+      _storage.dismissDayEntryMergeEvent(
+        profileId: profileId,
+        eventId: eventId,
+      );
+
+  /// Issue #130: the local JSON export's read — the same window-filtered
+  /// storage read as [mergeEventsForDay], minus the dismissal filter (a
+  /// dismissed notice is a per-device display choice; the disclosure
+  /// itself is data the export should still carry while it exists).
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
+          String profileId) async =>
+      [
+    for (final row
+        in await _storage.getDayEntryMergeEventsForProfile(profileId))
+      dayEntryMergeEventToDomain(row),
+  ];
 }

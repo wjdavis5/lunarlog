@@ -686,6 +686,72 @@ class VisitPrepItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One recorded same-date merge discard (Issue #130), mirroring
+/// `public.day_entry_merge_events` column-for-column: the disclosure record
+/// `LunarLogStorage._resolveSameDateConflicts` writes when a same-date
+/// resolution actually discarded a `flow` or `note` value (never for a
+/// tags-only merge — a set union loses nothing). Machine-written rows, never
+/// user-composed content. NO `deleted_at`: nothing ever soft-deletes a merge
+/// event — dismissal is device-local (an `app_settings` key), and the only
+/// removals are the local profile wipe and display-window aging (the server
+/// hard-purges after 30 days; [createdAt] drives the same window locally).
+/// Deduplicated by the natural key (profileId, losingRowId, field), matching
+/// the server's `day_entry_merge_events_discard_uq` — a discard recorded by
+/// this device and the server's own emission of the same event collapse to
+/// one local row, so the day sheet never shows two notices for one merge.
+@DataClassName('DayEntryMergeEventData')
+class DayEntryMergeEvents extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// ISO calendar date `yyyy-MM-dd` the colliding entries were both for.
+  TextColumn get localDate => text().named('local_date')();
+
+  /// The surviving row's id at merge time.
+  TextColumn get winningRowId => text().named('winning_row_id')();
+
+  /// The tombstoned row's id at merge time (half of the natural key: a
+  /// losing row is tombstoned by the very merge being disclosed, so it can
+  /// lose at most one value per field).
+  TextColumn get losingRowId => text().named('losing_row_id')();
+
+  /// 'flow' | 'note' — which value kind was discarded.
+  TextColumn get field => text()();
+
+  /// The discarded value itself: the losing note's text, or the losing flow
+  /// level's wire string. Health content — bounded (the server CHECKs
+  /// 2000), never in a notification, kept out of crash reports.
+  TextColumn get losingValueText => text().named('losing_value_text')();
+
+  /// Display attribution only: whose value was discarded / survived.
+  TextColumn get losingAuthorUserId =>
+      text().named('losing_author_user_id').nullable()();
+
+  TextColumn get winningAuthorUserId =>
+      text().named('winning_author_user_id').nullable()();
+
+  /// The UTC instant the merge was recorded (the resolution stamp for a
+  /// locally-emitted row; the server's `created_at` for a pulled one).
+  /// Drives the 30-day display/recovery window, in lockstep with the
+  /// server-side retention purge.
+  DateTimeColumn get createdAt => dateTime().named('created_at')();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {  TextColumn get key => text()();
 
@@ -768,6 +834,12 @@ class SyncState extends Table {
   /// but the same per-cycle full-scan cost applies as it grows.
   IntColumn get cursorDeletedProfiles =>
       integer().named('cursor_deleted_profiles').withDefault(const Constant(0))();
+
+  /// Issue #130: the `day_entry_merge_events` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorDayEntryMergeEvents =>
+      integer().named('cursor_day_entry_merge_events')
+          .withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();

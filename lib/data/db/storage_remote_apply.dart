@@ -40,6 +40,11 @@ class _PageLookup {
   final Map<String, CycleOverrideData?> cycleOverrides = {};
   final Map<String, CareNoteData?> careNotes = {};
   final Map<String, VisitPrepItemData?> visitPrepItems = {};
+
+  /// Issue #130's tenth synced table, prefetched by id exactly like the
+  /// care tables (Issue #42's pattern applied when the table landed).
+  final Map<String, DayEntryMergeEventData?> dayEntryMergeEvents = {};
+
   final Map<String, ProfileGuardianData?> guardians = {};
 
   static String peerKey(String profileId, String localDate) =>
@@ -119,6 +124,7 @@ class _PageLookup {
     cycleOverrides.removeWhere((_, row) => row?.profileId == profileId);
     careNotes.removeWhere((_, row) => row?.profileId == profileId);
     visitPrepItems.removeWhere((_, row) => row?.profileId == profileId);
+    dayEntryMergeEvents.removeWhere((_, row) => row?.profileId == profileId);
     profiles.remove(profileId);
   }
 }
@@ -183,6 +189,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   Future<bool> applyRemoteVisitPrepItem(RemoteVisitPrepItemRow remote) =>
       db.transaction(() => _applyVisitPrepItem(remote, onlyExisting: false));
 
+  /// Applies a server copy of a merge event keyed by id (Issue #130; the
+  /// per-id LWW rule the other profile-scoped tables use, with NO
+  /// same-date resolver and no tombstone — rows are immutable
+  /// machine-written disclosures, and the natural-key dedupe inside is the
+  /// only collision that can occur). Throws [RetryableSyncApplyError] when
+  /// the profile is not held locally yet.
+  Future<bool> applyRemoteDayEntryMergeEvent(
+          RemoteDayEntryMergeEventRow remote) =>
+      db.transaction(() => _applyMergeEvent(remote, onlyExisting: false));
+
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
   /// skip them (KTD2). A throwing row rolls the whole page back, cursor
@@ -209,28 +225,31 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     });
   }
 
-  Future<void> _applyPageRow(RemoteRow row, _PageLookup cache) async {
-    switch (row) {
-      case RemoteProfileRow():
-        await _applyProfile(row, onlyExisting: false, cache: cache);
-      case RemoteDayEntryRow():
-        await _applyDayEntry(row, onlyExisting: false, cache: cache);
-      case RemoteProfileGuardianRow():
-        await _applyProfileGuardian(row, cache: cache);
-      case RemoteObservationRow():
-        await _applyObservation(row, onlyExisting: false, cache: cache);
-      case RemoteProfileModeRow():
-        await _applyProfileMode(row, onlyExisting: false, cache: cache);
-      case RemoteCycleOverrideRow():
-        await _applyCycleOverride(row, onlyExisting: false, cache: cache);
-      case RemoteCareNoteRow():
-        await _applyCareNote(row, onlyExisting: false, cache: cache);
-      case RemoteVisitPrepItemRow():
-        await _applyVisitPrepItem(row, onlyExisting: false, cache: cache);
-      case RemoteDeletedProfileRow():
-        await _applyDeletedProfile(row, cache: cache);
-    }
-  }
+  Future<void> _applyPageRow(RemoteRow row, _PageLookup cache) =>
+      _pageRowAppliers[row.runtimeType]!(row, cache);
+
+  /// Per-runtime-type dispatch for [_applyPageRow] — a map rather than an
+  /// exhaustive type switch since Issue #130's tenth row type: the switch
+  /// sat permanently over the quality gate's per-method complexity
+  /// ceiling (ten pattern cases score complexity 11, and CRAP's `+ comp`
+  /// term alone exceeds the 10.0 threshold at any coverage), while a
+  /// lookup stays flat as row types are added (the same growth rationale
+  /// as row_codec.dart's `_syncTableNames`). Issue #42: every closure
+  /// threads the page-wide [_PageLookup] into its applier exactly as the
+  /// pre-#130 switch did, so the prefetch is never dropped on dispatch.
+  late final Map<Type, Future<void> Function(RemoteRow, _PageLookup)>
+      _pageRowAppliers = {
+    RemoteProfileRow: (r, c) => _applyProfile(r as RemoteProfileRow, onlyExisting: false, cache: c),
+    RemoteDayEntryRow: (r, c) => _applyDayEntry(r as RemoteDayEntryRow, onlyExisting: false, cache: c),
+    RemoteProfileGuardianRow: (r, c) => _applyProfileGuardian(r as RemoteProfileGuardianRow, cache: c),
+    RemoteObservationRow: (r, c) => _applyObservation(r as RemoteObservationRow, onlyExisting: false, cache: c),
+    RemoteProfileModeRow: (r, c) => _applyProfileMode(r as RemoteProfileModeRow, onlyExisting: false, cache: c),
+    RemoteCycleOverrideRow: (r, c) => _applyCycleOverride(r as RemoteCycleOverrideRow, onlyExisting: false, cache: c),
+    RemoteCareNoteRow: (r, c) => _applyCareNote(r as RemoteCareNoteRow, onlyExisting: false, cache: c),
+    RemoteVisitPrepItemRow: (r, c) => _applyVisitPrepItem(r as RemoteVisitPrepItemRow, onlyExisting: false, cache: c),
+    RemoteDayEntryMergeEventRow: (r, c) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false, cache: c),
+    RemoteDeletedProfileRow: (r, c) => _applyDeletedProfile(r as RemoteDeletedProfileRow, cache: c),
+  };
 
   /// Issue #42: builds the page-wide [_PageLookup] — one chunked
   /// `IN (...)` select per referenced table, plus one live-peers fetch for
@@ -264,6 +283,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteDayEntryMergeEventRow>())
+        row.profileId,
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteDeletedProfileRow>())
@@ -323,6 +346,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       {for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.id},
       readChunk: (ids) =>
           (db.select(db.visitPrepItems)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.dayEntryMergeEvents,
+      {for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) row.id},
+      readChunk: (ids) => (db.select(db.dayEntryMergeEvents)
+            ..where((t) => t.id.isIn(ids)))
+          .get(),
       idOf: (row) => row.id,
     );
     await _prefetchByIds(
@@ -423,31 +454,28 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
 
   Future<void> _updateTableCursor(SyncTable table, int newCursor) async {
     await _ensureSyncStateRow();
-    await (db.update(db.syncState)..where((t) => t.id.equals(1))).write(
-      switch (table) {
-        SyncTable.profiles =>
-          SyncStateCompanion(cursorProfiles: Value(newCursor)),
-        SyncTable.dayEntries =>
-          SyncStateCompanion(cursorDayEntries: Value(newCursor)),
-        SyncTable.observations =>
-          SyncStateCompanion(cursorObservations: Value(newCursor)),
-        SyncTable.profileModes =>
-          SyncStateCompanion(cursorProfileModes: Value(newCursor)),
-        SyncTable.cycleOverrides =>
-          SyncStateCompanion(cursorCycleOverrides: Value(newCursor)),
-        SyncTable.careNotes =>
-          SyncStateCompanion(cursorCareNotes: Value(newCursor)),
-        SyncTable.visitPrepItems =>
-          SyncStateCompanion(cursorVisitPrepItems: Value(newCursor)),
-        // Issue #525: profileGuardians now has a persisted cursor too.
-        SyncTable.profileGuardians =>
-          SyncStateCompanion(cursorProfileGuardians: Value(newCursor)),
-        // Issue #597: deletedProfiles now has a persisted cursor too.
-        SyncTable.deletedProfiles =>
-          SyncStateCompanion(cursorDeletedProfiles: Value(newCursor)),
-      },
-    );
+    await (db.update(db.syncState)..where((t) => t.id.equals(1)))
+        .write(_cursorCompanions[table]!(newCursor));
   }
+
+  /// The per-table pull-cursor companion for [_updateTableCursor] — a map
+  /// rather than an exhaustive switch since Issue #130's tenth SyncTable
+  /// (the same growth rationale as [_pageRowAppliers] above). Issue #525:
+  /// profileGuardians has a persisted cursor too; Issue #597:
+  /// deletedProfiles likewise.
+  static final Map<SyncTable, SyncStateCompanion Function(int)>
+      _cursorCompanions = {
+    SyncTable.profiles: (c) => SyncStateCompanion(cursorProfiles: Value(c)),
+    SyncTable.dayEntries: (c) => SyncStateCompanion(cursorDayEntries: Value(c)),
+    SyncTable.observations: (c) => SyncStateCompanion(cursorObservations: Value(c)),
+    SyncTable.profileModes: (c) => SyncStateCompanion(cursorProfileModes: Value(c)),
+    SyncTable.cycleOverrides: (c) => SyncStateCompanion(cursorCycleOverrides: Value(c)),
+    SyncTable.careNotes: (c) => SyncStateCompanion(cursorCareNotes: Value(c)),
+    SyncTable.visitPrepItems: (c) => SyncStateCompanion(cursorVisitPrepItems: Value(c)),
+    SyncTable.dayEntryMergeEvents: (c) => SyncStateCompanion(cursorDayEntryMergeEvents: Value(c)),
+    SyncTable.profileGuardians: (c) => SyncStateCompanion(cursorProfileGuardians: Value(c)),
+    SyncTable.deletedProfiles: (c) => SyncStateCompanion(cursorDeletedProfiles: Value(c)),
+  };
 
   /// Applies one full-reconcile page (rows of one or more tables) in ONE
   /// transaction without touching any cursor (KTD2). Same per-row rules as
@@ -501,6 +529,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         rows,
         cache,
         (row, c) => _applyVisitPrepItem(row, onlyExisting: false, cache: c),
+      );
+      // Issue #130: merge events follow the care tables (a row references
+      // only a profile, already applied by the time its turn comes).
+      await _applyEach<RemoteDayEntryMergeEventRow>(
+        rows,
+        cache,
+        (row, c) => _applyMergeEvent(row, onlyExisting: false, cache: c),
       );
       // Issue #522: last, so a deletion signal for a profile that also had
       // ordinary content rows in this same heterogeneous batch wins over
@@ -558,6 +593,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
       for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
         await _applyVisitPrepItem(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) {
+        await _applyMergeEvent(row, onlyExisting: true);
       }
     });
   }
@@ -959,6 +997,15 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           deletedAt: Value(stamp),
           dirty: const Value(false),
         ));
+    // Issue #130: the profile's merge-disclosure rows are hard-deleted
+    // locally (the table has no tombstone). They describe discarded health
+    // content on a profile this guardian can no longer see — leaving them
+    // readable offline would keep the removed guardian's access alive,
+    // exactly the gap the wipes above close for every other table. Not
+    // dirty, never pushed back: the server's own rows are the authority.
+    await (db.delete(db.dayEntryMergeEvents)
+          ..where((t) => t.profileId.equals(profileId)))
+        .go();
     await (db.update(db.profiles)
           ..where((t) => t.id.equals(profileId) & t.deletedAt.isNull()))
         .write(ProfilesCompanion(
@@ -1907,6 +1954,25 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           winnerFlow: remote.flow,
           loserEntryId: other.id,
         );
+        // Issue #130: the same discard, as a SYNCED row (the day sheet's
+        // notice + the losing author's recovery text — visible on every
+        // guardian's device once pushed, unlike the #124 device-local feed
+        // event above).
+        await _recordSyncedMergeEventIfAny(
+          profileId: remote.profileId,
+          localDateIso: remote.localDate,
+          resolutionStamp: updatedAt,
+          winnerRowId: remote.id,
+          losingRowId: other.id,
+          winnerLastModifiedByUserId: remote.lastModifiedByUserId,
+          winnerLoggedByUserId: remote.loggedByUserId,
+          loserLastModifiedByUserId: other.lastModifiedByUserId,
+          loserLoggedByUserId: other.loggedByUserId,
+          loserNote: other.note,
+          winnerNote: remote.note,
+          loserFlow: other.flow,
+          winnerFlow: remote.flow,
+        );
         tags = mergeTags(tags, other.tags);
         final written =
             await (db.update(
@@ -1942,6 +2008,23 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           loserFlow: remote.flow,
           winnerFlow: other.flow,
           loserEntryId: remote.id,
+        );
+        // Issue #130: the synced twin of the device-local event above —
+        // the incoming (remote) row is the loser here.
+        await _recordSyncedMergeEventIfAny(
+          profileId: remote.profileId,
+          localDateIso: remote.localDate,
+          resolutionStamp: other.updatedAt,
+          winnerRowId: other.id,
+          losingRowId: remote.id,
+          winnerLastModifiedByUserId: other.lastModifiedByUserId,
+          winnerLoggedByUserId: other.loggedByUserId,
+          loserLastModifiedByUserId: remote.lastModifiedByUserId,
+          loserLoggedByUserId: remote.loggedByUserId,
+          loserNote: remote.note,
+          winnerNote: other.note,
+          loserFlow: remote.flow,
+          winnerFlow: other.flow,
         );
         final mergedOtherTags = mergeTags(other.tags, tags);
         // Issue #663 (LLA-038 mirror of the sibling branch's #662 fix
@@ -2041,6 +2124,185 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       discardedFlow: discardedFlow,
     ));
     await setSetting(key: key, value: encodeMergeEvents(events), updatedAt: stamp);
+  }
+
+  /// Issue #130: the synced twin of [_recordMergeDiscardIfAny] — writes
+  /// the same-date merge's discarded `flow`/`note` values as local
+  /// `day_entry_merge_events` rows (dirty, so they ride the next push and
+  /// reach every guardian's device), with the losing value's text retained
+  /// for the losing author's recovery. Emitted ONLY from
+  /// [_resolveSameDateConflicts] (the same-date, distinct-row-id path):
+  /// the same-id convergence path never runs the resolver, so an ordinary
+  /// edit of one row stays notice-free by construction (AC), and a
+  /// tags-only merge records nothing (a set union loses nothing — AC).
+  /// Called inside the caller's apply transaction, so the disclosure and
+  /// the merge commit or roll back together. Deduplicated by the natural
+  /// key (profileId, losingRowId, field) — a replayed resolution (the
+  /// per-id rule lets a tied remote copy re-apply, though by then the
+  /// loser is already tombstoned and no merge is recomputed) or the
+  /// server's own emission of the same event collapse to one row.
+  Future<void> _recordSyncedMergeEventIfAny({
+    required String profileId,
+    required String localDateIso,
+    required DateTime resolutionStamp,
+    required String winnerRowId,
+    required String losingRowId,
+    required String? winnerLastModifiedByUserId,
+    required String? winnerLoggedByUserId,
+    required String? loserLastModifiedByUserId,
+    required String? loserLoggedByUserId,
+    required String? loserNote,
+    required String? winnerNote,
+    required FlowLevel loserFlow,
+    required FlowLevel winnerFlow,
+  }) async {
+    // Display attribution: the last writer if known, else the original
+    // logger (the same coalesce the resolver's #124 call sites use).
+    final winnerActorId =
+        winnerLastModifiedByUserId ?? winnerLoggedByUserId;
+    final loserActorId = loserLastModifiedByUserId ?? loserLoggedByUserId;
+    if (loserNote != winnerNote) {
+      await _insertMergeEventIfAbsent(
+        profileId: profileId,
+        localDateIso: localDateIso,
+        resolutionStamp: resolutionStamp,
+        winnerRowId: winnerRowId,
+        losingRowId: losingRowId,
+        field: 'note',
+        losingValueText: loserNote ?? '',
+        losingAuthorUserId: loserActorId,
+        winningAuthorUserId: winnerActorId,
+      );
+    }
+    if (loserFlow != winnerFlow) {
+      await _insertMergeEventIfAbsent(
+        profileId: profileId,
+        localDateIso: localDateIso,
+        resolutionStamp: resolutionStamp,
+        winnerRowId: winnerRowId,
+        losingRowId: losingRowId,
+        field: 'flow',
+        losingValueText: loserFlow.toDb(),
+        losingAuthorUserId: loserActorId,
+        winningAuthorUserId: winnerActorId,
+      );
+    }
+  }
+
+  /// [_recordSyncedMergeEventIfAny]'s insert half: a no-op when the
+  /// natural key (profileId, losingRowId, field) is already recorded —
+  /// the local mirror of the server's `day_entry_merge_events_discard_uq`
+  /// + ON CONFLICT DO NOTHING. The retained text is clamped to the note
+  /// bound defensively (a loser note is already bounded at write; this
+  /// guards a hand-built row).
+  Future<void> _insertMergeEventIfAbsent({
+    required String profileId,
+    required String localDateIso,
+    required DateTime resolutionStamp,
+    required String winnerRowId,
+    required String losingRowId,
+    required String field,
+    required String losingValueText,
+    required String? losingAuthorUserId,
+    required String? winningAuthorUserId,
+  }) async {
+    final alreadyRecorded = await (db.select(db.dayEntryMergeEvents)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.losingRowId.equals(losingRowId) &
+              t.field.equals(field)))
+        .getSingleOrNull();
+    if (alreadyRecorded != null) return;
+    final stamp = resolutionStamp.toUtc();
+    await db.into(db.dayEntryMergeEvents).insert(
+          DayEntryMergeEventsCompanion.insert(
+            id: _generator.next(),
+            profileId: profileId,
+            localDate: localDateIso,
+            winningRowId: winnerRowId,
+            losingRowId: losingRowId,
+            field: field,
+            losingValueText: losingValueText.length > kMaxNoteLength
+                ? losingValueText.substring(0, kMaxNoteLength)
+                : losingValueText,
+            losingAuthorUserId: Value(losingAuthorUserId),
+            winningAuthorUserId: Value(winningAuthorUserId),
+            createdAt: stamp,
+            updatedAt: stamp,
+            dirty: const Value(true),
+            localRev: const Value(1),
+          ),
+        );
+  }
+
+  /// Issue #130: applies a server copy of a merge event keyed by id — the
+  /// per-id LWW rule the other profile-scoped tables use. The natural-key
+  /// check comes FIRST: a locally-emitted row describing the same discard
+  /// (a different id — this device's resolver and the server's both
+  /// recorded it) already covers the event, and keeping the local id keeps
+  /// any dismissal keyed on it stable; the pushed local row wins the
+  /// server-side ON CONFLICT DO NOTHING, so both sides converge to one row
+  /// per discard. Throws [RetryableSyncApplyError] when the profile is not
+  /// held locally yet (checked up front so the failure is typed rather
+  /// than a raw FK exception, mirroring [_ensureDayEntryProfileExists]).
+  /// Issue #42: the own-row and parent-profile reads go through
+  /// [_lookupCached] like every other applier; the natural-key check stays
+  /// a live SELECT (keyed by (profile, losing row, field), not by id, so
+  /// the id-keyed prefetch cannot serve it), and the write needs no
+  /// RETURNING write-through — no later row in the same page can look a
+  /// merge event up by an id that appeared earlier in it (ids are unique
+  /// within a page, and the natural-key read above is live).
+  Future<bool> _applyMergeEvent(RemoteDayEntryMergeEventRow remote,
+      {required bool onlyExisting, _PageLookup? cache}) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.dayEntryMergeEvents,
+      remote.id,
+      _dayEntryMergeEventOrNull,
+    );
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.updatedAt,
+            remoteUpdatedAt: remote.updatedAt)) {
+      return false;
+    }
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
+      throw RetryableSyncApplyError(
+          'merge event ${remote.id} references a profile not held locally');
+    }
+    final sameDiscard = await (db.select(db.dayEntryMergeEvents)
+          ..where((t) =>
+              t.profileId.equals(remote.profileId) &
+              t.losingRowId.equals(remote.losingRowId) &
+              t.field.equals(remote.field)))
+        .getSingleOrNull();
+    if (sameDiscard != null && sameDiscard.id != remote.id) return false;
+    final updatedAt = remote.updatedAt.toUtc();
+    await db.into(db.dayEntryMergeEvents).insertOnConflictUpdate(
+          DayEntryMergeEventsCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            localDate: remote.localDate,
+            winningRowId: remote.winningRowId,
+            losingRowId: remote.losingRowId,
+            field: remote.field,
+            losingValueText: remote.losingValueText,
+            losingAuthorUserId: Value(remote.losingAuthorUserId),
+            winningAuthorUserId: Value(remote.winningAuthorUserId),
+            createdAt: remote.createdAt.toUtc(),
+            updatedAt: updatedAt,
+            dirty: const Value(false),
+            localRev: const Value(0),
+          ),
+        );
+    return true;
   }
 
   /// The `flow` to write for a day entry row: cleared to [FlowLevel.none]

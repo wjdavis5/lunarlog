@@ -57,11 +57,13 @@ import 'dart:async'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/logging/widgets/merge_notice_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
 import 'package:lunarlog/domain/logging/tag_recents.dart';
@@ -297,6 +299,11 @@ class _DaySheetState extends State<DaySheet> {
   /// repository write) is a side effect the widget layers on top.
   DaySheetSaveState _saveState = const DaySheetIdle();
   Timer? _saveDebounce;
+
+  /// Issue #130: the date's undismissed same-date merge disclosures — the
+  /// quiet notice list, loaded once when the sheet opens (the events for a
+  /// date are fixed once recorded; dismissal updates this list locally).
+  List<DayEntryMergeEvent> _mergeEvents = const [];
   Timer? _savedIndicatorTimer;
   String? _persistedEntryId;
 
@@ -561,6 +568,61 @@ class _DaySheetState extends State<DaySheet> {
     // Issue #234: the read-only sheet never builds CategoryPicker, so it
     // has no Recent row to seed.
     if (!widget.readOnly) unawaited(_loadTagRecents());
+    // Issue #130: the merge-notice list for this date (rendered read-only
+    // or not — the disclosure is informational, never an edit).
+    unawaited(_loadMergeEvents());
+  }
+
+  /// Issue #130: loads this date's undismissed merge disclosures through
+  /// the day-entries repository (the notice surface this feature owns). A
+  /// failure never blocks the sheet — the notices are additive metadata,
+  /// not logging state.
+  Future<void> _loadMergeEvents() async {
+    try {
+      final events =
+          await widget.repository.mergeEventsForDay(widget.profileId, widget.date);
+      if (!mounted) return;
+      setState(() => _mergeEvents = events);
+    } on Exception {
+      // Deliberately quiet (R18's posture): a failed notice read leaves
+      // the sheet exactly as it was before this feature existed.
+    }
+  }
+
+  /// Issue #130: dismisses one notice on THIS device only (the repository
+  /// write is the device-local dismissal list, never a tombstone) and
+  /// drops it from the visible list immediately.
+  Future<void> _dismissMergeEvent(DayEntryMergeEvent event) async {
+    setState(() => _mergeEvents = [
+          for (final e in _mergeEvents)
+            if (e.id != event.id) e,
+        ]);
+    await widget.repository.dismissMergeEvent(widget.profileId, event.id);
+  }
+
+  /// Issue #130: restores the losing author's discarded note into the note
+  /// field — a re-entry of their own text, not an edit of the merged
+  /// entry's other values. An empty field takes the text outright;
+  /// a non-empty one appends it on a new line (never silently replaces
+  /// text the user may have typed since opening the sheet). The
+  /// controller's listener re-arms autosave.
+  void _restoreMergedNote(DayEntryMergeEvent event) {
+    final current = _noteController.text;
+    _noteController.text = current.trim().isEmpty
+        ? event.losingValueText
+        : '$current\n${event.losingValueText}';
+  }
+
+  /// Issue #130: restores the losing author's discarded flow level via the
+  /// sheet's single flow write path. Only offered when the retained wire
+  /// string parses to a real level (it always does — the server CHECKs
+  /// the set — but an unknown value degrades to leaving the selection
+  /// untouched rather than silently selecting `none`).
+  void _restoreMergedFlow(DayEntryMergeEvent event) {
+    final match = FlowLevel.values
+        .where((level) => level.toDb() == event.losingValueText)
+        .firstOrNull;
+    if (match != null) _selectFlow(match);
   }
 
   @override
@@ -1720,6 +1782,17 @@ class _DaySheetState extends State<DaySheet> {
                         ),
                     ],
                   ),
+                ),
+                // Issue #130: the quiet, dismissible same-date merge notice
+                // — shown to every guardian (the winner too), with the
+                // losing author's recovery affordance rendered inside.
+                DayEntryMergeNoticeSection(
+                  events: _mergeEvents,
+                  currentUserId: widget.currentUserId,
+                  guardians: widget.guardians,
+                  onDismiss: (event) => unawaited(_dismissMergeEvent(event)),
+                  onRestoreNote: _restoreMergedNote,
+                  onRestoreFlow: _restoreMergedFlow,
                 ),
                 _sectionHeading(theme, l10n.daySheetFlowLabel),
                 _flowChips(l10n),

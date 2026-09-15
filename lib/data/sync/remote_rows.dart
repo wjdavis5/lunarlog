@@ -32,6 +32,7 @@ enum SyncTable {
   cycleOverrides,
   careNotes,
   visitPrepItems,
+  dayEntryMergeEvents,
   deletedProfiles,
 }
 
@@ -499,6 +500,63 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.visitPrepItems;
+}
+
+/// A server copy of a `day_entry_merge_events` row (Issue #130): one
+/// recorded same-date merge discard. Machine-written by whichever resolver
+/// (the server's, inside `sync_push`, or a client's, pushed back through
+/// `p_merge_events`) witnessed the merge — never user-composed content.
+/// No tombstone exists on this table (nothing ever soft-deletes a merge
+/// event; dismissal is device-local), so [deletedAt] is always null.
+final class RemoteDayEntryMergeEventRow extends RemoteRow {
+  const RemoteDayEntryMergeEventRow({
+    required this.id,
+    required this.profileId,
+    required this.localDate,
+    required this.winningRowId,
+    required this.losingRowId,
+    required this.field,
+    required this.losingValueText,
+    this.losingAuthorUserId,
+    this.winningAuthorUserId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` the colliding entries were both for.
+  final String localDate;
+
+  /// Raw `field` string: 'flow' | 'note'. Normalised on decode by
+  /// `row_codec.dart` against the closed set (an unrecognised value can
+  /// only come from a broken writer and degrades to 'note').
+  final String field;
+
+  final String winningRowId;
+  final String losingRowId;
+
+  /// The discarded value itself (health content — the losing note's text,
+  /// or the losing flow level's wire string).
+  final String losingValueText;
+
+  /// Display attribution only, like `RemoteDayEntryRow.loggedByUserId`.
+  final String? losingAuthorUserId;
+  final String? winningAuthorUserId;
+
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  DateTime? get deletedAt => null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.dayEntryMergeEvents;
 }
 
 /// A server copy of a `deleted_profiles` row (issue #522): the narrow

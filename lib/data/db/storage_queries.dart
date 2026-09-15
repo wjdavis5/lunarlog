@@ -18,6 +18,7 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorVisitPrepItems: 0,
   cursorProfileGuardians: 0,
   cursorDeletedProfiles: 0,
+  cursorDayEntryMergeEvents: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
@@ -485,6 +486,72 @@ mixin LunarLogStorageQueries {
     return query.get();
   }
 
+  /// Merge events with unpushed local changes, ordered by id (Issue #130;
+  /// no tombstone on this table). Same keyset-paging contract as
+  /// [readDirtyProfiles].
+  Future<List<DayEntryMergeEventData>> readDirtyDayEntryMergeEvents(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// The recorded merge disclosures for (profile, date), ordered by id
+  /// (Issue #130) — the day sheet's notice read. Filtered to the same
+  /// 30-day recovery window the server's `enforce_retention()` purge
+  /// enforces (`kDayEntryMergeEventRetention`), so a locally-held event
+  /// stops rendering in lockstep with the server-side purge and the notice
+  /// never outlives its documented retention on either side.
+  Future<List<DayEntryMergeEventData>> getDayEntryMergeEventsForDay(
+    String profileId,
+    String localDate, {
+    DateTime? now,
+  }) {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryMergeEventRetention);
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.localDate.equals(localDate) &
+          t.createdAt.isBiggerThanValue(windowStart))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
+  }
+
+  /// Every recorded merge disclosure for the profile, ordered by id
+  /// (Issue #130) — the local JSON export's read. The SAME 30-day window
+  /// filter as [getDayEntryMergeEventsForDay]: the export must not carry
+  /// retained losing text the server has already purged (and the day sheet
+  /// has already stopped showing), or the file would silently extend the
+  /// documented retention. NOT filtered on dismissals — a dismissed notice
+  /// is a per-device display choice, not a deletion of the record.
+  Future<List<DayEntryMergeEventData>> getDayEntryMergeEventsForProfile(
+    String profileId, {
+    DateTime? now,
+  }) {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryMergeEventRetention);
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.createdAt.isBiggerThanValue(windowStart))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
+  }
+
+  /// Merge event by id or null (Issue #130) — the live fallback behind
+  /// `storage_remote_apply.dart`'s cached own-row lookup (Issue #42's
+  /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
+  Future<DayEntryMergeEventData?> _dayEntryMergeEventOrNull(String id) =>
+      (db.select(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
   /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
@@ -502,7 +569,9 @@ mixin LunarLogStorageQueries {
         db.careNotes, db.careNotes.id, db.careNotes.dirty.equals(true));
     final vp = await _count(db.visitPrepItems, db.visitPrepItems.id,
         db.visitPrepItems.dirty.equals(true));
-    return p + d + o + pm + co + cn + vp;
+    final me = await _count(db.dayEntryMergeEvents, db.dayEntryMergeEvents.id,
+        db.dayEntryMergeEvents.dirty.equals(true));
+    return p + d + o + pm + co + cn + vp + me;
   }
 
   /// Row counts, live and tombstoned, of the two synced tables the upload-

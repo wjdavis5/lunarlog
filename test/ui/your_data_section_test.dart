@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
@@ -228,6 +229,7 @@ class _FakeExportSnapshotRepository implements AccountExportSnapshotRepository {
         observations: await _observations.listForProfile(profileId),
         profileMode: null,
         cycleOverrides: const <CycleOverride>[],
+        mergeEvents: const <DayEntryMergeEvent>[],
       );
 }
 
@@ -304,6 +306,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -356,6 +359,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -456,6 +460,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');

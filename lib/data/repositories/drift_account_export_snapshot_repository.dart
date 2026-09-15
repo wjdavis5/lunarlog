@@ -42,11 +42,16 @@ class DriftAccountExportSnapshotRepository
       final profileMode = await profileModesRepository.find(profileId);
       final cycleOverrides =
           await cycleOverridesRepository.listForProfile(profileId);
+      // Issue #130: the profile's window-live merge disclosures join the
+      // SAME coherent read (the LLA-094 straddle argument applies to the
+      // disclosure rows exactly as it does to the entries they describe).
+      final mergeEvents = await entriesRepository.mergeEventsForProfile(profileId);
       return (
         entries: entries,
         observations: observations,
         profileMode: profileMode,
         cycleOverrides: cycleOverrides,
+        mergeEvents: mergeEvents,
       );
     });
   }

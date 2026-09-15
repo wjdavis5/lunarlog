@@ -130,7 +130,8 @@ select is(
     'notification_outbox', 1,
     'day_entries_tombstones', 1,
     'day_entry_history', 0,
-    'feedback_tickets', 1
+    'feedback_tickets', 1,
+    'day_entry_merge_events', 0
   ),
   'enforce_retention purges exactly the expired row in each of the four categories'
 );
@@ -204,7 +205,8 @@ select is(
     'notification_outbox', 0,
     'day_entries_tombstones', 0,
     'day_entry_history', 0,
-    'feedback_tickets', 0
+    'feedback_tickets', 0,
+    'day_entry_merge_events', 0
   ),
   'a second run is a clean no-op -- enforce_retention is idempotent'
 );

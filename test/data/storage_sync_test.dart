@@ -2347,6 +2347,7 @@ void main() {
       'cycle_overrides',
       'care_notes',
       'visit_prep_items',
+      'day_entry_merge_events',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2405,6 +2406,22 @@ void main() {
       );
       await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
       await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+      // Issue #130: a merge-disclosure row (discarded note text — health
+      // content about the shared profile) must be wiped with everything
+      // else.
+      await db.into(db.dayEntryMergeEvents).insert(
+            DayEntryMergeEventsCompanion.insert(
+              id: '01JWIPE00000000000000000A',
+              profileId: p.id,
+              localDate: '2026-01-15',
+              winningRowId: entry.id,
+              losingRowId: '01JWIPE00000000000000000B',
+              field: 'note',
+              losingValueText: 'wiped with the profile',
+              createdAt: t0,
+              updatedAt: t0,
+            ),
+          );
 
       // Sanity: every table actually holds live content before revocation.
       expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
@@ -2443,6 +2460,15 @@ void main() {
       );
       expect(await storage.getCareNotesForProfile(p.id), isEmpty);
       expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+      // Issue #130: the profile's merge-disclosure rows are hard-deleted
+      // (no tombstone on this table) — a removed guardian's device keeps
+      // no trace of the family's discarded note texts.
+      expect(
+        await (db.select(db.dayEntryMergeEvents)
+              ..where((t) => t.profileId.equals(p.id)))
+            .get(),
+        isEmpty,
+      );
 
       // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
       // reset is the wipe for this table (issue #532).

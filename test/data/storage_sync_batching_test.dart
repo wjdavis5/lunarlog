@@ -270,7 +270,25 @@ void main() {
       );
       final n = await storage.upsertCareNote(profileId: p.id, body: 'note');
       final i = await storage.addVisitPrepItem(profileId: p.id, body: 'item');
-      expect(await storage.dirtyCount(), 7);
+      // Issue #130's eighth pushed table: a locally-emitted disclosure
+      // row (dirty, like every local write) rides the same batched clear.
+      final ev =
+          await storage.db.into(storage.db.dayEntryMergeEvents).insertReturning(
+                DayEntryMergeEventsCompanion.insert(
+                  id: '01JMERGEEVENT000000000000A',
+                  profileId: p.id,
+                  localDate: '2026-01-15',
+                  winningRowId: '01JWINNER00000000000000000A',
+                  losingRowId: '01JLOSER000000000000000000A',
+                  field: 'note',
+                  losingValueText: 'discarded',
+                  createdAt: t0,
+                  updatedAt: t0,
+                  dirty: const Value(true),
+                  localRev: const Value(1),
+                ),
+              );
+      expect(await storage.dirtyCount(), 8);
 
       final cleared = await storage.markPushedBatch([
         (table: SyncTable.profiles, id: p.id, localRevAtPush: p.localRev),
@@ -284,12 +302,17 @@ void main() {
         (table: SyncTable.cycleOverrides, id: c.id, localRevAtPush: c.localRev),
         (table: SyncTable.careNotes, id: n.id, localRevAtPush: n.localRev),
         (table: SyncTable.visitPrepItems, id: i.id, localRevAtPush: i.localRev),
+        (
+          table: SyncTable.dayEntryMergeEvents,
+          id: ev.id,
+          localRevAtPush: ev.localRev,
+        ),
         // Pull-only tables: harmless no-ops, matching markPushed.
         (table: SyncTable.profileGuardians, id: 'g1', localRevAtPush: 1),
         (table: SyncTable.deletedProfiles, id: 'd1', localRevAtPush: 1),
       ]);
 
-      expect(cleared, 7);
+      expect(cleared, 8);
       expect(await storage.dirtyCount(), 0);
     });
 

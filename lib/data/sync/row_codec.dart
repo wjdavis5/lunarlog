@@ -145,18 +145,26 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 /// Remote table name for [table] (`profiles` / `day_entries` /
 /// `profile_guardians` / `observations` / `profile_modes` /
 /// `cycle_overrides` / `care_notes` / `visit_prep_items` /
-/// `deleted_profiles`).
-String syncTableName(SyncTable table) => switch (table) {
-      SyncTable.profiles => 'profiles',
-      SyncTable.dayEntries => 'day_entries',
-      SyncTable.profileGuardians => 'profile_guardians',
-      SyncTable.observations => 'observations',
-      SyncTable.profileModes => 'profile_modes',
-      SyncTable.cycleOverrides => 'cycle_overrides',
-      SyncTable.careNotes => 'care_notes',
-      SyncTable.visitPrepItems => 'visit_prep_items',
-      SyncTable.deletedProfiles => 'deleted_profiles',
-    };
+/// `day_entry_merge_events` / `deleted_profiles`).
+String syncTableName(SyncTable table) => _syncTableNames[table]!;
+
+/// The wire name per [SyncTable] — a const map rather than an exhaustive
+/// switch since Issue #130's tenth SyncTable: an exhaustive switch over a
+/// ten-member enum sits permanently over the quality gate's per-method
+/// complexity ceiling no matter how well covered it is, while a lookup
+/// stays flat as tables are added.
+const Map<SyncTable, String> _syncTableNames = {
+  SyncTable.profiles: 'profiles',
+  SyncTable.dayEntries: 'day_entries',
+  SyncTable.profileGuardians: 'profile_guardians',
+  SyncTable.observations: 'observations',
+  SyncTable.profileModes: 'profile_modes',
+  SyncTable.cycleOverrides: 'cycle_overrides',
+  SyncTable.careNotes: 'care_notes',
+  SyncTable.visitPrepItems: 'visit_prep_items',
+  SyncTable.dayEntryMergeEvents: 'day_entry_merge_events',
+  SyncTable.deletedProfiles: 'deleted_profiles',
+};
 
 /// [syncTableName]'s inverse, precomputed once from it rather than
 /// hand-duplicating the name/table pairing a second time (issue #525
@@ -393,6 +401,39 @@ JsonRow encodeVisitPrepItem(VisitPrepItemData row) {
     'is_checked': row.isChecked,
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
+/// The `p_merge_events` element for [row] (Issue #130). `created_at` is
+/// deliberately NOT emitted — the server stamps it, exactly as it stamps
+/// `day_entries.created_at`; the local row's [DayEntryMergeEventData.createdAt]
+/// rides along only for the display window. Emits exactly the keys
+/// `sync_push`'s c_merge_event_keys allowlist accepts.
+JsonRow encodeDayEntryMergeEvent(DayEntryMergeEventData row) {
+  const table = SyncTable.dayEntryMergeEvents;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  if (!_isoDate.hasMatch(row.localDate)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidDate,
+        table: table, field: 'local_date');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'local_date': row.localDate,
+    'winning_row_id': row.winningRowId,
+    'losing_row_id': row.losingRowId,
+    'field': row.field,
+    'losing_value_text': row.losingValueText,
+    'losing_author_user_id': row.losingAuthorUserId,
+    'winning_author_user_id': row.winningAuthorUserId,
+    'updated_at': encodeTimestamp(row.updatedAt),
   };
 }
 
@@ -727,6 +768,35 @@ RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
   );
 }
 
+/// Decodes a `day_entry_merge_events` row (Issue #130). `field` is
+/// normalised against the closed set ('flow' | 'note') on decode — an
+/// unrecognised value can only come from a broken writer, and degrades to
+/// 'note' rather than crashing a pull over display metadata. `created_at`
+/// falls back to `updated_at` when absent (only a hand-built row is ever
+/// null there).
+RemoteDayEntryMergeEventRow decodeDayEntryMergeEvent(JsonRow json) {
+  const table = SyncTable.dayEntryMergeEvents;
+  final r = _Reader(json, table);
+  final updatedAt = r.timestamp('updated_at');
+  return RemoteDayEntryMergeEventRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    localDate: r.isoDate('local_date'),
+    winningRowId: r.ulid('winning_row_id'),
+    losingRowId: r.ulid('losing_row_id'),
+    field: switch (r.string('field')) {
+      'flow' => 'flow',
+      _ => 'note',
+    },
+    losingValueText: r.string('losing_value_text'),
+    losingAuthorUserId: r.stringOrNull('losing_author_user_id'),
+    winningAuthorUserId: r.stringOrNull('winning_author_user_id'),
+    createdAt: r.timestampOrNull('created_at') ?? updatedAt,
+    updatedAt: updatedAt,
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a `deleted_profiles` row (issue #522): `deleted_at` is required
 /// here, unlike every other decoder's `timestampOrNull` — this table's own
 /// existence is the tombstone, so a row missing it is a codec failure, not
@@ -742,17 +812,23 @@ RemoteDeletedProfileRow decodeDeletedProfile(JsonRow json) {
 }
 
 /// Decodes a pull-page row of [table].
-RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
-      SyncTable.profiles => decodeProfile(json),
-      SyncTable.dayEntries => decodeDayEntry(json),
-      SyncTable.profileGuardians => decodeProfileGuardian(json),
-      SyncTable.observations => decodeObservation(json),
-      SyncTable.profileModes => decodeProfileMode(json),
-      SyncTable.cycleOverrides => decodeCycleOverride(json),
-      SyncTable.careNotes => decodeCareNote(json),
-      SyncTable.visitPrepItems => decodeVisitPrepItem(json),
-      SyncTable.deletedProfiles => decodeDeletedProfile(json),
-    };
+RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) =>
+    _remoteRowDecoders[table]!(json);
+
+/// Same growth rationale as [_syncTableNames]: dispatch by const map of
+/// decoder tear-offs rather than an exhaustive switch.
+const Map<SyncTable, RemoteRow Function(JsonRow)> _remoteRowDecoders = {
+  SyncTable.profiles: decodeProfile,
+  SyncTable.dayEntries: decodeDayEntry,
+  SyncTable.profileGuardians: decodeProfileGuardian,
+  SyncTable.observations: decodeObservation,
+  SyncTable.profileModes: decodeProfileMode,
+  SyncTable.cycleOverrides: decodeCycleOverride,
+  SyncTable.careNotes: decodeCareNote,
+  SyncTable.visitPrepItems: decodeVisitPrepItem,
+  SyncTable.dayEntryMergeEvents: decodeDayEntryMergeEvent,
+  SyncTable.deletedProfiles: decodeDeletedProfile,
+};
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`
 /// key. Throws [RowCodecErrorKind.unknownTable] when the key is absent or

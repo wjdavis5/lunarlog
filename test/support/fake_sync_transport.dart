@@ -42,6 +42,7 @@ class FakeSyncTransport implements SyncTransport {
     SyncTable.cycleOverrides: [],
     SyncTable.careNotes: [],
     SyncTable.visitPrepItems: [],
+    SyncTable.dayEntryMergeEvents: [],
     SyncTable.deletedProfiles: [],
   };
 
