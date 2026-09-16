@@ -480,6 +480,35 @@ jobs:
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
         run: supabase test db --local
 
+      - name: Generated types snapshot freshness (supabase/database.types.ts)
+        # Issue #181: supabase/database.types.ts is a committed, reviewable
+        # schema snapshot -- the way a generated lockfile makes a dependency
+        # change visible in a PR diff, this makes a schema change visible
+        # without reading the migration SQL. Nothing consumes it (the
+        # Flutter app never imports it), so its only job is to fail here
+        # when a migration's schema change was committed without
+        # regenerating the snapshot. Regenerate locally with:
+        #   npx supabase@2.116.0 gen types typescript --local --schema public \
+        #     > supabase/database.types.ts
+        # (against the local stack after `supabase db reset --local`; the
+        # full migration chain is the source, so the snapshot equals
+        # production modulo drift -- which is exactly what catching drift
+        # in a PR diff is for). `--schema public` is pinned: the repo owns
+        # only the public schema, and Supabase-managed schemas
+        # (graphql_public & co.) would churn with platform versions rather
+        # than migrations. The DB is at the migration tip here: `start`
+        # above applied migrations and `test db` re-applied them.
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public > supabase/database.types.ts
+          dirty="$(git status --porcelain --untracked-files=all -- supabase/database.types.ts)"
+          if [ -n "$dirty" ]; then
+            echo "::error::supabase/database.types.ts is out of sync with the migrations. Run 'npx supabase@2.116.0 gen types typescript --local --schema public > supabase/database.types.ts' (after 'npx supabase@2.116.0 db reset --local') and commit the result."
+            echo "$dirty"
+            git diff -- supabase/database.types.ts
+            exit 1
+          fi
+
       # Issue #102: the Dart sync round trip against the live local stack
       # (real SupabaseSyncTransport + row codec through the real sync_push
       # RPC and RLS select). Runs after pgTAP on purpose: this test is
