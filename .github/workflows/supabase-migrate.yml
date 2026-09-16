@@ -108,8 +108,15 @@ name: Supabase migrate
 #     unattended migration risks either a permission failure (blocking
 #     every later migration) or losing those Supabase-managed grants on
 #     recreate, silently breaking push dispatch. This needs a
-#     Supabase-supported relocation path, not a plain migration -- deferred
-#     as a follow-up, tracked back on issue #194.
+#     Supabase-supported relocation path, not a plain migration -- the
+#     follow-up landed as 20260918120000_pg_net_public_placement_guard.sql
+#     plus the support-assisted relocation runbook in docs/ops/
+#     supabase-go-live.md ("pg_net relocation runbook (issue #194)"); the
+#     exclusion self-retires once the runbook is executed on the linked
+#     project (the finding disappears from advisor output), and
+#     classify-schema-diff.sh already accepts the post-relocation
+#     `WITH SCHEMA extensions` shadow-image shape so the drift gate keeps
+#     passing through the transition.
 #   * `auth_leaked_password_protection` -- a dashboard toggle no migration
 #     or workflow change can flip, confirmed OFF in production as of this
 #     PR, and already on the owner's manual post-deploy checklist (issue

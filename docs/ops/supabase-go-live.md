@@ -495,6 +495,107 @@ registers no device, and shows no Notifications entry (R17).
       anything else in this checklist and is only discoverable by running
       the workflow.
 
+### pg_net relocation runbook (issue #194)
+
+Closes the deferred half of issue #194: the security advisor's
+`extension_in_public` warn-level finding for `pg_net`, whose
+`pg_extension.extnamespace` points at `public` while every callable object
+lives in its own `net` schema. The finding is cosmetic (no pg_net member
+resolves in `public`; `anon`/`authenticated` hold no grants there), but it is
+the last tracked warn-level advisor finding with a repo-side exclusion, and
+the relocation closes it for good. **A migration cannot do this** — three
+independently sufficient reasons, each verified against the local stack
+(which mirrors production exactly: pg_net 0.20.4, `public` registration,
+non-relocatable, `supabase_admin`-owned):
+
+1. Migrations run as `postgres`, which is not superuser locally or on
+   Supabase hosted; every path that moves a non-relocatable extension writes
+   `pg_extension` directly, and direct system-catalog writes are
+   superuser-only.
+2. `alter extension pg_net set schema extensions` fails with SQLSTATE 0A000
+   (`extrelocatable = false`).
+3. Even as superuser with `extrelocatable` flipped first (the sequence
+   Supabase community answers suggest for non-relocatable extensions), the
+   ALTER still fails: `extension "pg_net" does not support SET SCHEMA — type
+   net.http_method is not in the extension's schema "public"` — pg_net's 28
+   member objects live in `net`, not in the registered namespace. There is
+   no forward `alter extension pg_net update` path either (0.20.4 is the
+   newest version in the platform image).
+
+The one procedure that provably works — verified locally as superuser in a
+rolled-back transaction (all 28 member objects intact at the same OIDs,
+`net.http_post` still resolving, `net.http_request_queue` still readable,
+clean rollback) — is a single-column catalog update that moves no objects
+and touches no grants:
+
+```sql
+begin;
+update pg_extension set extnamespace = 'extensions'::regnamespace
+ where extname = 'pg_net' and extnamespace = 'public'::regnamespace;
+commit;
+```
+
+Do **not** substitute `drop extension pg_net` + `create extension pg_net
+with schema extensions`: the drop needs ownership the `postgres` role lacks
+(a failed migration would block every migration after it), and a recreate is
+not guaranteed to restore the Supabase-managed `net` schema grants
+(`supabase_admin` granted USAGE to postgres, anon, authenticated,
+service_role, and supabase_functions_admin) that push dispatch depends on.
+
+**On the cloud project (production):** open a Supabase Support ticket
+(Dashboard → Support) asking them to run the catalog update above as a
+superuser on project `dleexnnevuuddcgcpztq`. Suggested ticket body:
+
+> Our pg_net extension (v0.20.4) is registered under `public`
+> (`pg_extension.extnamespace`), which your security advisor flags as
+> `extension_in_public`. It is non-relocatable and Supabase-managed, so we
+> cannot move it ourselves: `ALTER EXTENSION pg_net SET SCHEMA extensions`
+> fails with SQLSTATE 0A000, and even with `extrelocatable` temporarily
+> flipped it fails because the members live in the `net` schema. Please run,
+> as a superuser, in one transaction:
+>
+> ```sql
+> begin;
+> update pg_extension set extnamespace = 'extensions'::regnamespace
+>  where extname = 'pg_net' and extnamespace = 'public'::regnamespace;
+> commit;
+> ```
+>
+> This is registration-only — no objects move, no grants change. Please
+> confirm the row count (must be 1) and that `net.http_post` still resolves
+> afterward.
+
+**For local parity** (optional — the pgTAP suite tolerates both states): the
+local stack's `postgres` role is likewise non-superuser, but the container's
+`supabase_admin` is superuser:
+
+```bash
+docker exec -i supabase_db_lunarlog psql -U supabase_admin -d postgres \
+  -c "update pg_extension set extnamespace = 'extensions'::regnamespace where extname = 'pg_net' and extnamespace = 'public'::regnamespace;"
+```
+
+Note that `supabase db reset --local` reinstalls the image's pg_net under
+`public`, so local parity lasts until the next reset — the placement tests
+in `supabase/tests/pg_net_placement_test.sql` assert the invariants that hold
+in both states rather than the final placement for exactly this reason.
+
+**Post-move verification and cleanup:**
+
+- [ ] `select extnamespace::regnamespace from pg_extension where extname =
+      'pg_net';` reports `extensions` (the migration
+      `20260918120000_pg_net_public_placement_guard.sql`'s deploy-log notice
+      flips from WARNING to NOTICE at the same moment).
+- [ ] `select to_regprocedure('net.http_post(text, jsonb, jsonb, jsonb,
+      integer)');` still resolves, and a `supabase-migrate.yml` run stays
+      green (the drift gate's `classify-schema-diff.sh` already accepts the
+      post-relocation `WITH SCHEMA extensions` shadow-image shape).
+- [ ] `supabase db advisors --linked --type security` no longer reports
+      `extension_in_public` for pg_net.
+- [ ] Delete the pg_net branch of the `extension_in_public` exclusion in
+      `.github/scripts/check-advisor-gate.sh` (it self-retires — the finding
+      no longer appears in the advisor JSON) and drop the now-stale test
+      case in `.github/scripts/tests/check-advisor-gate.test.sh`.
+
 ### delete-account Edge Function runbook (issue #17)
 
 The Edge Function itself has no automated CI coverage yet (Open Question
