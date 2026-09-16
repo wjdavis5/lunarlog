@@ -443,6 +443,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+
+          # Issue #735: this step runs after the deploy itself has
+          # succeeded, so a transient GitHub API error (observed: HTTP 502
+          # Server Error) must not fail the whole Push migrations job --
+          # evidence recording is bookkeeping, not deploy correctness.
+          # Three attempts with linear backoff; the here-string callers'
+          # stdin flows through to each retry unchanged.
+          gh_api_retry() {
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error::gh api failed after $attempt attempts (see output above)"
+                return 1
+              fi
+              echo "gh api attempt $attempt failed -- retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
+          }
+
           hash="$(bash .github/scripts/edge-function-hash.sh supabase/functions/delete-account)"
 
           # A single-line here-string (<<<), not a heredoc: a heredoc's
@@ -453,10 +473,10 @@ jobs:
           # extract-marketing-version workflow-YAML gotcha this repo's own
           # tooling instructions call out.
           create_payload="$(printf '{"ref":"%s","environment":"edge-delete-account","auto_merge":false,"required_contexts":[],"description":"delete-account Edge Function deploy","payload":{"function":"delete-account","source_sha256":"%s"}}' "${{ github.sha }}" "$hash")"
-          deployment_id="$(gh api "repos/${{ github.repository }}/deployments" --input - --jq .id <<< "$create_payload")"
+          deployment_id="$(gh_api_retry gh api "repos/${{ github.repository }}/deployments" --input - --jq .id <<< "$create_payload")"
 
           status_payload="$(printf '{"state":"success","description":"supabase functions deploy delete-account succeeded (source sha256 %s)"}' "$hash")"
-          gh api "repos/${{ github.repository }}/deployments/$deployment_id/statuses" --input - >/dev/null <<< "$status_payload"
+          gh_api_retry gh api "repos/${{ github.repository }}/deployments/$deployment_id/statuses" --input - >/dev/null <<< "$status_payload"
 
           echo "Recorded delete-account deployment evidence: source sha256 $hash (deployment id $deployment_id)."
 
