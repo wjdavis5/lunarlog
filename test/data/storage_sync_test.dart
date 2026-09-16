@@ -2348,6 +2348,7 @@ void main() {
       'care_notes',
       'visit_prep_items',
       'day_entry_merge_events',
+      'profile_tag_registry',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2409,6 +2410,14 @@ void main() {
       // Issue #130: a merge-disclosure row (discarded note text — health
       // content about the shared profile) must be wiped with everything
       // else.
+      // Issue #257: a custom-tag registry row (the user's own health
+      // vocabulary about the shared profile) must leave the device with
+      // everything else — tombstoned payload-cleared, code surviving.
+      await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'shared_custom_tag',
+        displayName: 'Shared custom tag',
+      );
       await db.into(db.dayEntryMergeEvents).insert(
             DayEntryMergeEventsCompanion.insert(
               id: '01JWIPE00000000000000000A',
@@ -2468,6 +2477,21 @@ void main() {
               ..where((t) => t.profileId.equals(p.id)))
             .get(),
         isEmpty,
+      );
+      // Issue #257: the registry row is tombstoned payload-cleared — no
+      // live row (the repository read excludes tombstones) and no label
+      // left on the removed guardian's device.
+      expect(
+        await storage.getProfileTagRegistry(p.id),
+        isEmpty,
+      );
+      expect(
+        (await db.select(db.profileTagRegistry).get())
+            .every((row) =>
+                row.deletedAt != null &&
+                row.displayName == '' &&
+                row.code == 'shared_custom_tag'),
+        isTrue,
       );
 
       // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
