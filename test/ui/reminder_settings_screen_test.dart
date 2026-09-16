@@ -61,6 +61,7 @@ class _FakeModesRepository implements ProfileModesRepository {
     required String profileId,
     required LifecycleMode mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
   }) async {}
 }
@@ -264,6 +265,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'patch',
         birthControlStartedOn: today.addDays(-7).iso,
         birthControlStoppedOn: null,
@@ -311,6 +314,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'ring',
         birthControlStartedOn: null,
         birthControlStoppedOn: null,
@@ -338,6 +343,8 @@ void main() {
         store,
         modeRow: (
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: method,
           birthControlStartedOn: LocalDate.today().iso,
           birthControlStoppedOn: null,
@@ -378,6 +385,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'pill',
         birthControlStartedOn: null,
         birthControlStoppedOn: null,

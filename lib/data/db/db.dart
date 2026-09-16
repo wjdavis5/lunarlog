@@ -233,8 +233,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   90-day server retention) with its
   ///   `sync_state.cursor_day_entry_history` pull cursor and a
   ///   `(profile_id, changed_at)` index.
+  /// * 24 — `profile_modes.estimated_due_date` (Issue #192, Pregnancy
+  ///   mode: the synced due date the week-of-pregnancy counter derives
+  ///   from — last recorded period start + 280 days on entry, or a manual
+  ///   override when that start is unknown/imported).
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -529,6 +533,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV22(m, from);
     // Issue #170's v23 step, same shape again.
     await _upgradeToV23(m, from);
+    // Issue #192's v24 step, same shape again.
+    await _upgradeToV24(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1045,6 +1051,24 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
       await migrationStepHook?.call('day_entry_history.profile_changed_at_index');
       await _advanceSchemaVersion(23);
+    });
+  }
+
+  /// The v24 upgrade step (Issue #192): the Pregnancy-mode estimated due
+  /// date on `profile_modes`. Same standalone-method shape as
+  /// [_upgradeToV23]; `profile_modes` has existed since v9 on every real
+  /// device, so the addColumn is always safe regardless of `from`.
+  Future<void> _upgradeToV24(Migrator m, int from) async {
+    if (from >= 24) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the cursor columns
+      // use, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('profile_modes', 'estimated_due_date')) {
+        await m.addColumn(profileModes, profileModes.estimatedDueDate);
+        await migrationStepHook?.call('profile_modes.estimated_due_date');
+      }
+      await _advanceSchemaVersion(24);
     });
   }
 }

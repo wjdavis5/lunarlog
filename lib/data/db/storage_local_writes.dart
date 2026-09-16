@@ -296,11 +296,13 @@ void _validateObservation({
 /// the same shape with a `^\d{4}-\d{2}-\d{2}$` check in `sync_push`).
 void _validateProfileModePayload({
   String? modeStartedOn,
+  String? estimatedDueDate,
   String? birthControlMethod,
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
 }) {
   if (modeStartedOn != null) _validateLocalDate(modeStartedOn);
+  if (estimatedDueDate != null) _validateLocalDate(estimatedDueDate);
   _boundedOrThrow(
       birthControlMethod, kMaxBirthControlMethodLength, 'birthControlMethod');
   if (birthControlStartedOn != null) _validateLocalDate(birthControlStartedOn);
@@ -1279,6 +1281,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String profileId,
     required String mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
     String? birthControlStartedOn,
     String? birthControlStoppedOn,
@@ -1288,6 +1291,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     // Async so validation failures surface as failed futures.
     _validateProfileModePayload(
       modeStartedOn: modeStartedOn,
+      estimatedDueDate: estimatedDueDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: birthControlStartedOn,
       birthControlStoppedOn: birthControlStoppedOn,
@@ -1300,6 +1304,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               profileId: profileId,
               mode: Value(mode),
               modeStartedOn: Value(modeStartedOn),
+              estimatedDueDate: Value(estimatedDueDate),
               birthControlMethod: Value(birthControlMethod),
               birthControlStartedOn: Value(birthControlStartedOn),
               birthControlStoppedOn: Value(birthControlStoppedOn),
@@ -1315,6 +1320,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           .write(ProfileModesCompanion(
         mode: Value(mode),
         modeStartedOn: Value(modeStartedOn),
+        estimatedDueDate: Value(estimatedDueDate),
         birthControlMethod: Value(birthControlMethod),
         birthControlStartedOn: Value(birthControlStartedOn),
         birthControlStoppedOn: Value(birthControlStoppedOn),

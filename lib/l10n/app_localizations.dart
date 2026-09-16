@@ -2805,6 +2805,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.'**
   String get reminderTextDiscretionNote;
+
+  /// Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.
+  ///
+  /// In en, this message translates to:
+  /// **'Week {week} of pregnancy'**
+  String pregnancyWeekTitle(int week);
+
+  /// Pregnancy card line naming the estimated due date (Issue #192); date is the localized month-day-year.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated due date: {date}'**
+  String pregnancyDueOn(String date);
+
+  /// Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.'**
+  String get pregnancyDueDateMissing;
+
+  /// Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated due date'**
+  String get pregnancyDueDateLabel;
+
+  /// Hint under the due-date field when the shown value was derived rather than manually picked (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Derived from the last recorded period start (280 days). Tap the date to change it.'**
+  String get pregnancyDueDateDerivedHint;
+
+  /// Hint under the due-date field when no last period start could be derived from, so only a manual pick can set it (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the estimated due date — the last period start is unknown.'**
+  String get pregnancyDueDateManualHint;
+
+  /// Title of the dialog offered when leaving Pregnancy mode (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude this pregnancy from cycle averages?'**
+  String get pregnancyExitExclusionTitle;
+
+  /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  String get pregnancyExitExclusionBody;
+
+  /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude pregnancy'**
+  String get pregnancyExitExclusionAccept;
+
+  /// Decline action of the pregnancy-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #192 AC5).
+  ///
+  /// In en, this message translates to:
+  /// **'Keep in averages'**
+  String get pregnancyExitExclusionDecline;
+
+  /// Snackbar confirming the exclusion rows were written (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Pregnancy excluded from cycle averages'**
+  String get pregnancyExitExclusionDone;
 }
 
 class _AppLocalizationsDelegate

@@ -226,9 +226,100 @@ void main() {
       profileId,
       const OnboardingCycleAnswers(birthControlMethod: 'None'),
     );
-    row = await db.storage.getProfileMode(profileId);
+     row = await db.storage.getProfileMode(profileId);
     expect(row!.birthControlMethod, 'None');
     expect(row.birthControlStartedOn, isNull);
     expect(row.birthControlStoppedOn, isNull);
+  });
+
+  group('estimated_due_date (Issue #192)', () {
+    test('entering pregnancy writes the collected/derived due date', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.pregnancy,
+          estimatedDueDate: '2027-06-17',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.mode, 'pregnancy');
+      expect(row.modeStartedOn, '2026-09-01');
+      expect(row.estimatedDueDate, '2027-06-17');
+    });
+
+    test('entering pregnancy without a due date stores null (honest, '
+        'not fabricated)', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.pregnancy),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.estimatedDueDate, isNull);
+    });
+
+    test('an unchanged-pregnancy re-record keeps the stored due date even '
+        'when the answer carries none', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.pregnancy,
+          estimatedDueDate: '2027-06-17',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.pregnancy),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.estimatedDueDate, '2027-06-17');
+    });
+
+    test('leaving pregnancy KEEPS the stored due date — the record of the '
+        'pregnancy that was', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.pregnancy,
+          estimatedDueDate: '2027-06-17',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.postpartum),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.mode, 'postpartum');
+      expect(row.modeStartedOn, '2026-09-01',
+          reason: 'the mode change restamps the clock');
+      expect(row.estimatedDueDate, '2027-06-17');
+    });
+
+    test('a later re-entry overwrites with the newly collected date', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.pregnancy,
+          estimatedDueDate: '2027-06-17',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.tracking),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.pregnancy,
+          estimatedDueDate: '2028-03-01',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.estimatedDueDate, '2028-03-01');
+    });
   });
 }
