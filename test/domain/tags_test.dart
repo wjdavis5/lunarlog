@@ -455,6 +455,40 @@ void main() {
     expect(() => validateTagCodes(const []), returnsNormally);
   });
 
+  group('validateTagCodes registry union (issue #257)', () {
+    test('accepts a code the profile registry owns', () {
+      expect(
+        () => validateTagCodes(['back_cracking'],
+            registryCodes: {'back_cracking'}),
+        returnsNormally,
+      );
+    });
+
+    test('mixes registry and taxonomy codes in one set', () {
+      expect(
+        () => validateTagCodes(['cramps', 'back_cracking'],
+            registryCodes: {'back_cracking'}),
+        returnsNormally,
+      );
+    });
+
+    test('still rejects a code in neither taxonomy nor registry', () {
+      expect(
+        () => validateTagCodes(['cramps', 'not-a-tag'],
+            registryCodes: {'back_cracking'}),
+        throwsArgumentError,
+      );
+    });
+
+    test('a null registry set behaves exactly like the pre-#257 call',
+        () {
+      expect(
+        () => validateTagCodes(['back_cracking'], registryCodes: null),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('positive assertions are never counted or rendered as symptoms', () {
     test('pain_free is a real, valid pain-category code that round-trips '
         '(issue #249)', () {
