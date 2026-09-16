@@ -1770,65 +1770,21 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String id,
     required int localRevAtPush,
   }) async {
-    final int changed;
-    switch (table) {
-      case SyncTable.profiles:
-        changed = await (db.update(db.profiles)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ProfilesCompanion(dirty: Value(false)));
-      case SyncTable.dayEntries:
-        changed = await (db.update(db.dayEntries)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const DayEntriesCompanion(dirty: Value(false)));
-      case SyncTable.observations:
-        changed = await (db.update(db.observations)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ObservationsCompanion(dirty: Value(false)));
-      case SyncTable.profileModes:
-        changed = await (db.update(db.profileModes)
-              ..where((t) =>
-                  t.profileId.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ProfileModesCompanion(dirty: Value(false)));
-      case SyncTable.cycleOverrides:
-        // The table's key is composite (id, profile_id), but ids are
-        // client-generated ULIDs — globally unique in practice — so the id
-        // alone identifies at most one row; matching on it keeps
-        // [markPushed]'s table-agnostic signature.
-        changed = await (db.update(db.cycleOverrides)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const CycleOverridesCompanion(dirty: Value(false)));
-      case SyncTable.careNotes:
-        changed = await (db.update(db.careNotes)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const CareNotesCompanion(dirty: Value(false)));
-      case SyncTable.visitPrepItems:
-        changed = await (db.update(db.visitPrepItems)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const VisitPrepItemsCompanion(dirty: Value(false)));
-      case SyncTable.dayEntryMergeEvents:
-        changed = await (db.update(db.dayEntryMergeEvents)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const DayEntryMergeEventsCompanion(dirty: Value(false)));
-      case SyncTable.profileTagRegistry:
-        changed = await (db.update(db.profileTagRegistry)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ProfileTagRegistryCompanion(dirty: Value(false)));
-      // Issue #522: profileGuardians and deletedProfiles are pull-only —
-      // never pushed, so there is nothing for either table to clear. One
-      // or-pattern case (rather than two labels) keeps this switch at the
-      // quality gate's complexity ceiling now that Issue #130's tenth
-      // SyncTable arrived.
-      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
-        changed = 0;
-    }
+    // Issue #257: the eleventh SyncTable pushed this switch past the CRAP
+    // gate's complexity ceiling (eleven arms — and like the batched path
+    // before it at the tenth table, the two pull-only arms were unreachable
+    // behind [_neverPushed] by construction), so the single-row path now
+    // delegates to the same [_pushWriteTarget] map [markPushedBatch] uses:
+    // one shared table/key/rev lookup, one shared chunk writer, the same
+    // AE11 (id, local_rev-at-push) predicate either way. cycleOverrides'
+    // composite-key note carried forward: ids are client-generated ULIDs —
+    // globally unique in practice — so the id alone identifies at most one
+    // row on every table here.
+    final target = _pushWriteTarget(table);
+    if (target == null) return false;
+    final changed = await _markPushedChunk(target, [
+      (id: id, localRevAtPush: localRevAtPush),
+    ]);
     return changed > 0;
   }
 
@@ -1981,71 +1937,27 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// pure no-op write as far as content goes: no payload column changes,
   /// only the row's push eligibility (a rejected row is otherwise held out
   /// of every push until `local_rev` changes for an unrelated reason — see
-  /// `SupabaseSyncApply.pushable`). [table]s with no push path
-  /// ([SyncTable.profileGuardians], [SyncTable.deletedProfiles]) never
-  /// reach here in practice (nothing ever rejects a row on a pull-only
-  /// table), so they are harmless no-ops, matching [markPushed]'s
-  /// precedent for the same two cases.
+  /// `SupabaseSyncApply.pushable`). Issue #257: the eleventh SyncTable
+  /// pushed the per-table switch past the CRAP gate's complexity ceiling,
+  /// so this writes through the same [_pushWriteTarget] map
+  /// [markPushed]/[markPushedBatch] use — one raw UPDATE over the map's
+  /// table and key column (the identical statement every arm wrote), with
+  /// the pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles]) still a no-op ([_pushWriteTarget]
+  /// answers null for them; nothing ever rejects a pull-only row anyway).
   Future<void> bumpLocalRevForRetry({
     required SyncTable table,
     required String id,
   }) async {
-    switch (table) {
-      case SyncTable.profiles:
-        await (db.update(db.profiles)..where((t) => t.id.equals(id))).write(
-            ProfilesCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.profiles.localRev + const Constant(1)));
-      case SyncTable.dayEntries:
-        await (db.update(db.dayEntries)..where((t) => t.id.equals(id))).write(
-            DayEntriesCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.dayEntries.localRev + const Constant(1)));
-      case SyncTable.observations:
-        await (db.update(db.observations)..where((t) => t.id.equals(id)))
-            .write(ObservationsCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.observations.localRev + const Constant(1)));
-      case SyncTable.profileModes:
-        await (db.update(db.profileModes)
-              ..where((t) => t.profileId.equals(id)))
-            .write(ProfileModesCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.profileModes.localRev + const Constant(1)));
-      case SyncTable.cycleOverrides:
-        // Same id-alone-identifies-the-row precedent as markPushed.
-        await (db.update(db.cycleOverrides)..where((t) => t.id.equals(id)))
-            .write(CycleOverridesCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.cycleOverrides.localRev + const Constant(1)));
-      case SyncTable.careNotes:
-        await (db.update(db.careNotes)..where((t) => t.id.equals(id))).write(
-            CareNotesCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.careNotes.localRev + const Constant(1)));
-      case SyncTable.visitPrepItems:
-        await (db.update(db.visitPrepItems)..where((t) => t.id.equals(id)))
-            .write(VisitPrepItemsCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.visitPrepItems.localRev + const Constant(1)));
-      case SyncTable.dayEntryMergeEvents:
-        await (db.update(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
-            .write(DayEntryMergeEventsCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.dayEntryMergeEvents.localRev + const Constant(1)));
-      case SyncTable.profileTagRegistry:
-        await (db.update(db.profileTagRegistry)
-              ..where((t) => t.id.equals(id)))
-            .write(ProfileTagRegistryCompanion.custom(
-                dirty: const Constant(true),
-                localRev: db.profileTagRegistry.localRev +
-                    const Constant(1)));
-      // Pull-only tables (see the doc comment) — one or-pattern case
-      // rather than two labels, keeping this switch at the quality gate's
-      // complexity ceiling now that Issue #130's tenth SyncTable arrived.
-      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
-        break;
-    }
+    final target = _pushWriteTarget(table);
+    if (target == null) return;
+    await db.customUpdate(
+      'UPDATE ${target.table.actualTableName} '
+      'SET dirty = 1, local_rev = local_rev + 1 '
+      'WHERE ${target.keyColumn} = ?',
+      variables: [Variable.withString(id)],
+      updates: {target.table},
+    );
   }
 
   /// Flags every row, live and tombstoned, in every synced table for push

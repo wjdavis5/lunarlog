@@ -33,16 +33,25 @@ CustomTag tag(
     );
 
 class FakeRegistry implements TagRegistryRepository {
-  FakeRegistry(this.rows);
+  FakeRegistry(this.rows, {this.failNextCreate = false});
 
   List<CustomTag> rows;
   final List<String> retiredIds = [];
+  final List<({String tagId, String label})> renames = [];
+
+  /// Simulates a concurrent co-guardian write invalidating the UI's
+  /// pre-check (the repository create throwing ArgumentError).
+  bool failNextCreate;
 
   @override
   Future<CustomTag> create({
     required String profileId,
     required String label,
   }) async {
+    if (failNextCreate) {
+      failNextCreate = false;
+      throw ArgumentError.value(label, 'label', 'duplicate');
+    }
     final created = tag(customTagCodeFromLabel(label)!, label.trim());
     rows = [...rows, created];
     _controller.add(rows);
@@ -53,8 +62,18 @@ class FakeRegistry implements TagRegistryRepository {
   Future<List<CustomTag>> listForProfile(String profileId) async => rows;
 
   @override
-  Future<CustomTag> rename({required String tagId, required String label}) {
-    throw UnimplementedError();
+  Future<CustomTag> rename({required String tagId, required String label}) async {
+    renames.add((tagId: tagId, label: label));
+    final renamed = tag(
+      rows.firstWhere((t) => t.id == tagId).code,
+      label.trim(),
+    );
+    rows = [
+      for (final t in rows)
+        if (t.id == tagId) renamed else t,
+    ];
+    _controller.add(rows);
+    return renamed;
   }
 
   @override
@@ -153,5 +172,102 @@ void main() {
     expect(registry.retiredIds, [
       '01J8ZQ9K7MC2X3V4B5N6P7Q13',
     ], reason: 'retire writes hidden_at for exactly the chosen row');
+  });
+
+  testWidgets('rename validates against the other rows, then writes the '
+      'new label with the code unchanged', (tester) async {
+    final registry = FakeRegistry([
+      tag('back_cracking', 'Back cracking'),
+      tag('neck_pain', 'Neck pain'),
+    ]);
+    final l10n = await pumpSheet(tester, registry);
+
+    await tester.tap(find.byKey(const ValueKey('custom-tag-rename-back_cracking')));
+    await tester.pumpAndSettle();
+
+    // A rename onto another entry's code is refused as a duplicate.
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-tag-rename-field')),
+      'NECK PAIN',
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-tag-rename-save')));
+    await tester.pump();
+    expect(find.text(l10n.customTagsErrorDuplicate), findsOneWidget);
+    expect(registry.renames, isEmpty);
+
+    // A fresh label saves through the repository.
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-tag-rename-field')),
+      'Back cracking (upper)',
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-tag-rename-save')));
+    await tester.pumpAndSettle();
+
+    expect(registry.renames.single.label, 'Back cracking (upper)');
+    expect(registry.rows.first.code, 'back_cracking',
+        reason: 'a rename never changes the code');
+  });
+
+  testWidgets('create renders the empty and taxonomy errors without '
+      'writing', (tester) async {
+    final registry = FakeRegistry(const []);
+    final l10n = await pumpSheet(tester, registry);
+
+    await tester.tap(find.byKey(const ValueKey('custom-tag-create')));
+    await tester.pump();
+    expect(find.text(l10n.customTagsErrorEmpty), findsOneWidget);
+    expect(registry.rows, isEmpty);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-tag-create-field')),
+      'Cramps',
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-tag-create')));
+    await tester.pump();
+    expect(find.text(l10n.customTagsErrorTaxonomy), findsOneWidget,
+        reason: 'a label deriving a curated code must not shadow it');
+    expect(registry.rows, isEmpty);
+  });
+
+  testWidgets('create renders the cap error at 100 live rows', (tester) async {
+    final registry = FakeRegistry([
+      // 100 offered rows: the server-side cap mirrored client-side.
+      for (var i = 0; i < 100; i++)
+        tag('tag_$i'.padRight(13, 'x'), 'Tag $i'),
+    ]);
+    final l10n = await pumpSheet(tester, registry);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-tag-create-field')),
+      'Fresh tag',
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-tag-create')));
+    await tester.pump();
+
+    expect(
+      find.text(l10n.customTagsErrorCap(kMaxCustomTagsPerProfile)),
+      findsOneWidget,
+    );
+    expect(registry.rows, hasLength(100));
+  });
+
+  testWidgets('a repository create failure (a concurrent co-guardian write) '
+      'surfaces the duplicate against the fresh registry', (tester) async {
+    final registry = FakeRegistry([tag('back_cracking', 'Back cracking')])
+      ..failNextCreate = true;
+    final l10n = await pumpSheet(tester, registry);
+
+    // Enter a label the pre-check cannot see as a duplicate (the watch has
+    // not delivered the conflicting row yet), then let the repository
+    // reject it — the catch re-validates against the now-current list.
+    await tester.enterText(
+      find.byKey(const ValueKey('custom-tag-create-field')),
+      'BACK CRACKING',
+    );
+    await tester.tap(find.byKey(const ValueKey('custom-tag-create')));
+    await tester.pump();
+
+    expect(registry.rows, hasLength(1));
+    expect(find.text(l10n.customTagsErrorDuplicate), findsOneWidget);
   });
 }

@@ -40,6 +40,18 @@ Future<void> showCustomTagManagerSheet(
       ),
     );
 
+/// Renders the create/rename field error for [error] against [l10n]
+/// (Issue #257) — shared by the sheet's create field and the rename
+/// dialog so the two surfaces can never drift apart on copy.
+String customTagErrorText(AppLocalizations l10n, CustomTagLabelError error) =>
+    switch (error) {
+      CustomTagLabelError.empty => l10n.customTagsErrorEmpty,
+      CustomTagLabelError.tooLong => l10n.customTagsErrorTooLong,
+      CustomTagLabelError.noLettersOrDigits => l10n.customTagsErrorNoLetters,
+      CustomTagLabelError.duplicateCode => l10n.customTagsErrorDuplicate,
+      CustomTagLabelError.collidesWithTaxonomy => l10n.customTagsErrorTaxonomy,
+    };
+
 class CustomTagManagerSheet extends StatefulWidget {
   const CustomTagManagerSheet({
     super.key,
@@ -87,18 +99,6 @@ class _CustomTagManagerSheetState extends State<CustomTagManagerSheet> {
   int get _offeredCount =>
       _tags.where((tag) => tag.offered).length;
 
-  /// Renders the create-field error for [error] against [l10n].
-  String _errorText(AppLocalizations l10n, CustomTagLabelError? error) {
-    if (error == null) return '';
-    return switch (error) {
-      CustomTagLabelError.empty => l10n.customTagsErrorEmpty,
-      CustomTagLabelError.tooLong => l10n.customTagsErrorTooLong,
-      CustomTagLabelError.noLettersOrDigits => l10n.customTagsErrorNoLetters,
-      CustomTagLabelError.duplicateCode => l10n.customTagsErrorDuplicate,
-      CustomTagLabelError.collidesWithTaxonomy =>
-        l10n.customTagsErrorTaxonomy,
-    };
-  }
 
   /// Validates the create field against the registry and the cap, then
   /// writes through the repository. Validation is caller-owned (the
@@ -148,75 +148,21 @@ class _CustomTagManagerSheetState extends State<CustomTagManagerSheet> {
   /// changes the code, so the entry's own code must not read as a
   /// duplicate of itself.
   Future<void> _rename(CustomTag tag) async {
-    final l10n = AppLocalizations.of(context);
-    final controller = TextEditingController(text: tag.displayName);
-    CustomTagLabelError? validate() => validateCustomTagLabel(
-          controller.text,
-          [for (final t in _tags) if (t.id != tag.id) t],
-        );
-    final confirmed = await showDialog<bool>(
+    final label = await showDialog<String>(
       context: context,
-      builder: (dialogContext) {
-        CustomTagLabelError? error;
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            title: Text(l10n.customTagsRenameTitle),
-            content: TextField(
-              key: const ValueKey('custom-tag-rename-field'),
-              controller: controller,
-              autofocus: true,
-              maxLength: kMaxCustomTagLabelLength,
-              decoration: InputDecoration(
-                hintText: l10n.customTagsAddHint,
-                errorText: error == null ? null : _errorText(l10n, error),
-              ),
-              onChanged: (_) {
-                if (error != null) {
-                  setDialogState(() => error = null);
-                }
-              },
-              onSubmitted: (_) {
-                final next = validate();
-                if (next != null) {
-                  setDialogState(() => error = next);
-                  return;
-                }
-                Navigator.of(dialogContext).pop(true);
-              },
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(l10n.daySheetCancel),
-              ),
-              TextButton(
-                key: const ValueKey('custom-tag-rename-save'),
-                onPressed: () {
-                  final next = validate();
-                  if (next != null) {
-                    setDialogState(() => error = next);
-                    return;
-                  }
-                  Navigator.of(dialogContext).pop(true);
-                },
-                child: Text(l10n.daySheetSave),
-              ),
-            ],
-          ),
-        );
-      },
+      builder: (dialogContext) => _RenameTagDialog(
+        tag: tag,
+        others: [for (final t in _tags) if (t.id != tag.id) t],
+      ),
     );
-    if (confirmed == true) {
-      try {
-        await widget.repository
-            .rename(tagId: tag.id, label: controller.text.trim());
-      } on ArgumentError {
-        // A concurrent co-guardian write can invalidate the pre-check;
-        // the watched list has already updated, so the next open of this
-        // dialog reports the state honestly. Nothing to roll back.
-      }
+    if (label == null) return;
+    try {
+      await widget.repository.rename(tagId: tag.id, label: label);
+    } on ArgumentError {
+      // A concurrent co-guardian write can invalidate the pre-check;
+      // the watched list has already updated, so the next open of this
+      // dialog reports the state honestly. Nothing to roll back.
     }
-    controller.dispose();
   }
 
   @override
@@ -257,7 +203,7 @@ class _CustomTagManagerSheetState extends State<CustomTagManagerSheet> {
                       hintText: l10n.customTagsAddHint,
                       errorText: _error == null
                           ? _capError
-                          : _errorText(l10n, _error),
+                          : (_error == null ? null : customTagErrorText(l10n, _error!)),
                     ),
                     onChanged: (_) {
                       if (_error != null || _capError != null) {
@@ -373,5 +319,98 @@ class _CustomTagManagerSheetState extends State<CustomTagManagerSheet> {
     );
     if (confirmed != true) return;
     await widget.repository.retire(tag.id);
+  }
+}
+
+/// The rename dialog (Issue #257) — a [StatefulWidget] so the field's
+/// controller is owned by the dialog's own element and disposed only
+/// when the route's exit animation finishes removing it (a controller
+/// disposed from the caller, right after `showDialog` resolves, dies
+/// under the still-animating route and throws). Pops with the validated
+/// trimmed label, or null on cancel.
+class _RenameTagDialog extends StatefulWidget {
+  const _RenameTagDialog({required this.tag, required this.others});
+
+  final CustomTag tag;
+
+  /// The registry excluding [tag] itself — a rename never changes the
+  /// code, so the entry's own code must not read as a duplicate of
+  /// itself.
+  final List<CustomTag> others;
+
+  @override
+  State<_RenameTagDialog> createState() => _RenameTagDialogState();
+}
+
+class _RenameTagDialogState extends State<_RenameTagDialog> {
+  late final TextEditingController _controller;
+  CustomTagLabelError? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.tag.displayName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  CustomTagLabelError? _validate() =>
+      validateCustomTagLabel(_controller.text, widget.others);
+
+  void _submit() {
+    if (_validate() != null) return;
+    Navigator.of(context).pop(_controller.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.customTagsRenameTitle),
+      content: TextField(
+        key: const ValueKey('custom-tag-rename-field'),
+        controller: _controller,
+        autofocus: true,
+        maxLength: kMaxCustomTagLabelLength,
+        decoration: InputDecoration(
+          hintText: l10n.customTagsAddHint,
+          errorText:
+              _error == null ? null : customTagErrorText(l10n, _error!),
+        ),
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+        onSubmitted: (_) {
+          final next = _validate();
+          if (next != null) {
+            setState(() => _error = next);
+            return;
+          }
+          _submit();
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.daySheetCancel),
+        ),
+        TextButton(
+          key: const ValueKey('custom-tag-rename-save'),
+          onPressed: () {
+            final next = _validate();
+            if (next != null) {
+              setState(() => _error = next);
+              return;
+            }
+            _submit();
+          },
+          child: Text(l10n.daySheetSave),
+        ),
+      ],
+    );
   }
 }

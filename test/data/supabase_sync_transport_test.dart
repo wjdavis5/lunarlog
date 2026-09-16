@@ -255,6 +255,16 @@ void main() {
       final tooMany = List.generate(501, (i) => <String, Object?>{'id': '$i'});
       expect(() => PushBatch(profiles: tooMany), throwsArgumentError);
       expect(() => PushBatch(dayEntries: tooMany), throwsArgumentError);
+      // Issue #257: every array carries the same per-array ceiling — the
+      // constructor's cap branches all stay covered (and the CRAP gate
+      // green) as the batch grows with each synced table.
+      expect(() => PushBatch(observations: tooMany), throwsArgumentError);
+      expect(() => PushBatch(profileModes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(cycleOverrides: tooMany), throwsArgumentError);
+      expect(() => PushBatch(careNotes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(visitPrepItems: tooMany), throwsArgumentError);
+      expect(() => PushBatch(mergeEvents: tooMany), throwsArgumentError);
+      expect(() => PushBatch(tagRegistry: tooMany), throwsArgumentError);
       expect(PushBatch.maxRows, 500);
     });
 

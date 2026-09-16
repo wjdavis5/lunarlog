@@ -1767,6 +1767,38 @@ void main() {
       );
     });
 
+    test('a resolved profile_tag_registry row takes the server copy clean '
+        '(Issue #257)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final created = await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'resolved_tag',
+        displayName: 'Local label',
+      );
+      final resolvedAt = created.updatedAt.add(const Duration(seconds: 1));
+      await storage.applyResolved([
+        RemoteProfileTagRegistryRow(
+          id: created.id,
+          profileId: p.id,
+          code: 'resolved_tag',
+          displayName: 'Server label',
+          category: 'custom',
+          createdAt: t0,
+          updatedAt: resolvedAt,
+          deletedAt: null,
+        ),
+      ]);
+      final rows = await storage.getProfileTagRegistry(p.id);
+      expect(rows.single.displayName, 'Server label',
+          reason: 'the server copy wins an equal-timestamp decline');
+      expect(rows.single.dirty, isFalse,
+          reason: 'a resolved row is never pushed back');
+      expect(
+        await storage.readDirtyProfileTagRegistry(),
+        isEmpty,
+      );
+    });
+
     test('a later live remote edit to a resolved loser revives it and '
         're-runs the same-date rule', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);

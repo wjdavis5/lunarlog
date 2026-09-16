@@ -348,20 +348,36 @@ class _CategoryPickerState extends State<CategoryPicker> {
   /// renders even with an empty list while the manage callback is present
   /// (the first custom tag has to be creatable from here); a null callback
   /// hides it entirely.
+  ///
+  /// Split into [_customTagsHeader]/[_customTagsBody] (rather than one
+  /// builder) at the CRAP gate's complexity ceiling — the section carries
+  /// enough independent presence decisions (null callback, search miss,
+  /// empty-vs-chips, expanded) that one method with them all sits past it.
   List<Widget> _customTagsSection(
     ThemeData theme, {
     required bool searching,
   }) {
     final manage = widget.onManageCustomTags;
     if (manage == null) return const [];
-    final label = widget.customLabel;
     final tags = [
       for (final tag in widget.customTags)
         if (_query.isEmpty || tag.label.toLowerCase().contains(_query)) tag,
     ];
     if (searching && tags.isEmpty) return const [];
-    final expanded = searching || !_collapsedCustom;
     return [
+      _customTagsHeader(theme, manage, searching: searching),
+      if (searching || !_collapsedCustom)
+        _customTagsBody(theme, tags, searching: searching),
+    ];
+  }
+
+  /// The custom-tags section's header row: icon, heading, the manage
+  /// affordance, and (outside a search) the collapse chevron.
+  Widget _customTagsHeader(
+    ThemeData theme,
+    VoidCallback manage, {
+    required bool searching,
+  }) =>
       Padding(
         padding: const EdgeInsets.only(top: 12, bottom: 4),
         child: InkWell(
@@ -378,7 +394,7 @@ class _CategoryPickerState extends State<CategoryPicker> {
                   child: Semantics(
                     header: true,
                     child:
-                        Text(label, style: theme.textTheme.labelMedium),
+                        Text(widget.customLabel, style: theme.textTheme.labelMedium),
                   ),
                 ),
                 IconButton(
@@ -390,36 +406,42 @@ class _CategoryPickerState extends State<CategoryPicker> {
                 ),
                 if (!searching)
                   Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
+                    _collapsedCustom ? Icons.expand_more : Icons.expand_less,
                     size: 20,
                   ),
               ],
             ),
           ),
         ),
+      );
+
+  /// The custom-tags section's expanded body: the empty-state note when no
+  /// live tag matches, the chip [Wrap] otherwise.
+  Widget _customTagsBody(
+    ThemeData theme,
+    List<CustomTagChip> tags, {
+    required bool searching,
+  }) {
+    if (tags.isEmpty && !searching) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          widget.noneCustomNote,
+          style: theme.textTheme.bodySmall,
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final tag in tags)
+            _customTagChip(tag, group: widget.customLabel),
+        ],
       ),
-      if (expanded)
-        if (tags.isEmpty && !searching)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              widget.noneCustomNote,
-              style: theme.textTheme.bodySmall,
-            ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                for (final tag in tags)
-                  _customTagChip(tag, group: label),
-              ],
-            ),
-          ),
-    ];
+    );
   }
 
   Widget _customTagChip(CustomTagChip tag, {required String group}) {
