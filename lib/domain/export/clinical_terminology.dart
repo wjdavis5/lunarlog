@@ -41,6 +41,39 @@
 /// This module is pure Dart (KTD6): no Flutter, no `dart:io`, nothing that
 /// reaches into `lib/data/`. It only describes codes; #157 is what will
 /// spend them building an actual FHIR Bundle.
+///
+/// ## Reserved shapes (A3-46/A3-47/A3-48) — decided now, emitted later
+///
+/// Three concept groups carry mapping decisions recorded here ahead of
+/// the FHIR builder (`lib/domain/export/fhir_bundle.dart`, #157) learning
+/// to emit them, per #152's instruction to reserve the shape now so the
+/// export design accounts for it. The underlying tracking features have
+/// all landed since #152 was written — BBT observation logging
+/// (`observations` rows with `category: 'bbt'`, consumed by
+/// `lib/domain/insights/bbt_chart.dart`), #188's pregnancy lifecycle
+/// mode, and #260's birth-control model — but the builder does not yet
+/// emit any of these shapes; those rows ride its generic local-coding
+/// fallback today, which is valid FHIR and carries no guessed code. No
+/// premature guessed code ships ahead of the builder work:
+/// - **Basal body temperature (A3-46):** [kBodyTemperatureLoinc] —
+///   LOINC `8310-5` "Body temperature" (the code US Core / IPS
+///   vital-signs profiles expect), emitted with a basal qualifier
+///   (`bodySite`/method, or an additional local coding marking the
+///   reading basal). Never an invented BBT-specific LOINC.
+/// - **Pregnancy + estimated due date (A3-47):** pregnancy status is
+///   conventionally a `Condition` (or an `Observation` of pregnancy
+///   status); the estimated delivery date is an `Observation` coded with
+///   the already-verified `11778-8` "Delivery date Estimated"
+///   ([estimatedDeliveryDateCode]; USCDI:
+///   https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
+///   No pregnancy-status/due-date data model exists yet — only the mode
+///   — so this is shape reservation, not an implemented mapping.
+/// - **Birth control (A3-48, #260):** [kBirthControlResourceShapes] —
+///   `MedicationStatement` / `Device` + `DeviceUseStatement` /
+///   `Procedure` by method shape. Never modeled as an `Observation`;
+///   doing so would make the export look machine-generated rather than
+///   clinically credible. No medication/device codes are reserved — none
+///   has been verified against an external system.
 library;
 
 import '../tags.dart' as tags show TagCode, kTagTaxonomy, isValidTagCode;
@@ -174,6 +207,28 @@ const List<String> kUnverifiedLoincCodes = [
   '8708-3',
   '3151-8',
 ];
+
+/// LOINC `8310-5` "Body temperature" — **reserved for basal body
+/// temperature** (A3-46), not part of [kLoincCodes]: that table is
+/// exactly the A3-44 verified *menstrual-health question* set, and a
+/// vital-sign code is not one of those seven (a test pins both facts).
+///
+/// `8310-5` is the standard body-temperature code US Core / IPS
+/// vital-signs profiles expect, but on its own it understates BBT as a
+/// distinct clinical concept (resting, first-waking). When the FHIR
+/// builder (#157) starts emitting BBT `Observation`s for
+/// `observations.category = 'bbt'` rows, it must emit this code **with a
+/// basal qualifier** — a `bodySite`/method qualifier, or an additional
+/// lunarlog-local coding marking the reading basal — rather than
+/// inventing a BBT-specific LOINC code. Revisit once a BBT-specific
+/// LOINC is confirmed. Until then, BBT rows ride the builder's generic
+/// local-coding fallback, which is valid FHIR and guesses nothing.
+const ClinicalCode kBodyTemperatureLoinc = ClinicalCode(
+  system: kSystemLoinc,
+  code: '8310-5',
+  display: 'Body temperature',
+  provenanceUrl: 'https://loinc.org/8310-5',
+);
 
 /// The clinical coding for every code in [tags.kTagTaxonomy] (all 113 —
 /// #152's A3-45 pass over the original 17, plus issue #249's 28, issue
@@ -1000,3 +1055,40 @@ List<ClinicalCode> get menstrualStatusCodes => [
 /// The LOINC row #157's FHIR Bundle builder should use for typical cycle
 /// length: `64700-8`.
 List<ClinicalCode> get cycleLengthCodes => [loincByCode('64700-8')!];
+
+/// The LOINC row reserved for the estimated delivery date `Observation`
+/// of the pregnancy shape (A3-47): `11778-8` "Delivery date Estimated",
+/// one of the A3-44 verified seven, included in USCDI
+/// (https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
+///
+/// **Shape reservation, not an implemented mapping.** Pregnancy status
+/// is conventionally a `Condition` (or an `Observation` of pregnancy
+/// status) — never an `Observation` with this code; the EDD specifically
+/// is the `Observation`. #188's lifecycle modes carry a pregnancy *mode*
+/// but no pregnancy-status or due-date data model exists yet, so nothing
+/// consumes this getter; it exists so the export design already accounts
+/// for the resource split the day that data lands (see the library doc's
+/// "Reserved shapes" section).
+ClinicalCode get estimatedDeliveryDateCode => loincByCode('11778-8')!;
+
+/// The A3-48 birth-control resource-shape reservation: which FHIR
+/// resource each method shape must be exported as, keyed by method
+/// shape. `#260`'s birth-control model has landed
+/// (`lib/domain/birth_control.dart`: profile-level method plus per-day
+/// `birth_control_*` intake observation rows), but the FHIR builder does
+/// not yet emit any of these shapes — its generic local-coding fallback
+/// covers the intake rows meanwhile.
+///
+/// The binding rule (a test pins it): **no birth-control method shape is
+/// ever modeled as an `Observation`** — exporting ongoing medication,
+/// an in-situ device, or an insertion event as an "observation" is
+/// exactly what makes an export look machine-generated rather than
+/// clinically credible. No medication/device codes are reserved here;
+/// none has been verified against an external system (the
+/// no-guessed-codes rule).
+const List<(String, String)> kBirthControlResourceShapes = [
+  // (method shape, FHIR resource)
+  ('oral_patch_ring_injection', 'MedicationStatement'),
+  ('iud_implant', 'Device / DeviceUseStatement'),
+  ('insertion_event', 'Procedure'),
+];

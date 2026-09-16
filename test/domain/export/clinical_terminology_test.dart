@@ -573,6 +573,68 @@ void main() {
     });
   });
 
+  group('reserved shapes — BBT, pregnancy/EDD, birth control '
+      '(A3-46/A3-47/A3-48, AC6)', () {
+    test('kBodyTemperatureLoinc is the verified 8310-5 with loinc.org '
+        'provenance', () {
+      expect(kBodyTemperatureLoinc.system, kSystemLoinc);
+      expect(kBodyTemperatureLoinc.code, '8310-5');
+      expect(kBodyTemperatureLoinc.display, 'Body temperature');
+      expect(kBodyTemperatureLoinc.provenanceUrl, 'https://loinc.org/8310-5');
+    });
+
+    test('8310-5 is reserved only — not a menstrual question-table row '
+        '(kLoincCodes stays exactly the A3-44 seven)', () {
+      expect(
+        kLoincCodes.map((c) => c.code),
+        isNot(contains('8310-5')),
+      );
+      expect(loincByCode('8310-5'), isNull);
+    });
+
+    test('estimatedDeliveryDateCode is the verified 11778-8 row '
+        '(pregnancy EDD reservation, A3-47)', () {
+      expect(estimatedDeliveryDateCode.code, '11778-8');
+      expect(estimatedDeliveryDateCode.display, 'Delivery date Estimated');
+      expect(estimatedDeliveryDateCode.system, kSystemLoinc);
+      expect(estimatedDeliveryDateCode.provenanceUrl, 'https://loinc.org/11778-8');
+    });
+
+    test('kBirthControlResourceShapes is exactly A3-48\'s method-shape '
+        'table, and never an Observation', () {
+      expect(kBirthControlResourceShapes, const [
+        ('oral_patch_ring_injection', 'MedicationStatement'),
+        ('iud_implant', 'Device / DeviceUseStatement'),
+        ('insertion_event', 'Procedure'),
+      ]);
+      // A3-48's binding rule: no method shape is modeled as an
+      // Observation — "getting this wrong makes the export look
+      // machine-generated rather than clinically credible".
+      for (final (_, resource) in kBirthControlResourceShapes) {
+        expect(
+          resource,
+          isNot(contains('Observation')),
+          reason: 'birth-control method shape must not be an Observation',
+        );
+      }
+    });
+  });
+
+  group('A3-45 discipline — tags are findings, never LOINC questions', () {
+    test('no kTagClinicalCodes row uses the LOINC system', () {
+      for (final entry in kTagClinicalCodes.entries) {
+        expect(
+          entry.value.system,
+          isNot(kSystemLoinc),
+          reason:
+              '${entry.key}: symptom tags are coded as SNOMED CT findings '
+              'or explicit local decisions — LOINC codes the question '
+              '(A3-45)',
+        );
+      }
+    });
+  });
+
   group('ClinicalCode value semantics', () {
     test('equal fields compare equal', () {
       const a = ClinicalCode(
