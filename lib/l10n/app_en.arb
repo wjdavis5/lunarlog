@@ -468,6 +468,98 @@
   "@daySheetTagRecentLabel": {
     "description": "Issue #234: heading above CategoryPicker's Recent row, seeded from the profile's most-used tags."
   },
+  "daySheetCustomTagsLabel": "Custom tags",
+  "@daySheetCustomTagsLabel": {
+    "description": "Issue #257: heading above the profile's custom-tag registry section in the tag picker."
+  },
+  "daySheetCustomTagsManageTooltip": "Manage custom tags",
+  "@daySheetCustomTagsManageTooltip": {
+    "description": "Issue #257: tooltip for the tag picker's custom-tags manage affordance (create, rename, retire)."
+  },
+  "daySheetCustomTagsNone": "None yet — tap manage to add one",
+  "@daySheetCustomTagsNone": {
+    "description": "Issue #257: empty-state note under the custom-tags heading when the profile has no live, non-retired custom tags."
+  },
+  "customTagsSheetTitle": "Custom tags",
+  "@customTagsSheetTitle": {
+    "description": "Issue #257: title of the custom-tag manager sheet."
+  },
+  "customTagsEmptyList": "No custom tags yet — add one below.",
+  "@customTagsEmptyList": {
+    "description": "Issue #257: body copy in the manager sheet when the registry is empty."
+  },
+  "customTagsAddHint": "New tag name",
+  "@customTagsAddHint": {
+    "description": "Issue #257: visible hint in the manager sheet's create field."
+  },
+  "customTagsAddTooltip": "Add tag",
+  "@customTagsAddTooltip": {
+    "description": "Issue #257: tooltip/semantics for the manager sheet's add button."
+  },
+  "customTagsErrorEmpty": "Enter a name.",
+  "@customTagsErrorEmpty": {
+    "description": "Issue #257: create-field error for an empty custom-tag label."
+  },
+  "customTagsErrorTooLong": "Names are at most 40 characters.",
+  "@customTagsErrorTooLong": {
+    "description": "Issue #257: create-field error for a label past the 40-character CHECK."
+  },
+  "customTagsErrorNoLetters": "Include a letter or digit.",
+  "@customTagsErrorNoLetters": {
+    "description": "Issue #257: create-field error for a label no code can be derived from (e.g. only punctuation)."
+  },
+  "customTagsErrorDuplicate": "You already have a tag like this.",
+  "@customTagsErrorDuplicate": {
+    "description": "Issue #257: create-field error for a label deriving a code another live registry entry already owns (case-insensitive)."
+  },
+  "customTagsErrorTaxonomy": "That name is already a built-in tag.",
+  "@customTagsErrorTaxonomy": {
+    "description": "Issue #257: create-field error for a label deriving a code the static taxonomy owns (shadowing it would make one chip mean two things)."
+  },
+  "customTagsErrorCap": "This profile already has {max} custom tags — retire one first.",
+  "@customTagsErrorCap": {
+    "description": "Issue #257: create-field error at the per-profile registry cap (100 live rows).",
+    "placeholders": {
+      "max": {
+        "type": "int",
+        "example": "100"
+      }
+    }
+  },
+  "customTagsRenameTooltip": "Rename",
+  "@customTagsRenameTooltip": {
+    "description": "Issue #257: tooltip for a registry row's rename affordance."
+  },
+  "customTagsRenameTitle": "Rename tag",
+  "@customTagsRenameTitle": {
+    "description": "Issue #257: title of the rename dialog."
+  },
+  "customTagsRetireTooltip": "Retire",
+  "@customTagsRetireTooltip": {
+    "description": "Issue #257: tooltip for a registry row's retire affordance (hidden_at — removed from the picker, never deleted)."
+  },
+  "customTagsRetiredLabel": "Retired",
+  "@customTagsRetiredLabel": {
+    "description": "Issue #257: status label on a retired registry row in the manager sheet."
+  },
+  "customTagsRetireTitle": "Retire “{label}”?",
+  "@customTagsRetireTitle": {
+    "description": "Issue #257: title of the retire confirmation dialog.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Back cracking"
+      }
+    }
+  },
+  "customTagsRetireBody": "It leaves the tag picker. Days that already use it keep showing it.",
+  "@customTagsRetireBody": {
+    "description": "Issue #257: body of the retire confirmation dialog — retirement never deletes stored entries."
+  },
+  "customTagsRetireConfirm": "Retire",
+  "@customTagsRetireConfirm": {
+    "description": "Issue #257: confirm button of the retire dialog."
+  },
   "daySheetNoEntry": "No entry for this day.",
   "@daySheetNoEntry": {
     "description": "Read-only day sheet body when the day has no entry."

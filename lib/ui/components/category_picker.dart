@@ -34,6 +34,13 @@ import 'chip_semantics.dart';
 
 typedef CategoryLabelBuilder = String Function(TagCategory category);
 
+/// Issue #257: one chip the picker's Custom-tags section renders — the
+/// registry entry's code plus the label the chip shows. A record, not a
+/// [TagCode]: custom tags live in the per-profile registry, never in
+/// [kTagTaxonomy], and collapsing the two would let a registry entry
+/// leak into every taxonomy-driven surface.
+typedef CustomTagChip = ({String code, String label});
+
 class CategoryPicker extends StatefulWidget {
   const CategoryPicker({
     super.key,
@@ -49,6 +56,11 @@ class CategoryPicker extends StatefulWidget {
     this.recentLabel = 'Recent',
     this.unverifiedNote = 'Unverified — pin before shipping',
     this.trailingBuilder,
+    this.customTags = const [],
+    this.customLabel = 'Custom tags',
+    this.customManageTooltip = 'Manage custom tags',
+    this.noneCustomNote = 'None yet — add one',
+    this.onManageCustomTags,
   });
 
   /// Curated categories, in the order they render — the day sheet passes
@@ -85,6 +97,30 @@ class CategoryPicker extends StatefulWidget {
   /// issue. Called once per category; an empty list means nothing extra.
   final List<Widget> Function(TagCategory category)? trailingBuilder;
 
+  /// Issue #257: the profile's LIVE, non-retired custom-tag registry
+  /// entries, rendered as their own collapsible section after every
+  /// curated category. Retired entries are the caller's concern (they
+  /// render as inert stored chips on the sheet, never as picker chips).
+  final List<CustomTagChip> customTags;
+
+  /// Heading text for the custom-tags section.
+  final String customLabel;
+
+  /// Tooltip for the custom-tags section's manage affordance.
+  final String customManageTooltip;
+
+  /// Empty-state copy under the custom-tags section's heading when the
+  /// profile has no live, non-retired custom tags yet.
+  final String noneCustomNote;
+
+  /// Issue #257: opens the create/rename/retire surface for the profile's
+  /// custom tags. The section renders (with its manage affordance) even
+  /// when [customTags] is empty so the first tag can be created — hence
+  /// the presence of this callback, not the list, is what shows it. Null
+  /// (a harness or read-only surface with no registry) hides the whole
+  /// section, exactly like every other registry-driven affordance.
+  final VoidCallback? onManageCustomTags;
+
   @override
   State<CategoryPicker> createState() => _CategoryPickerState();
 }
@@ -93,6 +129,11 @@ class _CategoryPickerState extends State<CategoryPicker> {
   final TextEditingController _searchController = TextEditingController();
   String _query = '';
   final Set<TagCategory> _collapsed = {};
+
+  /// Issue #257: the custom-tags section's own collapsed flag — a plain
+  /// bool rather than a member of [_collapsed], which is keyed by
+  /// [TagCategory] and custom tags deliberately have none.
+  bool _collapsedCustom = false;
 
   @override
   void dispose() {
@@ -113,6 +154,8 @@ class _CategoryPickerState extends State<CategoryPicker> {
         if (!_collapsed.add(category)) _collapsed.remove(category);
       });
 
+  void _toggleCollapsedCustom() => setState(() => _collapsedCustom = !_collapsedCustom);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -125,6 +168,7 @@ class _CategoryPickerState extends State<CategoryPicker> {
         if (!searching && widget.recentCodes.isNotEmpty) _recentRow(theme),
         for (final category in widget.categories)
           ..._categorySection(theme, category, searching: searching),
+        ..._customTagsSection(theme, searching: searching),
       ],
     );
   }
@@ -290,6 +334,105 @@ class _CategoryPickerState extends State<CategoryPicker> {
         key: ValueKey('$keyPrefix-${tag.code}'),
         materialTapTargetSize: MaterialTapTargetSize.padded,
         label: Text(tag.display),
+        selected: isSelected,
+        onSelected: widget.enabled ? (_) => widget.onToggle(tag.code) : null,
+      ),
+    );
+  }
+
+  /// Issue #257: the custom-tag registry section — one collapsible
+  /// section over [CategoryPicker.customTags], rendered last (after every
+  /// curated category), participating in the search filter exactly like a
+  /// curated section, and carrying the manage affordance
+  /// ([CategoryPicker.onManageCustomTags]) in its header row. The section
+  /// renders even with an empty list while the manage callback is present
+  /// (the first custom tag has to be creatable from here); a null callback
+  /// hides it entirely.
+  List<Widget> _customTagsSection(
+    ThemeData theme, {
+    required bool searching,
+  }) {
+    final manage = widget.onManageCustomTags;
+    if (manage == null) return const [];
+    final label = widget.customLabel;
+    final tags = [
+      for (final tag in widget.customTags)
+        if (_query.isEmpty || tag.label.toLowerCase().contains(_query)) tag,
+    ];
+    if (searching && tags.isEmpty) return const [];
+    final expanded = searching || !_collapsedCustom;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: InkWell(
+          key: const ValueKey('category-picker-header-custom-tags'),
+          onTap: searching || !widget.enabled ? null : _toggleCollapsedCustom,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(
+              children: [
+                Icon(Icons.label_outline,
+                    size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child:
+                        Text(label, style: theme.textTheme.labelMedium),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('custom-tags-manage'),
+                  tooltip: widget.customManageTooltip,
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: widget.enabled ? manage : null,
+                ),
+                if (!searching)
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      if (expanded)
+        if (tags.isEmpty && !searching)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              widget.noneCustomNote,
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final tag in tags)
+                  _customTagChip(tag, group: label),
+              ],
+            ),
+          ),
+    ];
+  }
+
+  Widget _customTagChip(CustomTagChip tag, {required String group}) {
+    final isSelected = widget.selected.contains(tag.code);
+    return groupedChipSemantics(
+      group: group,
+      label: tag.label,
+      selected: isSelected,
+      onTap: widget.enabled ? () => widget.onToggle(tag.code) : null,
+      child: FilterChip(
+        key: ValueKey('category-picker-custom-${tag.code}'),
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        label: Text(tag.label),
         selected: isSelected,
         onSelected: widget.enabled ? (_) => widget.onToggle(tag.code) : null,
       ),

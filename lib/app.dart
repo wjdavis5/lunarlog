@@ -50,6 +50,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
@@ -236,6 +237,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final DayEntriesRepository _dayEntries;
   late final ObservationsRepository _observations;
   late final CareContentRepository _careContent;
+
+  /// Issue #257: the per-profile custom-tag registry.
+  late final TagRegistryRepository _tagRegistry;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
   late final CycleHistoryService _cycleHistory;
@@ -332,6 +336,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _dayEntries = _deps.dayEntries;
     _observations = _deps.observations;
     _careContent = _deps.careContent;
+    _tagRegistry = _deps.tagRegistry;
     _settings = _deps.settings;
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
@@ -1050,6 +1055,10 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<CareContentRepository>.value(value: _careContent),
+        // Issue #257: the day sheet's tag picker reads/writes the
+        // custom-tag registry through this domain seam, never the raw
+        // storage object.
+        Provider<TagRegistryRepository>.value(value: _tagRegistry),
         Provider<SettingsStore>.value(value: _settings),
         // Issue #136: the per-profile reminder configuration store. Present
         // whenever reminders are (a scheduler was provided); the reminder

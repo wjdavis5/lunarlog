@@ -718,6 +718,126 @@ abstract class AppLocalizations {
   /// **'Recent'**
   String get daySheetTagRecentLabel;
 
+  /// Issue #257: heading above the profile's custom-tag registry section in the tag picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom tags'**
+  String get daySheetCustomTagsLabel;
+
+  /// Issue #257: tooltip for the tag picker's custom-tags manage affordance (create, rename, retire).
+  ///
+  /// In en, this message translates to:
+  /// **'Manage custom tags'**
+  String get daySheetCustomTagsManageTooltip;
+
+  /// Issue #257: empty-state note under the custom-tags heading when the profile has no live, non-retired custom tags.
+  ///
+  /// In en, this message translates to:
+  /// **'None yet — tap manage to add one'**
+  String get daySheetCustomTagsNone;
+
+  /// Issue #257: title of the custom-tag manager sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom tags'**
+  String get customTagsSheetTitle;
+
+  /// Issue #257: body copy in the manager sheet when the registry is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'No custom tags yet — add one below.'**
+  String get customTagsEmptyList;
+
+  /// Issue #257: visible hint in the manager sheet's create field.
+  ///
+  /// In en, this message translates to:
+  /// **'New tag name'**
+  String get customTagsAddHint;
+
+  /// Issue #257: tooltip/semantics for the manager sheet's add button.
+  ///
+  /// In en, this message translates to:
+  /// **'Add tag'**
+  String get customTagsAddTooltip;
+
+  /// Issue #257: create-field error for an empty custom-tag label.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name.'**
+  String get customTagsErrorEmpty;
+
+  /// Issue #257: create-field error for a label past the 40-character CHECK.
+  ///
+  /// In en, this message translates to:
+  /// **'Names are at most 40 characters.'**
+  String get customTagsErrorTooLong;
+
+  /// Issue #257: create-field error for a label no code can be derived from (e.g. only punctuation).
+  ///
+  /// In en, this message translates to:
+  /// **'Include a letter or digit.'**
+  String get customTagsErrorNoLetters;
+
+  /// Issue #257: create-field error for a label deriving a code another live registry entry already owns (case-insensitive).
+  ///
+  /// In en, this message translates to:
+  /// **'You already have a tag like this.'**
+  String get customTagsErrorDuplicate;
+
+  /// Issue #257: create-field error for a label deriving a code the static taxonomy owns (shadowing it would make one chip mean two things).
+  ///
+  /// In en, this message translates to:
+  /// **'That name is already a built-in tag.'**
+  String get customTagsErrorTaxonomy;
+
+  /// Issue #257: create-field error at the per-profile registry cap (100 live rows).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile already has {max} custom tags — retire one first.'**
+  String customTagsErrorCap(int max);
+
+  /// Issue #257: tooltip for a registry row's rename affordance.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get customTagsRenameTooltip;
+
+  /// Issue #257: title of the rename dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename tag'**
+  String get customTagsRenameTitle;
+
+  /// Issue #257: tooltip for a registry row's retire affordance (hidden_at — removed from the picker, never deleted).
+  ///
+  /// In en, this message translates to:
+  /// **'Retire'**
+  String get customTagsRetireTooltip;
+
+  /// Issue #257: status label on a retired registry row in the manager sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Retired'**
+  String get customTagsRetiredLabel;
+
+  /// Issue #257: title of the retire confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Retire “{label}”?'**
+  String customTagsRetireTitle(String label);
+
+  /// Issue #257: body of the retire confirmation dialog — retirement never deletes stored entries.
+  ///
+  /// In en, this message translates to:
+  /// **'It leaves the tag picker. Days that already use it keep showing it.'**
+  String get customTagsRetireBody;
+
+  /// Issue #257: confirm button of the retire dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Retire'**
+  String get customTagsRetireConfirm;
+
   /// Read-only day sheet body when the day has no entry.
   ///
   /// In en, this message translates to:
