@@ -3,7 +3,10 @@
 ///
 /// * Cold start: gated platforms show the lock screen *before any profile
 ///   data renders* and *before the database is opened* — a declined
-///   credential never decrypts anything (AE4).
+///   credential never decrypts anything (AE4). Exception (issue #739): a
+///   QA build (`LUNARLOG_QA_BUILD=true`) starts unlocked and never
+///   re-locks, so testers reach the feature set without the credential
+///   ceremony; the privacy cover below still applies.
 /// * Re-lock: backgrounding (paused/hidden — and `inactive`, which is what
 ///   split-screen/multi-window focus loss reports) always re-locks;
 ///   foreground inactivity re-locks after a timeout (default 2 minutes,
@@ -41,6 +44,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
 import 'package:lunarlog/domain/gate/pin_credential_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -147,14 +151,35 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
     this.systemUiDeadline = kDefaultInactivityTimeout,
     this.settleTimeout = kSystemUiSettleTimeout,
+    bool? qaBuild,
   })  : _gate = gate,
         // ignore: prefer_initializing_formals
-        _pinService = pinService {
-    _locked = gate.requiresUnlock;
+        _pinService = pinService,
+        _qaBuild = qaBuild ?? AppConfig.qaBuild {
+    // Issue #739: a QA build starts unlocked even on a gated platform —
+    // the tester's whole point is reaching the feature set without the
+    // credential ceremony. The privacy cover machinery is untouched: a
+    // departure still covers content while the app is away (see [lock]).
+    _locked = gate.requiresUnlock && !_qaBuild;
+    // Issue #739: relock is permanently off in a QA build, ahead of (and
+    // regardless of) whatever the persisted toggle says — see
+    // [attachSettings], which keeps forcing it off there too.
+    _relockEnabled = !_qaBuild;
     WidgetsBinding.instance.addObserver(this);
   }
 
   final AppGate _gate;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`,
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// precedent). Injected as a nullable constructor parameter so
+  /// `test/ui/qa_build_test.dart` exercises both flag values in one
+  /// default-off test run; production always resolves the const. While
+  /// true: the gate starts unlocked, [lock] never re-locks (the privacy
+  /// cover still applies), the inactivity countdown never arms, and
+  /// [reauthenticate] auto-grants. Permissions are untouched — the
+  /// server's checks are identical for every build.
+  final bool _qaBuild;
 
   /// The optional in-app PIN layer (#271 D-6). Null on an unconfigured
   /// build or a platform this gate does not cover — every PIN check below
@@ -295,7 +320,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   void attachSettings(SettingsStore store) {
     unawaited(_relockSub?.cancel());
     _relockSub = store.watch(SettingsKeys.relockEnabled).listen((value) {
-      _relockEnabled = value != 'false'; // absent ⇒ default ON (fail closed)
+      // Issue #739: a QA build keeps relock off even when the persisted
+      // toggle says on — the setting is presentation for store builds
+      // only, and re-enabling it here would re-arm the inactivity
+      // countdown below on a build whose promise is "no prompts".
+      _relockEnabled = !_qaBuild && value != 'false'; // absent ⇒ default ON (fail closed)
       if (_relockEnabled) {
         _armInactivity();
       } else {
@@ -659,7 +688,13 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// whether the operator is *still away* when the window settles, not on
   /// which lifecycle events arrived. That is a level check at one known
   /// moment, which no ordering guarantee is needed to answer.
+  ///
+  /// Issue #739: a QA build auto-grants — no prompt, no gate call, no
+  /// system-UI window. This is the client-side prompt bypass only; every
+  /// server-side re-check (the `delete-account` AAL2 gate, RLS) still runs
+  /// exactly as in a store build.
   Future<bool> reauthenticate() async {
+    if (_qaBuild) return true;
     if (_authenticating) return false;
     _authenticating = true;
     notifyListeners();
@@ -681,6 +716,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Re-lock now. Backgrounding always calls this; on un-gated platforms it
   /// only sets the cover flag.
+  ///
+  /// Issue #739: a QA build takes the un-gated branch on every platform —
+  /// a departure covers the content (the snapshot posture is unchanged)
+  /// but never re-locks, which is the whole point of the QA flag.
   void lock() {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
@@ -688,11 +727,12 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // mid-entry must require the whole gate again, not resume where it
     // left off.
     _pinRequired = false;
-    if (_gate.requiresUnlock) {
+    if (_gate.requiresUnlock && !_qaBuild) {
       _locked = true;
     } else {
-      // Un-gated (web): there is no lock screen to dismiss a cover with,
-      // so only cover when the app is actually away.
+      // Un-gated (web, or a QA build per issue #739): there is no lock
+      // screen to dismiss a cover with, so only cover when the app is
+      // actually away.
       _obscured = !_resumed;
     }
     notifyListeners();

@@ -183,6 +183,7 @@ class Harness {
     SyncTransport? syncTransport,
     SupabaseClient? supabaseClient,
     SyncEngineBuilder syncEngineBuilder = defaultSyncEngineBuilder,
+    bool? qaBuild,
   }) async {
     await pendingSeed;
     // The binding's lifecycle state persists across tests in a suite; every
@@ -204,6 +205,7 @@ class Harness {
       syncTransport: syncTransport,
       supabaseClient: supabaseClient,
       syncEngineBuilder: syncEngineBuilder,
+      qaBuild: qaBuild,
     ));
     await tester.pump();
     await tester.pumpAndSettle();

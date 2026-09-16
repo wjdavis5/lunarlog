@@ -57,6 +57,10 @@ on:
         description: "Type 'production' to confirm a production release"
         type: string
         default: ''
+      qa_build:
+        description: 'QA build (issue #739): compiles LUNARLOG_QA_BUILD=true (no unlock gate, relock, or re-auth prompts). Internal track only.'
+        type: boolean
+        default: false
 
 env:
   FLUTTER_CHANNEL: stable
@@ -162,6 +166,26 @@ jobs:
       deployments: read
     secrets: inherit
 
+  qa-build-gate:
+    # Issue #739: a QA build (qa_build: true) compiles the client-side
+    # security-prompt bypasses in, so it may only ever land on Google
+    # Play's internal track -- anything promotable toward production
+    # (alpha/beta/production) fails here, before any build work. Same
+    # no-job-level-`if:` reasoning as production-gate above: this job
+    # always runs and always succeeds except in the one case it exists
+    # to catch.
+    name: Verify the QA build gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Refuse QA builds off the internal track
+        env:
+          QA_BUILD: ${{ inputs.qa_build }}
+          TRACK: ${{ inputs.track || 'internal' }}
+        run: bash .github/scripts/check-qa-build-gate.sh
+
   ci-gate:
     # Issue #498: Gate release on successful completion of CI verification runs
     # (pgTAP database tests, Deno edge function tests, and the sharded
@@ -181,7 +205,7 @@ jobs:
 
   release:
     name: Build, sign, and publish to Play Store
-    needs: [verify, production-gate, migration-gate, ci-gate]
+    needs: [verify, production-gate, qa-build-gate, migration-gate, ci-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -203,6 +227,8 @@ jobs:
 
       - name: Resolve build and version numbers
         id: version
+        env:
+          QA_BUILD: ${{ inputs.qa_build }}
         run: |
           set -euo pipefail
 
@@ -210,6 +236,14 @@ jobs:
 
           # Offset build number monotonically with GitHub Actions run counter
           build_number=$(( ${{ github.run_number }} + 1000 ))
+
+          # Issue #739: QA builds occupy a distinct, far-removed
+          # version-code range (501xxx vs the 1xxx-10xxx production
+          # range), so a QA binary is recognisable in Play Console at a
+          # glance and a manual promotion is catchable before it ships.
+          if [ "$QA_BUILD" = "true" ]; then
+            build_number=$(( build_number + 500000 ))
+          fi
 
           echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
           echo "build=$build_number" >> "$GITHUB_OUTPUT"
@@ -260,6 +294,7 @@ jobs:
         env:
           MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
           BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          QA_BUILD: ${{ inputs.qa_build }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -287,12 +322,14 @@ jobs:
             --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
-            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
+            --dart-define=LUNARLOG_QA_BUILD="$QA_BUILD"
 
       - name: Build release APK
         env:
           MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
           BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          QA_BUILD: ${{ inputs.qa_build }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -318,7 +355,8 @@ jobs:
             --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
-            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
+            --dart-define=LUNARLOG_QA_BUILD="$QA_BUILD"
 
       - name: Verify build outputs
         run: |
@@ -410,6 +448,7 @@ jobs:
           fi
 
       - name: Publish to Google Play Store
+        if: inputs.qa_build != true
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
@@ -417,6 +456,25 @@ jobs:
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: ${{ inputs.track || 'internal' }}
           status: ${{ inputs.status || 'completed' }}
+          changesNotSentForReview: false
+
+      - name: Publish QA build to Google Play (internal only)
+        # Issue #739: the QA variant of the publish step. Two deliberate
+        # differences from the step above: the release NAME carries "QA"
+        # (so a manual promotion in Play Console is recognisable — the
+        # spec's marking requirement), and the track is hard-coded to
+        # `internal` (the qa-build-gate job already refuses any dispatch
+        # that would reach a promotable track; this pins the destination
+        # even if that guard were ever loosened).
+        if: inputs.qa_build == true
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_JSON_KEY }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: ${{ inputs.status || 'completed' }}
+          releaseName: QA ${{ steps.version.outputs.marketing }} (${{ steps.version.outputs.build }})
           changesNotSentForReview: false
 
       - name: Clean up keystore
@@ -440,7 +498,10 @@ jobs:
         if: always() && inputs.track != 'production'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: android-release-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.build }}
+          # Issue #739: QA-build artifacts carry a `qa-` marker in the
+          # artifact name too, so even the workflow-run artifact list
+          # distinguishes them.
+          name: android-${{ inputs.qa_build == true && 'qa-' || '' }}release-${{ steps.version.outputs.marketing }}-${{ steps.version.outputs.build }}
           path: |
             build/app/outputs/bundle/release/app-release.aab
             build/app/outputs/flutter-apk/app-release.apk

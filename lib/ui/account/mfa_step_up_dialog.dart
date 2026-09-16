@@ -10,6 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -28,8 +29,22 @@ import 'package:lunarlog/ui/components/inline_error.dart';
 /// early return below is the single expression a future QA-build bypass
 /// (issue #739) ORs into, so both flags compose here without either one
 /// re-reading the define anywhere else.
-Future<bool> ensureAal2(BuildContext context, AuthController auth) async {
-  if (!auth.mfaEnabled) return true;
+///
+/// Issue #739: [qaBuild] (defaulting to the build's `LUNARLOG_QA_BUILD`
+/// const through [AppConfig.qaBuild]) ORs into that same early return —
+/// an independent condition, not a re-derivation of `mfaEnabled`, so a QA
+/// build auto-passes the step-up even once MFA is re-enabled globally.
+/// The *server-side* AAL2 check in `delete-account` is untouched: a QA
+/// build skips the client prompt, never the server's own enforcement.
+/// MFA enrolment itself (the Settings tile group, the enrolment screen)
+/// stays fully exercisable in a QA build — only this pre-action prompt is
+/// bypassed.
+Future<bool> ensureAal2(
+  BuildContext context,
+  AuthController auth, {
+  bool qaBuild = AppConfig.qaBuild,
+}) async {
+  if (!auth.mfaEnabled || qaBuild) return true;
   final needsStepUp = await auth.requiresMfaStepUp();
   if (!needsStepUp) return true;
   if (!context.mounted) return false;
