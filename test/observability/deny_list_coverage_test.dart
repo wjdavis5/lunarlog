@@ -142,6 +142,14 @@ const Map<String, String> _waivedKeys = {
       'boolean flag about cycle-average membership, not content',
   'manual_start': 'boolean flag about how a cycle began, not content',
   'cursor_profiles': 'device-local sync cursor, not content',
+  // Issue #257 (profile_tag_registry): non-content columns.
+  'intensity_enabled':
+      'boolean flag for per-tag intensity affordances, not content (issue #257)',
+  'hidden_at':
+      'retirement bookkeeping timestamp, not content (issue #257)',
+  'created_by': 'opaque auth user id, not content',
+  'cursor_profile_tag_registry':
+      'device-local sync cursor, not content (issue #257)',
   'cursor_day_entry_merge_events':
       'device-local sync cursor, not content (issue #130)',
   'cursor_day_entries': 'device-local sync cursor, not content',

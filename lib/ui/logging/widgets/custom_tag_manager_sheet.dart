@@ -302,7 +302,11 @@ class _CustomTagManagerSheetState extends State<CustomTagManagerSheet> {
                             style: tag.offered
                                 ? null
                                 : theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.outline,
+                                    // #162: onSurfaceVariant is the
+                                    // de-emphasised text role; outline is
+                                    // a decorative-boundary role only.
+                                    color:
+                                        theme.colorScheme.onSurfaceVariant,
                                   ),
                           ),
                           trailing: tag.offered

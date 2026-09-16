@@ -113,6 +113,10 @@ const List<String> sentryDenyListedKeys = [
   'p_profiles',
   'p_care_notes',
   'p_visit_prep_items',
+  // Issue #257: the custom-tag registry push param — carries the
+  // user's own health vocabulary (display_name et al), exactly the
+  // content class p_day_entries/p_care_notes protect.
+  'p_tag_registry',
   // Issue #130: the same-date merge disclosure's retained losing value
   // (a discarded note's text, or a flow level string) is health content
   // exactly like `note` — it must never reach a crash report or breadcrumb.
