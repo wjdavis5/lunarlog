@@ -45,6 +45,7 @@ class FakeSyncTransport implements SyncTransport {
     SyncTable.dayEntryMergeEvents: [],
     SyncTable.profileTagRegistry: [],
     SyncTable.deletedProfiles: [],
+    SyncTable.dayEntryHistory: [],
   };
 
   /// When set, wins over [pages]: computes each page from the call itself

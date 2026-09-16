@@ -35,6 +35,7 @@ enum SyncTable {
   dayEntryMergeEvents,
   profileTagRegistry,
   deletedProfiles,
+  dayEntryHistory,
 }
 
 /// A server copy of a synced row.
@@ -654,6 +655,62 @@ final class RemoteProfileTagRegistryRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.profileTagRegistry;
+}
+
+/// A server copy of a `day_entry_history` row (Issue #170): one
+/// machine-written, content-free audit record of a day-entry change —
+/// WHO/WHEN/WHICH column names/what kind. [changedFields] carries
+/// day_entries COLUMN NAMES only (never values; the server's CHECK
+/// enforces it). PULL-ONLY, like [deletedProfiles] and
+/// [profileGuardians]: rows are written by the server's day_entries
+/// trigger and its same-date resolver, never pushed by any client, so
+/// this type has no encode counterpart. Rows are immutable and nothing
+/// ever soft-deletes one (the server hard-purges past 90 days and wipes
+/// them on a profile content wipe), so [deletedAt] is always null and
+/// [updatedAt] mirrors [changedAt].
+final class RemoteDayEntryHistoryRow extends RemoteRow {
+  const RemoteDayEntryHistoryRow({
+    required this.id,
+    required this.entryId,
+    required this.profileId,
+    required this.changedByUserId,
+    required this.changedAt,
+    required this.changeKind,
+    required this.changedFields,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+
+  /// The day entry the change happened to (a plain text reference — not a
+  /// local foreign key; see the domain model's doc comment).
+  final String entryId;
+  final String profileId;
+
+  /// Display attribution only, like [RemoteDayEntryRow.loggedByUserId].
+  final String changedByUserId;
+  final DateTime changedAt;
+
+  /// Raw `change_kind` wire string: 'logged' | 'updated' | 'tombstoned' |
+  /// 'merged_discard'. `row_codec.dart`'s `decodeDayEntryHistory` already
+  /// normalises an unrecognised value to 'updated' against the closed set
+  /// before constructing this row; `DayEntryChangeKind.fromDb` normalises
+  /// again on the way to the domain model.
+  final String changeKind;
+
+  /// day_entries COLUMN NAMES only, never values.
+  final List<String> changedFields;
+
+  @override
+  DateTime get updatedAt => changedAt;
+  @override
+  DateTime? get deletedAt => null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.dayEntryHistory;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

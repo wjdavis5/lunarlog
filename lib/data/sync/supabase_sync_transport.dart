@@ -95,6 +95,17 @@ class SupabaseSyncTransport implements SyncTransport {
     return _pullPageViaSelect(table: table, afterVersion: afterVersion, limit: limit);
   }
 
+  /// The migration-gated tables whose absence on an older server must read
+  /// as "nothing to pull yet" rather than a cycle-failing error: issue
+  /// #522's `deleted_profiles` (the original carve-out) and issue #170's
+  /// `day_entry_history` (pull-only — a server predating its migration
+  /// never wrote a row this client could miss). Every other table is
+  /// expected to exist unconditionally.
+  static const Set<SyncTable> _migrationGatedTables = {
+    SyncTable.deletedProfiles,
+    SyncTable.dayEntryHistory,
+  };
+
   /// The original per-table select, unchanged (issue #598's fallback path):
   /// used directly for [SyncTable.deletedProfiles] (never covered by
   /// `sync_pull`), and for every other table whenever [_cachedSlice] has
@@ -117,10 +128,12 @@ class SupabaseSyncTransport implements SyncTransport {
       // this PR does not include — a server predating it answers with
       // PostgREST's "relation not found" shape. Every other table is
       // expected to exist unconditionally, so this leniency is deliberately
-      // scoped to just this one, new, migration-gated table: an empty page
-      // (the caller reads exactly like "nothing to pull yet") rather than a
-      // cycle-failing error.
-      if (table == SyncTable.deletedProfiles && _isRelationNotFound(error)) {
+      // scoped to the migration-gated tables (see [_migrationGatedTables]):
+      // an empty page (the caller reads exactly like "nothing to pull
+      // yet") rather than a cycle-failing error. Issue #170 extends the
+      // same carve-out to the pull-only day_entry_history.
+      if (_migrationGatedTables.contains(table) &&
+          _isRelationNotFound(error)) {
         return const [];
       }
       throw mapSyncTransportError(error);

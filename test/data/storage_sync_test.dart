@@ -2404,6 +2404,7 @@ void main() {
       'visit_prep_items',
       'day_entry_merge_events',
       'profile_tag_registry',
+      'day_entry_history',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2486,6 +2487,19 @@ void main() {
               updatedAt: t0,
             ),
           );
+      // Issue #170: a change-history row (content-free, but still the
+      // family's feed) must leave the device with everything else.
+      await db.into(db.dayEntryHistory).insert(
+            DayEntryHistoryCompanion.insert(
+              id: '01JWIPE00000000000000000C',
+              entryId: entry.id,
+              profileId: p.id,
+              changedByUserId: 'user-b',
+              changedAt: t0,
+              changeKind: 'logged',
+              changedFields: const ['local_date', 'note'],
+            ),
+          );
 
       // Sanity: every table actually holds live content before revocation.
       expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
@@ -2529,6 +2543,15 @@ void main() {
       // no trace of the family's discarded note texts.
       expect(
         await (db.select(db.dayEntryMergeEvents)
+              ..where((t) => t.profileId.equals(p.id)))
+            .get(),
+        isEmpty,
+      );
+      // Issue #170: the profile's change-history rows are hard-deleted too
+      // (no tombstone; machine-written feed metadata), mirroring the
+      // server's own tombstone_profile_content step.
+      expect(
+        await (db.select(db.dayEntryHistory)
               ..where((t) => t.profileId.equals(p.id)))
             .get(),
         isEmpty,

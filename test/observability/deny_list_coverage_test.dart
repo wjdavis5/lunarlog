@@ -152,6 +152,18 @@ const Map<String, String> _waivedKeys = {
       'device-local sync cursor, not content (issue #257)',
   'cursor_day_entry_merge_events':
       'device-local sync cursor, not content (issue #130)',
+  // Issue #170 (day_entry_history): the whole table is content-free by
+  // design — field NAMES and audit metadata only, never values.
+  'entry_id': 'opaque ULID reference, not content (issue #170)',
+  'changed_by_user_id': 'opaque auth user id, not content (issue #170)',
+  'changed_at': 'audit bookkeeping timestamp, not content (issue #170)',
+  'change_kind':
+      'closed-set change-kind code, not content (issue #170)',
+  'changed_fields':
+      'day_entries COLUMN NAMES only, never values — the table\'s whole '
+      'content-free contract (issue #170)',
+  'cursor_day_entry_history':
+      'device-local sync cursor, not content (issue #170)',
   'cursor_day_entries': 'device-local sync cursor, not content',
   'cursor_observations': 'device-local sync cursor, not content',
   'cursor_profile_modes': 'device-local sync cursor, not content',

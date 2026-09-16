@@ -92,6 +92,14 @@ const String kProfileTagRegistryProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_profile_tag_registry_profile_id '
     'ON profile_tag_registry (profile_id)';
 
+/// Schema v23 (issue #170): composite index over
+/// `day_entry_history(profile_id, changed_at)` — the change-history feed
+/// read (`LunarLogStorageQueries.getDayEntryHistoryForProfile`) filters by
+/// profile and orders by recency.
+const String kDayEntryHistoryProfileChangedAtIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_day_entry_history_profile_changed_at '
+    'ON day_entry_history (profile_id, changed_at)';
+
 /// Schema v19 (issue #625, LLA-101): composite index over
 /// `observations(day_entry_id, id)` — [LunarLogStorageQueries.
 /// getObservationsForDayEntry]/[LunarLogStorageQueries.
@@ -127,6 +135,7 @@ const String kObservationsProfileIndexSql =
   VisitPrepItems,
   DayEntryMergeEvents,
   ProfileTagRegistry,
+  DayEntryHistory,
   AppSettings,
   SyncState,
   HealthSyncState,
@@ -219,8 +228,13 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   custom-tag registry) with its
   ///   `sync_state.cursor_profile_tag_registry` pull cursor and a
   ///   `profile_id` index.
+  /// * 23 — `day_entry_history` table (Issue #170, the content-free
+  ///   change-history feed substrate: pull-only, machine-written rows,
+  ///   90-day server retention) with its
+  ///   `sync_state.cursor_day_entry_history` pull cursor and a
+  ///   `(profile_id, changed_at)` index.
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -237,6 +251,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kObservationsDayEntryIndexSql);
           await customStatement(kObservationsProfileIndexSql);
           await customStatement(kProfileTagRegistryProfileIndexSql);
+          await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -284,7 +299,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// `sync_state.cursor_day_entry_merge_events`,
   /// `day_entry_merge_events.profile_date_index`. Issue #257 adds
   /// `profile_tag_registry`, `sync_state.cursor_profile_tag_registry`,
-  /// `profile_tag_registry.profile_id_index`. Every version step
+  /// `profile_tag_registry.profile_id_index`. Issue #170 adds
+  /// `day_entry_history`, `sync_state.cursor_day_entry_history`,
+  /// `day_entry_history.profile_changed_at_index`. Every version step
   /// also reports its own `schema_version.v<N>` label (Issue #637,
   /// LLA-015) right after `PRAGMA user_version` advances inside that
   /// same step's transaction — a hook that throws there proves the
@@ -510,6 +527,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV21(m, from);
     // Issue #257's v22 step, same shape again.
     await _upgradeToV22(m, from);
+    // Issue #170's v23 step, same shape again.
+    await _upgradeToV23(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -552,6 +571,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // `onCreate` or the `from < 22` step below). A no-op for every real
     // device.
     await customStatement(kProfileTagRegistryProfileIndexSql);
+    // Issue #170 extends the same unconditional re-assert to the v23
+    // history index, for the identical reason (a schema-verification
+    // fixture that starts at v23+ via `createAll` alone never ran the real
+    // `onCreate` or the `from < 23` step below). A no-op for every real
+    // device.
+    await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -996,5 +1021,30 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       3 || '3' || 'EXTRA' => 'EXTRA',
       _ => val.toString(),
     };
+  }
+
+  /// The v23 upgrade step (Issue #170): the `day_entry_history` table, its
+  /// `sync_state` pull cursor, and its `(profile_id, changed_at)` index.
+  /// Same standalone-method shape as [_upgradeToV9] (including the
+  /// `sync_state` gotcha: the `from < 2` block's `m.createTable(syncState)`
+  /// builds the table from the *current* `SyncState` class, which already
+  /// declares this cursor column — see [_hasColumn]'s doc comment,
+  /// LLA-015). No backfill: the table is pull-only and machine-written —
+  /// every device back-fills it from the server's own rows via the
+  /// ordinary pull, and the server's 90-day retention bounds how much
+  /// history that first pull ever sees.
+  Future<void> _upgradeToV23(Migrator m, int from) async {
+    if (from >= 23) return;
+    await transaction(() async {
+      await m.createTable(dayEntryHistory);
+      await migrationStepHook?.call('day_entry_history');
+      if (!await _hasColumn('sync_state', 'cursor_day_entry_history')) {
+        await m.addColumn(syncState, syncState.cursorDayEntryHistory);
+        await migrationStepHook?.call('sync_state.cursor_day_entry_history');
+      }
+      await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
+      await migrationStepHook?.call('day_entry_history.profile_changed_at_index');
+      await _advanceSchemaVersion(23);
+    });
   }
 }

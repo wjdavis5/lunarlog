@@ -49,6 +49,10 @@ class _PageLookup {
   /// care tables.
   final Map<String, ProfileTagRegistryEntry?> profileTagRegistry = {};
 
+  /// Issue #170's twelfth synced table (pull-only), prefetched by id
+  /// exactly like the care tables.
+  final Map<String, DayEntryHistoryData?> dayEntryHistory = {};
+
   final Map<String, ProfileGuardianData?> guardians = {};
 
   static String peerKey(String profileId, String localDate) =>
@@ -130,6 +134,7 @@ class _PageLookup {
     visitPrepItems.removeWhere((_, row) => row?.profileId == profileId);
     dayEntryMergeEvents.removeWhere((_, row) => row?.profileId == profileId);
     profileTagRegistry.removeWhere((_, row) => row?.profileId == profileId);
+    dayEntryHistory.removeWhere((_, row) => row?.profileId == profileId);
     profiles.remove(profileId);
   }
 }
@@ -214,6 +219,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           RemoteProfileTagRegistryRow remote) =>
       db.transaction(() => _applyTagRegistryEntry(remote, onlyExisting: false));
 
+  /// Applies a server copy of a change-history row keyed by id (Issue
+  /// #170; rows are immutable machine-written audit records, so the per-id
+  /// rule degenerates to "a not-yet-held id inserts, a held id is a
+  /// no-op" — the LWW comparison below keeps that shape anyway for
+  /// uniformity and future-proofing). Throws [RetryableSyncApplyError]
+  /// when the profile is not held locally yet.
+  Future<bool> applyRemoteDayEntryHistory(
+          RemoteDayEntryHistoryRow remote) =>
+      db.transaction(() => _applyDayEntryHistory(remote, onlyExisting: false));
+
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
   /// skip them (KTD2). A throwing row rolls the whole page back, cursor
@@ -265,6 +280,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteDayEntryMergeEventRow: (r, c) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false, cache: c),
     RemoteProfileTagRegistryRow: (r, c) => _applyTagRegistryEntry(r as RemoteProfileTagRegistryRow, onlyExisting: false, cache: c),
     RemoteDeletedProfileRow: (r, c) => _applyDeletedProfile(r as RemoteDeletedProfileRow, cache: c),
+    RemoteDayEntryHistoryRow: (r, c) => _applyDayEntryHistory(r as RemoteDayEntryHistoryRow, onlyExisting: false, cache: c),
   };
 
   /// Issue #42: builds the page-wide [_PageLookup] — one chunked
@@ -306,6 +322,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteProfileTagRegistryRow>())
+        row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteDayEntryHistoryRow>())
         row.profileId,
     ]);
     profileIds.addAll([
@@ -380,6 +400,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       cache.profileTagRegistry,
       {for (final row in rows.whereType<RemoteProfileTagRegistryRow>()) row.id},
       readChunk: (ids) => (db.select(db.profileTagRegistry)
+            ..where((t) => t.id.isIn(ids)))
+          .get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.dayEntryHistory,
+      {for (final row in rows.whereType<RemoteDayEntryHistoryRow>()) row.id},
+      readChunk: (ids) => (db.select(db.dayEntryHistory)
             ..where((t) => t.id.isIn(ids)))
           .get(),
       idOf: (row) => row.id,
@@ -502,6 +530,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     SyncTable.visitPrepItems: (c) => SyncStateCompanion(cursorVisitPrepItems: Value(c)),
     SyncTable.dayEntryMergeEvents: (c) => SyncStateCompanion(cursorDayEntryMergeEvents: Value(c)),
     SyncTable.profileTagRegistry: (c) => SyncStateCompanion(cursorProfileTagRegistry: Value(c)),
+    SyncTable.dayEntryHistory: (c) => SyncStateCompanion(cursorDayEntryHistory: Value(c)),
     SyncTable.profileGuardians: (c) => SyncStateCompanion(cursorProfileGuardians: Value(c)),
     SyncTable.deletedProfiles: (c) => SyncStateCompanion(cursorDeletedProfiles: Value(c)),
   };
@@ -572,6 +601,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         rows,
         cache,
         (row, c) => _applyTagRegistryEntry(row, onlyExisting: false, cache: c),
+      );
+      // Issue #170: the change-history feed follows the registry (a row
+      // references only a profile; rows are immutable and content-free).
+      await _applyEach<RemoteDayEntryHistoryRow>(
+        rows,
+        cache,
+        (row, c) => _applyDayEntryHistory(row, onlyExisting: false, cache: c),
       );
       // Issue #522: last, so a deletion signal for a profile that also had
       // ordinary content rows in this same heterogeneous batch wins over
@@ -1043,6 +1079,17 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     // exactly the gap the wipes above close for every other table. Not
     // dirty, never pushed back: the server's own rows are the authority.
     await (db.delete(db.dayEntryMergeEvents)
+          ..where((t) => t.profileId.equals(profileId)))
+        .go();
+    // Issue #170: the profile's change-history rows are hard-deleted
+    // locally, mirroring tombstone_profile_content()'s own explicit delete
+    // server-side (the table has no tombstone). They describe changes to
+    // content this guardian can no longer see, and the server's own wipe
+    // removes the source rows anyway — anything still held locally that
+    // the server purge has not yet re-delivered as absent must not keep
+    // rendering the removed guardian's feed. Not dirty, never pushed back:
+    // the table has no push path at all.
+    await (db.delete(db.dayEntryHistory)
           ..where((t) => t.profileId.equals(profileId)))
         .go();
     // Issue #257: the profile's custom-tag registry rows are TOMBSTONED,
@@ -2450,6 +2497,54 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ),
         );
     cache?.profileTagRegistry[written.first.id] = written.first;
+  }
+
+  /// Issue #170: applies a server copy of a change-history row keyed by
+  /// id. Rows are immutable (nothing ever updates one server-side), so the
+  /// per-id comparison can only ever take the insert branch or decline an
+  /// identical re-delivery — kept in the LWW shape anyway so a future
+  /// writer that does update rows needs no new rule here. Throws
+  /// [RetryableSyncApplyError] when the profile is not held locally yet
+  /// (checked up front so the failure is typed rather than a raw FK
+  /// exception, mirroring [_applyMergeEvent]).
+  Future<bool> _applyDayEntryHistory(RemoteDayEntryHistoryRow remote,
+      {required bool onlyExisting, _PageLookup? cache}) async {
+    final local = await _lookupCached(
+      cache,
+      (c) => c.dayEntryHistory,
+      remote.id,
+      _dayEntryHistoryOrNull,
+    );
+    if (local == null && onlyExisting) return false;
+    if (local != null &&
+        !remoteWinsById(
+            localUpdatedAt: local.changedAt,
+            remoteUpdatedAt: remote.changedAt)) {
+      return false;
+    }
+    if (await _lookupCached(
+          cache,
+          (c) => c.profiles,
+          remote.profileId,
+          _profileOrNull,
+        ) ==
+        null) {
+      throw RetryableSyncApplyError(
+          'day entry history ${remote.id} references a profile not held locally');
+    }
+    final changedAt = remote.changedAt.toUtc();
+    await db.into(db.dayEntryHistory).insertOnConflictUpdate(
+          DayEntryHistoryCompanion.insert(
+            id: remote.id,
+            entryId: remote.entryId,
+            profileId: remote.profileId,
+            changedByUserId: remote.changedByUserId,
+            changedAt: changedAt,
+            changeKind: remote.changeKind,
+            changedFields: remote.changedFields,
+          ),
+        );
+    return true;
   }
 
   /// The `flow` to write for a day entry row: cleared to [FlowLevel.none]

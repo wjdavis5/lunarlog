@@ -20,6 +20,7 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorDeletedProfiles: 0,
   cursorDayEntryMergeEvents: 0,
   cursorProfileTagRegistry: 0,
+  cursorDayEntryHistory: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
@@ -551,6 +552,52 @@ mixin LunarLogStorageQueries {
   /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
   Future<DayEntryMergeEventData?> _dayEntryMergeEventOrNull(String id) =>
       (db.select(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// The change-history feed read (Issue #170): every history row for one
+  /// profile, newest first, filtered to the same 90-day window the
+  /// server's `enforce_retention()` purge enforces
+  /// ([kDayEntryHistoryRetention]) so a locally-held row stops rendering
+  /// in lockstep with the server-side purge and the feed never outlives
+  /// its documented retention on either side. #124's activity feed is the
+  /// future consumer; this seam exists so the pulled rows are readable
+  /// (and testable) today.
+  Future<List<DayEntryHistoryChange>> getDayEntryHistoryForProfile(
+    String profileId, {
+    DateTime? now,
+    int? limit,
+  }) async {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryHistoryRetention);
+    final query = db.select(db.dayEntryHistory)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.changedAt.isBiggerThanValue(windowStart))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.changedAt, mode: OrderingMode.desc)
+      ]);
+    if (limit != null) query.limit(limit);
+    final rows = await query.get();
+    return [
+      for (final row in rows)
+        DayEntryHistoryChange(
+          id: row.id,
+          entryId: row.entryId,
+          profileId: row.profileId,
+          changedByUserId: row.changedByUserId,
+          changedAt: row.changedAt,
+          kind: DayEntryChangeKind.fromDb(row.changeKind),
+          changedFields: row.changedFields,
+        ),
+    ];
+  }
+
+  /// Change-history row by id or null (Issue #170) — the live fallback
+  /// behind `storage_remote_apply.dart`'s cached own-row lookup (Issue
+  /// #42's `_lookupCached` pattern, same shape as
+  /// `_dayEntryMergeEventOrNull`).
+  Future<DayEntryHistoryData?> _dayEntryHistoryOrNull(String id) =>
+      (db.select(db.dayEntryHistory)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
   /// Registry entries with unpushed local changes, ordered by id (Issue

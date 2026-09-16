@@ -114,6 +114,7 @@ void main() {
             SyncTable.dayEntryMergeEvents => const [],
             SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
+            SyncTable.dayEntryHistory => const [],
           };
       SyncPhase? phaseDuringPull;
       rig.transport.onPull = (_) {
