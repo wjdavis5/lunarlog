@@ -237,9 +237,12 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          // Issue #268: MfaSettingsSection renders unconditionally whenever
-          // AccountSection is signed-in and calls AppLocalizations.of
-          // immediately.
+          // Issue #268: MfaSettingsSection renders whenever AccountSection
+          // is signed-in — and in a flag-on build calls
+          // AppLocalizations.of immediately. This test run is flag-off
+          // (#738 default), where the section self-hides; the delegates
+          // stay so a flag-on parameterization of this harness needs no
+          // second change.
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(

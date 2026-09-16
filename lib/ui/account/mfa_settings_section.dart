@@ -3,6 +3,13 @@
 /// enrolled factor with a "Remove" action. Self-contained (owns its own
 /// factor list + reload), so `account_section.dart`'s diff for this
 /// feature is a single tile-group insertion.
+///
+/// Issue #738: the whole group self-hides in a build with MFA off —
+/// [AuthController.mfaEnabled] false renders nothing, skips the
+/// `listMfaFactors` call entirely, and [_enroll] refuses to push the
+/// enrolment screen — so the feature is unreachable rather than merely
+/// unlisted. With the flag on (#714's `--dart-define=
+/// LUNARLOG_ENABLE_MFA=true` build) this is exactly the pre-#738 widget.
 library;
 
 import 'package:flutter/material.dart';
@@ -30,7 +37,11 @@ class _MfaSettingsSectionState extends State<MfaSettingsSection> {
   @override
   void initState() {
     super.initState();
-    _factors = widget.auth.listMfaFactors();
+    // Issue #738: a disabled section never touches the service — the
+    // client surface is inert, not just invisible.
+    _factors = widget.auth.mfaEnabled
+        ? widget.auth.listMfaFactors()
+        : Future.value(const <MfaFactor>[]);
   }
 
   void _reload() {
@@ -45,6 +56,10 @@ class _MfaSettingsSectionState extends State<MfaSettingsSection> {
   }
 
   Future<void> _enroll() async {
+    // Issue #738: the enrolment route is guarded, not merely unlinked —
+    // even a caller that reaches this method in a flag-off build pushes
+    // nothing (and `MfaEnrollScreen` itself refuses to start enrolment).
+    if (!widget.auth.mfaEnabled) return;
     final enrolled = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         settings: const RouteSettings(name: kRouteMfaEnrollScreen),
@@ -99,6 +114,10 @@ class _MfaSettingsSectionState extends State<MfaSettingsSection> {
 
   @override
   Widget build(BuildContext context) {
+    // Issue #738: the tile group is hidden entirely in a flag-off build —
+    // before the [FutureBuilder], so no l10n lookup or factor rendering
+    // happens either.
+    if (!widget.auth.mfaEnabled) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     return FutureBuilder<List<MfaFactor>>(
       future: _factors,

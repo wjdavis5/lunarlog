@@ -382,6 +382,9 @@ class _AccountSectionState extends State<AccountSection> {
         if (signedIn && sync != null) _buildSyncNowTile(sync),
         if (signedIn) ..._buildSignOutTiles(context),
         // Issue #268: optional TOTP enrolment/removal, self-contained.
+        // Issue #738: the section self-hides when the build's MFA flag is
+        // off (AuthController.mfaEnabled), so no tile group renders and no
+        // factor call is made in the default build.
         if (signedIn) MfaSettingsSection(auth: auth),
         if (signedIn && _canExportAndDelete)
           ..._buildDeleteTile(context, theme, deletionService),

@@ -4,6 +4,8 @@
   "SENTRY_DSN": "",
   "SENTRY_TRACES_SAMPLE_RATE": "",
   "LUNARLOG_WEB_SYNC": "false",
+  "_LUNARLOG_ENABLE_MFA_NOTE": "LUNARLOG_ENABLE_MFA turns the TOTP MFA client surface back on (issue #738; off by default pending product focus) - end-to-end MFA also needs the Supabase dashboard TOTP toggle (issue #730)",
+  "LUNARLOG_ENABLE_MFA": "false",
   "GOOGLE_IOS_CLIENT_ID": "",
   "GOOGLE_WEB_CLIENT_ID": "",
   "_PASSKEY_RP_ID_NOTE": "PASSKEY_RP_ID is a bare HTTPS domain, immutable once a passkey is enrolled - do not set until docs/ops/supabase-go-live.md's Passkeys checklist is complete",

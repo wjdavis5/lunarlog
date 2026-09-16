@@ -99,6 +99,7 @@ class LunarLogApp extends StatefulWidget {
     this.removePushRegistration,
     this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
+    this.mfaEnabled,
   });
 
   final LunarLogDatabase db;
@@ -140,6 +141,7 @@ class LunarLogApp extends StatefulWidget {
     RemovePushRegistrationCallback? removePushRegistration,
     RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
     bool showWebBanner = kIsWeb,
+    bool? mfaEnabled,
   }) =>
       LunarLogApp(
         key: key,
@@ -171,6 +173,7 @@ class LunarLogApp extends StatefulWidget {
         removePushRegistration: removePushRegistration,
         removeAllPushRegistrations: removeAllPushRegistrations,
         showWebBanner: showWebBanner,
+        mfaEnabled: mfaEnabled,
       );
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
@@ -218,6 +221,14 @@ class LunarLogApp extends StatefulWidget {
 
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
+
+  /// Issue #738: forwarded to the [AuthController] this widget constructs
+  /// (`_initAuthController`), whose `mfaEnabled` — and with it the whole
+  /// MFA client surface (tile group, enrolment screen, AAL2 step-up) —
+  /// follows the build's `LUNARLOG_ENABLE_MFA` define. Null means the
+  /// const default (off in every CI/workflow build); a test passes `true`
+  /// to exercise #714's MFA-on behavior through the real app shell.
+  final bool? mfaEnabled;
 
   @override
   State<LunarLogApp> createState() => _LunarLogAppState();
@@ -389,8 +400,11 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _initAuthController() {
     final authService = _deps.authService;
     if (authService == null) return;
-    final controller = AuthController(authService: authService)
-      ..addListener(_onAuthChanged);
+    // Issue #738: `widget.mfaEnabled` (null in production) resolves to the
+    // build's `LUNARLOG_ENABLE_MFA` const inside the controller.
+    final controller =
+        AuthController(authService: authService, mfaEnabled: widget.mfaEnabled)
+          ..addListener(_onAuthChanged);
     _authController = controller;
     if (controller.signedIn) _clearAwaitingConfirmation();
   }
