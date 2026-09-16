@@ -318,27 +318,27 @@ select is(
 -- decides, never arrival order), pinned by the batch below.
 -- ---------------------------------------------------------------------------
 select ok(
-  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
     ilike '%jsonb_array_elements(p_profiles) order by value ->> ''id''%',
   'issue #95: the profiles payload loop takes row locks in id order'
 );
 select ok(
-  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
     ilike '%jsonb_array_elements(p_day_entries) order by value ->> ''id''%',
   'issue #95: the day_entries payload loop takes row locks in id order'
 );
 select ok(
-  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
     ilike '%jsonb_array_elements(p_observations) order by value ->> ''id''%',
   'issue #95: the observations payload loop takes row locks in id order'
 );
 select ok(
-  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
     ilike '%and local_date = v_local_date%and deleted_at is null%and id <> v_id%order by id%for update;%',
   'issue #95: the day_entries same-date resolver takes its row lock in id order'
 );
 select ok(
-  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  pg_get_functiondef('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
     ilike '%and code = v_code%and deleted_at is null%and id <> v_id%order by id%for update;%',
   'issue #95: the observations same-date resolver takes its row lock in id order'
 );
