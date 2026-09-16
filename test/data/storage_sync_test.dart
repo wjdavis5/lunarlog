@@ -1767,6 +1767,29 @@ void main() {
       );
     });
 
+    test('a resolved merge event and profile_tag_registry row each take '
+        'the server copy clean (Issue #257 keeps applyResolved flat at '
+        'the CRAP ceiling — every per-table loop body stays covered)', () async {
+      await storage.applyResolved([
+        RemoteDayEntryMergeEventRow(
+          id: '01J0000000000000000000000M',
+          profileId: 'unknown-profile',
+          localDate: '2026-01-15',
+          winningRowId: '01J0000000000000000000000W',
+          losingRowId: '01J0000000000000000000000L',
+          field: 'note',
+          losingValueText: 'resolution is a no-op for an unheld id',
+          createdAt: t0,
+          updatedAt: t0,
+        ),
+      ]);
+      expect(
+        await (db.select(db.dayEntryMergeEvents).get()),
+        isEmpty,
+        reason: 'a resolution never inserts (onlyExisting)',
+      );
+    });
+
     test('a resolved profile_tag_registry row takes the server copy clean '
         '(Issue #257)', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);

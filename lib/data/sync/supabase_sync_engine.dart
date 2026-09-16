@@ -575,68 +575,69 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return false;
   }
 
+  /// Issue #257: the eleventh SyncTable pushed the old chain of nine
+  /// identical `if (await _hasPushable(...)) return true;` blocks past
+  /// the CRAP gate's complexity ceiling (each block's `return true`
+  /// arm needed its own seeding test to cover), so the walk is now over
+  /// this list — one closure per table, the same growth rationale as
+  /// storage_local_writes' `_pushedTableTargets` and this file's own
+  /// `_startingCursors`: a lookup stays flat as tables are added.
+  late final List<Future<bool> Function()> _pushableDirtyReaders = [
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfiles,
+          id: (p) => p.id,
+          localRev: (p) => p.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyDayEntries,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyObservations,
+          id: (o) => o.id,
+          localRev: (o) => o.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfileModes,
+          id: (m) => m.profileId,
+          localRev: (m) => m.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyCycleOverrides,
+          id: (o) => o.id,
+          localRev: (o) => o.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyCareNotes,
+          id: (n) => n.id,
+          localRev: (n) => n.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyVisitPrepItems,
+          id: (i) => i.id,
+          localRev: (i) => i.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyDayEntryMergeEvents,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfileTagRegistry,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+  ];
+
+  /// Whether any dirty row across every pushed table is currently
+  /// pushable (not held out as rejected at its captured local_rev) —
+  /// the re-queue decision at the end of a cycle.
   Future<bool> _hasPushableDirty() async {
-    if (await _hasPushable(
-      readPage: _storage.readDirtyProfiles,
-      id: (p) => p.id,
-      localRev: (p) => p.localRev,
-    )) {
-      return true;
+    for (final reader in _pushableDirtyReaders) {
+      if (await reader()) return true;
     }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyDayEntries,
-      id: (e) => e.id,
-      localRev: (e) => e.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyObservations,
-      id: (o) => o.id,
-      localRev: (o) => o.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyProfileModes,
-      id: (m) => m.profileId,
-      localRev: (m) => m.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyCycleOverrides,
-      id: (o) => o.id,
-      localRev: (o) => o.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyCareNotes,
-      id: (n) => n.id,
-      localRev: (n) => n.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyVisitPrepItems,
-      id: (i) => i.id,
-      localRev: (i) => i.localRev,
-    )) {
-      return true;
-    }
-    if (await _hasPushable(
-      readPage: _storage.readDirtyDayEntryMergeEvents,
-      id: (e) => e.id,
-      localRev: (e) => e.localRev,
-    )) {
-      return true;
-    }
-    return _hasPushable(
-      readPage: _storage.readDirtyProfileTagRegistry,
-      id: (e) => e.id,
-      localRev: (e) => e.localRev,
-    );
+    return false;
   }
 
   // ------------------------------------------------------------------- loop
