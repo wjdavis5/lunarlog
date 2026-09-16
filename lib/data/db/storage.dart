@@ -69,6 +69,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
@@ -90,6 +91,7 @@ export '../sync/remote_rows.dart'
         RemoteObservationRow,
         RemoteProfileModeRow,
         RemoteProfileRow,
+        RemoteProfileTagRegistryRow,
         RemoteRow,
         RemoteVisitPrepItemRow,
         RetryableSyncApplyError,

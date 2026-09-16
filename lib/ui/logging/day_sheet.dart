@@ -63,6 +63,7 @@ import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
@@ -79,6 +80,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -93,6 +95,7 @@ import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/intensity_selector.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
+import 'package:lunarlog/ui/logging/widgets/custom_tag_manager_sheet.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
@@ -469,6 +472,36 @@ class _DaySheetState extends State<DaySheet> {
   /// toggle's state instead).
   ObservationsRepository? _observationsRepository;
 
+  /// Issue #257: the profile's custom-tag registry repository, resolved
+  /// exactly like [_observationsRepository] (nullable lookup — a bare test
+  /// harness with no provider resolves null and the whole custom-tags
+  /// surface stays hidden). Watched live so a co-guardian's registry write
+  /// (a tag created on another device) re-renders the picker mid-session.
+  TagRegistryRepository? _tagRegistry;
+  List<CustomTag> _registry = const [];
+  StreamSubscription<List<CustomTag>>? _registrySub;
+
+  /// Issue #257: codes the registry owns (live rows, retired included — a
+  /// retired tag stays a valid stored value), for [validateTagCodes]: a
+  /// code this profile's registry owns is as valid as a curated one.
+  Set<String> get _registryCodes => {
+        for (final tag in _registry) tag.code,
+      };
+
+  /// Issue #257: resolves a stored tag code for display — the taxonomy's
+  /// label first, then the registry entry's display name (a retired tag's
+  /// rows keep rendering by name), else the raw code (#237's
+  /// unknown-never-drop rule: a code not yet synced to this device's
+  /// registry copy renders as text, never dropped).
+  String _displayOf(String code) {
+    final curated = tagByCode(code);
+    if (curated != null) return curated.display;
+    for (final tag in _registry) {
+      if (tag.code == code) return tag.displayName;
+    }
+    return code;
+  }
+
   /// The mode's headings and surfacing order (Issue #131).
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -636,6 +669,24 @@ class _DaySheetState extends State<DaySheet> {
       context,
       listen: false,
     );
+    // Issue #257: same nullable-lookup rule; the registry watch is armed
+    // once, here, because the repository only becomes reachable once the
+    // sheet is in the tree. A null (no provider in scope) leaves the
+    // custom-tags surface entirely absent — the pre-#257 sheet.
+    if (_tagRegistry == null) {
+      final tagRegistry = Provider.of<TagRegistryRepository?>(
+        context,
+        listen: false,
+      );
+      if (tagRegistry != null) {
+        _tagRegistry = tagRegistry;
+        _registrySub = tagRegistry
+            .watchForProfile(widget.profileId)
+            .listen((tags) {
+          if (mounted) setState(() => _registry = tags);
+        });
+      }
+    }
   }
 
   @override
@@ -644,6 +695,8 @@ class _DaySheetState extends State<DaySheet> {
     _savedIndicatorTimer?.cancel();
     unawaited(_dateFormatSub?.cancel());
     _dateFormatSub = null;
+    unawaited(_registrySub?.cancel());
+    _registrySub = null;
     if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
     _noteController.dispose();
     _bbtController.dispose();
@@ -834,7 +887,11 @@ class _DaySheetState extends State<DaySheet> {
       // `_tags`, which may still hold a pre-existing code the running build
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
-      validateTagCodes(_sessionSelectedTags);
+      // Issue #257: the profile's registry codes join the valid set — a
+      // custom tag picked from the picker's custom-tags section is as
+      // valid as a curated one (retired codes included: a retired tag
+      // stays a valid stored value).
+      validateTagCodes(_sessionSelectedTags, registryCodes: _registryCodes);
       final mutations = await _computeObservationMutations(
         pending,
         observations,
@@ -1532,6 +1589,20 @@ class _DaySheetState extends State<DaySheet> {
     if (added) _recordTagRecentUse(code);
   }
 
+  /// Issue #257: opens the custom-tag manager sheet (create / rename /
+  /// retire) over the profile's registry. Cached repository (never a
+  /// fresh `Provider.of` — the sheet may be mid-dismissal), the exact
+  /// [_observationsRepository] caching rule.
+  Future<void> _manageCustomTags() async {
+    final repository = _tagRegistry;
+    if (repository == null) return;
+    await showCustomTagManagerSheet(
+      context,
+      repository: repository,
+      profileId: widget.profileId,
+    );
+  }
+
   /// Issue #234: optimistically moves [code] to the front of this
   /// profile's Recent row (immediate UI feedback via
   /// [withRecordedTagUse]), then persists the change through the
@@ -1835,6 +1906,22 @@ class _DaySheetState extends State<DaySheet> {
                             _painIntensityRow(l10n, theme, tag),
                         ]
                       : const [],
+                  // Issue #257: the profile's custom-tag registry — one
+                  // collapsible section after every curated category,
+                  // offering the LIVE, non-retired entries (retired tags
+                  // never render here; their stored codes render as inert
+                  // chips by display name instead). The manage affordance
+                  // is present whenever a registry repository is in scope,
+                  // so the first tag can be created from the sheet itself.
+                  customTags: [
+                    for (final tag in _registry)
+                      if (tag.offered) (code: tag.code, label: tag.displayName),
+                  ],
+                  customLabel: l10n.daySheetCustomTagsLabel,
+                  customManageTooltip: l10n.daySheetCustomTagsManageTooltip,
+                  noneCustomNote: l10n.daySheetCustomTagsNone,
+                  onManageCustomTags:
+                      _tagRegistry == null ? null : _manageCustomTags,
                 ),
                 // Issue #457: BBT/weight, standalone like the PMS toggle —
                 // neither is a `TagCategory` (they are numeric, not
@@ -1878,7 +1965,7 @@ class _DaySheetState extends State<DaySheet> {
                   textInputAction: TextInputAction.next,
                   onFieldSubmitted: (_) => _noteFocus.requestFocus(),
                 ),
-                if (_unrecognisedTags.isNotEmpty)
+                if (_inertTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
                 Padding(
                   padding: const EdgeInsets.only(top: LLSpace.space3),
@@ -2003,11 +2090,27 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
-  /// Inert, visible chips for [_unrecognisedTags] (#237): unlike the
-  /// taxonomy [FilterChip] grid above, these carry no `onSelected` — they
-  /// cannot be toggled, only shown — so they round-trip through `_tags`
-  /// (and therefore through autosave) unchanged rather than being silently
-  /// dropped or invisibly resubmitted as if user-validated.
+  /// Issue #257: the inert subset of [_unrecognisedTags] that actually
+  /// renders as inert chips — stored codes this build's taxonomy does not
+  /// know AND the registry does not offer. An offered registry code
+  /// renders as a selectable chip in the picker's custom-tags section; a
+  /// RETIRED registry code stays here (it has no picker chip — retirement
+  /// removed it) and renders by display name via [_displayOf], so its
+  /// stored rows keep rendering (#257's retire-not-delete rule).
+  List<String> get _inertTags => [
+        for (final code in _unrecognisedTags)
+          if (!_registry.any((tag) => tag.offered && tag.code == code)) code,
+      ];
+
+  /// Inert, visible chips for [_inertTags] (#237, extended by #257):
+  /// unlike the taxonomy [FilterChip] grid above, these carry no
+  /// `onSelected` — they cannot be toggled, only shown — so they
+  /// round-trip through `_tags` (and therefore through autosave)
+  /// unchanged rather than being silently dropped or invisibly
+  /// resubmitted as if user-validated. #257: a retired custom tag's chip
+  /// shows its display name ([_displayOf]); a wholly unknown code (never
+  /// in the taxonomy, not in — or not yet synced to — this device's
+  /// registry copy) shows its raw code, never drops (#237).
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
       padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),
@@ -2020,8 +2123,8 @@ class _DaySheetState extends State<DaySheet> {
       spacing: LLSpace.space2,
       runSpacing: LLSpace.space1,
       children: [
-        for (final code in _unrecognisedTags)
-          Chip(key: ValueKey('unrecognised-tag-$code'), label: Text(code)),
+        for (final code in _inertTags)
+          Chip(key: ValueKey('unrecognised-tag-$code'), label: Text(_displayOf(code))),
       ],
     ),
   ];
@@ -2151,7 +2254,10 @@ class _DaySheetState extends State<DaySheet> {
               runSpacing: LLSpace.space1,
               children: [
                 for (final code in existing.tags)
-                  Chip(label: Text(tagByCode(code)?.display ?? code)),
+                  // Issue #257: registry-aware resolution — a custom tag's
+                  // display name where available (retired tags included),
+                  // the raw code otherwise (never dropped, #237).
+                  Chip(key: ValueKey('read-only-tag-$code'), label: Text(_displayOf(code))),
               ],
             ),
           ],

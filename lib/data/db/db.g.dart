@@ -8022,6 +8022,850 @@ class DayEntryMergeEventsCompanion
   }
 }
 
+class $ProfileTagRegistryTable extends ProfileTagRegistry
+    with TableInfo<$ProfileTagRegistryTable, ProfileTagRegistryEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProfileTagRegistryTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'code',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _displayNameMeta = const VerificationMeta(
+    'displayName',
+  );
+  @override
+  late final GeneratedColumn<String> displayName = GeneratedColumn<String>(
+    'display_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryMeta = const VerificationMeta(
+    'category',
+  );
+  @override
+  late final GeneratedColumn<String> category = GeneratedColumn<String>(
+    'category',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _intensityEnabledMeta = const VerificationMeta(
+    'intensityEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> intensityEnabled = GeneratedColumn<bool>(
+    'intensity_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("intensity_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _hiddenAtMeta = const VerificationMeta(
+    'hiddenAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> hiddenAt = GeneratedColumn<DateTime>(
+    'hidden_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    code,
+    displayName,
+    category,
+    intensityEnabled,
+    hiddenAt,
+    sortOrder,
+    createdBy,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'profile_tag_registry';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProfileTagRegistryEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['code']!, _codeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('display_name')) {
+      context.handle(
+        _displayNameMeta,
+        displayName.isAcceptableOrUnknown(
+          data['display_name']!,
+          _displayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_displayNameMeta);
+    }
+    if (data.containsKey('category')) {
+      context.handle(
+        _categoryMeta,
+        category.isAcceptableOrUnknown(data['category']!, _categoryMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryMeta);
+    }
+    if (data.containsKey('intensity_enabled')) {
+      context.handle(
+        _intensityEnabledMeta,
+        intensityEnabled.isAcceptableOrUnknown(
+          data['intensity_enabled']!,
+          _intensityEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('hidden_at')) {
+      context.handle(
+        _hiddenAtMeta,
+        hiddenAt.isAcceptableOrUnknown(data['hidden_at']!, _hiddenAtMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProfileTagRegistryEntry map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProfileTagRegistryEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}code'],
+      )!,
+      displayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}display_name'],
+      )!,
+      category: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category'],
+      )!,
+      intensityEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}intensity_enabled'],
+      )!,
+      hiddenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}hidden_at'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+    );
+  }
+
+  @override
+  $ProfileTagRegistryTable createAlias(String alias) {
+    return $ProfileTagRegistryTable(attachedDatabase, alias);
+  }
+}
+
+class ProfileTagRegistryEntry extends DataClass
+    implements Insertable<ProfileTagRegistryEntry> {
+  /// Client-generated ULID (stable across devices/sync).
+  final String id;
+  final String profileId;
+
+  /// The stable snake_case identifier persisted on day entries; immutable
+  /// once created (a rename rewrites displayName only). Bounded to
+  /// `kMaxTagLength` (64) by the storage layer, mirroring the server's
+  /// CHECK. Survives a tombstone.
+  final String code;
+
+  /// The user's own label (bounded to `kMaxCustomTagLabelLength`, 40).
+  /// Empty on a tombstone.
+  final String displayName;
+
+  /// Free text, client-owned ('custom' for in-app creations). Empty on a
+  /// tombstone.
+  final String category;
+
+  /// Reserved for per-tag intensity affordances; false today.
+  final bool intensityEnabled;
+
+  /// RETIREMENT, not deletion: non-null removes the code from the
+  /// day-sheet picker while stored rows referencing it keep rendering.
+  /// Null on a tombstone.
+  final DateTime? hiddenAt;
+  final int? sortOrder;
+
+  /// Server-stamped from the caller on INSERT; never pushed.
+  final String? createdBy;
+
+  /// Server-stamped; never pushed (rides the row for display only).
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  /// See [Profiles.dirty].
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+  const ProfileTagRegistryEntry({
+    required this.id,
+    required this.profileId,
+    required this.code,
+    required this.displayName,
+    required this.category,
+    required this.intensityEnabled,
+    this.hiddenAt,
+    this.sortOrder,
+    this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.dirty,
+    required this.localRev,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['code'] = Variable<String>(code);
+    map['display_name'] = Variable<String>(displayName);
+    map['category'] = Variable<String>(category);
+    map['intensity_enabled'] = Variable<bool>(intensityEnabled);
+    if (!nullToAbsent || hiddenAt != null) {
+      map['hidden_at'] = Variable<DateTime>(hiddenAt);
+    }
+    if (!nullToAbsent || sortOrder != null) {
+      map['sort_order'] = Variable<int>(sortOrder);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    return map;
+  }
+
+  ProfileTagRegistryCompanion toCompanion(bool nullToAbsent) {
+    return ProfileTagRegistryCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      code: Value(code),
+      displayName: Value(displayName),
+      category: Value(category),
+      intensityEnabled: Value(intensityEnabled),
+      hiddenAt: hiddenAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(hiddenAt),
+      sortOrder: sortOrder == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sortOrder),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+    );
+  }
+
+  factory ProfileTagRegistryEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProfileTagRegistryEntry(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      code: serializer.fromJson<String>(json['code']),
+      displayName: serializer.fromJson<String>(json['displayName']),
+      category: serializer.fromJson<String>(json['category']),
+      intensityEnabled: serializer.fromJson<bool>(json['intensityEnabled']),
+      hiddenAt: serializer.fromJson<DateTime?>(json['hiddenAt']),
+      sortOrder: serializer.fromJson<int?>(json['sortOrder']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'code': serializer.toJson<String>(code),
+      'displayName': serializer.toJson<String>(displayName),
+      'category': serializer.toJson<String>(category),
+      'intensityEnabled': serializer.toJson<bool>(intensityEnabled),
+      'hiddenAt': serializer.toJson<DateTime?>(hiddenAt),
+      'sortOrder': serializer.toJson<int?>(sortOrder),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+    };
+  }
+
+  ProfileTagRegistryEntry copyWith({
+    String? id,
+    String? profileId,
+    String? code,
+    String? displayName,
+    String? category,
+    bool? intensityEnabled,
+    Value<DateTime?> hiddenAt = const Value.absent(),
+    Value<int?> sortOrder = const Value.absent(),
+    Value<String?> createdBy = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? dirty,
+    int? localRev,
+  }) => ProfileTagRegistryEntry(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    code: code ?? this.code,
+    displayName: displayName ?? this.displayName,
+    category: category ?? this.category,
+    intensityEnabled: intensityEnabled ?? this.intensityEnabled,
+    hiddenAt: hiddenAt.present ? hiddenAt.value : this.hiddenAt,
+    sortOrder: sortOrder.present ? sortOrder.value : this.sortOrder,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+  );
+  ProfileTagRegistryEntry copyWithCompanion(ProfileTagRegistryCompanion data) {
+    return ProfileTagRegistryEntry(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      code: data.code.present ? data.code.value : this.code,
+      displayName: data.displayName.present
+          ? data.displayName.value
+          : this.displayName,
+      category: data.category.present ? data.category.value : this.category,
+      intensityEnabled: data.intensityEnabled.present
+          ? data.intensityEnabled.value
+          : this.intensityEnabled,
+      hiddenAt: data.hiddenAt.present ? data.hiddenAt.value : this.hiddenAt,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileTagRegistryEntry(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('category: $category, ')
+          ..write('intensityEnabled: $intensityEnabled, ')
+          ..write('hiddenAt: $hiddenAt, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    code,
+    displayName,
+    category,
+    intensityEnabled,
+    hiddenAt,
+    sortOrder,
+    createdBy,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProfileTagRegistryEntry &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.code == this.code &&
+          other.displayName == this.displayName &&
+          other.category == this.category &&
+          other.intensityEnabled == this.intensityEnabled &&
+          other.hiddenAt == this.hiddenAt &&
+          other.sortOrder == this.sortOrder &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev);
+}
+
+class ProfileTagRegistryCompanion
+    extends UpdateCompanion<ProfileTagRegistryEntry> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> code;
+  final Value<String> displayName;
+  final Value<String> category;
+  final Value<bool> intensityEnabled;
+  final Value<DateTime?> hiddenAt;
+  final Value<int?> sortOrder;
+  final Value<String?> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<int> rowid;
+  const ProfileTagRegistryCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.code = const Value.absent(),
+    this.displayName = const Value.absent(),
+    this.category = const Value.absent(),
+    this.intensityEnabled = const Value.absent(),
+    this.hiddenAt = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProfileTagRegistryCompanion.insert({
+    required String id,
+    required String profileId,
+    required String code,
+    required String displayName,
+    required String category,
+    this.intensityEnabled = const Value.absent(),
+    this.hiddenAt = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       code = Value(code),
+       displayName = Value(displayName),
+       category = Value(category),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ProfileTagRegistryEntry> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? code,
+    Expression<String>? displayName,
+    Expression<String>? category,
+    Expression<bool>? intensityEnabled,
+    Expression<DateTime>? hiddenAt,
+    Expression<int>? sortOrder,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (code != null) 'code': code,
+      if (displayName != null) 'display_name': displayName,
+      if (category != null) 'category': category,
+      if (intensityEnabled != null) 'intensity_enabled': intensityEnabled,
+      if (hiddenAt != null) 'hidden_at': hiddenAt,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProfileTagRegistryCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? code,
+    Value<String>? displayName,
+    Value<String>? category,
+    Value<bool>? intensityEnabled,
+    Value<DateTime?>? hiddenAt,
+    Value<int?>? sortOrder,
+    Value<String?>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<int>? rowid,
+  }) {
+    return ProfileTagRegistryCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      code: code ?? this.code,
+      displayName: displayName ?? this.displayName,
+      category: category ?? this.category,
+      intensityEnabled: intensityEnabled ?? this.intensityEnabled,
+      hiddenAt: hiddenAt ?? this.hiddenAt,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (displayName.present) {
+      map['display_name'] = Variable<String>(displayName.value);
+    }
+    if (category.present) {
+      map['category'] = Variable<String>(category.value);
+    }
+    if (intensityEnabled.present) {
+      map['intensity_enabled'] = Variable<bool>(intensityEnabled.value);
+    }
+    if (hiddenAt.present) {
+      map['hidden_at'] = Variable<DateTime>(hiddenAt.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileTagRegistryCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('code: $code, ')
+          ..write('displayName: $displayName, ')
+          ..write('category: $category, ')
+          ..write('intensityEnabled: $intensityEnabled, ')
+          ..write('hiddenAt: $hiddenAt, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AppSettingsTable extends AppSettings
     with TableInfo<$AppSettingsTable, AppSetting> {
   @override
@@ -8437,6 +9281,18 @@ class $SyncStateTable extends SyncState
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       );
+  static const VerificationMeta _cursorProfileTagRegistryMeta =
+      const VerificationMeta('cursorProfileTagRegistry');
+  @override
+  late final GeneratedColumn<int> cursorProfileTagRegistry =
+      GeneratedColumn<int>(
+        'cursor_profile_tag_registry',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -8496,6 +9352,7 @@ class $SyncStateTable extends SyncState
     cursorProfileGuardians,
     cursorDeletedProfiles,
     cursorDayEntryMergeEvents,
+    cursorProfileTagRegistry,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -8621,6 +9478,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_profile_tag_registry')) {
+      context.handle(
+        _cursorProfileTagRegistryMeta,
+        cursorProfileTagRegistry.isAcceptableOrUnknown(
+          data['cursor_profile_tag_registry']!,
+          _cursorProfileTagRegistryMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -8715,6 +9581,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_day_entry_merge_events'],
       )!,
+      cursorProfileTagRegistry: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_profile_tag_registry'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -8797,6 +9667,10 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// Issue #130: the `day_entry_merge_events` pull cursor, same shape as
   /// [cursorDayEntries].
   final int cursorDayEntryMergeEvents;
+
+  /// Issue #257: the `profile_tag_registry` pull cursor, same shape as
+  /// [cursorDayEntries].
+  final int cursorProfileTagRegistry;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -8820,6 +9694,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorProfileGuardians,
     required this.cursorDeletedProfiles,
     required this.cursorDayEntryMergeEvents,
+    required this.cursorProfileTagRegistry,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -8844,6 +9719,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_deleted_profiles'] = Variable<int>(cursorDeletedProfiles);
     map['cursor_day_entry_merge_events'] = Variable<int>(
       cursorDayEntryMergeEvents,
+    );
+    map['cursor_profile_tag_registry'] = Variable<int>(
+      cursorProfileTagRegistry,
     );
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
@@ -8877,6 +9755,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileGuardians: Value(cursorProfileGuardians),
       cursorDeletedProfiles: Value(cursorDeletedProfiles),
       cursorDayEntryMergeEvents: Value(cursorDayEntryMergeEvents),
+      cursorProfileTagRegistry: Value(cursorProfileTagRegistry),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -8921,6 +9800,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntryMergeEvents: serializer.fromJson<int>(
         json['cursorDayEntryMergeEvents'],
       ),
+      cursorProfileTagRegistry: serializer.fromJson<int>(
+        json['cursorProfileTagRegistry'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -8948,6 +9830,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorDayEntryMergeEvents': serializer.toJson<int>(
         cursorDayEntryMergeEvents,
       ),
+      'cursorProfileTagRegistry': serializer.toJson<int>(
+        cursorProfileTagRegistry,
+      ),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -8969,6 +9854,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorProfileGuardians,
     int? cursorDeletedProfiles,
     int? cursorDayEntryMergeEvents,
+    int? cursorProfileTagRegistry,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -8989,6 +9875,8 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorDeletedProfiles: cursorDeletedProfiles ?? this.cursorDeletedProfiles,
     cursorDayEntryMergeEvents:
         cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
+    cursorProfileTagRegistry:
+        cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -9035,6 +9923,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntryMergeEvents: data.cursorDayEntryMergeEvents.present
           ? data.cursorDayEntryMergeEvents.value
           : this.cursorDayEntryMergeEvents,
+      cursorProfileTagRegistry: data.cursorProfileTagRegistry.present
+          ? data.cursorProfileTagRegistry.value
+          : this.cursorProfileTagRegistry,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -9064,6 +9955,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
+          ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -9087,6 +9979,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorProfileGuardians,
     cursorDeletedProfiles,
     cursorDayEntryMergeEvents,
+    cursorProfileTagRegistry,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -9109,6 +10002,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorProfileGuardians == this.cursorProfileGuardians &&
           other.cursorDeletedProfiles == this.cursorDeletedProfiles &&
           other.cursorDayEntryMergeEvents == this.cursorDayEntryMergeEvents &&
+          other.cursorProfileTagRegistry == this.cursorProfileTagRegistry &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -9129,6 +10023,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorProfileGuardians;
   final Value<int> cursorDeletedProfiles;
   final Value<int> cursorDayEntryMergeEvents;
+  final Value<int> cursorProfileTagRegistry;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -9147,6 +10042,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorProfileGuardians = const Value.absent(),
     this.cursorDeletedProfiles = const Value.absent(),
     this.cursorDayEntryMergeEvents = const Value.absent(),
+    this.cursorProfileTagRegistry = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -9166,6 +10062,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorProfileGuardians = const Value.absent(),
     this.cursorDeletedProfiles = const Value.absent(),
     this.cursorDayEntryMergeEvents = const Value.absent(),
+    this.cursorProfileTagRegistry = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -9185,6 +10082,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorProfileGuardians,
     Expression<int>? cursorDeletedProfiles,
     Expression<int>? cursorDayEntryMergeEvents,
+    Expression<int>? cursorProfileTagRegistry,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -9210,6 +10108,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         'cursor_deleted_profiles': cursorDeletedProfiles,
       if (cursorDayEntryMergeEvents != null)
         'cursor_day_entry_merge_events': cursorDayEntryMergeEvents,
+      if (cursorProfileTagRegistry != null)
+        'cursor_profile_tag_registry': cursorProfileTagRegistry,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -9232,6 +10132,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorProfileGuardians,
     Value<int>? cursorDeletedProfiles,
     Value<int>? cursorDayEntryMergeEvents,
+    Value<int>? cursorProfileTagRegistry,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -9254,6 +10155,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           cursorDeletedProfiles ?? this.cursorDeletedProfiles,
       cursorDayEntryMergeEvents:
           cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
+      cursorProfileTagRegistry:
+          cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -9311,6 +10214,11 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorDayEntryMergeEvents.value,
       );
     }
+    if (cursorProfileTagRegistry.present) {
+      map['cursor_profile_tag_registry'] = Variable<int>(
+        cursorProfileTagRegistry.value,
+      );
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -9342,6 +10250,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorProfileGuardians: $cursorProfileGuardians, ')
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
+          ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -9651,6 +10560,8 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $VisitPrepItemsTable visitPrepItems = $VisitPrepItemsTable(this);
   late final $DayEntryMergeEventsTable dayEntryMergeEvents =
       $DayEntryMergeEventsTable(this);
+  late final $ProfileTagRegistryTable profileTagRegistry =
+      $ProfileTagRegistryTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   late final $HealthSyncStateTable healthSyncState = $HealthSyncStateTable(
@@ -9670,6 +10581,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     careNotes,
     visitPrepItems,
     dayEntryMergeEvents,
+    profileTagRegistry,
     appSettings,
     syncState,
     healthSyncState,
@@ -9887,6 +10799,30 @@ final class $$ProfilesTableReferences
 
     final cache = $_typedResult.readTableOrNull(
       _dayEntryMergeEventsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<
+    $ProfileTagRegistryTable,
+    List<ProfileTagRegistryEntry>
+  >
+  _profileTagRegistryRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.profileTagRegistry,
+        aliasName: 'profiles__id__profile_tag_registry__profile_id',
+      );
+
+  $$ProfileTagRegistryTableProcessedTableManager get profileTagRegistryRefs {
+    final manager = $$ProfileTagRegistryTableTableManager(
+      $_db,
+      $_db.profileTagRegistry,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _profileTagRegistryRefsTable($_db),
     );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
@@ -10209,6 +11145,31 @@ class $$ProfilesTableFilterComposer
           }) => $$DayEntryMergeEventsTableFilterComposer(
             $db: $db,
             $table: $db.dayEntryMergeEvents,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> profileTagRegistryRefs(
+    Expression<bool> Function($$ProfileTagRegistryTableFilterComposer f) f,
+  ) {
+    final $$ProfileTagRegistryTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.profileTagRegistry,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfileTagRegistryTableFilterComposer(
+            $db: $db,
+            $table: $db.profileTagRegistry,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -10646,6 +11607,32 @@ class $$ProfilesTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> profileTagRegistryRefs<T extends Object>(
+    Expression<T> Function($$ProfileTagRegistryTableAnnotationComposer a) f,
+  ) {
+    final $$ProfileTagRegistryTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.profileTagRegistry,
+          getReferencedColumn: (t) => t.profileId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$ProfileTagRegistryTableAnnotationComposer(
+                $db: $db,
+                $table: $db.profileTagRegistry,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -10670,6 +11657,7 @@ class $$ProfilesTableTableManager
             bool careNotesRefs,
             bool visitPrepItemsRefs,
             bool dayEntryMergeEventsRefs,
+            bool profileTagRegistryRefs,
           })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
@@ -10805,6 +11793,7 @@ class $$ProfilesTableTableManager
                 careNotesRefs = false,
                 visitPrepItemsRefs = false,
                 dayEntryMergeEventsRefs = false,
+                profileTagRegistryRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -10817,6 +11806,7 @@ class $$ProfilesTableTableManager
                     if (careNotesRefs) db.careNotes,
                     if (visitPrepItemsRefs) db.visitPrepItems,
                     if (dayEntryMergeEventsRefs) db.dayEntryMergeEvents,
+                    if (profileTagRegistryRefs) db.profileTagRegistry,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -10989,6 +11979,27 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (profileTagRegistryRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          ProfileTagRegistryEntry
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._profileTagRegistryRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).profileTagRegistryRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -11018,6 +12029,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool careNotesRefs,
         bool visitPrepItemsRefs,
         bool dayEntryMergeEventsRefs,
+        bool profileTagRegistryRefs,
       })
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
@@ -15089,6 +16101,513 @@ typedef $$DayEntryMergeEventsTableProcessedTableManager =
       DayEntryMergeEventData,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$ProfileTagRegistryTableCreateCompanionBuilder =
+    ProfileTagRegistryCompanion Function({
+      required String id,
+      required String profileId,
+      required String code,
+      required String displayName,
+      required String category,
+      Value<bool> intensityEnabled,
+      Value<DateTime?> hiddenAt,
+      Value<int?> sortOrder,
+      Value<String?> createdBy,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+typedef $$ProfileTagRegistryTableUpdateCompanionBuilder =
+    ProfileTagRegistryCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> code,
+      Value<String> displayName,
+      Value<String> category,
+      Value<bool> intensityEnabled,
+      Value<DateTime?> hiddenAt,
+      Value<int?> sortOrder,
+      Value<String?> createdBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<int> rowid,
+    });
+
+final class $$ProfileTagRegistryTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $ProfileTagRegistryTable,
+          ProfileTagRegistryEntry
+        > {
+  $$ProfileTagRegistryTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('profile_tag_registry__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ProfileTagRegistryTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $ProfileTagRegistryTable> {
+  $$ProfileTagRegistryTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get intensityEnabled => $composableBuilder(
+    column: $table.intensityEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get hiddenAt => $composableBuilder(
+    column: $table.hiddenAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileTagRegistryTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $ProfileTagRegistryTable> {
+  $$ProfileTagRegistryTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get category => $composableBuilder(
+    column: $table.category,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get intensityEnabled => $composableBuilder(
+    column: $table.intensityEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get hiddenAt => $composableBuilder(
+    column: $table.hiddenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileTagRegistryTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $ProfileTagRegistryTable> {
+  $$ProfileTagRegistryTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get displayName => $composableBuilder(
+    column: $table.displayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get category =>
+      $composableBuilder(column: $table.category, builder: (column) => column);
+
+  GeneratedColumn<bool> get intensityEnabled => $composableBuilder(
+    column: $table.intensityEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get hiddenAt =>
+      $composableBuilder(column: $table.hiddenAt, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ProfileTagRegistryTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $ProfileTagRegistryTable,
+          ProfileTagRegistryEntry,
+          $$ProfileTagRegistryTableFilterComposer,
+          $$ProfileTagRegistryTableOrderingComposer,
+          $$ProfileTagRegistryTableAnnotationComposer,
+          $$ProfileTagRegistryTableCreateCompanionBuilder,
+          $$ProfileTagRegistryTableUpdateCompanionBuilder,
+          (ProfileTagRegistryEntry, $$ProfileTagRegistryTableReferences),
+          ProfileTagRegistryEntry,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$ProfileTagRegistryTableTableManager(
+    _$LunarLogDatabase db,
+    $ProfileTagRegistryTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProfileTagRegistryTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProfileTagRegistryTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProfileTagRegistryTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> code = const Value.absent(),
+                Value<String> displayName = const Value.absent(),
+                Value<String> category = const Value.absent(),
+                Value<bool> intensityEnabled = const Value.absent(),
+                Value<DateTime?> hiddenAt = const Value.absent(),
+                Value<int?> sortOrder = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileTagRegistryCompanion(
+                id: id,
+                profileId: profileId,
+                code: code,
+                displayName: displayName,
+                category: category,
+                intensityEnabled: intensityEnabled,
+                hiddenAt: hiddenAt,
+                sortOrder: sortOrder,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String code,
+                required String displayName,
+                required String category,
+                Value<bool> intensityEnabled = const Value.absent(),
+                Value<DateTime?> hiddenAt = const Value.absent(),
+                Value<int?> sortOrder = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileTagRegistryCompanion.insert(
+                id: id,
+                profileId: profileId,
+                code: code,
+                displayName: displayName,
+                category: category,
+                intensityEnabled: intensityEnabled,
+                hiddenAt: hiddenAt,
+                sortOrder: sortOrder,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $ProfileTagRegistryTable,
+                    ProfileTagRegistryEntry
+                  >(table),
+                  $$ProfileTagRegistryTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$ProfileTagRegistryTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$ProfileTagRegistryTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ProfileTagRegistryTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $ProfileTagRegistryTable,
+      ProfileTagRegistryEntry,
+      $$ProfileTagRegistryTableFilterComposer,
+      $$ProfileTagRegistryTableOrderingComposer,
+      $$ProfileTagRegistryTableAnnotationComposer,
+      $$ProfileTagRegistryTableCreateCompanionBuilder,
+      $$ProfileTagRegistryTableUpdateCompanionBuilder,
+      (ProfileTagRegistryEntry, $$ProfileTagRegistryTableReferences),
+      ProfileTagRegistryEntry,
+      PrefetchHooks Function({bool profileId})
+    >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String key,
@@ -15274,6 +16793,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorProfileGuardians,
   Value<int> cursorDeletedProfiles,
   Value<int> cursorDayEntryMergeEvents,
+  Value<int> cursorProfileTagRegistry,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -15293,6 +16813,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorProfileGuardians,
   Value<int> cursorDeletedProfiles,
   Value<int> cursorDayEntryMergeEvents,
+  Value<int> cursorProfileTagRegistry,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -15370,6 +16891,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorDayEntryMergeEvents => $composableBuilder(
     column: $table.cursorDayEntryMergeEvents,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorProfileTagRegistry => $composableBuilder(
+    column: $table.cursorProfileTagRegistry,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15468,6 +16994,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorProfileTagRegistry => $composableBuilder(
+    column: $table.cursorProfileTagRegistry,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -15559,6 +17090,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorProfileTagRegistry => $composableBuilder(
+    column: $table.cursorProfileTagRegistry,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -15622,6 +17158,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
+                Value<int> cursorProfileTagRegistry = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -15640,6 +17177,7 @@ class $$SyncStateTableTableManager
                 cursorProfileGuardians: cursorProfileGuardians,
                 cursorDeletedProfiles: cursorDeletedProfiles,
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
+                cursorProfileTagRegistry: cursorProfileTagRegistry,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -15660,6 +17198,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorProfileGuardians = const Value.absent(),
                 Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
+                Value<int> cursorProfileTagRegistry = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -15678,6 +17217,7 @@ class $$SyncStateTableTableManager
                 cursorProfileGuardians: cursorProfileGuardians,
                 cursorDeletedProfiles: cursorDeletedProfiles,
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
+                cursorProfileTagRegistry: cursorProfileTagRegistry,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -15922,6 +17462,8 @@ class $LunarLogDatabaseManager {
       $$VisitPrepItemsTableTableManager(_db, _db.visitPrepItems);
   $$DayEntryMergeEventsTableTableManager get dayEntryMergeEvents =>
       $$DayEntryMergeEventsTableTableManager(_db, _db.dayEntryMergeEvents);
+  $$ProfileTagRegistryTableTableManager get profileTagRegistry =>
+      $$ProfileTagRegistryTableTableManager(_db, _db.profileTagRegistry);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

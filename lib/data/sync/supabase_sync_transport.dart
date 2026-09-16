@@ -61,6 +61,7 @@ class SupabaseSyncTransport implements SyncTransport {
         'p_care_notes': batch.careNotes,
         'p_visit_prep_items': batch.visitPrepItems,
         'p_merge_events': batch.mergeEvents,
+        'p_tag_registry': batch.tagRegistry,
       });
     } catch (error) {
       throw mapSyncTransportError(error);

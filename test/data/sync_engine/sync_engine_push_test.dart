@@ -405,6 +405,31 @@ void main() {
           reason: 'e1 was edited locally and has a newer localRev');
     });
 
+    test('Issue #257: a dirty registry row alone keeps a cycle queued', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // Everything except the registry row is clean: the profile is
+      // pushed, no entries exist — so _hasPushableDirty's walk reaches
+      // the registry read (the last one) and finds the row pushable.
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+      await rig.storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'only_dirty_row',
+        displayName: 'Only dirty row',
+      );
+
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isTrue,
+          reason: 'a dirty custom-tag registry row is pushable content');
+    });
+
     test('Issue #177: a _SyncPaused between batches (the device locks '
         'mid-import) leaves the not-yet-sent batches dirty; the next cycle '
         'resumes and pushes only what is left, never re-pushing an '

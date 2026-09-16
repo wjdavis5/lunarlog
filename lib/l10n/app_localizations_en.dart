@@ -374,6 +374,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetTagRecentLabel => 'Recent';
 
   @override
+  String get daySheetCustomTagsLabel => 'Custom tags';
+
+  @override
+  String get daySheetCustomTagsManageTooltip => 'Manage custom tags';
+
+  @override
+  String get daySheetCustomTagsNone => 'None yet — tap manage to add one';
+
+  @override
+  String get customTagsSheetTitle => 'Custom tags';
+
+  @override
+  String get customTagsEmptyList => 'No custom tags yet — add one below.';
+
+  @override
+  String get customTagsAddHint => 'New tag name';
+
+  @override
+  String get customTagsAddTooltip => 'Add tag';
+
+  @override
+  String get customTagsErrorEmpty => 'Enter a name.';
+
+  @override
+  String get customTagsErrorTooLong => 'Names are at most 40 characters.';
+
+  @override
+  String get customTagsErrorNoLetters => 'Include a letter or digit.';
+
+  @override
+  String get customTagsErrorDuplicate => 'You already have a tag like this.';
+
+  @override
+  String get customTagsErrorTaxonomy => 'That name is already a built-in tag.';
+
+  @override
+  String customTagsErrorCap(int max) {
+    return 'This profile already has $max custom tags — retire one first.';
+  }
+
+  @override
+  String get customTagsRenameTooltip => 'Rename';
+
+  @override
+  String get customTagsRenameTitle => 'Rename tag';
+
+  @override
+  String get customTagsRetireTooltip => 'Retire';
+
+  @override
+  String get customTagsRetiredLabel => 'Retired';
+
+  @override
+  String customTagsRetireTitle(String label) {
+    return 'Retire “$label”?';
+  }
+
+  @override
+  String get customTagsRetireBody =>
+      'It leaves the tag picker. Days that already use it keep showing it.';
+
+  @override
+  String get customTagsRetireConfirm => 'Retire';
+
+  @override
   String get daySheetNoEntry => 'No entry for this day.';
 
   @override

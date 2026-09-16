@@ -112,6 +112,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.dayEntryMergeEvents => const [],
+            SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
           };
       SyncPhase? phaseDuringPull;

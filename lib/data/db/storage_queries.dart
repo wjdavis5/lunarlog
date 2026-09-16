@@ -19,6 +19,7 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorProfileGuardians: 0,
   cursorDeletedProfiles: 0,
   cursorDayEntryMergeEvents: 0,
+  cursorProfileTagRegistry: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
@@ -552,7 +553,60 @@ mixin LunarLogStorageQueries {
       (db.select(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
-  /// Number of rows, live and tombstoned, in every synced table that still
+  /// Registry entries with unpushed local changes, ordered by id (Issue
+  /// #257). Same keyset-paging contract as [readDirtyProfiles].
+  Future<List<ProfileTagRegistryEntry>> readDirtyProfileTagRegistry(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// The profile's LIVE registry entries (tombstoned rows excluded),
+  /// retired entries included — retirement is a picker concern, not a read
+  /// filter (a retired tag still resolves stored codes to display names).
+  /// Ordered by code for a stable list (Issue #257).
+  Future<List<ProfileTagRegistryEntry>> getProfileTagRegistry(
+      String profileId) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.profileId.equals(profileId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.code)]);
+    return query.get();
+  }
+
+  /// Stream variant of [getProfileTagRegistry] for reactive UI (Issue
+  /// #257) — the day sheet re-renders when a co-guardian's registry write
+  /// syncs in.
+  Stream<List<ProfileTagRegistryEntry>> watchProfileTagRegistry(
+      String profileId) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.profileId.equals(profileId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.code)]);
+    return query.watch();
+  }
+
+  /// Registry entry by id or null (Issue #257) — the live fallback behind
+  /// `storage_remote_apply.dart`'s cached own-row lookup (Issue #42's
+  /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
+  Future<ProfileTagRegistryEntry?> _profileTagRegistryOrNull(String id) =>
+      (db.select(db.profileTagRegistry)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// Registry entry by id, tombstones included (Issue #257) — the
+  /// repository's rename path reads the row this way to learn its
+  /// profileId and immutable code without a second query surface.
+  Future<ProfileTagRegistryEntry?> getProfileTagRegistryEntriesById(
+          String id) =>
+      (db.select(db.profileTagRegistry)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();  /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
     final p = await _count(db.profiles, db.profiles.id,
@@ -571,7 +625,9 @@ mixin LunarLogStorageQueries {
         db.visitPrepItems.dirty.equals(true));
     final me = await _count(db.dayEntryMergeEvents, db.dayEntryMergeEvents.id,
         db.dayEntryMergeEvents.dirty.equals(true));
-    return p + d + o + pm + co + cn + vp + me;
+    final tr = await _count(db.profileTagRegistry, db.profileTagRegistry.id,
+        db.profileTagRegistry.dirty.equals(true));
+    return p + d + o + pm + co + cn + vp + me + tr;
   }
 
   /// Row counts, live and tombstoned, of the two synced tables the upload-

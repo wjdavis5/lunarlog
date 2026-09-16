@@ -163,6 +163,7 @@ void main() {
         'p_care_notes': [],
         'p_visit_prep_items': [],
         'p_merge_events': [],
+        'p_tag_registry': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -234,7 +235,7 @@ void main() {
           {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
             'p_profile_modes': [], 'p_cycle_overrides': [],
             'p_care_notes': [], 'p_visit_prep_items': [],
-            'p_merge_events': []});
+            'p_merge_events': [], 'p_tag_registry': []});
     });
 
     test('sends at most 500 rows per array', () async {
@@ -254,6 +255,16 @@ void main() {
       final tooMany = List.generate(501, (i) => <String, Object?>{'id': '$i'});
       expect(() => PushBatch(profiles: tooMany), throwsArgumentError);
       expect(() => PushBatch(dayEntries: tooMany), throwsArgumentError);
+      // Issue #257: every array carries the same per-array ceiling — the
+      // constructor's cap branches all stay covered (and the CRAP gate
+      // green) as the batch grows with each synced table.
+      expect(() => PushBatch(observations: tooMany), throwsArgumentError);
+      expect(() => PushBatch(profileModes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(cycleOverrides: tooMany), throwsArgumentError);
+      expect(() => PushBatch(careNotes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(visitPrepItems: tooMany), throwsArgumentError);
+      expect(() => PushBatch(mergeEvents: tooMany), throwsArgumentError);
+      expect(() => PushBatch(tagRegistry: tooMany), throwsArgumentError);
       expect(PushBatch.maxRows, 500);
     });
 

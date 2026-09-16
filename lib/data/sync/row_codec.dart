@@ -145,7 +145,8 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 /// Remote table name for [table] (`profiles` / `day_entries` /
 /// `profile_guardians` / `observations` / `profile_modes` /
 /// `cycle_overrides` / `care_notes` / `visit_prep_items` /
-/// `day_entry_merge_events` / `deleted_profiles`).
+/// `day_entry_merge_events` / `profile_tag_registry` /
+/// `deleted_profiles`).
 String syncTableName(SyncTable table) => _syncTableNames[table]!;
 
 /// The wire name per [SyncTable] — a const map rather than an exhaustive
@@ -163,6 +164,7 @@ const Map<SyncTable, String> _syncTableNames = {
   SyncTable.careNotes: 'care_notes',
   SyncTable.visitPrepItems: 'visit_prep_items',
   SyncTable.dayEntryMergeEvents: 'day_entry_merge_events',
+  SyncTable.profileTagRegistry: 'profile_tag_registry',
   SyncTable.deletedProfiles: 'deleted_profiles',
 };
 
@@ -434,6 +436,35 @@ JsonRow encodeDayEntryMergeEvent(DayEntryMergeEventData row) {
     'losing_author_user_id': row.losingAuthorUserId,
     'winning_author_user_id': row.winningAuthorUserId,
     'updated_at': encodeTimestamp(row.updatedAt),
+  };
+}
+
+/// The `p_tag_registry` element for [row] (Issue #257). `created_by` and
+/// `created_at` are deliberately NOT emitted — the server stamps both
+/// (created_by from the caller), and a row carrying either key would be
+/// rejected as an unknown key. Emits exactly the keys `sync_push`'s
+/// c_tag_registry_keys allowlist accepts.
+JsonRow encodeProfileTagRegistryEntry(ProfileTagRegistryEntry row) {
+  const table = SyncTable.profileTagRegistry;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'code': row.code,
+    'display_name': row.displayName,
+    'category': row.category,
+    'intensity_enabled': row.intensityEnabled,
+    'hidden_at': _encodeNullable(row.hiddenAt),
+    'sort_order': row.sortOrder,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
   };
 }
 
@@ -811,6 +842,37 @@ RemoteDeletedProfileRow decodeDeletedProfile(JsonRow json) {
   );
 }
 
+/// Decodes a `profile_tag_registry` row (Issue #257). `code`/
+/// `display_name`/`category` are read as-is — free text, never validated
+/// against a closed set (the registry is display vocabulary, never an
+/// allowlist). A tombstone renders with its payload already cleared
+/// server-side (the structural CHECK), so no client-side clearing is
+/// needed; `created_by`/`created_at` ride along for display only, with
+/// `created_at` falling back to `updated_at` when absent (only a
+/// hand-built row is ever null there).
+RemoteProfileTagRegistryRow decodeProfileTagRegistryEntry(JsonRow json) {
+  const table = SyncTable.profileTagRegistry;
+  final r = _Reader(json, table);
+  final updatedAt = r.timestamp('updated_at');
+  return RemoteProfileTagRegistryRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    code: r.string('code'),
+    displayName: r.string('display_name'),
+    category: r.string('category'),
+    intensityEnabled: json['intensity_enabled'] == null
+        ? false
+        : r.boolean('intensity_enabled'),
+    hiddenAt: r.timestampOrNull('hidden_at'),
+    sortOrder: r.integerOrNull('sort_order'),
+    createdBy: r.stringOrNull('created_by'),
+    createdAt: r.timestampOrNull('created_at') ?? updatedAt,
+    updatedAt: updatedAt,
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) =>
     _remoteRowDecoders[table]!(json);
@@ -827,6 +889,7 @@ const Map<SyncTable, RemoteRow Function(JsonRow)> _remoteRowDecoders = {
   SyncTable.careNotes: decodeCareNote,
   SyncTable.visitPrepItems: decodeVisitPrepItem,
   SyncTable.dayEntryMergeEvents: decodeDayEntryMergeEvent,
+  SyncTable.profileTagRegistry: decodeProfileTagRegistryEntry,
   SyncTable.deletedProfiles: decodeDeletedProfile,
 };
 

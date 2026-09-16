@@ -1767,6 +1767,61 @@ void main() {
       );
     });
 
+    test('a resolved merge event and profile_tag_registry row each take '
+        'the server copy clean (Issue #257 keeps applyResolved flat at '
+        'the CRAP ceiling — every per-table loop body stays covered)', () async {
+      await storage.applyResolved([
+        RemoteDayEntryMergeEventRow(
+          id: '01J0000000000000000000000M',
+          profileId: 'unknown-profile',
+          localDate: '2026-01-15',
+          winningRowId: '01J0000000000000000000000W',
+          losingRowId: '01J0000000000000000000000L',
+          field: 'note',
+          losingValueText: 'resolution is a no-op for an unheld id',
+          createdAt: t0,
+          updatedAt: t0,
+        ),
+      ]);
+      expect(
+        await (db.select(db.dayEntryMergeEvents).get()),
+        isEmpty,
+        reason: 'a resolution never inserts (onlyExisting)',
+      );
+    });
+
+    test('a resolved profile_tag_registry row takes the server copy clean '
+        '(Issue #257)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final created = await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'resolved_tag',
+        displayName: 'Local label',
+      );
+      final resolvedAt = created.updatedAt.add(const Duration(seconds: 1));
+      await storage.applyResolved([
+        RemoteProfileTagRegistryRow(
+          id: created.id,
+          profileId: p.id,
+          code: 'resolved_tag',
+          displayName: 'Server label',
+          category: 'custom',
+          createdAt: t0,
+          updatedAt: resolvedAt,
+          deletedAt: null,
+        ),
+      ]);
+      final rows = await storage.getProfileTagRegistry(p.id);
+      expect(rows.single.displayName, 'Server label',
+          reason: 'the server copy wins an equal-timestamp decline');
+      expect(rows.single.dirty, isFalse,
+          reason: 'a resolved row is never pushed back');
+      expect(
+        await storage.readDirtyProfileTagRegistry(),
+        isEmpty,
+      );
+    });
+
     test('a later live remote edit to a resolved loser revives it and '
         're-runs the same-date rule', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
@@ -2348,6 +2403,7 @@ void main() {
       'care_notes',
       'visit_prep_items',
       'day_entry_merge_events',
+      'profile_tag_registry',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2409,6 +2465,14 @@ void main() {
       // Issue #130: a merge-disclosure row (discarded note text — health
       // content about the shared profile) must be wiped with everything
       // else.
+      // Issue #257: a custom-tag registry row (the user's own health
+      // vocabulary about the shared profile) must leave the device with
+      // everything else — tombstoned payload-cleared, code surviving.
+      await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'shared_custom_tag',
+        displayName: 'Shared custom tag',
+      );
       await db.into(db.dayEntryMergeEvents).insert(
             DayEntryMergeEventsCompanion.insert(
               id: '01JWIPE00000000000000000A',
@@ -2468,6 +2532,21 @@ void main() {
               ..where((t) => t.profileId.equals(p.id)))
             .get(),
         isEmpty,
+      );
+      // Issue #257: the registry row is tombstoned payload-cleared — no
+      // live row (the repository read excludes tombstones) and no label
+      // left on the removed guardian's device.
+      expect(
+        await storage.getProfileTagRegistry(p.id),
+        isEmpty,
+      );
+      expect(
+        (await db.select(db.profileTagRegistry).get())
+            .every((row) =>
+                row.deletedAt != null &&
+                row.displayName == '' &&
+                row.code == 'shared_custom_tag'),
+        isTrue,
       );
 
       // profile_modes has no tombstone (Issue #188): an absent-row-equivalent

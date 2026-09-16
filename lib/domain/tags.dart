@@ -508,9 +508,21 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
 /// Throws [ArgumentError] naming the first tag not in the taxonomy.
-void validateTagCodes(Iterable<String> tags) {
+///
+/// Issue #257: [registryCodes] -- the profile's custom-tag registry codes
+/// (live entries, retired included: a retired tag stays a valid stored
+/// value) -- are accepted alongside the taxonomy. The static 17-item list
+/// this once gated against is now a taxonomy-plus-registry union: a code
+/// the running profile's registry owns is as valid as a curated one. A
+/// code in neither (a manual entry, a future peer's newer vocabulary not
+/// yet synced) still throws -- this function gates *newly chosen* codes
+/// on manual entry, never the round-tripping stored set (#237's
+/// unknown-never-drop rule lives at the callers: the day sheet validates
+/// only its session-selected subset).
+void validateTagCodes(Iterable<String> tags, {Set<String>? registryCodes}) {
   for (final tag in tags) {
-    if (!_tagsByCode.containsKey(tag)) {
+    if (!_tagsByCode.containsKey(tag) &&
+        !(registryCodes?.contains(tag) ?? false)) {
       throw ArgumentError.value(tag, 'tags', 'not a known tag code');
     }
   }
