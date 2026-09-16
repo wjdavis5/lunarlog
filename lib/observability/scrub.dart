@@ -169,6 +169,10 @@ const List<String> sentryDenyListedKeys = [
   'birth_control_stopped_on',
   'health_sync_consent',
   'mode_started_on',
+  // Issue #192: a pregnancy due date is health content of the most
+  // sensitive kind the app carries (it dates a pregnancy) — scrubbed
+  // like its `mode_started_on` sibling.
+  'estimated_due_date',
   'cycle_start_date',
   'last_period_start',
   'typical_cycle_length_days',

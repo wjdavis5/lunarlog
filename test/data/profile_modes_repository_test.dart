@@ -62,10 +62,14 @@ void main() {
     await modes.save(
         profileId: profile.id,
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'pill');
     await modes.save(
         profileId: profile.id,
         mode: LifecycleMode.perimenopause,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: null);
     final found = await modes.find(profile.id);
     expect(found!.mode, LifecycleMode.perimenopause);
@@ -141,6 +145,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-09-07');
@@ -154,6 +160,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       // The first save stamped 2026-09-07; back-date it to simulate an
       // older anchor, then re-save the same answer.
@@ -166,6 +174,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-08-01',
@@ -187,6 +197,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'shot');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-06-01');
@@ -206,6 +218,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'ring');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-09-07',
@@ -218,10 +232,14 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'shot');
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'none');
       final found = await modes.find(profile.id);
       expect(found!.birthControlMethod, 'none');
@@ -236,10 +254,14 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'ring');
       final found = await modes.find(profile.id);
       expect(found!.birthControlMethod, 'ring');

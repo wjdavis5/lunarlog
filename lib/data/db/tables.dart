@@ -520,6 +520,17 @@ class ProfileModes extends Table {
   TextColumn get modeStartedOn =>
       text().named('mode_started_on').nullable()();
 
+  /// Estimated due date (Issue #192), as an ISO calendar date
+  /// `yyyy-MM-dd` — derived on entry from the last recorded period start
+  /// + 280 days (Naegele's rule) or manually supplied when that start is
+  /// unknown/imported, stored here (NOT client-local: it must sync) and
+  /// consumed by the Pregnancy-mode week counter. Kept on exit rather
+  /// than cleared — the mode column says whether a pregnancy is current;
+  /// this stays as the record of the one that was (and is overwritten on
+  /// any later re-entry).
+  TextColumn get estimatedDueDate =>
+      text().named('estimated_due_date').nullable()();
+
   /// Current birth-control method (free text, #260 owns the vocabulary) or
   /// null when none is recorded.
   TextColumn get birthControlMethod =>

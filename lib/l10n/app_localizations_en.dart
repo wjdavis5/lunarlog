@@ -1565,4 +1565,47 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get reminderTextDiscretionNote =>
       'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.';
+
+  @override
+  String pregnancyWeekTitle(int week) {
+    return 'Week $week of pregnancy';
+  }
+
+  @override
+  String pregnancyDueOn(String date) {
+    return 'Estimated due date: $date';
+  }
+
+  @override
+  String get pregnancyDueDateMissing =>
+      'No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.';
+
+  @override
+  String get pregnancyDueDateLabel => 'Estimated due date';
+
+  @override
+  String get pregnancyDueDateDerivedHint =>
+      'Derived from the last recorded period start (280 days). Tap the date to change it.';
+
+  @override
+  String get pregnancyDueDateManualHint =>
+      'Pick the estimated due date — the last period start is unknown.';
+
+  @override
+  String get pregnancyExitExclusionTitle =>
+      'Exclude this pregnancy from cycle averages?';
+
+  @override
+  String get pregnancyExitExclusionBody =>
+      'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.';
+
+  @override
+  String get pregnancyExitExclusionAccept => 'Exclude pregnancy';
+
+  @override
+  String get pregnancyExitExclusionDecline => 'Keep in averages';
+
+  @override
+  String get pregnancyExitExclusionDone =>
+      'Pregnancy excluded from cycle averages';
 }

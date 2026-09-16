@@ -480,6 +480,8 @@ void main() {
         profileModesByProfile: {
           'p-1': (
             mode: LifecycleMode.conceive,
+            modeStartedOn: null,
+            estimatedDueDate: null,
             birthControlMethod: 'pill',
             birthControlStartedOn: '2026-06-01',
             birthControlStoppedOn: null,

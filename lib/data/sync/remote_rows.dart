@@ -345,6 +345,7 @@ final class RemoteProfileModeRow extends RemoteRow {
     required this.profileId,
     required this.mode,
     this.modeStartedOn,
+    this.estimatedDueDate,
     this.birthControlMethod,
     this.birthControlStartedOn,
     this.birthControlStoppedOn,
@@ -365,6 +366,12 @@ final class RemoteProfileModeRow extends RemoteRow {
 
   /// ISO calendar date `yyyy-MM-dd`, or null.
   final String? modeStartedOn;
+
+  /// Issue #192: the pregnancy estimated due date (`yyyy-MM-dd`, or
+  /// null) — derived on entry from the last recorded period start + 280
+  /// days or manually supplied, synced like every other profile_modes
+  /// column and read by the Pregnancy-mode week counter.
+  final String? estimatedDueDate;
   final String? birthControlMethod;
   final String? birthControlStartedOn;
   final String? birthControlStoppedOn;

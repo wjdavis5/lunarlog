@@ -38,6 +38,8 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart' show CycleFacts;
+import 'package:lunarlog/domain/pregnancy.dart'
+    show estimatedDueDateFromLastPeriod;
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -409,6 +411,17 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         typicalPeriodLengthDays: _optionalInt(_typicalPeriodController.text),
         birthControlMethod: birthControlStoredValue(_birthControl),
         lifecycleMode: _lifecycleMode,
+        // Issue #192: a pregnancy answer at onboarding derives its due
+        // date from the just-supplied last-period start (Naegele's
+        // rule, 280 days) — the same derivation the edit dialog
+        // pre-fills with. A skipped last-period start carries no due
+        // date (the manual pick is available later from the edit
+        // dialog); the recorder only writes this value when the answers
+        // enter Pregnancy mode.
+        estimatedDueDate: _lifecycleMode == LifecycleMode.pregnancy &&
+                _lastPeriodStart != null
+            ? estimatedDueDateFromLastPeriod(_lastPeriodStart!).iso
+            : null,
       );
 
   /// Parses an optional whole-day count; blank (skipped) is null. Range

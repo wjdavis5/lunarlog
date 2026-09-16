@@ -285,6 +285,10 @@ Map<String, Object?>? _exportProfileMode(ProfileLifecycleMode? mode) {
   if (mode == null) return null;
   return {
     'mode': mode.mode.toDb(),
+    // Issue #192: full fidelity for restore — the mode's start date and
+    // the pregnancy due date ride the export alongside the mode itself.
+    'modeStartedOn': mode.modeStartedOn,
+    'estimatedDueDate': mode.estimatedDueDate,
     'birthControlMethod': mode.birthControlMethod,
     'birthControlStartedOn': mode.birthControlStartedOn,
     'birthControlStoppedOn': mode.birthControlStoppedOn,

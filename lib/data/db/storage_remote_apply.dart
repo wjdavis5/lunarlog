@@ -1047,6 +1047,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         .write(const ProfileModesCompanion(
           mode: Value('tracking'),
           modeStartedOn: Value(null),
+          estimatedDueDate: Value(null),
           birthControlMethod: Value(null),
           birthControlStartedOn: Value(null),
           birthControlStoppedOn: Value(null),
@@ -1578,6 +1579,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
               profileId: remote.profileId,
               mode: Value(remote.mode),
               modeStartedOn: Value(remote.modeStartedOn),
+              estimatedDueDate: Value(remote.estimatedDueDate),
               birthControlMethod: Value(remote.birthControlMethod),
               birthControlStartedOn: Value(remote.birthControlStartedOn),
               birthControlStoppedOn: Value(remote.birthControlStoppedOn),
@@ -1597,6 +1599,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ProfileModesCompanion(
             mode: Value(remote.mode),
             modeStartedOn: Value(remote.modeStartedOn),
+            estimatedDueDate: Value(remote.estimatedDueDate),
             birthControlMethod: Value(remote.birthControlMethod),
             birthControlStartedOn: Value(remote.birthControlStartedOn),
             birthControlStoppedOn: Value(remote.birthControlStoppedOn),

@@ -132,6 +132,8 @@ class DriftAccountImporter implements AccountImporter {
     await _storage.upsertProfileMode(
       profileId: profileId,
       mode: mode.mode.toDb(),
+      modeStartedOn: mode.modeStartedOn,
+      estimatedDueDate: mode.estimatedDueDate,
       birthControlMethod: mode.birthControlMethod,
       birthControlStartedOn: mode.birthControlStartedOn,
       birthControlStoppedOn: mode.birthControlStoppedOn,

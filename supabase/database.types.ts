@@ -956,6 +956,7 @@ export type Database = {
           birth_control_method: string | null
           birth_control_started_on: string | null
           birth_control_stopped_on: string | null
+          estimated_due_date: string | null
           health_sync_consent: boolean
           mode: string
           mode_started_on: string | null
@@ -967,6 +968,7 @@ export type Database = {
           birth_control_method?: string | null
           birth_control_started_on?: string | null
           birth_control_stopped_on?: string | null
+          estimated_due_date?: string | null
           health_sync_consent?: boolean
           mode?: string
           mode_started_on?: string | null
@@ -978,6 +980,7 @@ export type Database = {
           birth_control_method?: string | null
           birth_control_started_on?: string | null
           birth_control_stopped_on?: string | null
+          estimated_due_date?: string | null
           health_sync_consent?: boolean
           mode?: string
           mode_started_on?: string | null

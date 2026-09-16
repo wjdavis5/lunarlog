@@ -16,10 +16,12 @@ library;
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
@@ -35,6 +37,7 @@ import 'package:lunarlog/ui/components/profile_card.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/profiles/pregnancy_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
@@ -271,7 +274,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
   }
 
   Future<void> _onRowAction(
-      BuildContext context, Profile profile, String action) async {
+    BuildContext context, Profile profile, String action) async {
     final controller = context.read<ProfileController>();
     if (action == 'caregivers') {
       // Returning from Manage Guardians may have cancelled an invitation:
@@ -283,18 +286,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
             ?.then((_) => _overview?.refreshBadges()),
       );
     } else if (action == 'rename') {
-      final result = await showProfileEditDialog(context, existing: profile);
-      if (result == null) return;
-      await controller.renameProfile(
-        profile,
-        displayName: result.displayName,
-        isMinor: result.isMinor,
-        mode: result.mode,
-        birthYear: result.birthYear,
-        relationship: result.relationship,
-      );
-      if (!context.mounted) return;
-      await _recordCycleAnswers(context, profile.id, result);
+      await _onRenameAction(context, profile, controller);
     } else if (action == 'archive') {
       if (await confirmArchiveProfile(context, profile)) {
         await controller.archiveProfile(profile.id);
@@ -302,10 +294,55 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     }
   }
 
-  /// Persists the two #216 onboarding answers that are editable from the
-  /// profile edit dialog (life-stage mode and birth-control method)
-  /// through the same recorder seam the first-run flow uses — no-op on a
-  /// tree with no storage wired or when nothing changed.
+  /// The rename/edit action, extracted from [_onRowAction] for the same
+  /// complexity reason every other seam hook there was (the CRAP gate).
+  ///
+  /// Issue #192: the profile's pregnancy state is captured BEFORE the
+  /// edit dialog opens — leaving Pregnancy mode auto-offers exclusion of
+  /// the pregnancy interval from cycle averages once the switch itself
+  /// has landed. Read up front (not after the dialog) so the awaited
+  /// dialog round-trip never leaves this lookup on an unmounted context,
+  /// and so the row is the pre-edit one by construction.
+  Future<void> _onRenameAction(
+    BuildContext context,
+    Profile profile,
+    ProfileController controller,
+  ) async {
+    final modes = Provider.of<ProfileModesRepository?>(context, listen: false);
+    final pregnancyRow = await modes?.find(profile.id);
+    if (!context.mounted) return;
+    final result = await showProfileEditDialog(context, existing: profile);
+    if (result == null) return;
+    final wasPregnancy =
+        (pregnancyRow?.mode ?? LifecycleMode.tracking) ==
+            LifecycleMode.pregnancy;
+    final pregnancyStartedOn = pregnancyRow?.modeStartedOn;
+    await controller.renameProfile(
+      profile,
+      displayName: result.displayName,
+      isMinor: result.isMinor,
+      mode: result.mode,
+      birthYear: result.birthYear,
+      relationship: result.relationship,
+    );
+    if (!context.mounted) return;
+    await _recordCycleAnswers(context, profile.id, result);
+    if (context.mounted &&
+        wasPregnancy &&
+        result.lifecycleMode != LifecycleMode.pregnancy) {
+      await offerPregnancyExitExclusionFromTree(
+        context,
+        profileId: profile.id,
+        modeStartedOn: pregnancyStartedOn,
+      );
+    }
+  }
+
+  /// Persists the #216 onboarding answers that are editable from the
+  /// profile edit dialog (life-stage mode, birth-control method, and —
+  /// Issue #192 — the pregnancy estimated due date) through the same
+  /// recorder seam the first-run flow uses — no-op on a tree with no
+  /// storage wired or when nothing changed.
   Future<void> _recordCycleAnswers(
     BuildContext context,
     String profileId,
@@ -320,6 +357,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice),
+        estimatedDueDate: result.estimatedDueDate,
       ),
     );
   }

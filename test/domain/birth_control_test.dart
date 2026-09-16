@@ -301,6 +301,8 @@ void main() {
     test('a row maps its method and effective dates through unchanged', () {
       const row = (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'pill',
         birthControlStartedOn: '2026-08-01',
         birthControlStoppedOn: null,
@@ -315,6 +317,8 @@ void main() {
     test('a row with no recorded method still maps (all fields null)', () {
       const row = (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: null,
         birthControlStartedOn: null,
         birthControlStoppedOn: null,

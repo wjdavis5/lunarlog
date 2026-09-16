@@ -1973,5 +1973,61 @@
   "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.",
   "@reminderTextDiscretionNote": {
     "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
+  },
+
+  "pregnancyWeekTitle": "Week {week} of pregnancy",
+  "@pregnancyWeekTitle": {
+    "description": "Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.",
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "pregnancyDueOn": "Estimated due date: {date}",
+  "@pregnancyDueOn": {
+    "description": "Pregnancy card line naming the estimated due date (Issue #192); date is the localized month-day-year.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "pregnancyDueDateMissing": "No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.",
+  "@pregnancyDueDateMissing": {
+    "description": "Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192)."
+  },
+  "pregnancyDueDateLabel": "Estimated due date",
+  "@pregnancyDueDateLabel": {
+    "description": "Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192)."
+  },
+  "pregnancyDueDateDerivedHint": "Derived from the last recorded period start (280 days). Tap the date to change it.",
+  "@pregnancyDueDateDerivedHint": {
+    "description": "Hint under the due-date field when the shown value was derived rather than manually picked (Issue #192)."
+  },
+  "pregnancyDueDateManualHint": "Pick the estimated due date — the last period start is unknown.",
+  "@pregnancyDueDateManualHint": {
+    "description": "Hint under the due-date field when no last period start could be derived from, so only a manual pick can set it (Issue #192)."
+  },
+  "pregnancyExitExclusionTitle": "Exclude this pregnancy from cycle averages?",
+  "@pregnancyExitExclusionTitle": {
+    "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
+  },
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "@pregnancyExitExclusionBody": {
+    "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
+  },
+  "pregnancyExitExclusionAccept": "Exclude pregnancy",
+  "@pregnancyExitExclusionAccept": {
+    "description": "Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192)."
+  },
+  "pregnancyExitExclusionDecline": "Keep in averages",
+  "@pregnancyExitExclusionDecline": {
+    "description": "Decline action of the pregnancy-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #192 AC5)."
+  },
+  "pregnancyExitExclusionDone": "Pregnancy excluded from cycle averages",
+  "@pregnancyExitExclusionDone": {
+    "description": "Snackbar confirming the exclusion rows were written (Issue #192)."
   }
+
 }
