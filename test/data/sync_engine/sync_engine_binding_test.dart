@@ -111,6 +111,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.dayEntryMergeEvents => const [],
             SyncTable.deletedProfiles => const [],
           };
       SyncPhase? phaseDuringPull;

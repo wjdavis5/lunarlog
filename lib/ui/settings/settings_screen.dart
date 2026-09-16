@@ -1,13 +1,33 @@
-/// Settings screen: the inactivity auto-relock toggle (default on, fixed
-/// 2-minute timeout, persisted via [SettingsKeys.relockEnabled];
-/// backgrounding always re-locks regardless), the "Your data" section
-/// (Issue #222 - reachable whenever a profile exists, regardless of
-/// sign-in state) and, when the build provides an [AuthController], the
-/// Account section (U6) beneath it. Reachable from the profile picker.
+/// Settings screen, restructured into sections (Issue #226; source B-18):
+/// the eight first-class sections — Your data / Appearance / Reminders /
+/// Calendar / Family & sharing / Privacy & security / Help / About — render
+/// in that order, each headed by the shared `SettingsSection` component so
+/// the ordering is data (this build method's children list), not layout.
+/// Two further sections ride along where their content already existed:
+/// Health (issue #153's iOS-only health-sync tile, between Your data and
+/// Appearance) and the conditional Account section (between Family &
+/// sharing and Privacy & security, unchanged from its pre-#226 spot).
+///
+/// What each section holds: Your data is export/import (Issues #222/#140,
+/// `YourDataSection`, which hosts its own `SettingsSection` so it keeps
+/// self-hiding on web); Reminders holds the per-profile reminder
+/// configuration (#136) *and* the caregiver alert preferences promoted out
+/// of Manage Guardians (#226's core fix — one tap from here instead of
+/// four levels through a profile's caregiver screen; the old Manage
+/// Guardians entry stays); Calendar holds the week-start and date-format
+/// pickers (new in #226) plus the per-profile predictions (#225) and
+/// measurement-unit (#457) sections; Privacy & security keeps the
+/// inactivity auto-relock toggle (default on, fixed 2-minute timeout,
+/// persisted via [SettingsKeys.relockEnabled]; backgrounding always
+/// re-locks regardless — its explanation survives intact, now with
+/// section-mates), the app PIN (#271), and the privacy policy; Help holds
+/// the offline help library (#139), feedback/support, and support history;
+/// About holds the version/build line and the licences entry.
 ///
 /// Route naming: "Contact support" is deliberately left unnamed as an
-/// informational dialog (no action beyond Close). "Privacy policy" is a
-/// full-screen route (`kRoutePrivacyPolicyScreen`).
+/// informational dialog (no action beyond Close), and the licence page
+/// (`showLicensePage`) offers no `RouteSettings` so it stays unnamed too.
+/// "Privacy policy" is a full-screen route (`kRoutePrivacyPolicyScreen`).
 library;
 
 import 'dart:async';
@@ -18,6 +38,8 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -27,6 +49,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/settings_section.dart';
 import 'package:lunarlog/ui/help/help_library_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
@@ -34,11 +57,14 @@ import 'package:lunarlog/ui/feedback/support_history_screen.dart'
     show newestReplyActivityAt;
 import 'package:lunarlog/ui/gate/pin_settings_tile.dart';
 import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/settings/about_section.dart';
+import 'package:lunarlog/ui/settings/calendar_settings_section.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 import 'package:lunarlog/ui/settings/measurement_units_settings_section.dart';
 import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
+import 'package:lunarlog/ui/sharing/notification_preferences_screen.dart';
 import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:provider/provider.dart';
 
@@ -98,56 +124,140 @@ class _SettingsScreenState extends State<SettingsScreen> {
         defaultTargetPlatform == TargetPlatform.iOS &&
         profilesRepository != null &&
         guardiansRepository != null;
+    // Issue #226: the Reminders section renders whenever either of its
+    // halves can — the reminder-configuration store (#136) or the
+    // caregiver alert preferences service (#5). A build with neither
+    // (unconfigured, no push, no scheduler) shows no empty header.
+    final hasReminders =
+        Provider.of<ReminderConfigService?>(context) != null ||
+        Provider.of<NotificationPreferencesService?>(context) != null;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
       body: ListView(
         children: [
+          // 1. Your data (Issue #222/#140) — self-hosts its SettingsSection
+          // so it can keep self-hiding as a unit (web builds render none
+          // of it).
           YourDataSection(
             profileErasureService:
                 Provider.of<ProfileErasureService?>(context, listen: false),
           ),
-          // Issue #126: owned and shared-with-you profiles, each routing
-          // to its Manage Guardians screen. Self-hiding when sharing is
-          // unavailable, so unconfigured builds render exactly as before.
+          // Issue #153: iOS-only health-app binding, kept as its own
+          // section where it already was one.
+          if (hasHealthSync)
+            _healthSection(l10n, profilesRepository, guardiansRepository),
+          // 2. Appearance (Issue #137): the theme-mode override, persisted
+          // through the same device-local store the relock toggle uses.
+          // The main `MaterialApp` (and the lock screen, via the shell)
+          // watch the same key, so a change here re-themes the app with no
+          // controller in between.
+          SettingsSection(
+            id: 'appearance',
+            title: l10n.settingsSectionAppearance,
+            children: [const _AppearanceTile()],
+          ),
+          // 3. Reminders: the per-profile local reminder configuration
+          // (Issue #136) plus the caregiver alert preferences promoted out
+          // of Manage Guardians (Issue #226's core fix).
+          if (hasReminders) _remindersSection(context, l10n),
+          // 4. Calendar (Issue #226): week-start and date-format pickers,
+          // plus the per-profile predictions (#225) and measurement-unit
+          // (#457) sections that were already settings.
+          SettingsSection(
+            id: 'calendar',
+            title: l10n.settingsSectionCalendar,
+            children: const [
+              FirstDayOfWeekTile(),
+              DateFormatTile(),
+              PredictionsSettingsSection(),
+              MeasurementUnitsSettingsSection(),
+            ],
+          ),
+          // 5. Family & sharing (Issue #126): owned and shared-with-you
+          // profiles, each routing to its Manage Guardians screen.
+          // Self-hosts its SettingsSection so it self-hides as a unit when
+          // sharing is unavailable.
           const FamilySharingSection(),
           if (hasAccount) ...[const AccountSection(), const Divider()],
-          if (hasFeedback)
-            ListTile(
-              key: const ValueKey('send-feedback-tile'),
-              leading: const Icon(Icons.feedback_outlined),
-              title: Text(l10n.settingsSendFeedback),
-              subtitle: Text(l10n.settingsSendFeedbackSubtitle),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => pushNamedScreen<void>(context, kRouteFeedbackScreen),
-            )
-          else
-            ListTile(
-              key: const ValueKey('contact-support-tile'),
-              leading: const Icon(Icons.feedback_outlined),
-              title: Text(l10n.settingsContactSupport),
-              subtitle: Text(l10n.settingsContactSupportSubtitle),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _showContactSupport(context),
+          // 6. Privacy & security: the relock toggle (its explanation
+          // intact, now among section-mates), the app PIN (#271), and the
+          // privacy policy.
+          _privacySecuritySection(context, l10n),
+          // 7. Help: the offline help library (Issue #139 — every card
+          // ships in the app bundle, so this needs no network),
+          // feedback/support, and support history.
+          _helpSection(context, l10n, hasFeedback: hasFeedback),
+          // 8. About (Issue #226): app version, build number, licences.
+          SettingsSection(
+            id: 'about',
+            title: l10n.settingsSectionAbout,
+            children: const [AboutSection()],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Issue #153's health-sync section (iOS-only, gated at the call site by
+  /// [AppConfig.hasHealthSync] plus non-null repositories).
+  Widget _healthSection(
+    AppLocalizations l10n,
+    ProfilesRepository profilesRepository,
+    ProfileGuardiansRepository guardiansRepository,
+  ) =>
+      SettingsSection(
+        id: 'health',
+        title: l10n.settingsHealthHeader,
+        children: [
+          ListTile(
+            key: const ValueKey('health-sync-tile'),
+            leading: const Icon(Icons.favorite_outline),
+            title: Text(l10n.settingsHealthSyncTitle),
+            subtitle: Text(l10n.settingsHealthSyncSubtitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openHealthSync(
+              context,
+              profilesRepository,
+              guardiansRepository,
             ),
-          if (hasFeedback) const _SupportHistoryTile(),
-          // Issue #136: the per-profile local reminder configuration.
-          // Present whenever the app provides the reminder configuration
-          // store (i.e. reminders exist — a scheduler was wired); hidden
-          // in harnesses that never built one.
-          if (Provider.of<ReminderConfigService?>(context) != null) ...[
+          ),
+        ],
+      );
+
+  /// The Reminders section's children (gated at the call site on either
+  /// half of the section existing): the per-profile reminder configuration
+  /// (Issue #136) plus the caregiver alert preferences promoted out of
+  /// Manage Guardians (Issue #226's core fix).
+  Widget _remindersSection(BuildContext context, AppLocalizations l10n) =>
+      SettingsSection(
+        id: 'reminders',
+        title: l10n.settingsSectionReminders,
+        children: [
+          // Issue #136: present whenever the app provides the reminder
+          // configuration store (i.e. reminders exist — a scheduler was
+          // wired); hidden in harnesses that never built one.
+          if (context.watch<ReminderConfigService?>() != null)
             ListTile(
               key: const ValueKey('reminder-settings-tile'),
               leading: const Icon(Icons.notifications_outlined),
-              title: const Text('Reminders'),
-              subtitle: const Text(
-                'Choose which reminders fire, when, and for whom',
-              ),
+              title: Text(l10n.settingsReminderSettingsTitle),
+              subtitle: Text(l10n.settingsReminderSettingsSubtitle),
               trailing: const Icon(Icons.chevron_right),
               onTap: () =>
                   pushNamedScreen<void>(context, kRouteReminderSettingsScreen),
             ),
-            const Divider(),
-          ],
+          const _CaregiverAlertsTiles(),
+        ],
+      );
+
+  /// The Privacy & security section's children: the relock toggle (its
+  /// explanation intact, now among section-mates), the app PIN (#271), and
+  /// the privacy policy.
+  Widget _privacySecuritySection(BuildContext context, AppLocalizations l10n) =>
+      SettingsSection(
+        id: 'privacy-security',
+        title: l10n.settingsSectionPrivacySecurity,
+        children: [
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
             title: Text(l10n.settingsRelockTitle),
@@ -168,40 +278,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           // Issue #271: optional in-app PIN, a second lock layer on top of
           // the device credential above — self-hiding when unconfigured.
           const PinSettingsTile(),
-          const Divider(),
-          // Issue #137: the appearance override (system / light / dark),
-          // persisted through the same device-local store the relock
-          // toggle above uses. The main `MaterialApp` (and the lock
-          // screen, via the shell) watch the same key, so a change here
-          // re-themes the app with no controller in between.
-          _AppearanceTile(),
-          const Divider(),
-          // Issue #225: per-profile predictions toggle section.
-          const PredictionsSettingsSection(),
-          // Issue #457: per-profile BBT/weight display-unit section.
-          const MeasurementUnitsSettingsSection(),
-          if (hasHealthSync) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                l10n.settingsHealthHeader,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-            ListTile(
-              key: const ValueKey('health-sync-tile'),
-              leading: const Icon(Icons.favorite_outline),
-              title: Text(l10n.settingsHealthSyncTitle),
-              subtitle: Text(l10n.settingsHealthSyncSubtitle),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openHealthSync(
-                context,
-                profilesRepository,
-                guardiansRepository,
-              ),
-            ),
-            const Divider(),
-          ],
           ListTile(
             key: const ValueKey('privacy-policy-tile'),
             leading: const Icon(Icons.shield_outlined),
@@ -210,16 +286,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showPrivacyPolicy(context),
           ),
-          // Issue #139: the bundled offline help library — every card
-          // ships in the app bundle, so this needs no network.
+        ],
+      );
+
+  /// The Help section's children: the offline help library (Issue #139 —
+  /// every card ships in the app bundle, so this needs no network),
+  /// feedback/support, and support history.
+  Widget _helpSection(
+    BuildContext context,
+    AppLocalizations l10n, {
+    required bool hasFeedback,
+  }) =>
+      SettingsSection(
+        id: 'help',
+        title: l10n.settingsSectionHelp,
+        children: [
           ListTile(
             key: const ValueKey('settings-help-tile'),
             leading: const Icon(Icons.help_outline),
-            title: const Text('Help & explanations'),
-            subtitle: const Text(
-              'Plain-language answers about estimates, logging, sync, '
-              'and sharing — works offline',
-            ),
+            title: Text(l10n.settingsHelpTitle),
+            subtitle: Text(l10n.settingsHelpSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               buildNamedRoute<void>(
@@ -228,10 +314,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          if (hasFeedback)
+            ListTile(
+              key: const ValueKey('send-feedback-tile'),
+              leading: const Icon(Icons.feedback_outlined),
+              title: Text(l10n.settingsSendFeedback),
+              subtitle: Text(l10n.settingsSendFeedbackSubtitle),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => pushNamedScreen<void>(context, kRouteFeedbackScreen),
+            )
+          else
+            ListTile(
+              key: const ValueKey('contact-support-tile'),
+              leading: const Icon(Icons.feedback_outlined),
+              title: Text(l10n.settingsContactSupport),
+              subtitle: Text(l10n.settingsContactSupportSubtitle),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showContactSupport(context),
+            ),
+          if (hasFeedback) const _SupportHistoryTile(),
         ],
-      ),
-    );
-  }
+      );
 
   /// Issue #153: pushes [HealthSyncScreen] with the tree-provided
   /// [ProfileGuardiansRepository] (the same contract the rest of the UI
@@ -368,6 +471,81 @@ class _SupportHistoryTileState extends State<_SupportHistoryTile> {
 String? confirmedHealthSyncUserId(AuthController? controller) =>
     (controller?.signedIn ?? false) ? controller!.currentUserId : null;
 
+/// Issue #226's core fix: the caregiver alert preferences
+/// ([NotificationPreferencesScreen], Issue #5 U8) promoted into Settings'
+/// Reminders section — one tile per active profile, one tap from here
+/// instead of four levels through profile → row overflow → Caregivers →
+/// Notifications. Self-hiding (no tiles at all) when the build provides no
+/// [NotificationPreferencesService] or no profiles have landed yet,
+/// matching `FamilySharingSection`'s own gating; the Manage Guardians
+/// entry point stays untouched, so both paths work.
+class _CaregiverAlertsTiles extends StatefulWidget {
+  const _CaregiverAlertsTiles();
+
+  @override
+  State<_CaregiverAlertsTiles> createState() => _CaregiverAlertsTilesState();
+}
+
+class _CaregiverAlertsTilesState extends State<_CaregiverAlertsTiles> {
+  ProfilesRepository? _profilesRepository;
+  late Stream<List<Profile>> _profiles;
+
+  @override
+  void initState() {
+    super.initState();
+    _profilesRepository = Provider.of<ProfilesRepository?>(
+      context,
+      listen: false,
+    );
+    if (_profilesRepository != null) {
+      _profiles = _profilesRepository!.watch();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = _profilesRepository;
+    final service = Provider.of<NotificationPreferencesService?>(context);
+    if (repository == null || service == null) {
+      return const SizedBox.shrink();
+    }
+    final l10n = AppLocalizations.of(context);
+    return StreamBuilder<List<Profile>>(
+      stream: _profiles,
+      builder: (context, snapshot) {
+        final profiles = snapshot.data;
+        if (profiles == null || profiles.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final profile in profiles)
+              if (profile.archivedAt == null)
+                ListTile(
+                  key: ValueKey('caregiver-alerts-${profile.id}'),
+                  leading: const Icon(Icons.notifications_active_outlined),
+                  title: Text(l10n.settingsCaregiverAlertsTitle),
+                  subtitle: Text(profile.displayName),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    buildNamedRoute<void>(
+                      name: kRouteNotificationPreferencesScreen,
+                      builder: (_) => NotificationPreferencesScreen(
+                        profile: profile,
+                        preferencesService: service,
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// Issue #137: the appearance-override tile. Renders the current mode in
 /// its subtitle (kept live through the same `watch` the app shell uses,
 /// so an external change — a settings write from any surface — updates
@@ -425,7 +603,7 @@ class _AppearanceTileState extends State<_AppearanceTile> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
-        title: Text(l10n.settingsAppearanceTitle),
+        title: Text(l10n.settingsThemeTitle),
         children: [
           // `RadioGroup` (rather than per-tile `groupValue`/`onChanged`,
           // deprecated since Flutter 3.32) owns the selection: the tiles
@@ -463,7 +641,7 @@ class _AppearanceTileState extends State<_AppearanceTile> {
     return ListTile(
       key: const ValueKey('appearance-tile'),
       leading: const Icon(Icons.brightness_6_outlined),
-      title: Text(l10n.settingsAppearanceTitle),
+      title: Text(l10n.settingsThemeTitle),
       subtitle: Text(_label(l10n)),
       trailing: const Icon(Icons.chevron_right),
       onTap: _openPicker,

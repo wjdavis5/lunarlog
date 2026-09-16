@@ -107,6 +107,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.dayEntryMergeEvents => const [],
             SyncTable.deletedProfiles => const [],
           };
 
@@ -145,6 +146,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.dayEntryMergeEvents => const [],
             SyncTable.deletedProfiles => const [],
           };
 
@@ -179,7 +181,7 @@ void main() {
       ));
       await rig.start();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522), 10th is day_entry_merge_events (#130)
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
       // (c) Issue #525: a push whose answer carries resolved rows is no
@@ -198,7 +200,7 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0], // 9th 0 is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0], // 9th 0 is deletedProfiles (#522), 10th is day_entry_merge_events (#130)
           reason: 'resolved rows in a push answer must not force a '
               'full reconcile (issue #525)');
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0,
@@ -208,17 +210,169 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is deletedProfiles (#522), 10th is day_entry_merge_events (#130)
 
       // (e) Older than 24h: due again.
       rig.clock.now = rig.clock.now.add(const Duration(hours: 25));
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          // 9 incremental + 9 reconcile afterVersion values (deletedProfiles,
-          // issue #522, adds the 9th `0` to each half).
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          // 10 incremental + 10 reconcile afterVersion values (deletedProfiles,
+          // issue #522, adds its `0` to each half; dayEntryMergeEvents,
+          // issue #130, adds the tenth).
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
+    });
+
+    group('issue #42: scheduled-reconcile version probe', () {
+      /// A probe that answers "nothing changed" for the persisted cursors:
+      /// every table's max at or below its cursor. Issue #130's
+      /// dayEntryMergeEvents carries a probe answer too — the probe walks
+      /// the shared `_pullTableOrder`, which grew with the table.
+      Map<SyncTable, int> unchangedProbe() => {
+        SyncTable.profiles: 100,
+        SyncTable.profileGuardians: 0,
+        SyncTable.dayEntries: 0,
+        SyncTable.observations: 0,
+        SyncTable.profileModes: 0,
+        SyncTable.cycleOverrides: 0,
+        SyncTable.careNotes: 0,
+        SyncTable.visitPrepItems: 0,
+        SyncTable.dayEntryMergeEvents: 0,
+        SyncTable.deletedProfiles: 0,
+      };
+
+      Future<void> bindStale(Rig rig) => rig.storage.writeSyncState(
+        kDefaultSyncState.copyWith(
+          boundUserId: const Value(uidA),
+          deviceId: 'device-1',
+          cursorProfiles: 100,
+          lastFullPullAt: Value(t0.subtract(const Duration(hours: 25))),
+        ),
+      );
+
+      test('an unchanged probe skips the scheduled re-pull while still '
+          'stamping a clean reconcile', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        rig.transport.maxVersions = unchangedProbe();
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(10),
+          reason:
+              'incremental only — the 10 reconcile re-pulls were '
+              'skipped because nothing changed server-side',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          hasLength(10),
+          reason: 'one probe per pull table before the reconcile',
+        );
+        expect(
+          (await rig.state()).lastFullPullAt?.toUtc(),
+          t0,
+          reason:
+              'the skipped reconcile still counts: the staleness '
+              'window restarts and the maintenance cadence is preserved',
+        );
+      });
+
+      test('a probe above a cursor (the clamp lookback, or a real change) '
+          'runs the full re-pull', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        final probe = unchangedProbe();
+        probe[SyncTable.dayEntries] = 1; // above the persisted cursor 0
+        rig.transport.maxVersions = probe;
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(20),
+          reason:
+              '10 incremental + 10 reconcile: the probe reported a '
+              'change, so the full re-pull runs',
+        );
+        expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
+      });
+
+      test('a failed probe (null) falls back to the full re-pull — sync is '
+          'never silently skipped', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await bindStale(rig);
+        rig.transport.maxVersions = {}; // every table answers null ("unknown")
+
+        await rig.start();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(20),
+          reason: 'a probe failure is conservative: the full re-pull runs',
+        );
+        expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
+      });
+
+      test('a forced reconcile is never skipped by the probe', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        await rig.storage.writeSyncState(
+          kDefaultSyncState.copyWith(
+            boundUserId: const Value(uidA),
+            deviceId: 'device-1',
+            cursorProfiles: 100,
+            lastFullPullAt: Value(t0),
+          ),
+        );
+        rig.transport.maxVersions = unchangedProbe();
+        await rig.start(); // incremental only; nothing is due
+        rig.transport.pulls.clear();
+
+        rig.engine.triggerFullReconcile();
+        await rig.engine.flush();
+
+        expect(
+          rig.transport.pulls,
+          hasLength(20),
+          reason:
+              '10 incremental + 10 reconcile: the forced reconcile '
+              're-pulled even though the probe says nothing changed',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          isEmpty,
+          reason: 'an explicit repair request never consults the probe',
+        );
+      });
+
+      test('a fresh-bind reconcile is never skipped by the probe', () async {
+        final rig = Rig();
+        addTearDown(rig.dispose);
+        rig.transport.maxVersions = {
+          for (final table in SyncTable.values) table: 0,
+        };
+
+        await rig.start(); // binds on the empty database, reconciles
+
+        expect(
+          rig.transport.pulls,
+          hasLength(20),
+          reason:
+              'a bind-time reconcile re-pulls everything regardless '
+              'of the probe',
+        );
+        expect(
+          rig.transport.fetchMaxVersionCalls,
+          isEmpty,
+          reason: 'a bind never consults the probe',
+        );
+      });
     });
 
     test('a retryable apply failure on pull leaves the cursor and is retried '
@@ -382,9 +536,9 @@ void main() {
 
       // Incremental pull checks profiles, profileGuardians, dayEntries,
       // observations (Issue #240), the two Issue #188 tables, the two
-      // Issue #128 tables, and deletedProfiles (Issue #522) — 9 pull calls
-      // — and NO reconcile pull is made.
-      expect(rig.transport.pullCount, pullsBeforeCycle4 + 9,
+      // Issue #128 tables, deletedProfiles (Issue #522), and merge events
+      // (Issue #130) — 10 pull calls — and NO reconcile pull is made.
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 10,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
 
@@ -409,6 +563,7 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.dayEntryMergeEvents => const [],
             SyncTable.profileGuardians => [stuck],
             SyncTable.deletedProfiles => const [],
           };
@@ -450,6 +605,93 @@ void main() {
 
       expect(rig.engine.snapshot.phase, SyncPhase.idle,
           reason: 'an unresolvable guardian row is retried, not fatal');
+    });
+
+    // Issue #102: the bound above is only half the guarantee — the count
+    // must also RESET when profileGuardians applies cleanly again
+    // (`_onTablePullSettled`), so a household whose deferred row resolves
+    // and later hits a NEW stuck row gets fresh rewinds instead of being
+    // silently capped at 3 total failures for the engine's whole lifetime.
+    // The test above never exercises a clean profileGuardians page between
+    // failures, so a regression deleting the reset (or making the counter
+    // cumulative rather than consecutive) leaves it green. This test drives
+    // a defer across two consecutive cycles, lets the row resolve cleanly,
+    // then defers again — the rewind must fire again on the new failure.
+    test('issue #102: the guardian-defer bound is consecutive, not '
+        'cumulative — two deferring cycles rewind, a clean profileGuardians '
+        'apply resets the count, and the next failure rewinds again',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // Cycle 1-2: an accepted membership for a profile that has not been
+      // pulled yet (deferred, not stuck). Cycle 3 delivers the profile, so
+      // the same membership applies cleanly. Cycle 4: a NEW membership for
+      // a profile that never arrives (genuinely stuck).
+      final pendingProfile = ulidN(30);
+      final deferredGuardian = remoteGuardian('g-deferred',
+          profileId: pendingProfile, userId: uidA, status: 'accepted',
+          updatedAt: t0, serverVersion: 5);
+      final stuckGuardian = remoteGuardian('g-stuck-2',
+          profileId: ulidN(31), userId: uidA, status: 'accepted',
+          updatedAt: t0, serverVersion: 20);
+      var deliverProfile = false;
+      rig.transport.pageResolver = (table, after, limit) => switch (table) {
+            SyncTable.profiles =>
+              (deliverProfile && after < 10) ? [remoteProfile(
+                  pendingProfile, updatedAt: t0, serverVersion: 10)] : const [],
+            SyncTable.profileGuardians => after < 5
+                ? [deferredGuardian]
+                : (after < 20 ? [stuckGuardian] : const []),
+            _ => const [],
+          };
+
+      // Re-primes cursorProfiles to a nonzero value before cycles 1 and 2,
+      // so a rewind back to 0 is observable; NOT before cycles 3 and 4,
+      // which must run on whatever the previous cycle actually left there.
+      Future<void> primeCursorProfiles() async {
+        final s = await rig.state();
+        await rig.storage.writeSyncState(s.copyWith(cursorProfiles: 100));
+      }
+
+      // Cycle 1: 1st consecutive defer — the rewind fires.
+      await primeCursorProfiles();
+      await rig.start();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 1: rewound (1st consecutive defer)');
+
+      // Cycle 2: 2nd consecutive defer — still under the cap, still
+      // rewinds. This is the two-consecutive-cycles defer the issue asked
+      // to pin: without the rewind, the deferred row's profile (version
+      // 10, below the profiles cursor) would never be re-pulled.
+      await primeCursorProfiles();
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'cycle 2: rewound again (2nd consecutive defer)');
+
+      // Cycle 3: the profile arrives. The rewind from cycle 2 left
+      // cursorProfiles at 0, so the profile page (version 10) is pulled
+      // and applied; the same guardian row then applies cleanly and the
+      // consecutive-failure count resets.
+      deliverProfile = true;
+      await rig.sync();
+      final state3 = await rig.state();
+      expect(state3.cursorProfiles, 10,
+          reason: 'the deferred profile finally arrived and was pulled');
+      expect(state3.cursorProfileGuardians, 5,
+          reason: 'the membership applied cleanly once its profile was '
+              'held — the page cursor advanced');
+
+      // Cycle 4: a NEW stuck membership. The reset makes this failure
+      // consecutive-failure #1, so the rewind must fire again; without
+      // `_onTablePullSettled`'s reset it would be #4 and the cap would
+      // swallow it (cursorProfiles left at 10).
+      await rig.sync();
+      expect((await rig.state()).cursorProfiles, 0,
+          reason: 'the bound re-armed after the clean cycle: the new '
+              'failure rewinds again');
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 
     test('R5, finding #9: revoke -> re-invite -> reconcile brings the '
@@ -727,6 +969,7 @@ void main() {
         cursorCareNotes: 15,
         cursorVisitPrepItems: 17,
         cursorProfileGuardians: 19,
+        cursorDayEntryMergeEvents: 21,
       ));
 
       await rig.start();
@@ -741,6 +984,7 @@ void main() {
         SyncTable.cycleOverrides: 13,
         SyncTable.careNotes: 15,
         SyncTable.visitPrepItems: 17,
+        SyncTable.dayEntryMergeEvents: 21,
       }, reason: 'deletedProfiles is deliberately excluded — sync_pull does '
           'not cover it');
       expect(
@@ -780,6 +1024,7 @@ void main() {
           SyncTable.cycleOverrides,
           SyncTable.careNotes,
           SyncTable.visitPrepItems,
+          SyncTable.dayEntryMergeEvents,
         ])
           table: 0,
       }, reason: 'reconcile always pages from version 0, so priming must '

@@ -52,6 +52,19 @@ const String kWaitingCopy =
     'Waiting for email confirmation — open the link on this device';
 const String kUploadPendingCopy = 'Upload pending — tap to review';
 
+
+/// Issue #226 made Settings a much taller sectioned list: the Account
+/// section and the relock toggle now sit below the fold of the default
+/// 800x600 test surface (a `ListView` only builds children near the
+/// viewport), so these tests use a tall viewport instead of scrolling
+/// tile by tile.
+void useTallSettingsViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 class AccountHarness {
   AccountHarness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
 
@@ -76,6 +89,7 @@ class AccountHarness {
     bool withEngine = true,
     Future<void> Function(LunarLogDatabase db)? seed,
   }) async {
+    useTallSettingsViewport(tester);
     if (seed != null) await seed(db);
     await tester.pumpWidget(
       LunarLogApp.withCollaborators(
@@ -2546,6 +2560,7 @@ void main() {
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await AccountHarness.seedOneProfile(db);
+      useTallSettingsViewport(tester);
       await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Settings'));

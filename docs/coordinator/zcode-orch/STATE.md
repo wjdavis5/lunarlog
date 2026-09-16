@@ -5,22 +5,15 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 ## In progress (branch prefix grandfathered claude-orch/ where noted)
 | issue | branch | worktree | PR | status |
 |---|---|---|---|---|
-| 42 | claude-orch/42-sync-batching (gf) | .worktrees/claude-orch/42-sync-batching | — | coding |
-| 130 | claude-orch/130-same-date-merge-notice (gf) | .worktrees/claude-orch/130-same-date-merge-notice | — | coding |
-| 174 | claude-orch/174-fcm-presentation (gf) | .worktrees/claude-orch/174-fcm-presentation | — | coding |
-| 241 | claude-orch/241-profile-card (gf) | .worktrees/claude-orch/241-profile-card | — | coding |
-| 460 | claude-orch/460-l10n-guard (gf) | .worktrees/claude-orch/460-l10n-guard | — | coding |
-| 121 | claude-orch/121-simulator-lifecycle (gf) | .worktrees/claude-orch/121-simulator-lifecycle | — | coding |
-| 215 | claude-orch/215-gate-exclusions (gf) | .worktrees/claude-orch/215-gate-exclusions | 734 | in CI (watcher armed) |
-| 185 | claude-orch/185-migration-safety (gf) | — | 721 | HELD for operator: SUPABASE_PITR_CONFIRMED (issue #723) |
+| 241 | claude-orch/241-profile-card (gf) | .worktrees/claude-orch/241-profile-card | — | coding (long runner, 2 quota kills survived, committed partial work on branch) |
+| 257 (P0) | zcode-orch/257-custom-tags | .worktrees/zcode-orch/257-custom-tags | — | coding (dispatched after #130 landed; brief anchored on #130's table pattern) |
+| 185 | claude-orch/185-migration-safety (gf) | — | 721 | HELD for operator: SUPABASE_PITR_CONFIRMED (issue #723; variable verified unset) |
 
 (gf) = grandfathered claude-orch prefix from the pre-migration dispatch; PR label carries ownership.
 
-## Queued (dispatch with full zcode-orch/ markers)
-- On #130's PR merge: #257 (P0 custom-tag registry) → #181 → #170 (all three re-emit sync_push; serialized).
-- #226 (settings restructure) after PR #734 merges.
-- #184 (per-reminder custom text) after #174 lands.
-- #102 after #42 lands. #121 caveat: CI-as-verification loop.
+## Queued (full zcode-orch markers)
+- After #257 lands: #181 (derived sync_push allowlists) → #170 (day_entry_history) — same sync_push serialization.
+- Nothing else claimable: remaining opens are needs-human-review (#18 #19 #21 #22 #29 #52 #104 #117 #295 #450 #451 #464 #467 + ours #723 #724 #725 #730 #736), taste-gated (#164 #258 #262), import-epic (parallel session), health-sync/modes blocked on adapters/modes, device/console items.
 
-## Done (this session, pre-migration id; details in ../log.md)
-#710 (#713), #583 (#717), #400 (#719), #175 (#720), #137 (#727), #99 (#728), #693 (#731), #165 (#732), sibling rescue #268+#271 (#714); state syncs #711 #715 #716 #722 #729.
+## Done (this session; details in ../log.md and log.md)
+#710 (#713), #583 (#717), #400 (#719), #175 (#720), #137 (#727), #99 (#728), #693 (#731), #165 (#732), sibling rescue #268+#271 (#714), #215 (#734), #121 (#740), #460 (#741), #42 (#742), #130 (#743, post-integration), #174 (#744), #226 (#745, post-ratchet-fix), #102 (#746), #184 (#747); syncs #711 #715 #716 #722 #729 #737 (identity migration).

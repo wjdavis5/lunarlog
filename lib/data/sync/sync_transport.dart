@@ -16,9 +16,9 @@ import 'remote_rows.dart';
 import 'row_codec.dart' show JsonRow;
 
 /// One `sync_push` call: profiles, day entries, observations, then the two
-/// Issue #188 tables, then the two Issue #128 tables, each at most
-/// [maxRows] rows (the RPC raises `22023` beyond that). Rows are the
-/// codec's JSON objects, already validated.
+/// Issue #188 tables, then the two Issue #128 tables, then Issue #130's
+/// merge events, each at most [maxRows] rows (the RPC raises `22023`
+/// beyond that). Rows are the codec's JSON objects, already validated.
 @immutable
 class PushBatch {
   PushBatch({
@@ -29,13 +29,15 @@ class PushBatch {
     List<JsonRow> cycleOverrides = const [],
     List<JsonRow> careNotes = const [],
     List<JsonRow> visitPrepItems = const [],
+    List<JsonRow> mergeEvents = const [],
   })  : profiles = List.unmodifiable(profiles),
         dayEntries = List.unmodifiable(dayEntries),
         observations = List.unmodifiable(observations),
         profileModes = List.unmodifiable(profileModes),
         cycleOverrides = List.unmodifiable(cycleOverrides),
         careNotes = List.unmodifiable(careNotes),
-        visitPrepItems = List.unmodifiable(visitPrepItems) {
+        visitPrepItems = List.unmodifiable(visitPrepItems),
+        mergeEvents = List.unmodifiable(mergeEvents) {
     if (profiles.length > maxRows) {
       throw ArgumentError.value(profiles.length, 'profiles',
           'a push batch carries at most $maxRows profiles');
@@ -64,6 +66,10 @@ class PushBatch {
       throw ArgumentError.value(visitPrepItems.length, 'visitPrepItems',
           'a push batch carries at most $maxRows visit prep items');
     }
+    if (mergeEvents.length > maxRows) {
+      throw ArgumentError.value(mergeEvents.length, 'mergeEvents',
+          'a push batch carries at most $maxRows merge events');
+    }
   }
 
   /// The RPC's per-array limit (KTD3). Linked to the domain read model so
@@ -88,6 +94,9 @@ class PushBatch {
   /// Issue #128: `sync_push`'s seventh parameter.
   final List<JsonRow> visitPrepItems;
 
+  /// Issue #130: `sync_push`'s eighth parameter (merge-disclosure rows).
+  final List<JsonRow> mergeEvents;
+
   int get rowCount =>
       profiles.length +
       dayEntries.length +
@@ -95,7 +104,8 @@ class PushBatch {
       profileModes.length +
       cycleOverrides.length +
       careNotes.length +
-      visitPrepItems.length;
+      visitPrepItems.length +
+      mergeEvents.length;
 
   bool get isEmpty => rowCount == 0;
 
@@ -104,7 +114,7 @@ class PushBatch {
       'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length}, '
       'observations: ${observations.length}, profileModes: ${profileModes.length}, '
       'cycleOverrides: ${cycleOverrides.length}, careNotes: ${careNotes.length}, '
-      'visitPrepItems: ${visitPrepItems.length})';
+      'visitPrepItems: ${visitPrepItems.length}, mergeEvents: ${mergeEvents.length})';
 }
 
 /// What `sync_push` answered (KTD3).
@@ -260,4 +270,23 @@ abstract interface class SyncTransport {
   /// [pullPage] must still work correctly, just via its own per-table
   /// `select` fallback, whether this was never called or failed silently.
   Future<void> primePullCycle(Map<SyncTable, int> cursors);
+
+  /// Issue #42: the highest `server_version` the caller can currently see
+  /// on [table] — the cheap pre-reconcile probe that lets the engine skip
+  /// the daily full re-pull when nothing changed server-side. Every synced
+  /// table stamps `server_version` from a trigger on *every* insert/update
+  /// (including the server-side RPCs `sync_push` never touches — guardian
+  /// changes, ownership transfers, the hard-purge `deleted_profiles`
+  /// markers), so the per-table maximum is a complete change signal for
+  /// rows this caller can see: `max <= persistedCursor` for every table
+  /// means the incremental pull's cursors have already seen and applied
+  /// everything there is, and re-paging from version 0 would be a no-op.
+  ///
+  /// Like [fetchWatermark] this never throws: `null` means "unknown" (any
+  /// transport or decode failure, or a table this transport cannot probe),
+  /// and the caller must treat that conservatively — the full re-pull
+  /// runs; sync is never silently skipped on a probe failure. An empty
+  /// (or entirely RLS-invisible) table is *not* a failure: it answers `0`,
+  /// below any cursor.
+  Future<int?> fetchMaxVersion(SyncTable table);
 }

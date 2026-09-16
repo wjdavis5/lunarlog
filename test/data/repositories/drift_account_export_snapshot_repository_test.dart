@@ -6,11 +6,13 @@
 library;
 
 import 'dart:async';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/db.dart'
+    show DayEntryMergeEventsCompanion, LunarLogDatabase;
 import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
@@ -80,6 +82,21 @@ class _YieldingDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<void> delete(String profileId, LocalDate localDate) =>
       _inner.delete(profileId, localDate);
+
+  // Issue #130: no merge-notice surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForDay(
+          String profileId, LocalDate date) async =>
+      const [];
+
+  @override
+  Future<void> dismissMergeEvent(String profileId, String eventId) async {}
+
+  // Issue #130: no per-profile export surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
+          String profileId) async =>
+      const [];
 }
 
 void main() {
@@ -157,6 +174,51 @@ void main() {
     expect(snapshot.entries, isEmpty);
     expect(snapshot.observations, isEmpty);
     expect(snapshot.cycleOverrides, isEmpty);
+    expect(snapshot.mergeEvents, isEmpty);
+  });
+
+  test(
+      "the snapshot carries the profile's window-live merge disclosures "
+      '(Issue #130, export v11) — a dismissed one included (dismissal is a '
+      'per-device display choice, not a deletion), an aged-out one '
+      'excluded (the file never extends the retention window)', () async {
+    final storage = db.storage;
+    // Relative to the REAL clock: the repository-level read has no clock
+    // injection, so the window filter compares against DateTime.now().
+    final fresh = DateTime.now().toUtc().subtract(const Duration(days: 5));
+    Future<void> seedMergeEvent(
+      String id,
+      String losingRowId,
+      DateTime createdAt,
+    ) =>
+        (db.into(db.dayEntryMergeEvents).insert(
+              DayEntryMergeEventsCompanion.insert(
+                id: id,
+                profileId: profileId,
+                localDate: '2026-01-15',
+                winningRowId: '01JREMOTE00000000000000000W',
+                losingRowId: losingRowId,
+                field: 'note',
+                losingValueText: 'discarded text $id',
+                createdAt: createdAt,
+                updatedAt: createdAt,
+              ),
+            ));
+    await seedMergeEvent('01JREMOTE0000000000000000FA',
+        '01JREMOTE00000000000000000A', fresh);
+    // Far outside the 30-day window.
+    await seedMergeEvent(
+        '01JREMOTE0000000000000000FB',
+        '01JREMOTE00000000000000000B',
+        DateTime.now().toUtc().subtract(const Duration(days: 60)));
+    await storage.dismissDayEntryMergeEvent(
+        profileId: profileId, eventId: '01JREMOTE0000000000000000FA');
+
+    final snapshot = await snapshotRepo.forProfile(profileId);
+
+    expect(snapshot.mergeEvents, hasLength(1));
+    expect(snapshot.mergeEvents.single.losingValueText,
+        'discarded text 01JREMOTE0000000000000000FA');
   });
 
   test(

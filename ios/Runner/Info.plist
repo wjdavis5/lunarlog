@@ -117,7 +117,13 @@
 	</array>
 	<!-- Issue #5, U7: lets a caregiver alert wake the app to handle a
 	     silent/data push; the visible notification itself is delivered by
-	     the system regardless of this key. -->
+	     the system regardless of this key. Issue #174: this declaration is
+	     now backed by the registered background handler
+	     (pushBackgroundMessageHandler in
+	     lib/data/notifications/push_presentation.dart, registered before
+	     runApp() in lib/main.dart behind AppConfig.hasPush) — a data-only
+	     push arriving while the app is backgrounded is presented by that
+	     handler instead of the key being an unbacked App Review query. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

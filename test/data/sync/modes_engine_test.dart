@@ -237,10 +237,10 @@ void main() {
       // A second cycle with no new pages pulls nothing new and keeps cursors.
       final pullsBefore = rig.transport.pullCount;
       await rig.sync();
-      expect(rig.transport.pullCount, pullsBefore + 9,
-          reason: 'a full cycle pulls all nine tables (Issue #128 adds '
+      expect(rig.transport.pullCount, pullsBefore + 10,
+          reason: 'a full cycle pulls all ten tables (Issue #128 adds '
               'care_notes/visit_prep_items; Issue #522 adds '
-              'deleted_profiles)');
+              'deleted_profiles; Issue #130 adds day_entry_merge_events)');
       expect((await rig.state()).cursorProfileModes, 30);
     },
   );

@@ -1036,6 +1036,162 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get settingsClose;
 
+  /// Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge.
+  ///
+  /// In en, this message translates to:
+  /// **'Your data'**
+  String get settingsSectionYourData;
+
+  /// Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsSectionAppearance;
+
+  /// Tile title inside the Appearance section (Issue #226 retitled from 'Appearance' once the section header carried that word): opens the system/light/dark picker; the subtitle names the current mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get settingsThemeTitle;
+
+  /// Header of the Settings 'Reminders' section (Issue #226): reminder scheduling and caregiver alert preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders'**
+  String get settingsSectionReminders;
+
+  /// Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get settingsSectionCalendar;
+
+  /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'Family & sharing'**
+  String get settingsSectionFamilySharing;
+
+  /// Header of the Settings 'Privacy & security' section (Issue #226): relock, app PIN, privacy policy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy & security'**
+  String get settingsSectionPrivacySecurity;
+
+  /// Header of the Settings 'Help' section (Issue #226): help library, feedback/support, support history.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get settingsSectionHelp;
+
+  /// Header of the Settings 'About' section (Issue #226): version, build number, licences.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsSectionAbout;
+
+  /// Tile (inside the Reminders section) opening the per-profile reminder configuration screen (Issue #136).
+  ///
+  /// In en, this message translates to:
+  /// **'Reminder settings'**
+  String get settingsReminderSettingsTitle;
+
+  /// Subtitle of the reminder-settings tile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which reminders fire, when, and for whom'**
+  String get settingsReminderSettingsSubtitle;
+
+  /// Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver alerts'**
+  String get settingsCaregiverAlertsTitle;
+
+  /// Calendar-section tile (Issue #226) choosing which day the month grid's weeks start on.
+  ///
+  /// In en, this message translates to:
+  /// **'First day of week'**
+  String get settingsFirstDayTitle;
+
+  /// Week-start option: weeks start on Sunday (the historical default).
+  ///
+  /// In en, this message translates to:
+  /// **'Sunday'**
+  String get settingsFirstDaySunday;
+
+  /// Week-start option: weeks start on Monday (ISO 8601).
+  ///
+  /// In en, this message translates to:
+  /// **'Monday'**
+  String get settingsFirstDayMonday;
+
+  /// Calendar-section tile (Issue #226) choosing the month/day order of compact dates.
+  ///
+  /// In en, this message translates to:
+  /// **'Date format'**
+  String get settingsDateFormatTitle;
+
+  /// Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering.
+  ///
+  /// In en, this message translates to:
+  /// **'System default (5 Sep)'**
+  String get settingsDateFormatSystemOption;
+
+  /// Date-format option: day before month, e.g. '5 Sep'.
+  ///
+  /// In en, this message translates to:
+  /// **'Day first (5 Sep)'**
+  String get settingsDateFormatDayMonthOption;
+
+  /// Date-format option: month before day, e.g. 'Sep 5'.
+  ///
+  /// In en, this message translates to:
+  /// **'Month first (Sep 5)'**
+  String get settingsDateFormatMonthDayOption;
+
+  /// Tile (inside the Help section) opening the offline help library (Issue #139).
+  ///
+  /// In en, this message translates to:
+  /// **'Help & explanations'**
+  String get settingsHelpTitle;
+
+  /// Subtitle of the help library tile.
+  ///
+  /// In en, this message translates to:
+  /// **'Plain-language answers about estimates, logging, sync, and sharing — works offline'**
+  String get settingsHelpSubtitle;
+
+  /// About-section tile title (Issue #226); the subtitle carries the actual version and build number.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsAboutVersionTitle;
+
+  /// The version line shown in Settings → About and on the licence page (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} (build {build})'**
+  String settingsAboutVersion(String version, String build);
+
+  /// Shown in place of the version line when the platform package-info read failed (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get settingsAboutVersionUnavailable;
+
+  /// About-section tile opening Flutter's licence page (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Open-source licences'**
+  String get settingsAboutLicensesTitle;
+
+  /// Subtitle of the licences tile.
+  ///
+  /// In en, this message translates to:
+  /// **'The packages and terms this app builds on'**
+  String get settingsAboutLicensesSubtitle;
+
   /// Headline of the first onboarding card (identity/value).
   ///
   /// In en, this message translates to:
@@ -2463,6 +2619,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Too many attempts. Try again after {time}.'**
   String pinLockScreenLockedOut(String time);
+
+  /// Row title for a reminder type's custom notification text editor entry (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextTileTitle;
+
+  /// Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Using the default text'**
+  String get reminderTextTileDefaultSubtitle;
+
+  /// App bar title of the per-type notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextEditorAppBarTitle;
+
+  /// Section header above the live notification preview in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get reminderTextPreviewSection;
+
+  /// The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Lunarlog'**
+  String get reminderTextPreviewAppName;
+
+  /// The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get reminderTextPreviewNow;
+
+  /// Label above the notification title field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get reminderTextTitleLabel;
+
+  /// Label above the notification body field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Body'**
+  String get reminderTextBodyLabel;
+
+  /// Save action in the notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get reminderTextSaveButton;
+
+  /// Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to default'**
+  String get reminderTextResetButton;
+
+  /// Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.'**
+  String get reminderTextDiscretionNote;
 }
 
 class _AppLocalizationsDelegate

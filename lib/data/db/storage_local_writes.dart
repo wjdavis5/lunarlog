@@ -1635,6 +1635,22 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  /// Issue #130: dismisses one merge notice on THIS device only — the
+  /// event id joins the profile's device-local dismissal list and the day
+  /// sheet stops showing it. Never synced and never a tombstone: the
+  /// server row stays until its 30-day retention purge, so another
+  /// guardian (or this guardian's other device) keeps their notice.
+  Future<void> dismissDayEntryMergeEvent({
+    required String profileId,
+    required String eventId,
+  }) async {
+    final key = mergeNoticeDismissalsKey(profileId);
+    final stored = await getSetting(key);
+    final dismissed = appendMergeNoticeDismissal(
+        decodeMergeNoticeDismissals(stored), eventId);
+    await setSetting(key: key, value: encodeMergeNoticeDismissals(dismissed));
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -1686,14 +1702,156 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const VisitPrepItemsCompanion(dirty: Value(false)));
-      case SyncTable.profileGuardians:
-        changed = 0;
-      case SyncTable.deletedProfiles:
-        // Issue #522: pull-only, like profileGuardians above — never
-        // pushed, so there is nothing for this table to clear.
+      case SyncTable.dayEntryMergeEvents:
+        changed = await (db.update(db.dayEntryMergeEvents)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const DayEntryMergeEventsCompanion(dirty: Value(false)));
+      // Issue #522: profileGuardians and deletedProfiles are pull-only —
+      // never pushed, so there is nothing for either table to clear. One
+      // or-pattern case (rather than two labels) keeps this switch at the
+      // quality gate's complexity ceiling now that Issue #130's tenth
+      // SyncTable arrived.
+      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
         changed = 0;
     }
     return changed > 0;
+  }
+
+  /// Issue #42: [markPushed] for a whole push batch's accepted rows in
+  /// batched UPDATE statements — one statement per [kSyncBatchChunkSize]
+  /// rows per table, instead of one statement per row (up to
+  /// [PushBatch.maxRows] autocommit-by-autocommit UPDATEs per push batch
+  /// before this; the single `db.transaction()` around them is issue #523's
+  /// `applyPushResult`, which is also this method's only caller). The
+  /// `local_rev` guard is preserved exactly: every chunked statement OR-folds
+  /// the same per-row `key = ? AND local_rev = ?` predicate [markPushed]
+  /// uses, so a row whose local revision changed while the push was in
+  /// flight still matches no predicate and stays dirty (AE11) — its next
+  /// push re-sends it. Returns how many rows were cleared.
+  Future<int> markPushedBatch(
+    List<({SyncTable table, String id, int localRevAtPush})> items,
+  ) async {
+    final byTable = <SyncTable, List<({String id, int localRevAtPush})>>{};
+    for (final item in items) {
+      byTable.putIfAbsent(item.table, () => []).add((
+        id: item.id,
+        localRevAtPush: item.localRevAtPush,
+      ));
+    }
+    var cleared = 0;
+    for (final entry in byTable.entries) {
+      final target = _pushWriteTarget(entry.key);
+      // profileGuardians / deletedProfiles never push: nothing to clear,
+      // matching [markPushed]'s own no-op cases.
+      if (target == null) continue;
+      for (final chunk in chunkedBy(entry.value, kSyncBatchChunkSize)) {
+        cleared += await _markPushedChunk(target, chunk);
+      }
+    }
+    return cleared;
+  }
+
+  /// The drift table (and its key/revision column names, read off the typed
+  /// schema so a rename cannot drift) one batched markPushed chunk writes
+  /// for [table], or `null` for the two pull-only tables that never push.
+  ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})?
+  _pushWriteTarget(SyncTable table) {
+    if (_neverPushed(table)) return null;
+    return _pushedTableTargets[table]!();
+  }
+
+  /// The two pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles]): nothing is ever pushed for them, so
+  /// there is no `dirty` flag for [markPushedBatch] to clear — the same
+  /// no-op cases [markPushed] carries.
+  static bool _neverPushed(SyncTable table) => switch (table) {
+    SyncTable.profileGuardians || SyncTable.deletedProfiles => true,
+    _ => false,
+  };
+
+  /// [_pushWriteTarget]'s per-table targets — a map rather than an
+  /// exhaustive switch since Issue #130's tenth SyncTable: the switch's
+  /// pull-only arm was unreachable behind [_neverPushed] by construction
+  /// (uncoverable, and with ten arms the method sat at the CRAP gate's
+  /// complexity ceiling with no coverage headroom at all), while a lookup
+  /// stays flat as tables are added — the same growth rationale as
+  /// storage_remote_apply.dart's `_pageRowAppliers` and the sync
+  /// engine's `_startingCursors`. The pull-only tables simply carry no
+  /// entry; the `!` on the lookup preserves the old unreachable arm's
+  /// fail-loud intent should the [_neverPushed] guard ever be bypassed.
+  late final Map<
+      SyncTable,
+      ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+          Function()> _pushedTableTargets = {
+    SyncTable.profiles: () => (
+      table: db.profiles,
+      keyColumn: db.profiles.id.$name,
+      revColumn: db.profiles.localRev.$name,
+    ),
+    SyncTable.dayEntries: () => (
+      table: db.dayEntries,
+      keyColumn: db.dayEntries.id.$name,
+      revColumn: db.dayEntries.localRev.$name,
+    ),
+    SyncTable.observations: () => (
+      table: db.observations,
+      keyColumn: db.observations.id.$name,
+      revColumn: db.observations.localRev.$name,
+    ),
+    SyncTable.profileModes: () => (
+      table: db.profileModes,
+      keyColumn: db.profileModes.profileId.$name,
+      revColumn: db.profileModes.localRev.$name,
+    ),
+    SyncTable.cycleOverrides: () => (
+      table: db.cycleOverrides,
+      keyColumn: db.cycleOverrides.id.$name,
+      revColumn: db.cycleOverrides.localRev.$name,
+    ),
+    SyncTable.careNotes: () => (
+      table: db.careNotes,
+      keyColumn: db.careNotes.id.$name,
+      revColumn: db.careNotes.localRev.$name,
+    ),
+    SyncTable.visitPrepItems: () => (
+      table: db.visitPrepItems,
+      keyColumn: db.visitPrepItems.id.$name,
+      revColumn: db.visitPrepItems.localRev.$name,
+    ),
+    // Issue #130: merge events push like every other synced table
+    // (dirty rows ride the batch; [markPushed]'s own switch above clears
+    // them the same way).
+    SyncTable.dayEntryMergeEvents: () => (
+      table: db.dayEntryMergeEvents,
+      keyColumn: db.dayEntryMergeEvents.id.$name,
+      revColumn: db.dayEntryMergeEvents.localRev.$name,
+    ),
+  };
+
+  /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
+  /// OR ...` statement covering [chunk] rows of [target] — semantically the
+  /// per-row [markPushed] UPDATEs it replaces, folded into one statement.
+  Future<int> _markPushedChunk(
+    ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+    target,
+    List<({String id, int localRevAtPush})> chunk,
+  ) {
+    final predicates = [
+      for (final _ in chunk)
+        '(${target.keyColumn} = ? AND ${target.revColumn} = ?)',
+    ].join(' OR ');
+    return db.customUpdate(
+      'UPDATE ${target.table.actualTableName} SET dirty = 0 WHERE '
+      '$predicates',
+      variables: [
+        for (final item in chunk) ...[
+          Variable(item.id),
+          Variable(item.localRevAtPush),
+        ],
+      ],
+      updates: {target.table},
+    );
   }
 
   /// Issue #568: bumps `local_rev` on the row [id] of [table] and marks it
@@ -1748,8 +1906,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             .write(VisitPrepItemsCompanion.custom(
                 dirty: const Constant(true),
                 localRev: db.visitPrepItems.localRev + const Constant(1)));
-      case SyncTable.profileGuardians:
-      case SyncTable.deletedProfiles:
+      case SyncTable.dayEntryMergeEvents:
+        await (db.update(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+            .write(DayEntryMergeEventsCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.dayEntryMergeEvents.localRev + const Constant(1)));
+      // Pull-only tables (see the doc comment) — one or-pattern case
+      // rather than two labels, keeping this switch at the quality gate's
+      // complexity ceiling now that Issue #130's tenth SyncTable arrived.
+      case SyncTable.profileGuardians || SyncTable.deletedProfiles:
         break;
     }
   }
@@ -1785,6 +1950,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       await db.update(db.visitPrepItems).write(VisitPrepItemsCompanion.custom(
             dirty: const Constant(true),
             localRev: db.visitPrepItems.localRev + const Constant(1),
+          ));
+      await db.update(db.dayEntryMergeEvents)
+          .write(DayEntryMergeEventsCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
           ));
     });
   }

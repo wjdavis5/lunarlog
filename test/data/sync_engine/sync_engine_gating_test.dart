@@ -64,7 +64,7 @@ void main() {
       expect(rig.transport.pullCount, 0);
       rig.gate.unlock();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, 9); // issue #522 adds deleted_profiles
+      expect(rig.transport.pullCount, 10); // #522 adds deleted_profiles, #130 adds day_entry_merge_events
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 
@@ -99,7 +99,7 @@ void main() {
       final pulls = rig.transport.pullCount;
       rig.timers.periodics.single.fire();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, pulls + 9); // issue #522 adds deleted_profiles
+      expect(rig.transport.pullCount, pulls + 10); // #522 adds deleted_profiles, #130 adds day_entry_merge_events
     });
   });
 }

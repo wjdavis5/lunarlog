@@ -105,6 +105,12 @@ const Map<String, String> _waivedKeys = {
   'invited_by': 'opaque auth user id, not content',
   'checked_by_user_id': 'opaque auth user id, not content',
   'bound_user_id': 'opaque auth user id, not content',
+  'winning_row_id': 'opaque day-entry ULID reference, not content (issue #130)',
+  'losing_row_id': 'opaque day-entry ULID reference, not content (issue #130)',
+  'losing_author_user_id':
+      'opaque auth user id (display attribution), not content (issue #130)',
+  'winning_author_user_id':
+      'opaque auth user id (display attribution), not content (issue #130)',
   'device_id': 'opaque per-install device identifier, not content',
   'source_id': 'import/device provenance key, not health content',
   'import_id': 'placeholder FK to a future import job row, not content',
@@ -129,11 +135,15 @@ const Map<String, String> _waivedKeys = {
   'exported_to_platform_at':
       'health-platform export bookkeeping timestamp, not content',
   'is_checked': 'checklist boolean state, not content',
+  'field':
+      'merge-event discriminator over the closed set flow|note, not content (issue #130)',
   'checked_at': 'checklist bookkeeping timestamp, not content',
   'excluded_from_average':
       'boolean flag about cycle-average membership, not content',
   'manual_start': 'boolean flag about how a cycle began, not content',
   'cursor_profiles': 'device-local sync cursor, not content',
+  'cursor_day_entry_merge_events':
+      'device-local sync cursor, not content (issue #130)',
   'cursor_day_entries': 'device-local sync cursor, not content',
   'cursor_observations': 'device-local sync cursor, not content',
   'cursor_profile_modes': 'device-local sync cursor, not content',

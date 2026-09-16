@@ -30,6 +30,7 @@ import 'package:lunarlog/data/account/supabase_account_deletion_service.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
+import 'package:lunarlog/data/notifications/push_presentation.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
@@ -374,6 +375,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
   RealtimeSyncCoordinator? _realtimeCoordinator;
   PushRegistrationCoordinator? _pushCoordinator;
 
+  /// Issue #174: the foreground (onMessage) caregiver-alert presenter,
+  /// started and disposed next to [_pushCoordinator] — the same
+  /// `AppConfig.hasPush` gate covers both.
+  PushForegroundPresenter? _pushPresenter;
+
   /// The app subtree's teardown (reminder coordinator disposal), captured
   /// when [LunarLogApp] unmounts so a device reset (KTD16) can await it
   /// before closing the database.
@@ -569,6 +575,15 @@ class LunarLogRootState extends State<LunarLogRoot> {
     );
     _pushCoordinator = coordinator;
     await coordinator.start();
+
+    // Issue #174: foreground presentation for the alerts this device is now
+    // registered to receive — a push landing while the app is open shows the
+    // fixed generic banner instead of vanishing. Constructed in
+    // `lib/composition/` (AC2 discipline) and started after the coordinator
+    // so registration ordering is unchanged for everything above.
+    final presenter = buildPushForegroundPresenter();
+    _pushPresenter = presenter;
+    presenter.start();
   }
 
   /// Stops the engine and waits for its in-flight batch or page, so the
@@ -583,6 +598,9 @@ class LunarLogRootState extends State<LunarLogRoot> {
     final pushCoordinator = _pushCoordinator;
     _pushCoordinator = null;
     await pushCoordinator?.dispose();
+    final pushPresenter = _pushPresenter;
+    _pushPresenter = null;
+    await pushPresenter?.dispose();
     _deps = null;
     final engine = _syncEngine;
     _syncEngine = null;

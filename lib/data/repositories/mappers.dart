@@ -5,6 +5,7 @@ library;
 
 import 'package:lunarlog/data/db/db.dart' as db;
 import 'package:lunarlog/data/db/tables.dart' as db;
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as domain;
 import 'package:lunarlog/domain/models/care_note.dart' as domain;
 import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
@@ -197,4 +198,24 @@ domain.VisitPrepItem visitPrepItemToDomain(db.VisitPrepItemData row) =>
       deletedAt: row.deletedAt,
       loggedByUserId: row.loggedByUserId,
       lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #130: storage row -> domain merge-disclosure event (the day
+/// sheet's notice model). The `field` normalisation mirrors the codec's:
+/// an unrecognised value can only come from a broken writer and degrades
+/// to `note`.
+domain.DayEntryMergeEvent dayEntryMergeEventToDomain(
+        db.DayEntryMergeEventData row) =>
+    domain.DayEntryMergeEvent(
+      id: row.id,
+      profileId: row.profileId,
+      localDateIso: row.localDate,
+      winningRowId: row.winningRowId,
+      losingRowId: row.losingRowId,
+      field: domain.DayEntryMergeEventField.fromDb(row.field),
+      losingValueText: row.losingValueText,
+      losingAuthorUserId: row.losingAuthorUserId,
+      winningAuthorUserId: row.winningAuthorUserId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     );
