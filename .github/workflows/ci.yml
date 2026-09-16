@@ -62,6 +62,10 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
@@ -198,6 +202,10 @@ jobs:
       - name: Run check-release-gate tests
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
+
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: always()

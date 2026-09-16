@@ -229,6 +229,7 @@ class LunarLogRoot extends StatefulWidget {
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
     this.dateTicker,
+    this.qaBuild,
   });
 
   final AppGate gate;
@@ -357,6 +358,13 @@ class LunarLogRoot extends StatefulWidget {
   /// guaranteed to be disposed through real app lifecycle instead.
   final Stream<void> Function()? dateTicker;
 
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// forwarded to the [GateController] (null resolves the build's
+  /// [AppConfig.qaBuild] const inside the controller — the `mfaEnabled`
+  /// injection idiom). A QA root starts with the gate unlocked, so the
+  /// database opens immediately with no credential prompt.
+  final bool? qaBuild;
+
   @override
   State<LunarLogRoot> createState() => LunarLogRootState();
 }
@@ -408,6 +416,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       pinService: widget.pinService,
       inactivityTimeout: widget.inactivityTimeout,
       inactivityTimerFactory: widget.inactivityTimerFactory,
+      qaBuild: widget.qaBuild,
     )..addListener(_onGateChanged);
     if (widget.launchProfileId != null) {
       _gate.setPendingLaunchProfileId(widget.launchProfileId);
@@ -766,6 +775,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
         initialInviteProfileId: widget.initialInviteProfileId,
         initialInviteKind: widget.initialInviteKind,
         onTeardown: (done) => _appTeardown = done,
+        // Issue #739: threaded (rather than left to LunarLogApp's own
+        // const default) so a root-level test injecting qaBuild: true
+        // sees the banner too; null in production keeps the const
+        // resolution inside LunarLogApp.
+        showQaBanner: widget.qaBuild,
       );
     } else if (_gate.locked) {
       // Behind the lock before the first unlock: a static, data-free

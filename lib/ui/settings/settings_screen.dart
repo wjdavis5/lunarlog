@@ -65,11 +65,21 @@ import 'package:lunarlog/ui/settings/measurement_units_settings_section.dart';
 import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
 import 'package:lunarlog/ui/sharing/notification_preferences_screen.dart';
+import 'package:lunarlog/ui/startup/qa_build_banner.dart'
+    show kQaBuildRelockNote;
 import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:provider/provider.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.qaBuild});
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// null-means-AppConfig injection idiom, so widget tests exercise both
+  /// flag values in one default-off run. While true the relock toggle
+  /// renders disabled and off (relock is structurally off in
+  /// [GateController] for such a build), with the QA note as its subtitle.
+  final bool? qaBuild;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -78,6 +88,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _relock = true;
   bool _loaded = false;
+
+  /// Issue #739: the resolved QA-build flag for this screen's render.
+  late final bool _qaBuild = widget.qaBuild ?? AppConfig.qaBuild;
 
   @override
   void initState() {
@@ -261,9 +274,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SwitchListTile(
             key: const ValueKey('relock-toggle'),
             title: Text(l10n.settingsRelockTitle),
-            subtitle: Text(l10n.settingsRelockSubtitle),
-            value: _relock,
-            onChanged: _loaded
+            // Issue #739: a QA build renders the toggle disabled and off
+            // with the QA note as its subtitle — relock is permanently off
+            // in [GateController] for such a build, so an interactive
+            // switch claiming otherwise would lie.
+            subtitle: Text(
+              _qaBuild ? kQaBuildRelockNote : l10n.settingsRelockSubtitle,
+            ),
+            value: _qaBuild ? false : _relock,
+            onChanged: _loaded && !_qaBuild
                 ? (value) {
                     setState(() => _relock = value);
                     unawaited(

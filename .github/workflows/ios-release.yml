@@ -41,6 +41,10 @@ on:
         description: 'Submit the build for App Store review'
         type: boolean
         default: false
+      qa_build:
+        description: 'QA build (issue #739): compiles LUNARLOG_QA_BUILD=true (no unlock gate, relock, or re-auth prompts). TestFlight-only — never submittable.'
+        type: boolean
+        default: false
 
 env:
   FLUTTER_CHANNEL: stable
@@ -126,6 +130,27 @@ jobs:
           RELEASE_GATE_ACCOUNT_DELETION: ${{ vars.RELEASE_GATE_ACCOUNT_DELETION }}
         run: bash .github/scripts/check-release-gate.sh
 
+  qa-build-gate:
+    # Issue #739: a QA build (qa_build: true) compiles the client-side
+    # security-prompt bypasses in, so it must never be submitted for App
+    # Store review — a submit_for_review dispatch later ships *that same
+    # binary* to store users. Fails fast, before any build work, whenever
+    # both inputs are set. Deliberately has no job-level `if:` (the same
+    # reasoning as release-gate above): this job always runs and always
+    # succeeds except in the one case it exists to catch, so it can never
+    # silently skip a dispatch it should have gated.
+    name: Verify the QA build gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Refuse QA builds at App Store submission
+        env:
+          QA_BUILD: ${{ inputs.qa_build }}
+          SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
+        run: bash .github/scripts/check-qa-build-gate.sh
+
   ci-gate:
     # Issue #498: Gate release on successful completion of CI verification runs
     # (pgTAP database tests, Deno edge function tests, and the sharded
@@ -145,7 +170,7 @@ jobs:
 
   release:
     name: Build, sign, and upload to TestFlight
-    needs: [verify, migration-gate, release-gate, ci-gate]
+    needs: [verify, migration-gate, release-gate, qa-build-gate, ci-gate]
     # This is a manual (workflow_dispatch-only) trigger, so a fork PR can
     # never reach this job -- kept for consistency with ci.yml's self-hosted
     # jobs (issue #514), which guard against the pull_request case this
@@ -183,6 +208,8 @@ jobs:
 
       - name: Resolve build and version numbers
         id: version
+        env:
+          QA_BUILD: ${{ inputs.qa_build }}
         run: |
           set -euo pipefail
 
@@ -190,6 +217,15 @@ jobs:
 
           # Build number comes from monotonic run counter
           build_number=$(( ${{ github.run_number }} + 1000 ))
+
+          # Issue #739: QA builds occupy a distinct, far-removed
+          # build-number range (501xxx vs the 1xxx-10xxx production
+          # range), so a QA binary is recognisable in TestFlight at a
+          # glance and a manual promotion in App Store Connect is
+          # catchable before it ships.
+          if [ "$QA_BUILD" = "true" ]; then
+            build_number=$(( build_number + 500000 ))
+          fi
 
           echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
           echo "build=$build_number" >> "$GITHUB_OUTPUT"
@@ -339,6 +375,7 @@ jobs:
         env:
           MARKETING_VERSION: ${{ steps.version.outputs.marketing }}
           BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          QA_BUILD: ${{ inputs.qa_build }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
@@ -364,7 +401,8 @@ jobs:
             --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
             --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
             --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
-            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID" \
+            --dart-define=LUNARLOG_QA_BUILD="$QA_BUILD"
 
       - name: Install CocoaPods dependencies
         env:
@@ -492,6 +530,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          QA_BUILD: ${{ inputs.qa_build }}
         run: |
           set -euo pipefail
           ipa="$(find build/ios/ipa -name '*.ipa' -maxdepth 1 | head -1)"
@@ -509,6 +548,15 @@ jobs:
             echo "::error::TestFlight upload failed (details above). If the error mentions 90592 / Invalid Export Compliance Code, see docs/ops/ios-export-compliance.md for the operator-side fix."
             exit 1
           }
+
+          # Issue #739: altool cannot set TestFlight's "What to Test"
+          # field, so the QA marking there is the one manual step in the
+          # runbook (docs/ops/qa-builds.md): after processing finishes, set
+          # it to text containing "QA build". The 501xxx build number and
+          # the in-app QA banner are the automated markers.
+          if [ "$QA_BUILD" = "true" ]; then
+            echo "::notice::QA build uploaded (build ${{ steps.version.outputs.build }}). Once TestFlight finishes processing, set the build's 'What to Test' note to text containing 'QA build' per docs/ops/qa-builds.md."
+          fi
 
       - name: Submit for App Store review
         if: steps.bump.outputs.submit == 'true' && steps.gate.outputs.gate_open != 'false'

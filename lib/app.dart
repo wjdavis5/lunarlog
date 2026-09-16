@@ -72,6 +72,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart'
     show confirmedHealthSyncUserId;
+import 'package:lunarlog/ui/startup/qa_build_banner.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -100,6 +101,7 @@ class LunarLogApp extends StatefulWidget {
     this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
     this.mfaEnabled,
+    this.showQaBanner,
   });
 
   final LunarLogDatabase db;
@@ -142,6 +144,7 @@ class LunarLogApp extends StatefulWidget {
     RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
     bool showWebBanner = kIsWeb,
     bool? mfaEnabled,
+    bool? showQaBanner,
   }) =>
       LunarLogApp(
         key: key,
@@ -174,6 +177,9 @@ class LunarLogApp extends StatefulWidget {
         removeAllPushRegistrations: removeAllPushRegistrations,
         showWebBanner: showWebBanner,
         mfaEnabled: mfaEnabled,
+        // Passed through unresolved (null stays null): the State's
+        // `_showQaBanner` is the single resolution point.
+        showQaBanner: showQaBanner,
       );
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
@@ -229,6 +235,16 @@ class LunarLogApp extends StatefulWidget {
   /// const default (off in every CI/workflow build); a test passes `true`
   /// to exercise #714's MFA-on behavior through the real app shell.
   final bool? mfaEnabled;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// null-means-AppConfig idiom (the `showWebBanner = kIsWeb` shape
+  /// cannot express "not injected", which the root's own pass-through
+  /// needs). While true the persistent [QaBuildBanner] renders above
+  /// every screen and the task-switcher title carries the QA suffix (see
+  /// [_appTitle]). The gate/relock/re-auth halves of the flag live in
+  /// [GateController] and `ensureAal2`, not here.
+  final bool? showQaBanner;
 
   @override
   State<LunarLogApp> createState() => _LunarLogAppState();
@@ -319,6 +335,17 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// gate is still locked for the whole cold-start window before that.
   ThemeMode _themeMode = ThemeMode.system;
   StreamSubscription<String?>? _themeModeSub;
+
+  /// Issue #739: the `MaterialApp.title` (OS task-switcher label) —
+  /// `lunarlog`, with the QA suffix on a QA build. Computed once as a
+  /// field so the flag branch never counts against [build]'s CRAP budget.
+  late final String _appTitle =
+      _showQaBanner ? 'lunarlog$kQaBuildVersionSuffix' : 'lunarlog';
+
+  /// Issue #739: [widget.showQaBanner] resolved once (null means the
+  /// build's [AppConfig.qaBuild] const) — read through this field, never
+  /// the widget member, so the resolution genuinely happens once.
+  late final bool _showQaBanner = widget.showQaBanner ?? AppConfig.qaBuild;
 
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
   /// database on a *mounted* app would leave them bound to the old (closed)
@@ -616,6 +643,21 @@ class _LunarLogAppState extends State<LunarLogApp>
     return Column(
       children: [
         _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
+  /// QA build; a no-op (the child, unchanged) on every store build. Same
+  /// `MaterialApp.builder` placement — above the Navigator — as the web
+  /// banner beside it, so the marker renders over whatever screen is
+  /// showing.
+  Widget _wrapWithQaBanner(Widget child) {
+    if (!_showQaBanner) return child;
+    return Column(
+      children: [
+        const QaBuildBanner(),
         Expanded(child: child),
       ],
     );
@@ -1124,7 +1166,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         navigatorObservers: _navigatorObservers,
-        title: 'lunarlog',
+        title: _appTitle,
         theme: AppTheme.lightTheme,
         // Issue #137: the app follows the OS appearance by default
         // (`ThemeMode.system`, this state field's value until the settings
@@ -1147,7 +1189,13 @@ class _LunarLogAppState extends State<LunarLogApp>
           showBanner: widget.showWebBanner,
           onWipe: resetDevice ?? widget.db.wipeAllData,
           navigatorKey: _navigatorKey,
-          child: _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+          // Issue #739: the QA banner wraps outside the invite banner so
+          // it stays the topmost strip on every screen — a persistent
+          // marker, never dismissed by an auth change like the invite
+          // banner below it can be.
+          child: _wrapWithQaBanner(
+            _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+          ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
         // always built with WidgetsApp.defaultRouteName, `/`, which

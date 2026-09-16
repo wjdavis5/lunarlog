@@ -13,7 +13,10 @@ library;
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/startup/qa_build_banner.dart'
+    show kQaBuildVersionSuffix;
 import 'package:package_info_plus/package_info_plus.dart';
 
 /// The application name shown on the licence page — a proper noun, not
@@ -27,10 +30,17 @@ typedef AboutPackageInfoReader = Future<PackageInfo> Function();
 Future<PackageInfo> _defaultPackageInfoReader() => PackageInfo.fromPlatform();
 
 class AboutSection extends StatefulWidget {
-  const AboutSection({super.key, this.packageInfoReader});
+  const AboutSection({super.key, this.packageInfoReader, this.qaBuild});
 
   /// Injectable for tests; null means the real platform read.
   final AboutPackageInfoReader? packageInfoReader;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// null-means-AppConfig injection idiom. While true the version line
+  /// carries the QA suffix, so a screenshot of Settings identifies the
+  /// build without hunting for the banner.
+  final bool? qaBuild;
 
   @override
   State<AboutSection> createState() => _AboutSectionState();
@@ -38,6 +48,9 @@ class AboutSection extends StatefulWidget {
 
 class _AboutSectionState extends State<AboutSection> {
   PackageInfo? _info;
+
+  /// Issue #739: the resolved QA-build flag for this section's render.
+  late final bool _qaBuild = widget.qaBuild ?? AppConfig.qaBuild;
 
   @override
   void initState() {
@@ -63,7 +76,9 @@ class _AboutSectionState extends State<AboutSection> {
     if (info == null || info.version.isEmpty) {
       return l10n.settingsAboutVersionUnavailable;
     }
-    return l10n.settingsAboutVersion(info.version, info.buildNumber);
+    final base = l10n.settingsAboutVersion(info.version, info.buildNumber);
+    // Issue #739: the QA suffix rides the version line on a QA build.
+    return _qaBuild ? '$base$kQaBuildVersionSuffix' : base;
   }
 
   void _openLicenses() {

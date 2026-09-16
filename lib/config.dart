@@ -260,6 +260,37 @@ abstract final class AppConfig {
   /// resolver, so a future flag (e.g. #739's QA-build bypass) ORs into one
   /// place instead of scattering a second read of the define.
   static const bool mfaEnabled = bool.fromEnvironment('LUNARLOG_ENABLE_MFA');
+
+  /// True only when the build was compiled with `LUNARLOG_QA_BUILD=true`
+  /// (issue #739): a tester-facing build in which the launch unlock gate
+  /// starts open, relock is permanently off, `reauthenticate()` and
+  /// `ensureAal2` auto-grant, and a persistent "QA build" banner marks
+  /// every screen. Never set in `ci.yml`'s builds; `ios-release.yml` and
+  /// `play-store-release.yml` set it only from their explicit `qa_build`
+  /// dispatch input, and both refuse to submit (App Store review) or
+  /// promote (any Play track but `internal`) such a build.
+  ///
+  /// Client-side only, exactly like [mfaEnabled]: the server-side halves
+  /// (the `delete-account` Edge Function's AAL2 check, gotrue's own
+  /// session enforcement, every RLS policy) are identical for every build
+  /// — a QA build skips *prompts*, never *permissions*. MFA enrolment
+  /// itself stays exercisable in a QA build; only the AAL2 step-up prompt
+  /// before destructive actions is bypassed, by OR-ing this flag into
+  /// `ensureAal2`'s `mfaEnabled` early return (the #738 composition point).
+  ///
+  /// The single `bool.fromEnvironment` seam (issue #739's "read once"
+  /// rule; `test/architecture/qa_flag_seam_test.dart` pins the define
+  /// literal appears only here). The issue suggested a new
+  /// `lib/startup/build_mode.dart`, but three of the resolution points
+  /// live in `lib/ui` (`ensureAal2`, the Settings relock toggle, the
+  /// About version line) and `layering_test.dart` forbids `lib/ui` from
+  /// importing `lib/startup` — so the seam lands here beside
+  /// [mfaEnabled], the #738 precedent for exactly this shape of flag.
+  /// Consumers follow the `showGoogle` null-means-AppConfig injection
+  /// idiom (`GateController`, `LunarLogApp`, `SettingsScreen`,
+  /// `AboutSection`) or a default-valued parameter (`ensureAal2`) so
+  /// widget tests exercise both flag values in one default-off run.
+  static const bool qaBuild = bool.fromEnvironment('LUNARLOG_QA_BUILD');
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
