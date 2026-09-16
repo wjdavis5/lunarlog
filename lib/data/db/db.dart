@@ -85,6 +85,13 @@ const String kDayEntryMergeEventsProfileDateIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_day_entry_merge_events_profile_date '
     'ON day_entry_merge_events (profile_id, local_date)';
 
+/// Schema v22 (issue #257): index over `profile_tag_registry.profile_id` —
+/// every registry read (the day sheet's picker/tag-resolution read, the
+/// repository's watch) filters by it.
+const String kProfileTagRegistryProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_profile_tag_registry_profile_id '
+    'ON profile_tag_registry (profile_id)';
+
 /// Schema v19 (issue #625, LLA-101): composite index over
 /// `observations(day_entry_id, id)` — [LunarLogStorageQueries.
 /// getObservationsForDayEntry]/[LunarLogStorageQueries.
@@ -119,6 +126,7 @@ const String kObservationsProfileIndexSql =
   CareNotes,
   VisitPrepItems,
   DayEntryMergeEvents,
+  ProfileTagRegistry,
   AppSettings,
   SyncState,
   HealthSyncState,
@@ -207,8 +215,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   merge-disclosure notice substrate) with its
   ///   `sync_state.cursor_day_entry_merge_events` pull cursor and a
   ///   `(profile_id, local_date)` index.
+  /// * 22 — `profile_tag_registry` table (Issue #257, the per-profile
+  ///   custom-tag registry) with its
+  ///   `sync_state.cursor_profile_tag_registry` pull cursor and a
+  ///   `profile_id` index.
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -224,6 +236,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kDayEntryMergeEventsProfileDateIndexSql);
           await customStatement(kObservationsDayEntryIndexSql);
           await customStatement(kObservationsProfileIndexSql);
+          await customStatement(kProfileTagRegistryProfileIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -269,7 +282,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// #597 adds `sync_state.cursor_deleted_profiles`. Issue #130 adds
   /// `day_entry_merge_events`,
   /// `sync_state.cursor_day_entry_merge_events`,
-  /// `day_entry_merge_events.profile_date_index`. Every version step
+  /// `day_entry_merge_events.profile_date_index`. Issue #257 adds
+  /// `profile_tag_registry`, `sync_state.cursor_profile_tag_registry`,
+  /// `profile_tag_registry.profile_id_index`. Every version step
   /// also reports its own `schema_version.v<N>` label (Issue #637,
   /// LLA-015) right after `PRAGMA user_version` advances inside that
   /// same step's transaction — a hook that throws there proves the
@@ -493,6 +508,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV20(m, from);
     // Issue #130's v21 step, same shape again.
     await _upgradeToV21(m, from);
+    // Issue #257's v22 step, same shape again.
+    await _upgradeToV22(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -529,6 +546,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // `onCreate` or the `from < 21` step below). A no-op for every real
     // device.
     await customStatement(kDayEntryMergeEventsProfileDateIndexSql);
+    // Issue #257 extends the same unconditional re-assert to the v22
+    // registry index, for the identical reason (a schema-verification
+    // fixture that starts at v22+ via `createAll` alone never ran the real
+    // `onCreate` or the `from < 22` step below). A no-op for every real
+    // device.
+    await customStatement(kProfileTagRegistryProfileIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -873,6 +896,31 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
+  /// The v22 upgrade step (Issue #257): the `profile_tag_registry` table,
+  /// its `sync_state` pull cursor, and its `profile_id` index. Same
+  /// standalone-method shape as [_upgradeToV9] (including the `sync_state`
+  /// gotcha: the `from < 2` block's `m.createTable(syncState)` builds the
+  /// table from the *current* `SyncState` class, which already declares
+  /// this cursor column — see [_hasColumn]'s doc comment, LLA-015). No
+  /// backfill: a fresh table starts empty — a profile's custom vocabulary
+  /// is created going forward (or by a future Clue importer mapping
+  /// free-text tags to registry entries, which is #257's stated follow-up,
+  /// not this change).
+  Future<void> _upgradeToV22(Migrator m, int from) async {
+    if (from >= 22) return;
+    await transaction(() async {
+      await m.createTable(profileTagRegistry);
+      await migrationStepHook?.call('profile_tag_registry');
+      if (!await _hasColumn('sync_state', 'cursor_profile_tag_registry')) {
+        await m.addColumn(syncState, syncState.cursorProfileTagRegistry);
+        await migrationStepHook?.call('sync_state.cursor_profile_tag_registry');
+      }
+      await customStatement(kProfileTagRegistryProfileIndexSql);
+      await migrationStepHook?.call('profile_tag_registry.profile_id_index');
+      await _advanceSchemaVersion(22);
+    });
+  }
+
   /// Hard-deletes every row in every table, the `sync_state` row included —
   /// the web build's wipe-local-data action and the web half of device
   /// reset (KTD16). This is a wipe, not a sync-domain soft delete:
@@ -888,6 +936,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await delete(cycleOverrides).go();
       await delete(profileModes).go();
       await delete(dayEntryMergeEvents).go();
+      await delete(profileTagRegistry).go();
       await delete(observations).go();
       await delete(dayEntries).go();
       // profile_guardians references profiles(id): it must be emptied

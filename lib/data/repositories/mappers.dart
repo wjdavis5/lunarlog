@@ -5,6 +5,7 @@ library;
 
 import 'package:lunarlog/data/db/db.dart' as db;
 import 'package:lunarlog/data/db/tables.dart' as db;
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart' as domain;
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as domain;
 import 'package:lunarlog/domain/models/care_note.dart' as domain;
 import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
@@ -218,4 +219,22 @@ domain.DayEntryMergeEvent dayEntryMergeEventToDomain(
       winningAuthorUserId: row.winningAuthorUserId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    );
+
+/// Issue #257: storage row -> domain [domain.CustomTag]. The repository
+/// read is already scoped to live rows (tombstones filtered in storage),
+/// so the mapper carries `deletedAt` through for completeness only.
+domain.CustomTag customTagToDomain(db.ProfileTagRegistryEntry row) =>
+    domain.CustomTag(
+      id: row.id,
+      profileId: row.profileId,
+      code: row.code,
+      displayName: row.displayName,
+      category: row.category,
+      intensityEnabled: row.intensityEnabled,
+      hiddenAt: row.hiddenAt,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
     );

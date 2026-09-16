@@ -108,6 +108,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.dayEntryMergeEvents => const [],
+            SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
           };
 
@@ -147,6 +148,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.dayEntryMergeEvents => const [],
+            SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
           };
 
@@ -564,6 +566,7 @@ void main() {
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
             SyncTable.dayEntryMergeEvents => const [],
+            SyncTable.profileTagRegistry => const [],
             SyncTable.profileGuardians => [stuck],
             SyncTable.deletedProfiles => const [],
           };

@@ -326,6 +326,17 @@ void _validateVisitPrepItemBody(String body) {
   _boundedOrThrow(body, kMaxVisitPrepItemLength, 'body');
 }
 
+/// Issue #257: mirrors `profile_tag_registry_code_length_check` — both the
+/// min (a code is required; unlike a note body, an empty identifier could
+/// never resolve) and the max (the same 64-char ceiling every tag-code
+/// element carries).
+void _validateRegistryCode(String code) {
+  if (code.isEmpty || code.length > kMaxTagLength) {
+    throw ArgumentError.value(code.length, 'code',
+        'must be 1..$kMaxTagLength characters');
+  }
+}
+
 /// Input payload for atomically upserting an observation alongside a day entry
 /// in [LunarLogStorageLocalWrites.saveDayEntryWithObservations].
 class UpsertObservationPayload {
@@ -1610,6 +1621,104 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  // ------------------------------------------------- profile tag registry
+
+  /// Issue #257: creates or updates a registry row keyed by [id] (a fresh
+  /// ULID is generated when omitted). [code] is immutable on update — a
+  /// rename rewrites [displayName] only, so stored day-entry references
+  /// keep resolving. Throws [ArgumentError] for a [code] outside
+  /// 1..[kMaxTagLength] or a [displayName] over
+  /// [kMaxCustomTagLabelLength] (the server CHECKs' mirrors). [hiddenAt]
+  /// is the retirement write: setting it removes the code from the
+  /// day-sheet picker while stored rows keep rendering; passing null on a
+  /// retired row un-retires it. Marks the row dirty and bumps `local_rev`.
+  Future<ProfileTagRegistryEntry> upsertProfileTagRegistryEntry({
+    String? id,
+    required String profileId,
+    required String code,
+    required String displayName,
+    String category = kCustomTagCategory,
+    bool intensityEnabled = false,
+    DateTime? hiddenAt,
+    int? sortOrder,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateRegistryCode(code);
+    _boundedOrThrow(displayName, kMaxCustomTagLabelLength, 'displayName');
+    _boundedOrThrow(category, kMaxTagLength, 'category');
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      ProfileTagRegistryEntry? existing;
+      if (id != null) existing = await _profileTagRegistryOrNull(id);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.profileTagRegistry)
+            .insert(ProfileTagRegistryCompanion.insert(
+          id: rowId,
+          profileId: profileId,
+          code: code,
+          displayName: displayName,
+          category: category,
+          intensityEnabled: Value(intensityEnabled),
+          hiddenAt: Value(hiddenAt),
+          sortOrder: Value(sortOrder),
+          createdAt: now,
+          updatedAt: now,
+          dirty: const Value(true),
+          localRev: const Value(1),
+        ));
+        return _profileTagRegistryById(rowId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.profileTagRegistry)
+            ..where((t) => t.id.equals(rowId)))
+          .write(ProfileTagRegistryCompanion(
+        displayName: Value(displayName),
+        category: Value(category),
+        intensityEnabled: Value(intensityEnabled),
+        hiddenAt: Value(hiddenAt),
+        sortOrder: Value(sortOrder),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        deletedAt: const Value(null),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileTagRegistryById(rowId);
+    });
+  }
+
+  /// Issue #257: RETIRES a registry row — sets `hidden_at` and nothing
+  /// else. Retirement removes the code from the day-sheet picker while
+  /// every stored row referencing it keeps rendering; it never deletes
+  /// anything. Returns false when [id] is unknown or already tombstoned.
+  Future<bool> retireProfileTagRegistryEntry(String id) async {
+    return db.transaction(() async {
+      final existing = await _profileTagRegistryOrNull(id);
+      if (existing == null || existing.deletedAt != null) return false;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.profileTagRegistry)
+            ..where((t) => t.id.equals(id)))
+          .write(ProfileTagRegistryCompanion(
+        hiddenAt: Value(at),
+        updatedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return true;
+    });
+  }
+
+  /// Registry row by id (Issue #257), tombstones included — the local
+  /// write path's own read-back.
+  Future<ProfileTagRegistryEntry> _profileTagRegistryById(String id) async {
+    final row = await _profileTagRegistryOrNull(id);
+    if (row == null) {
+      throw StateError('profile_tag_registry row $id missing after write');
+    }
+    return row;
+  }
+
   // ------------------------------------------------------------- app settings
 
   /// Device-local key-value state. Not part of the sync model (open design
@@ -1707,6 +1816,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               ..where((t) =>
                   t.id.equals(id) & t.localRev.equals(localRevAtPush)))
             .write(const DayEntryMergeEventsCompanion(dirty: Value(false)));
+      case SyncTable.profileTagRegistry:
+        changed = await (db.update(db.profileTagRegistry)
+              ..where((t) =>
+                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
+            .write(const ProfileTagRegistryCompanion(dirty: Value(false)));
       // Issue #522: profileGuardians and deletedProfiles are pull-only —
       // never pushed, so there is nothing for either table to clear. One
       // or-pattern case (rather than two labels) keeps this switch at the
@@ -1827,6 +1941,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       keyColumn: db.dayEntryMergeEvents.id.$name,
       revColumn: db.dayEntryMergeEvents.localRev.$name,
     ),
+    // Issue #257: registry rows push like every other synced table
+    // (dirty rows ride the batch; [markPushed]'s own switch above clears
+    // them the same way).
+    SyncTable.profileTagRegistry: () => (
+      table: db.profileTagRegistry,
+      keyColumn: db.profileTagRegistry.id.$name,
+      revColumn: db.profileTagRegistry.localRev.$name,
+    ),
   };
 
   /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
@@ -1911,6 +2033,13 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             .write(DayEntryMergeEventsCompanion.custom(
                 dirty: const Constant(true),
                 localRev: db.dayEntryMergeEvents.localRev + const Constant(1)));
+      case SyncTable.profileTagRegistry:
+        await (db.update(db.profileTagRegistry)
+              ..where((t) => t.id.equals(id)))
+            .write(ProfileTagRegistryCompanion.custom(
+                dirty: const Constant(true),
+                localRev: db.profileTagRegistry.localRev +
+                    const Constant(1)));
       // Pull-only tables (see the doc comment) — one or-pattern case
       // rather than two labels, keeping this switch at the quality gate's
       // complexity ceiling now that Issue #130's tenth SyncTable arrived.
@@ -1955,6 +2084,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           .write(DayEntryMergeEventsCompanion.custom(
             dirty: const Constant(true),
             localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
+          ));
+      await db.update(db.profileTagRegistry)
+          .write(ProfileTagRegistryCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.profileTagRegistry.localRev + const Constant(1),
           ));
     });
   }
@@ -2032,6 +2166,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             updatedAt: Constant(serverNow.toUtc()),
             localRev: db.visitPrepItems.localRev + const Constant(1),
           ));
+      rebased += await (db.update(db.profileTagRegistry)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfileTagRegistryCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profileTagRegistry.localRev + const Constant(1),
+          ));
     });
     return rebased;
   }
@@ -2098,6 +2240,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
                 t.deletedAt.isSmallerOrEqualValue(cutoff)))
           .go();
 
+      // 4b. Profile tag registry (references profiles) — Issue #257.
+      swept += await (db.delete(db.profileTagRegistry)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
       // 5. Day entries (references profiles, referenced by observations)
       // Only delete day entries that are no longer referenced by any remaining observations.
       final referencedDayEntryIds = db.selectOnly(db.observations)
@@ -2121,6 +2271,8 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       final refOverrides = db.selectOnly(db.cycleOverrides)..addColumns([db.cycleOverrides.profileId]);
       final refNotes = db.selectOnly(db.careNotes)..addColumns([db.careNotes.profileId]);
       final refPrep = db.selectOnly(db.visitPrepItems)..addColumns([db.visitPrepItems.profileId]);
+      final refRegistry = db.selectOnly(db.profileTagRegistry)
+        ..addColumns([db.profileTagRegistry.profileId]);
 
       swept += await (db.delete(db.profiles)
             ..where((t) =>
@@ -2133,7 +2285,8 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
                 t.id.isNotInQuery(refModes) &
                 t.id.isNotInQuery(refOverrides) &
                 t.id.isNotInQuery(refNotes) &
-                t.id.isNotInQuery(refPrep)))
+                t.id.isNotInQuery(refPrep) &
+                t.id.isNotInQuery(refRegistry)))
           .go();
 
       return swept;

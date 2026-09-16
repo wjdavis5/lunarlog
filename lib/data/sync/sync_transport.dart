@@ -17,8 +17,9 @@ import 'row_codec.dart' show JsonRow;
 
 /// One `sync_push` call: profiles, day entries, observations, then the two
 /// Issue #188 tables, then the two Issue #128 tables, then Issue #130's
-/// merge events, each at most [maxRows] rows (the RPC raises `22023`
-/// beyond that). Rows are the codec's JSON objects, already validated.
+/// merge events, then Issue #257's tag-registry rows, each at most
+/// [maxRows] rows (the RPC raises `22023` beyond that). Rows are the
+/// codec's JSON objects, already validated.
 @immutable
 class PushBatch {
   PushBatch({
@@ -30,6 +31,7 @@ class PushBatch {
     List<JsonRow> careNotes = const [],
     List<JsonRow> visitPrepItems = const [],
     List<JsonRow> mergeEvents = const [],
+    List<JsonRow> tagRegistry = const [],
   })  : profiles = List.unmodifiable(profiles),
         dayEntries = List.unmodifiable(dayEntries),
         observations = List.unmodifiable(observations),
@@ -37,7 +39,8 @@ class PushBatch {
         cycleOverrides = List.unmodifiable(cycleOverrides),
         careNotes = List.unmodifiable(careNotes),
         visitPrepItems = List.unmodifiable(visitPrepItems),
-        mergeEvents = List.unmodifiable(mergeEvents) {
+        mergeEvents = List.unmodifiable(mergeEvents),
+        tagRegistry = List.unmodifiable(tagRegistry) {
     if (profiles.length > maxRows) {
       throw ArgumentError.value(profiles.length, 'profiles',
           'a push batch carries at most $maxRows profiles');
@@ -70,6 +73,10 @@ class PushBatch {
       throw ArgumentError.value(mergeEvents.length, 'mergeEvents',
           'a push batch carries at most $maxRows merge events');
     }
+    if (tagRegistry.length > maxRows) {
+      throw ArgumentError.value(tagRegistry.length, 'tagRegistry',
+          'a push batch carries at most $maxRows tag registry rows');
+    }
   }
 
   /// The RPC's per-array limit (KTD3). Linked to the domain read model so
@@ -97,6 +104,9 @@ class PushBatch {
   /// Issue #130: `sync_push`'s eighth parameter (merge-disclosure rows).
   final List<JsonRow> mergeEvents;
 
+  /// Issue #257: `sync_push`'s ninth parameter (custom-tag registry rows).
+  final List<JsonRow> tagRegistry;
+
   int get rowCount =>
       profiles.length +
       dayEntries.length +
@@ -105,7 +115,8 @@ class PushBatch {
       cycleOverrides.length +
       careNotes.length +
       visitPrepItems.length +
-      mergeEvents.length;
+      mergeEvents.length +
+      tagRegistry.length;
 
   bool get isEmpty => rowCount == 0;
 
@@ -114,7 +125,8 @@ class PushBatch {
       'PushBatch(profiles: ${profiles.length}, dayEntries: ${dayEntries.length}, '
       'observations: ${observations.length}, profileModes: ${profileModes.length}, '
       'cycleOverrides: ${cycleOverrides.length}, careNotes: ${careNotes.length}, '
-      'visitPrepItems: ${visitPrepItems.length}, mergeEvents: ${mergeEvents.length})';
+      'visitPrepItems: ${visitPrepItems.length}, mergeEvents: ${mergeEvents.length}, '
+      'tagRegistry: ${tagRegistry.length})';
 }
 
 /// What `sync_push` answered (KTD3).

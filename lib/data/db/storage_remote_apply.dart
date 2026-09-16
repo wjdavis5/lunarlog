@@ -45,6 +45,10 @@ class _PageLookup {
   /// care tables (Issue #42's pattern applied when the table landed).
   final Map<String, DayEntryMergeEventData?> dayEntryMergeEvents = {};
 
+  /// Issue #257's eleventh synced table, prefetched by id exactly like the
+  /// care tables.
+  final Map<String, ProfileTagRegistryEntry?> profileTagRegistry = {};
+
   final Map<String, ProfileGuardianData?> guardians = {};
 
   static String peerKey(String profileId, String localDate) =>
@@ -125,6 +129,7 @@ class _PageLookup {
     careNotes.removeWhere((_, row) => row?.profileId == profileId);
     visitPrepItems.removeWhere((_, row) => row?.profileId == profileId);
     dayEntryMergeEvents.removeWhere((_, row) => row?.profileId == profileId);
+    profileTagRegistry.removeWhere((_, row) => row?.profileId == profileId);
     profiles.remove(profileId);
   }
 }
@@ -199,6 +204,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           RemoteDayEntryMergeEventRow remote) =>
       db.transaction(() => _applyMergeEvent(remote, onlyExisting: false));
 
+  /// Applies a server copy of a custom-tag registry row keyed by id
+  /// (Issue #257; the per-id LWW rule as for care notes, minus nothing —
+  /// retirement (hiddenAt) is an ordinary payload column, and a tombstone
+  /// clears the payload client-side exactly like the server's structural
+  /// CHECK does). Throws [RetryableSyncApplyError] when the profile is not
+  /// held locally yet.
+  Future<bool> applyRemoteProfileTagRegistryEntry(
+          RemoteProfileTagRegistryRow remote) =>
+      db.transaction(() => _applyTagRegistryEntry(remote, onlyExisting: false));
+
   /// Applies one pull page: every row (all of [table]) and the table's new
   /// cursor in ONE transaction, so a crash can only re-fetch rows, never
   /// skip them (KTD2). A throwing row rolls the whole page back, cursor
@@ -248,6 +263,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteCareNoteRow: (r, c) => _applyCareNote(r as RemoteCareNoteRow, onlyExisting: false, cache: c),
     RemoteVisitPrepItemRow: (r, c) => _applyVisitPrepItem(r as RemoteVisitPrepItemRow, onlyExisting: false, cache: c),
     RemoteDayEntryMergeEventRow: (r, c) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false, cache: c),
+    RemoteProfileTagRegistryRow: (r, c) => _applyTagRegistryEntry(r as RemoteProfileTagRegistryRow, onlyExisting: false, cache: c),
     RemoteDeletedProfileRow: (r, c) => _applyDeletedProfile(r as RemoteDeletedProfileRow, cache: c),
   };
 
@@ -286,6 +302,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteDayEntryMergeEventRow>())
+        row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteProfileTagRegistryRow>())
         row.profileId,
     ]);
     profileIds.addAll([
@@ -352,6 +372,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       cache.dayEntryMergeEvents,
       {for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) row.id},
       readChunk: (ids) => (db.select(db.dayEntryMergeEvents)
+            ..where((t) => t.id.isIn(ids)))
+          .get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.profileTagRegistry,
+      {for (final row in rows.whereType<RemoteProfileTagRegistryRow>()) row.id},
+      readChunk: (ids) => (db.select(db.profileTagRegistry)
             ..where((t) => t.id.isIn(ids)))
           .get(),
       idOf: (row) => row.id,
@@ -473,6 +501,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     SyncTable.careNotes: (c) => SyncStateCompanion(cursorCareNotes: Value(c)),
     SyncTable.visitPrepItems: (c) => SyncStateCompanion(cursorVisitPrepItems: Value(c)),
     SyncTable.dayEntryMergeEvents: (c) => SyncStateCompanion(cursorDayEntryMergeEvents: Value(c)),
+    SyncTable.profileTagRegistry: (c) => SyncStateCompanion(cursorProfileTagRegistry: Value(c)),
     SyncTable.profileGuardians: (c) => SyncStateCompanion(cursorProfileGuardians: Value(c)),
     SyncTable.deletedProfiles: (c) => SyncStateCompanion(cursorDeletedProfiles: Value(c)),
   };
@@ -537,6 +566,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         cache,
         (row, c) => _applyMergeEvent(row, onlyExisting: false, cache: c),
       );
+      // Issue #257: the tag registry follows merge events (a row
+      // references only a profile; nothing references the registry).
+      await _applyEach<RemoteProfileTagRegistryRow>(
+        rows,
+        cache,
+        (row, c) => _applyTagRegistryEntry(row, onlyExisting: false, cache: c),
+      );
       // Issue #522: last, so a deletion signal for a profile that also had
       // ordinary content rows in this same heterogeneous batch wins over
       // them — the wipe is the final word, never undone by a row applied
@@ -596,6 +632,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       }
       for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) {
         await _applyMergeEvent(row, onlyExisting: true);
+      }
+      for (final row in rows.whereType<RemoteProfileTagRegistryRow>()) {
+        await _applyTagRegistryEntry(row, onlyExisting: true);
       }
     });
   }
@@ -1006,6 +1045,24 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     await (db.delete(db.dayEntryMergeEvents)
           ..where((t) => t.profileId.equals(profileId)))
         .go();
+    // Issue #257: the profile's custom-tag registry rows are TOMBSTONED,
+    // not hard-deleted (they are ordinary synced rows whose deletion the
+    // server propagates through the ordinary pull) — payload cleared per
+    // the table's structural CHECK, `code` surviving, and the local labels
+    // leave the device exactly like every other wiped table above. Not
+    // dirty, never pushed back: the server's own wipe is the authority.
+    await (db.update(db.profileTagRegistry)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(ProfileTagRegistryCompanion(
+          displayName: const Value(''),
+          category: const Value(''),
+          intensityEnabled: const Value(false),
+          hiddenAt: const Value(null),
+          sortOrder: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
     await (db.update(db.profiles)
           ..where((t) => t.id.equals(profileId) & t.deletedAt.isNull()))
         .write(ProfilesCompanion(
@@ -2303,6 +2360,96 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ),
         );
     return true;
+  }
+
+  /// Issue #257: per-id LWW apply for a `profile_tag_registry` row, the
+  /// care_notes shape via [_applyKeyedRow]. A tombstone's payload arrives
+  /// already cleared server-side (the structural CHECK), so the local
+  /// write stores what it was handed; `code` survives either way.
+  Future<bool> _applyTagRegistryEntry(
+    RemoteProfileTagRegistryRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) {
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    return _applyKeyedRow<RemoteProfileTagRegistryRow,
+        ProfileTagRegistryEntry>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+          cache, (c) => c.profileTagRegistry, remote.id, _profileTagRegistryOrNull),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      parentProfileId: (r) => r.profileId,
+      entityLabel: 'profile tag registry entry',
+      remoteId: remote.id,
+      insert: (r) =>
+          _insertTagRegistryEntry(r, tombstone, updatedAt, deletedAt, cache),
+      update: (r, local) => _updateTagRegistryEntry(
+          r, local, tombstone, updatedAt, deletedAt, cache),
+      cache: cache,
+    );
+  }
+
+  Future<void> _insertTagRegistryEntry(
+    RemoteProfileTagRegistryRow remote,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    _PageLookup? cache,
+  ) async {
+    final written = await db
+        .into(db.profileTagRegistry)
+        .insertReturning(
+          ProfileTagRegistryCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            code: remote.code,
+            displayName: tombstone ? '' : remote.displayName,
+            category: tombstone ? '' : remote.category,
+            intensityEnabled:
+                Value(tombstone ? false : remote.intensityEnabled),
+            hiddenAt: Value(tombstone ? null : remote.hiddenAt),
+            sortOrder: Value(tombstone ? null : remote.sortOrder),
+            createdBy: Value(remote.createdBy),
+            createdAt: remote.createdAt.toUtc(),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+          ),
+        );
+    cache?.profileTagRegistry[written.id] = written;
+  }
+
+  Future<void> _updateTagRegistryEntry(
+    RemoteProfileTagRegistryRow remote,
+    ProfileTagRegistryEntry local,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    _PageLookup? cache,
+  ) async {
+    final written =
+        await (db.update(
+          db.profileTagRegistry,
+        )..where((t) => t.id.equals(remote.id))).writeReturning(
+          ProfileTagRegistryCompanion(
+            displayName: Value(tombstone ? '' : remote.displayName),
+            category: Value(tombstone ? '' : remote.category),
+            intensityEnabled:
+                Value(tombstone ? false : remote.intensityEnabled),
+            hiddenAt: Value(tombstone ? null : remote.hiddenAt),
+            sortOrder: Value(tombstone ? null : remote.sortOrder),
+            createdBy: Value(remote.createdBy ?? local.createdBy),
+            updatedAt: Value(updatedAt),
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+          ),
+        );
+    cache?.profileTagRegistry[written.first.id] = written.first;
   }
 
   /// The `flow` to write for a day entry row: cleared to [FlowLevel.none]

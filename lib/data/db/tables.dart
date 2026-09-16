@@ -752,9 +752,70 @@ class DayEntryMergeEvents extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One row of the per-profile custom-tag registry (Issue #257), mirroring
+/// `public.profile_tag_registry` column-for-column; see
+/// `supabase/migrations/20260917000000_profile_tag_registry.sql` for the
+/// server shape, its RLS/grants, and the retirement-not-deletion rule.
+/// `hiddenAt` is retirement (removed from the picker; stored rows keep
+/// rendering); `deletedAt` is the ordinary synced-table tombstone, payload
+/// cleared per the server's `profile_tag_registry_tombstone_payload_check`
+/// except `code`, which survives (the #159 provenance precedent).
+@DataClassName('ProfileTagRegistryEntry')
+class ProfileTagRegistry extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// The stable snake_case identifier persisted on day entries; immutable
+  /// once created (a rename rewrites displayName only). Bounded to
+  /// `kMaxTagLength` (64) by the storage layer, mirroring the server's
+  /// CHECK. Survives a tombstone.
+  TextColumn get code => text()();
+
+  /// The user's own label (bounded to `kMaxCustomTagLabelLength`, 40).
+  /// Empty on a tombstone.
+  TextColumn get displayName => text().named('display_name')();
+
+  /// Free text, client-owned ('custom' for in-app creations). Empty on a
+  /// tombstone.
+  TextColumn get category => text()();
+
+  /// Reserved for per-tag intensity affordances; false today.
+  BoolColumn get intensityEnabled =>
+      boolean().named('intensity_enabled').withDefault(const Constant(false))();
+
+  /// RETIREMENT, not deletion: non-null removes the code from the
+  /// day-sheet picker while stored rows referencing it keep rendering.
+  /// Null on a tombstone.
+  DateTimeColumn get hiddenAt => dateTime().named('hidden_at').nullable()();
+
+  IntColumn get sortOrder => integer().named('sort_order').nullable()();
+
+  /// Server-stamped from the caller on INSERT; never pushed.
+  TextColumn get createdBy => text().named('created_by').nullable()();
+
+  /// Server-stamped; never pushed (rides the row for display only).
+  DateTimeColumn get createdAt => dateTime().named('created_at')();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {  TextColumn get key => text()();
-
   TextColumn get value => text()();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
@@ -839,6 +900,12 @@ class SyncState extends Table {
   /// [cursorDayEntries].
   IntColumn get cursorDayEntryMergeEvents =>
       integer().named('cursor_day_entry_merge_events')
+          .withDefault(const Constant(0))();
+
+  /// Issue #257: the `profile_tag_registry` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorProfileTagRegistry =>
+      integer().named('cursor_profile_tag_registry')
           .withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>

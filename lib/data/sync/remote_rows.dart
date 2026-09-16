@@ -13,7 +13,7 @@ library;
 import '../db/tables.dart';
 
 /// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240,
-/// Issue #188, Issue #128).
+/// Issue #188, Issue #128, Issue #130, Issue #257).
 ///
 /// [deletedProfiles] (issue #522) is pull-only, like [profileGuardians]: a
 /// row here is never pushed. It now pages from a persisted cursor too
@@ -33,6 +33,7 @@ enum SyncTable {
   careNotes,
   visitPrepItems,
   dayEntryMergeEvents,
+  profileTagRegistry,
   deletedProfiles,
 }
 
@@ -590,6 +591,69 @@ final class RemoteDeletedProfileRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.deletedProfiles;
+}
+
+/// A server copy of a `profile_tag_registry` row (Issue #257): one
+/// user-defined custom tag for a profile. [hiddenAt] is retirement (the
+/// code leaves the picker; stored rows keep rendering). Tombstones
+/// ([deletedAt] set) carry no payload per the server's structural CHECK
+/// except [code], which survives — the #159 provenance-survives-tombstone
+/// precedent — so a future re-import can recognise the deliberate
+/// deletion. [createdBy]/[createdAt] are server-stamped display metadata,
+/// pulled but never pushed.
+final class RemoteProfileTagRegistryRow extends RemoteRow {
+  const RemoteProfileTagRegistryRow({
+    required this.id,
+    required this.profileId,
+    required this.code,
+    required this.displayName,
+    required this.category,
+    this.intensityEnabled = false,
+    this.hiddenAt,
+    this.sortOrder,
+    this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// The stable snake_case identifier persisted on day entries. Free text
+  /// — never validated against a closed set (the registry is display
+  /// vocabulary, never an allowlist; a code the registry does not know
+  /// still round-trips unchanged).
+  final String code;
+
+  /// The user's label. Empty on a tombstone.
+  final String displayName;
+
+  /// Free text, client-owned ('custom' for in-app creations). Empty on a
+  /// tombstone.
+  final String category;
+
+  final bool intensityEnabled;
+
+  /// Retirement: non-null removes the code from the picker while stored
+  /// rows keep rendering. Null on a tombstone.
+  final DateTime? hiddenAt;
+  final int? sortOrder;
+
+  /// Display attribution only (server-stamped from the creating caller).
+  final String? createdBy;
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.profileTagRegistry;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

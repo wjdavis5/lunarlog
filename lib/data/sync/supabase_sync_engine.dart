@@ -140,7 +140,11 @@ const double kClockOffsetSmoothingAlpha = 0.2;
 /// and two care tables after every content table (both reference only a
 /// profile); merge events after the care tables (issue #130: a row
 /// references only a profile, already applied by the time its turn
-/// comes); deletedProfiles last (issue #522: it only ever tombstones a
+/// comes); the tag registry after merge events (issue #257: same —
+/// references only a profile, and nothing references it; a day entry's
+/// tag referencing a registry code that has not arrived yet degrades to
+/// raw-text rendering by design, so there is no ordering requirement
+/// either); deletedProfiles last (issue #522: it only ever tombstones a
 /// profile — and cascades the wipe — that this same cycle may have just
 /// pulled fresh content for above; running it last means the deletion
 /// always wins).
@@ -156,6 +160,10 @@ const List<SyncTable> _pullTableOrder = [
   // Issue #130: merge events follow the care tables — a row references
   // only a profile (already applied by the time its turn comes).
   SyncTable.dayEntryMergeEvents,
+  // Issue #257: the tag registry follows merge events — a row references
+  // only a profile, and nothing references the registry (unknown codes
+  // never drop).
+  SyncTable.profileTagRegistry,
   SyncTable.deletedProfiles,
 ];
 
@@ -201,6 +209,7 @@ class _PushCursor {
   String? _careNoteCursor;
   String? _visitPrepItemCursor;
   String? _mergeEventCursor;
+  String? _tagRegistryCursor;
   bool entriesDone = false;
   bool observationsDone = false;
   bool profileModesDone = false;
@@ -208,6 +217,7 @@ class _PushCursor {
   bool careNotesDone = false;
   bool visitPrepItemsDone = false;
   bool mergeEventsDone = false;
+  bool tagRegistryDone = false;
 
   Future<List<Profile>> readProfilePage() async {
     final page = await _storage.readDirtyProfiles(
@@ -279,6 +289,15 @@ class _PushCursor {
     return page;
   }
 
+  /// Issue #257: same keyset-paging contract as [readEntryPage].
+  Future<List<ProfileTagRegistryEntry>> readTagRegistryPage() async {
+    final page = await _storage.readDirtyProfileTagRegistry(
+        limit: batchSize, afterId: _tagRegistryCursor);
+    tagRegistryDone = page.length < batchSize;
+    if (page.isNotEmpty) _tagRegistryCursor = page.last.id;
+    return page;
+  }
+
   /// Whether every child table's keyset scan is exhausted (the `done` half
   /// of [_readPushRound]'s contract, split out so that method's branch
   /// count stays under the CRAP gate as tables are added).
@@ -289,7 +308,8 @@ class _PushCursor {
       cycleOverridesDone &&
       careNotesDone &&
       visitPrepItemsDone &&
-      mergeEventsDone;
+      mergeEventsDone &&
+      tagRegistryDone;
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -414,6 +434,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           db.careNotes,
           db.visitPrepItems,
           db.dayEntryMergeEvents,
+          db.profileTagRegistry,
         ]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
@@ -604,8 +625,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     )) {
       return true;
     }
-    return _hasPushable(
+    if (await _hasPushable(
       readPage: _storage.readDirtyDayEntryMergeEvents,
+      id: (e) => e.id,
+      localRev: (e) => e.localRev,
+    )) {
+      return true;
+    }
+    return _hasPushable(
+      readPage: _storage.readDirtyProfileTagRegistry,
       id: (e) => e.id,
       localRev: (e) => e.localRev,
     );
@@ -1154,6 +1182,16 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeDayEntryMergeEvent(row), profileId: row.profileId),
       ]);
     }
+    // Issue #257: the tag registry rides the same chaining rule, once
+    // merge events are exhausted.
+    if (cursor.mergeEventsDone && !cursor.tagRegistryDone) {
+      final tagRegistryPage = await cursor.readTagRegistryPage();
+      batch.addAll([
+        for (final row in _apply.pushable(tagRegistryPage, (e) => e.id, (e) => e.localRev))
+          SyncPushItem(SyncTable.profileTagRegistry, row.id, row.localRev,
+              encodeProfileTagRegistryEntry(row), profileId: row.profileId),
+      ]);
+    }
   }
 
   /// One push batch's request/response handling, split out of [_push]
@@ -1189,6 +1227,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         careNotes: [for (final i in batch) if (i.table == SyncTable.careNotes) i.json],
         visitPrepItems: [for (final i in batch) if (i.table == SyncTable.visitPrepItems) i.json],
         mergeEvents: [for (final i in batch) if (i.table == SyncTable.dayEntryMergeEvents) i.json],
+        tagRegistry: [for (final i in batch) if (i.table == SyncTable.profileTagRegistry) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
@@ -1276,6 +1315,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     // in its response would make _decodePullResponse drop the whole cache,
     // so the server side grew with the client, atomically).
     SyncTable.dayEntryMergeEvents,
+    // Issue #257: same — sync_pull's tenth per-profile key.
+    SyncTable.profileTagRegistry,
   ];
 
   /// One [_storage.readSyncState] read, turned into the persisted starting
@@ -1382,6 +1423,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.careNotes: (s) => s.cursorCareNotes,
     SyncTable.visitPrepItems: (s) => s.cursorVisitPrepItems,
     SyncTable.dayEntryMergeEvents: (s) => s.cursorDayEntryMergeEvents,
+    SyncTable.profileTagRegistry: (s) => s.cursorProfileTagRegistry,
     SyncTable.profileGuardians: (s) => s.cursorProfileGuardians,
     SyncTable.deletedProfiles: (s) => s.cursorDeletedProfiles,
   };
