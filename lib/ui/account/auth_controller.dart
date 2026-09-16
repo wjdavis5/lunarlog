@@ -20,14 +20,16 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 
 export 'package:lunarlog/domain/auth/auth_service.dart' show AuthSignOutScope;
 
 class AuthController extends ChangeNotifier {
-  AuthController({required AuthService authService})
+  AuthController({required AuthService authService, bool? mfaEnabled})
       : _service = authService,
-        _state = authService.state {
+        _state = authService.state,
+        mfaEnabled = mfaEnabled ?? AppConfig.mfaEnabled {
     _stateSub = authService.states.listen(_onState);
     _failureSub = authService.linkFailures.listen((_) => notifyListeners());
   }
@@ -36,6 +38,22 @@ class AuthController extends ChangeNotifier {
   AuthSessionState _state;
   StreamSubscription<AuthSessionState>? _stateSub;
   StreamSubscription<AuthFailure>? _failureSub;
+
+  /// Whether the TOTP MFA client surface is available in this build
+  /// (issue #738): the compile-time `LUNARLOG_ENABLE_MFA=true` define,
+  /// resolved once here — the only place outside `AppConfig` itself that
+  /// reads the flag (pinned by `test/architecture/mfa_flag_seam_test.dart`).
+  ///
+  /// The `showGoogle`/`showApple` null-means-AppConfig injection precedent:
+  /// production (`LunarLogApp`) constructs this controller without the
+  /// parameter, so the const applies; widget tests pass `true` to exercise
+  /// #714's MFA-on behavior in a single default-off test run. While false
+  /// (the default in every CI/workflow build): [requiresMfaStepUp] is
+  /// always false, `ensureAal2` auto-passes, and the Account section's
+  /// "Two-factor authentication" tile group renders nothing. A future
+  /// build flag (issue #739's QA-build step-up bypass) composes by OR-ing
+  /// into exactly one of those gates rather than re-reading the define.
+  final bool mfaEnabled;
 
   /// The user adopted from the most recent successful [linkGoogle],
   /// [linkApple], or [unlinkProvider] call (#31 KTD6), preferred over
@@ -202,7 +220,15 @@ class AuthController extends ChangeNotifier {
 
   AuthAssuranceLevel? get assuranceLevel => _service.assuranceLevel;
 
-  Future<bool> requiresMfaStepUp() => _service.requiresMfaStepUp();
+  /// Issue #738: with [mfaEnabled] false (the default build) this is
+  /// always false — no account can demand an AAL2 step-up, because no
+  /// client can enrol a factor in the first place. The service is never
+  /// consulted, so the flag-off posture is structural rather than a
+  /// filtered-away answer.
+  Future<bool> requiresMfaStepUp() async {
+    if (!mfaEnabled) return false;
+    return _service.requiresMfaStepUp();
+  }
 
   void _onState(AuthSessionState next) {
     // Any incoming state notification — a same-state signal (e.g.

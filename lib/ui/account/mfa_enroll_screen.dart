@@ -5,6 +5,11 @@
 /// Pushed from the Account section's "Set up two-factor authentication"
 /// tile; pops `true` once enrolment completes, `null`/`false` otherwise.
 ///
+/// Issue #738: unreachable in a build with MFA off (the tile group is
+/// hidden and its push site refuses), and guarding itself as defense in
+/// depth — `_offer` stays null and no server-side enrolment ever starts,
+/// even if some future caller pushes this screen directly.
+///
 /// Known gap: no in-app QR code. gotrue's enrolment response
 /// ([TotpEnrollmentOffer.qrCodeDataUri]) encodes the QR only as an
 /// `image/svg+xml` data URI — `Image.network`/`Image.memory` cannot
@@ -33,15 +38,18 @@ class MfaEnrollScreen extends StatefulWidget {
 }
 
 class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
-  late final Future<TotpEnrollmentOffer> _offer;
   final TextEditingController _codeController = TextEditingController();
   bool _verifying = false;
   String? _error;
 
+  /// Null in a flag-off build (issue #738): no enrolment is started, and
+  /// [build] renders nothing rather than spinning forever.
+  late final Future<TotpEnrollmentOffer>? _offer;
+
   @override
   void initState() {
     super.initState();
-    _offer = widget.auth.enrollTotp();
+    _offer = widget.auth.mfaEnabled ? widget.auth.enrollTotp() : null;
   }
 
   @override
@@ -81,27 +89,29 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.mfaEnrollScreenTitle)),
-      body: FutureBuilder<TotpEnrollmentOffer>(
-        future: _offer,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: InlineError(
-                  key: const ValueKey('mfa-enroll-start-error'),
-                  message: l10n.mfaErrorGeneric,
-                ),
-              ),
-            );
-          }
-          final offer = snapshot.data;
-          if (offer == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return _enrollmentForm(l10n, offer);
-        },
-      ),
+      body: _offer == null
+          ? const SizedBox.shrink()
+          : FutureBuilder<TotpEnrollmentOffer>(
+              future: _offer,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: InlineError(
+                        key: const ValueKey('mfa-enroll-start-error'),
+                        message: l10n.mfaErrorGeneric,
+                      ),
+                    ),
+                  );
+                }
+                final offer = snapshot.data;
+                if (offer == null) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return _enrollmentForm(l10n, offer);
+              },
+            ),
     );
   }
 

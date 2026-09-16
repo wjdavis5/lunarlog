@@ -394,6 +394,12 @@ class FakeAuthService implements AuthService {
   final unenrollMfaFactorCalls = <String>[];
   int enrollTotpCalls = 0;
 
+  /// Issue #738: call counters so a flag-off test can assert the client
+  /// surface never touched the service at all (not just that it rendered
+  /// nothing).
+  int listMfaFactorsCalls = 0;
+  int requiresMfaStepUpCalls = 0;
+
   /// Throw a non-[AuthFailure] error from [verifyTotpCode] once, mirroring
   /// [unlinkThrowsGeneric] — exercises a caller's generic (non-AuthFailure)
   /// catch branch.
@@ -423,6 +429,7 @@ class FakeAuthService implements AuthService {
 
   @override
   Future<List<MfaFactor>> listMfaFactors() async {
+    listMfaFactorsCalls++;
     await _maybeThrow();
     return mfaFactors;
   }
@@ -438,7 +445,10 @@ class FakeAuthService implements AuthService {
   AuthAssuranceLevel? get assuranceLevel => mfaAssuranceLevel;
 
   @override
-  Future<bool> requiresMfaStepUp() async => mfaStepUpRequired;
+  Future<bool> requiresMfaStepUp() async {
+    requiresMfaStepUpCalls++;
+    return mfaStepUpRequired;
+  }
 
   Future<void> dispose() async {
     await _states.close();

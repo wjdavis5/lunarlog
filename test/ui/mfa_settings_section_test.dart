@@ -1,6 +1,12 @@
 /// [MfaSettingsSection] (issue #268 U1/U2): the "Set up two-factor
 /// authentication" tile when no factor is enrolled, the enrolment screen's
 /// enroll → verify round trip, and the enrolled-factor row's remove flow.
+///
+/// Issue #738: the suite is parameterized by the client-side feature flag
+/// (`AuthController.mfaEnabled`, backed by the `LUNARLOG_ENABLE_MFA`
+/// define). The #268 tests run the flag-on build (`mfaEnabled: true` —
+/// #714's exact behavior, nothing deleted); a closing group pins the
+/// flag-off default: tile group hidden, enrolment screen inert.
 library;
 
 import 'package:flutter/material.dart';
@@ -8,15 +14,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/mfa_enroll_screen.dart';
 import 'package:lunarlog/ui/account/mfa_settings_section.dart';
 
 import '../support/fake_auth_service.dart';
 
 Finder key(String key) => find.byKey(ValueKey(key));
 
-Future<AuthController> pumpSection(WidgetTester tester, FakeAuthService auth) async {
+Future<AuthController> pumpSection(
+  WidgetTester tester,
+  FakeAuthService auth, {
+  bool mfaEnabled = true,
+}) async {
   auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
-  final controller = AuthController(authService: auth);
+  final controller = AuthController(authService: auth, mfaEnabled: mfaEnabled);
   addTearDown(controller.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -174,5 +185,52 @@ void main() {
 
     expect(auth.unenrollMfaFactorCalls, isEmpty);
     expect(key('mfa-factor-tile-factor-1'), findsOneWidget);
+  });
+
+  group('feature flag off (issue #738 — the default build)', () {
+    testWidgets('the tile group renders nothing and never lists factors, '
+        'even with a verified factor on the account', (tester) async {
+      final auth = FakeAuthService()
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      addTearDown(auth.dispose);
+      await pumpSection(tester, auth, mfaEnabled: false);
+
+      expect(key('mfa-enroll-tile'), findsNothing);
+      expect(key('mfa-factor-tile-factor-1'), findsNothing);
+      expect(find.textContaining('Two-factor'), findsNothing);
+      // Inert, not just invisible: the service was never asked for the
+      // factor list.
+      expect(auth.listMfaFactorsCalls, 0);
+    });
+
+    testWidgets('the enrolment screen never starts a server-side enrolment '
+        'when pushed directly (route guard, defense in depth)',
+        (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
+      final controller = AuthController(authService: auth);
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: MfaEnrollScreen(auth: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The screen itself refuses: no enrolment round trip, no secret
+      // rendered, nothing to confirm.
+      expect(auth.enrollTotpCalls, 0);
+      expect(key('mfa-enroll-secret'), findsNothing);
+      expect(key('mfa-enroll-confirm'), findsNothing);
+    });
   });
 }

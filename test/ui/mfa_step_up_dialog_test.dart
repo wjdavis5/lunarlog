@@ -3,6 +3,11 @@
 /// and the "no step-up needed" no-op are already covered end-to-end through
 /// `account_deletion_test.dart`'s and `transfer_ownership_test.dart`'s own
 /// AAL2 groups; this suite isolates the dialog itself.
+///
+/// Issue #738: parameterized by `AuthController.mfaEnabled` (the
+/// `LUNARLOG_ENABLE_MFA` define). The #268 cases run the flag-on build; a
+/// closing group pins the flag-off default: `ensureAal2` auto-passes
+/// without consulting the service at all.
 library;
 
 import 'package:flutter/material.dart';
@@ -18,10 +23,11 @@ Finder key(String key) => find.byKey(ValueKey(key));
 
 Future<AuthController> pumpEnsureAal2(
   WidgetTester tester,
-  FakeAuthService auth,
-) async {
+  FakeAuthService auth, {
+  bool mfaEnabled = true,
+}) async {
   auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
-  final controller = AuthController(authService: auth);
+  final controller = AuthController(authService: auth, mfaEnabled: mfaEnabled);
   addTearDown(controller.dispose);
   await tester.pumpWidget(
     MaterialApp(
@@ -110,5 +116,31 @@ void main() {
 
     expect(find.text("Confirm it's you"), findsNothing);
     expect(auth.verifyTotpCodeCalls, isEmpty);
+  });
+
+  group('feature flag off (issue #738 — the default build)', () {
+    testWidgets('ensureAal2 auto-passes with a step-up-required account, '
+        'without ever consulting the service', (tester) async {
+      final auth = FakeAuthService()
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+              id: 'factor-1',
+              status: MfaFactorStatus.verified,
+              createdAt: DateTime.utc(2026)),
+        ];
+      addTearDown(auth.dispose);
+      await pumpEnsureAal2(tester, auth, mfaEnabled: false);
+
+      await tester.tap(key('trigger'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing);
+      expect(auth.verifyTotpCodeCalls, isEmpty);
+      // The early return fires before requiresMfaStepUp is even resolved:
+      // the flag-off posture is structural, not a filtered-away answer.
+      expect(auth.requiresMfaStepUpCalls, 0);
+      expect(auth.listMfaFactorsCalls, 0);
+    });
   });
 }

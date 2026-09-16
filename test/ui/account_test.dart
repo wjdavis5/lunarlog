@@ -88,6 +88,7 @@ class AccountHarness {
   Future<void> pump({
     bool withEngine = true,
     Future<void> Function(LunarLogDatabase db)? seed,
+    bool? mfaEnabled,
   }) async {
     useTallSettingsViewport(tester);
     if (seed != null) await seed(db);
@@ -96,6 +97,10 @@ class AccountHarness {
         db: db,
         authService: auth,
         syncEngine: withEngine ? engine : null,
+        // Issue #738: `true` compiles this harness as the flag-on build
+        // (what LUNARLOG_ENABLE_MFA=true produces) for the AAL2 step-up
+        // tests; the default (null) is the default-off build.
+        mfaEnabled: mfaEnabled,
         // Mirrors the root's reset (test/ui/device_reset_test.dart proves
         // the real order): local wipe first, local sign-out last.
         resetDevice: () async {
@@ -2390,7 +2395,8 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
 
       final h = AccountHarness(tester);
-      await h.pump(seed: AccountHarness.seedOneProfile);
+      // Issue #738: the flag-on build — #714's behavior exactly.
+      await h.pump(seed: AccountHarness.seedOneProfile, mfaEnabled: true);
       h.signIn();
       h.auth
         ..mfaStepUpRequired = true

@@ -468,6 +468,13 @@ abstract interface class AuthService {
   /// False for an account with no enrolled factor, so its destructive
   /// actions behave exactly as they did before this issue (the
   /// unaffected-path acceptance criterion).
+  ///
+  /// #738: this interface is the *flag-on* behavior. The client-side
+  /// feature toggle lives one layer up (`AuthController.mfaEnabled`, the
+  /// `LUNARLOG_ENABLE_MFA` build define) and short-circuits to false
+  /// without consulting the service; the server's own AAL2 checks (the
+  /// `delete-account` Edge Function, gotrue's unenroll precondition) stay
+  /// unconditional regardless of any client flag.
   Future<bool> requiresMfaStepUp();
 
   /// The current user, or null without a session.

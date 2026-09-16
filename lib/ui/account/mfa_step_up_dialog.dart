@@ -22,7 +22,14 @@ import 'package:lunarlog/ui/components/inline_error.dart';
 /// either no step-up was needed, or the operator entered a correct TOTP
 /// code. False for a cancelled or failed step-up, or when `context` has
 /// been unmounted by the time the check completes.
+///
+/// Issue #738: a build with MFA off (`AuthController.mfaEnabled` false,
+/// the default) auto-passes before consulting anything — the flag-off
+/// early return below is the single expression a future QA-build bypass
+/// (issue #739) ORs into, so both flags compose here without either one
+/// re-reading the define anywhere else.
 Future<bool> ensureAal2(BuildContext context, AuthController auth) async {
+  if (!auth.mfaEnabled) return true;
   final needsStepUp = await auth.requiresMfaStepUp();
   if (!needsStepUp) return true;
   if (!context.mounted) return false;

@@ -691,12 +691,15 @@ void main() {
         await tester.pumpAndSettle();
       }
 
+      // Issue #738: this group runs the flag-on build (`mfaEnabled: true`,
+      // what `--dart-define=LUNARLOG_ENABLE_MFA=true` compiles to) — #714's
+      // behavior exactly.
       testWidgets(
           'no verified MFA factor: arms immediately with no step-up dialog '
           '(unaffected pre-#268 path)', (tester) async {
         final auth = FakeAuthService(initialState: AuthSessionState.signedIn);
         addTearDown(auth.dispose);
-        final controller = AuthController(authService: auth);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
         addTearDown(controller.dispose);
         await pumpWithAuth(tester, controller);
 
@@ -719,7 +722,7 @@ void main() {
             ),
           ];
         addTearDown(auth.dispose);
-        final controller = AuthController(authService: auth);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
         addTearDown(controller.dispose);
         await pumpWithAuth(tester, controller);
 
@@ -752,7 +755,7 @@ void main() {
             ),
           ];
         addTearDown(auth.dispose);
-        final controller = AuthController(authService: auth);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
         addTearDown(controller.dispose);
         await pumpWithAuth(tester, controller);
 
@@ -761,6 +764,31 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(transferService.lastCreatedProfileId, isNull);
+      });
+
+      testWidgets(
+          'feature flag off (issue #738, the default build): a '
+          'step-up-required account arms immediately — ensureAal2 '
+          'auto-passes', (tester) async {
+        final auth = FakeAuthService(initialState: AuthSessionState.signedIn)
+          ..mfaStepUpRequired = true
+          ..mfaFactors = [
+            MfaFactor(
+              id: 'factor-1',
+              status: MfaFactorStatus.verified,
+              createdAt: DateTime.utc(2026),
+            ),
+          ];
+        addTearDown(auth.dispose);
+        final controller = AuthController(authService: auth);
+        addTearDown(controller.dispose);
+        await pumpWithAuth(tester, controller);
+
+        await confirmTransfer(tester);
+
+        expect(find.text("Confirm it's you"), findsNothing);
+        expect(auth.requiresMfaStepUpCalls, 0);
+        expect(transferService.lastCreatedProfileId, testProfile.id);
       });
     });
   });

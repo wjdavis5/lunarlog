@@ -241,13 +241,14 @@ class DeletionHarness {
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
     this.showAddApple,
+    this.mfaEnabled,
   })  : auth = FakeAuthService(),
         deletion = deletionService ??
             (provideDeletionService ? FakeAccountDeletionService() : null),
         gate = FakeGate(grantNext: grantReauth) {
     auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1', email: 'a@b.c'));
     auth.providers = providers;
-    controller = AuthController(authService: auth);
+    controller = AuthController(authService: auth, mfaEnabled: mfaEnabled);
     // A real Timer factory would leave the inactivity/system-UI timers
     // pending past the end of each test (the same reason
     // test/ui/account_test.dart's pumpSection uses this fake).
@@ -262,6 +263,11 @@ class DeletionHarness {
   final FakeAccountDeletionService? deletion;
   final ExportAccountCollaborator? exportAccount;
   final AppleAuthorizationCodeRequest? appleAuthorizationCodeRequest;
+
+  /// Issue #738: forwarded to the [AuthController] so the AAL2 step-up
+  /// group can run the flag-on (`LUNARLOG_ENABLE_MFA=true`) build; null
+  /// means the default-off build this test run compiles with.
+  final bool? mfaEnabled;
 
   /// Forces [AccountSection]'s platform gate for the native Apple ceremony
   /// (Issue #605/LLA-052): `true` simulates an iOS-capable device, `false`
@@ -399,11 +405,15 @@ void main() {
   });
 
   group('AAL2 step-up before deletion (issue #268 D-6)', () {
+    // Issue #738: this group runs the flag-on build (`mfaEnabled: true`,
+    // what `--dart-define=LUNARLOG_ENABLE_MFA=true` compiles to) — #714's
+    // behavior exactly, nothing deleted. The flag-off default is pinned by
+    // the closing test.
     testWidgets(
         'a verified MFA factor requires a correct step-up code, after the '
         'device credential and before the delete confirmation dialog',
         (tester) async {
-      final h = DeletionHarness();
+      final h = DeletionHarness(mfaEnabled: true);
       addTearDown(h.dispose);
       h.auth
         ..mfaStepUpRequired = true
@@ -444,7 +454,7 @@ void main() {
 
     testWidgets('cancelling the step-up dialog never opens the confirmation '
         'or calls the deletion service', (tester) async {
-      final h = DeletionHarness();
+      final h = DeletionHarness(mfaEnabled: true);
       addTearDown(h.dispose);
       h.auth
         ..mfaStepUpRequired = true
@@ -470,7 +480,7 @@ void main() {
     testWidgets('no verified MFA factor: the delete confirmation opens '
         'immediately with no step-up dialog (unaffected pre-#268 path)',
         (tester) async {
-      final h = DeletionHarness();
+      final h = DeletionHarness(mfaEnabled: true);
       addTearDown(h.dispose);
       await h.pump(tester);
 
@@ -479,6 +489,40 @@ void main() {
 
       expect(find.text("Confirm it's you"), findsNothing);
       expect(find.text('Delete account?'), findsOneWidget);
+    });
+
+    testWidgets(
+        'feature flag off (issue #738, the default build): even a '
+        'step-up-required account deletes with no step-up dialog — '
+        'ensureAal2 auto-passes', (tester) async {
+      final h = DeletionHarness();
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing,
+          reason: 'a flag-off build never demands an AAL2 step-up');
+      expect(find.text('Delete account?'), findsOneWidget);
+      expect(h.auth.requiresMfaStepUpCalls, 0,
+          reason: 'the gate short-circuits before consulting the service');
+      expect(h.auth.listMfaFactorsCalls, 0,
+          reason: 'the MFA settings tile group never rendered either');
+
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.deletion!.deleteCalls, 1);
     });
   });
 

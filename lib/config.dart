@@ -230,6 +230,36 @@ abstract final class AppConfig {
   /// consent (a `profiles` column gating writes at the database layer) is
   /// deferred to issue #188 — this flag is client-side only.
   static const bool healthSyncMinorBindingAllowed = false;
+
+  /// True only when the build opted into the TOTP MFA client surface with
+  /// `LUNARLOG_ENABLE_MFA=true` (issue #738).
+  ///
+  /// PR #714 (issue #268) shipped optional TOTP MFA fully; the owner then
+  /// asked for it feature-toggled off entirely pending product focus on
+  /// the core feature set (#738). Off is the default and every CI/workflow
+  /// build compiles without the define, so the Settings tile group, the
+  /// enrolment screen, and the AAL2 step-up gate are all inert there.
+  /// `--dart-define=LUNARLOG_ENABLE_MFA=true` restores #714's behavior
+  /// exactly — nothing was deleted.
+  ///
+  /// Client-side only, and deliberately so: the server-side halves (the
+  /// `delete-account` Edge Function's AAL2 check, and gotrue's own aal2
+  /// precondition on unenrolling a verified factor) stay unconditional
+  /// regardless of this flag — with no client able to enrol they are
+  /// no-ops, and they are the correct server posture anyway (the same
+  /// constraint issue #739's QA-build flag carries). Enabling MFA
+  /// end-to-end additionally requires the dashboard-side TOTP toggle
+  /// (`[auth.mfa.totp]`, issue #730) — flipping this define alone is not
+  /// the whole story.
+  ///
+  /// Read through exactly one resolver: `AuthController`'s constructor
+  /// (`mfaEnabled ?? AppConfig.mfaEnabled`, the `showGoogle`/`showApple`
+  /// null-means-AppConfig precedent). `test/architecture/
+  /// mfa_flag_seam_test.dart` pins both that the define literal appears
+  /// only in this file and that the constant is referenced only by that
+  /// resolver, so a future flag (e.g. #739's QA-build bypass) ORs into one
+  /// place instead of scattering a second read of the define.
+  static const bool mfaEnabled = bool.fromEnvironment('LUNARLOG_ENABLE_MFA');
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
