@@ -1,7 +1,8 @@
 -- Coverage for 20260915200000_nightly_retention_job.sql (Issue #263): the
 -- nightly public.enforce_retention() purge for notification_outbox,
--- day_entries tombstones, day_entry_history (guarded -- Issue #170 has not
--- landed, no table exists yet), and resolved feedback_tickets with no
+-- day_entries tombstones, day_entry_history (Issue #170's table, created
+-- by 20260918000000 -- the purge step's to_regclass guard now takes its
+-- "table exists" branch), and resolved feedback_tickets with no
 -- attachments (Coordinator review of PR #705, blocking finding 2 -- a
 -- ticket that still references a Storage object is left alone, since SQL
 -- cannot remove that object). Also covers blocking finding 3 (a failed
@@ -12,7 +13,7 @@
 -- exercised for direct-row survival, not RLS), so no
 -- tests.authenticate_as() call is needed.
 begin;
-select plan(29);
+select plan(31);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: one guardian/profile pair for notification_outbox and
@@ -108,12 +109,30 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Structural guard: day_entry_history does not exist yet (Issue #170 not
--- landed) -- proves the guard branch, rather than the "table exists" branch,
--- is what this run actually exercises below.
+-- day_entry_history boundary rows (Issue #170's table -- the purge step
+-- 20260915200000 shipped GUARDED is live now that the table exists): one
+-- 91-day-old row (past the window) and one 89-day-old row (inside it),
+-- both referencing the LIVE entry 912 deliberately -- referencing the
+-- 181-day tombstone 910 instead would let the day_entries cascade delete
+-- them before the history step ever ran, muddying both counts. The
+-- fixture inserts above also fire the day_entries history trigger itself
+-- (one fresh 'logged' row for the live entry 912; the born-dead tombstone
+-- inserts record nothing by design).
 -- ---------------------------------------------------------------------------
-select ok(to_regclass('public.day_entry_history') is null,
-  'Issue #170''s day_entry_history table does not exist yet -- the guard branch is what this run exercises');
+insert into public.day_entry_history
+  (id, entry_id, profile_id, changed_by_user_id, changed_at, change_kind, changed_fields)
+values
+  (upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 26)),
+   tests.ulid(912), tests.ulid(900), tests.get_supabase_uid('retention_owner'),
+   now() - interval '91 days', 'updated', array['note']),
+  (upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 26)),
+   tests.ulid(912), tests.ulid(900), tests.get_supabase_uid('retention_owner'),
+   now() - interval '89 days', 'updated', array['note']);
+
+select is(
+  (select count(*) from public.day_entry_history where profile_id = tests.ulid(900)),
+  3::bigint, 'setup: three day_entry_history rows exist before the purge (two backdated fixtures + the live entry''s fresh logged row)'
+);
 
 -- ---------------------------------------------------------------------------
 -- Run 1: the purge itself. Captured in a temp table so the "no errors key"
@@ -129,11 +148,11 @@ select is(
   jsonb_build_object(
     'notification_outbox', 1,
     'day_entries_tombstones', 1,
-    'day_entry_history', 0,
+    'day_entry_history', 1,
     'feedback_tickets', 1,
     'day_entry_merge_events', 0
   ),
-  'enforce_retention purges exactly the expired row in each of the four categories'
+  'enforce_retention purges exactly the expired row in each category'
 );
 select ok(
   not ((select v from run1_result) ? 'errors'),
@@ -170,6 +189,18 @@ select is(
 select is(
   (select count(*) from public.day_entries where id = tests.ulid(912) and deleted_at is null),
   1::bigint, 'a live (never-tombstoned) row is kept regardless of how old its local_date/updated_at is'
+);
+
+-- day_entry_history: the 91-day-old row is purged, the 89-day-old row (and
+-- the live entry's fresh logged row) survive.
+select is(
+  (select count(*) from public.day_entry_history
+    where profile_id = tests.ulid(900) and changed_at < now() - interval '90 days'),
+  0::bigint, 'the 91-day-old day_entry_history row is purged (past the 90-day window)'
+);
+select is(
+  (select count(*) from public.day_entry_history where profile_id = tests.ulid(900)),
+  2::bigint, 'the 89-day-old row and the fresh logged row are kept (inside the window)'
 );
 
 -- feedback_tickets: the old resolved ticket (and its reply, via cascade) is

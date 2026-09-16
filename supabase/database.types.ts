@@ -196,6 +196,54 @@ export type Database = {
           },
         ]
       }
+      day_entry_history: {
+        Row: {
+          change_kind: string
+          changed_at: string
+          changed_by_user_id: string
+          changed_fields: string[]
+          entry_id: string
+          id: string
+          profile_id: string
+          server_version: number
+        }
+        Insert: {
+          change_kind: string
+          changed_at?: string
+          changed_by_user_id: string
+          changed_fields: string[]
+          entry_id: string
+          id: string
+          profile_id: string
+          server_version?: number
+        }
+        Update: {
+          change_kind?: string
+          changed_at?: string
+          changed_by_user_id?: string
+          changed_fields?: string[]
+          entry_id?: string
+          id?: string
+          profile_id?: string
+          server_version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "day_entry_history_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "day_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_entry_history_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       day_entry_merge_events: {
         Row: {
           created_at: string
@@ -1330,6 +1378,10 @@ export type Database = {
         Returns: boolean
       }
       is_supported_timestamp: { Args: { p_ts: string }; Returns: boolean }
+      is_valid_changed_fields: {
+        Args: { p_fields: string[] }
+        Returns: boolean
+      }
       is_valid_flow_level: { Args: { p_flow: string }; Returns: boolean }
       is_valid_tags_array: { Args: { p_tags: Json }; Returns: boolean }
       is_valid_timezone: { Args: { tz: string }; Returns: boolean }
@@ -1366,6 +1418,15 @@ export type Database = {
           p_profile_id: string
           p_winning_author: string
           p_winning_row_id: string
+        }
+        Returns: undefined
+      }
+      record_day_entry_merge_history: {
+        Args: {
+          p_changed_by: string
+          p_entry_id: string
+          p_field: string
+          p_profile_id: string
         }
         Returns: undefined
       }

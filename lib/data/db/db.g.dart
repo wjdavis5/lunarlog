@@ -8866,6 +8866,502 @@ class ProfileTagRegistryCompanion
   }
 }
 
+class $DayEntryHistoryTable extends DayEntryHistory
+    with TableInfo<$DayEntryHistoryTable, DayEntryHistoryData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DayEntryHistoryTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _changedByUserIdMeta = const VerificationMeta(
+    'changedByUserId',
+  );
+  @override
+  late final GeneratedColumn<String> changedByUserId = GeneratedColumn<String>(
+    'changed_by_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changedAtMeta = const VerificationMeta(
+    'changedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> changedAt = GeneratedColumn<DateTime>(
+    'changed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _changeKindMeta = const VerificationMeta(
+    'changeKind',
+  );
+  @override
+  late final GeneratedColumn<String> changeKind = GeneratedColumn<String>(
+    'change_kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<List<String>, String>
+  changedFields = GeneratedColumn<String>(
+    'changed_fields',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  ).withConverter<List<String>>($DayEntryHistoryTable.$converterchangedFields);
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    entryId,
+    profileId,
+    changedByUserId,
+    changedAt,
+    changeKind,
+    changedFields,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'day_entry_history';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DayEntryHistoryData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('changed_by_user_id')) {
+      context.handle(
+        _changedByUserIdMeta,
+        changedByUserId.isAcceptableOrUnknown(
+          data['changed_by_user_id']!,
+          _changedByUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_changedByUserIdMeta);
+    }
+    if (data.containsKey('changed_at')) {
+      context.handle(
+        _changedAtMeta,
+        changedAt.isAcceptableOrUnknown(data['changed_at']!, _changedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changedAtMeta);
+    }
+    if (data.containsKey('change_kind')) {
+      context.handle(
+        _changeKindMeta,
+        changeKind.isAcceptableOrUnknown(data['change_kind']!, _changeKindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_changeKindMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DayEntryHistoryData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DayEntryHistoryData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      changedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}changed_by_user_id'],
+      )!,
+      changedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}changed_at'],
+      )!,
+      changeKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}change_kind'],
+      )!,
+      changedFields: $DayEntryHistoryTable.$converterchangedFields.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}changed_fields'],
+        )!,
+      ),
+    );
+  }
+
+  @override
+  $DayEntryHistoryTable createAlias(String alias) {
+    return $DayEntryHistoryTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<List<String>, String> $converterchangedFields =
+      const TagsConverter();
+}
+
+class DayEntryHistoryData extends DataClass
+    implements Insertable<DayEntryHistoryData> {
+  /// Server-generated ULID (random identity; rows are keyed by event, never
+  /// ordered by id).
+  final String id;
+
+  /// The day_entries row the change happened to (a plain text reference
+  /// locally — see the class doc comment).
+  final String entryId;
+  final String profileId;
+
+  /// Display attribution only: who made the change.
+  final String changedByUserId;
+  final DateTime changedAt;
+
+  /// Raw `change_kind` wire string ('logged' | 'updated' | 'tombstoned' |
+  /// 'merged_discard'); `DayEntryChangeKind.fromDb` normalises on the way
+  /// to the domain model.
+  final String changeKind;
+
+  /// day_entries COLUMN NAMES only, never values — the table's whole
+  /// contract (content-free, enforced server-side by CHECK). Stored as a
+  /// JSON array via [TagsConverter] (the same List&lt;String&gt; mapping the
+  /// day-entry `tags` column uses).
+  final List<String> changedFields;
+  const DayEntryHistoryData({
+    required this.id,
+    required this.entryId,
+    required this.profileId,
+    required this.changedByUserId,
+    required this.changedAt,
+    required this.changeKind,
+    required this.changedFields,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['entry_id'] = Variable<String>(entryId);
+    map['profile_id'] = Variable<String>(profileId);
+    map['changed_by_user_id'] = Variable<String>(changedByUserId);
+    map['changed_at'] = Variable<DateTime>(changedAt);
+    map['change_kind'] = Variable<String>(changeKind);
+    {
+      map['changed_fields'] = Variable<String>(
+        $DayEntryHistoryTable.$converterchangedFields.toSql(changedFields),
+      );
+    }
+    return map;
+  }
+
+  DayEntryHistoryCompanion toCompanion(bool nullToAbsent) {
+    return DayEntryHistoryCompanion(
+      id: Value(id),
+      entryId: Value(entryId),
+      profileId: Value(profileId),
+      changedByUserId: Value(changedByUserId),
+      changedAt: Value(changedAt),
+      changeKind: Value(changeKind),
+      changedFields: Value(changedFields),
+    );
+  }
+
+  factory DayEntryHistoryData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DayEntryHistoryData(
+      id: serializer.fromJson<String>(json['id']),
+      entryId: serializer.fromJson<String>(json['entryId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      changedByUserId: serializer.fromJson<String>(json['changedByUserId']),
+      changedAt: serializer.fromJson<DateTime>(json['changedAt']),
+      changeKind: serializer.fromJson<String>(json['changeKind']),
+      changedFields: serializer.fromJson<List<String>>(json['changedFields']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'entryId': serializer.toJson<String>(entryId),
+      'profileId': serializer.toJson<String>(profileId),
+      'changedByUserId': serializer.toJson<String>(changedByUserId),
+      'changedAt': serializer.toJson<DateTime>(changedAt),
+      'changeKind': serializer.toJson<String>(changeKind),
+      'changedFields': serializer.toJson<List<String>>(changedFields),
+    };
+  }
+
+  DayEntryHistoryData copyWith({
+    String? id,
+    String? entryId,
+    String? profileId,
+    String? changedByUserId,
+    DateTime? changedAt,
+    String? changeKind,
+    List<String>? changedFields,
+  }) => DayEntryHistoryData(
+    id: id ?? this.id,
+    entryId: entryId ?? this.entryId,
+    profileId: profileId ?? this.profileId,
+    changedByUserId: changedByUserId ?? this.changedByUserId,
+    changedAt: changedAt ?? this.changedAt,
+    changeKind: changeKind ?? this.changeKind,
+    changedFields: changedFields ?? this.changedFields,
+  );
+  DayEntryHistoryData copyWithCompanion(DayEntryHistoryCompanion data) {
+    return DayEntryHistoryData(
+      id: data.id.present ? data.id.value : this.id,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      changedByUserId: data.changedByUserId.present
+          ? data.changedByUserId.value
+          : this.changedByUserId,
+      changedAt: data.changedAt.present ? data.changedAt.value : this.changedAt,
+      changeKind: data.changeKind.present
+          ? data.changeKind.value
+          : this.changeKind,
+      changedFields: data.changedFields.present
+          ? data.changedFields.value
+          : this.changedFields,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayEntryHistoryData(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('profileId: $profileId, ')
+          ..write('changedByUserId: $changedByUserId, ')
+          ..write('changedAt: $changedAt, ')
+          ..write('changeKind: $changeKind, ')
+          ..write('changedFields: $changedFields')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    entryId,
+    profileId,
+    changedByUserId,
+    changedAt,
+    changeKind,
+    changedFields,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DayEntryHistoryData &&
+          other.id == this.id &&
+          other.entryId == this.entryId &&
+          other.profileId == this.profileId &&
+          other.changedByUserId == this.changedByUserId &&
+          other.changedAt == this.changedAt &&
+          other.changeKind == this.changeKind &&
+          other.changedFields == this.changedFields);
+}
+
+class DayEntryHistoryCompanion extends UpdateCompanion<DayEntryHistoryData> {
+  final Value<String> id;
+  final Value<String> entryId;
+  final Value<String> profileId;
+  final Value<String> changedByUserId;
+  final Value<DateTime> changedAt;
+  final Value<String> changeKind;
+  final Value<List<String>> changedFields;
+  final Value<int> rowid;
+  const DayEntryHistoryCompanion({
+    this.id = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.changedByUserId = const Value.absent(),
+    this.changedAt = const Value.absent(),
+    this.changeKind = const Value.absent(),
+    this.changedFields = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DayEntryHistoryCompanion.insert({
+    required String id,
+    required String entryId,
+    required String profileId,
+    required String changedByUserId,
+    required DateTime changedAt,
+    required String changeKind,
+    required List<String> changedFields,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       entryId = Value(entryId),
+       profileId = Value(profileId),
+       changedByUserId = Value(changedByUserId),
+       changedAt = Value(changedAt),
+       changeKind = Value(changeKind),
+       changedFields = Value(changedFields);
+  static Insertable<DayEntryHistoryData> custom({
+    Expression<String>? id,
+    Expression<String>? entryId,
+    Expression<String>? profileId,
+    Expression<String>? changedByUserId,
+    Expression<DateTime>? changedAt,
+    Expression<String>? changeKind,
+    Expression<String>? changedFields,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (entryId != null) 'entry_id': entryId,
+      if (profileId != null) 'profile_id': profileId,
+      if (changedByUserId != null) 'changed_by_user_id': changedByUserId,
+      if (changedAt != null) 'changed_at': changedAt,
+      if (changeKind != null) 'change_kind': changeKind,
+      if (changedFields != null) 'changed_fields': changedFields,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DayEntryHistoryCompanion copyWith({
+    Value<String>? id,
+    Value<String>? entryId,
+    Value<String>? profileId,
+    Value<String>? changedByUserId,
+    Value<DateTime>? changedAt,
+    Value<String>? changeKind,
+    Value<List<String>>? changedFields,
+    Value<int>? rowid,
+  }) {
+    return DayEntryHistoryCompanion(
+      id: id ?? this.id,
+      entryId: entryId ?? this.entryId,
+      profileId: profileId ?? this.profileId,
+      changedByUserId: changedByUserId ?? this.changedByUserId,
+      changedAt: changedAt ?? this.changedAt,
+      changeKind: changeKind ?? this.changeKind,
+      changedFields: changedFields ?? this.changedFields,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (changedByUserId.present) {
+      map['changed_by_user_id'] = Variable<String>(changedByUserId.value);
+    }
+    if (changedAt.present) {
+      map['changed_at'] = Variable<DateTime>(changedAt.value);
+    }
+    if (changeKind.present) {
+      map['change_kind'] = Variable<String>(changeKind.value);
+    }
+    if (changedFields.present) {
+      map['changed_fields'] = Variable<String>(
+        $DayEntryHistoryTable.$converterchangedFields.toSql(
+          changedFields.value,
+        ),
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DayEntryHistoryCompanion(')
+          ..write('id: $id, ')
+          ..write('entryId: $entryId, ')
+          ..write('profileId: $profileId, ')
+          ..write('changedByUserId: $changedByUserId, ')
+          ..write('changedAt: $changedAt, ')
+          ..write('changeKind: $changeKind, ')
+          ..write('changedFields: $changedFields, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AppSettingsTable extends AppSettings
     with TableInfo<$AppSettingsTable, AppSetting> {
   @override
@@ -9293,6 +9789,17 @@ class $SyncStateTable extends SyncState
         requiredDuringInsert: false,
         defaultValue: const Constant(0),
       );
+  static const VerificationMeta _cursorDayEntryHistoryMeta =
+      const VerificationMeta('cursorDayEntryHistory');
+  @override
+  late final GeneratedColumn<int> cursorDayEntryHistory = GeneratedColumn<int>(
+    'cursor_day_entry_history',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -9353,6 +9860,7 @@ class $SyncStateTable extends SyncState
     cursorDeletedProfiles,
     cursorDayEntryMergeEvents,
     cursorProfileTagRegistry,
+    cursorDayEntryHistory,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -9487,6 +9995,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_day_entry_history')) {
+      context.handle(
+        _cursorDayEntryHistoryMeta,
+        cursorDayEntryHistory.isAcceptableOrUnknown(
+          data['cursor_day_entry_history']!,
+          _cursorDayEntryHistoryMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -9585,6 +10102,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_profile_tag_registry'],
       )!,
+      cursorDayEntryHistory: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_day_entry_history'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -9671,6 +10192,11 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// Issue #257: the `profile_tag_registry` pull cursor, same shape as
   /// [cursorDayEntries].
   final int cursorProfileTagRegistry;
+
+  /// Issue #170: the `day_entry_history` pull cursor, same shape as
+  /// [cursorDayEntries] (the table is pull-only, so this cursor plus the
+  /// apply path are its entire sync surface).
+  final int cursorDayEntryHistory;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -9695,6 +10221,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorDeletedProfiles,
     required this.cursorDayEntryMergeEvents,
     required this.cursorProfileTagRegistry,
+    required this.cursorDayEntryHistory,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -9723,6 +10250,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     map['cursor_profile_tag_registry'] = Variable<int>(
       cursorProfileTagRegistry,
     );
+    map['cursor_day_entry_history'] = Variable<int>(cursorDayEntryHistory);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -9756,6 +10284,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDeletedProfiles: Value(cursorDeletedProfiles),
       cursorDayEntryMergeEvents: Value(cursorDayEntryMergeEvents),
       cursorProfileTagRegistry: Value(cursorProfileTagRegistry),
+      cursorDayEntryHistory: Value(cursorDayEntryHistory),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -9803,6 +10332,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileTagRegistry: serializer.fromJson<int>(
         json['cursorProfileTagRegistry'],
       ),
+      cursorDayEntryHistory: serializer.fromJson<int>(
+        json['cursorDayEntryHistory'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -9833,6 +10365,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       'cursorProfileTagRegistry': serializer.toJson<int>(
         cursorProfileTagRegistry,
       ),
+      'cursorDayEntryHistory': serializer.toJson<int>(cursorDayEntryHistory),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -9855,6 +10388,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorDeletedProfiles,
     int? cursorDayEntryMergeEvents,
     int? cursorProfileTagRegistry,
+    int? cursorDayEntryHistory,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -9877,6 +10411,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
         cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
     cursorProfileTagRegistry:
         cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
+    cursorDayEntryHistory: cursorDayEntryHistory ?? this.cursorDayEntryHistory,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -9926,6 +10461,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileTagRegistry: data.cursorProfileTagRegistry.present
           ? data.cursorProfileTagRegistry.value
           : this.cursorProfileTagRegistry,
+      cursorDayEntryHistory: data.cursorDayEntryHistory.present
+          ? data.cursorDayEntryHistory.value
+          : this.cursorDayEntryHistory,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -9956,6 +10494,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
+          ..write('cursorDayEntryHistory: $cursorDayEntryHistory, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -9980,6 +10519,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorDeletedProfiles,
     cursorDayEntryMergeEvents,
     cursorProfileTagRegistry,
+    cursorDayEntryHistory,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -10003,6 +10543,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorDeletedProfiles == this.cursorDeletedProfiles &&
           other.cursorDayEntryMergeEvents == this.cursorDayEntryMergeEvents &&
           other.cursorProfileTagRegistry == this.cursorProfileTagRegistry &&
+          other.cursorDayEntryHistory == this.cursorDayEntryHistory &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -10024,6 +10565,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorDeletedProfiles;
   final Value<int> cursorDayEntryMergeEvents;
   final Value<int> cursorProfileTagRegistry;
+  final Value<int> cursorDayEntryHistory;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -10043,6 +10585,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorDeletedProfiles = const Value.absent(),
     this.cursorDayEntryMergeEvents = const Value.absent(),
     this.cursorProfileTagRegistry = const Value.absent(),
+    this.cursorDayEntryHistory = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -10063,6 +10606,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorDeletedProfiles = const Value.absent(),
     this.cursorDayEntryMergeEvents = const Value.absent(),
     this.cursorProfileTagRegistry = const Value.absent(),
+    this.cursorDayEntryHistory = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -10083,6 +10627,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorDeletedProfiles,
     Expression<int>? cursorDayEntryMergeEvents,
     Expression<int>? cursorProfileTagRegistry,
+    Expression<int>? cursorDayEntryHistory,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -10110,6 +10655,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         'cursor_day_entry_merge_events': cursorDayEntryMergeEvents,
       if (cursorProfileTagRegistry != null)
         'cursor_profile_tag_registry': cursorProfileTagRegistry,
+      if (cursorDayEntryHistory != null)
+        'cursor_day_entry_history': cursorDayEntryHistory,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -10133,6 +10680,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorDeletedProfiles,
     Value<int>? cursorDayEntryMergeEvents,
     Value<int>? cursorProfileTagRegistry,
+    Value<int>? cursorDayEntryHistory,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -10157,6 +10705,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           cursorDayEntryMergeEvents ?? this.cursorDayEntryMergeEvents,
       cursorProfileTagRegistry:
           cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
+      cursorDayEntryHistory:
+          cursorDayEntryHistory ?? this.cursorDayEntryHistory,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -10219,6 +10769,11 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorProfileTagRegistry.value,
       );
     }
+    if (cursorDayEntryHistory.present) {
+      map['cursor_day_entry_history'] = Variable<int>(
+        cursorDayEntryHistory.value,
+      );
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -10251,6 +10806,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorDeletedProfiles: $cursorDeletedProfiles, ')
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
+          ..write('cursorDayEntryHistory: $cursorDayEntryHistory, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -10562,6 +11118,9 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
       $DayEntryMergeEventsTable(this);
   late final $ProfileTagRegistryTable profileTagRegistry =
       $ProfileTagRegistryTable(this);
+  late final $DayEntryHistoryTable dayEntryHistory = $DayEntryHistoryTable(
+    this,
+  );
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   late final $HealthSyncStateTable healthSyncState = $HealthSyncStateTable(
@@ -10582,6 +11141,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     visitPrepItems,
     dayEntryMergeEvents,
     profileTagRegistry,
+    dayEntryHistory,
     appSettings,
     syncState,
     healthSyncState,
@@ -10823,6 +11383,27 @@ final class $$ProfilesTableReferences
 
     final cache = $_typedResult.readTableOrNull(
       _profileTagRegistryRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DayEntryHistoryTable, List<DayEntryHistoryData>>
+  _dayEntryHistoryRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.dayEntryHistory,
+        aliasName: 'profiles__id__day_entry_history__profile_id',
+      );
+
+  $$DayEntryHistoryTableProcessedTableManager get dayEntryHistoryRefs {
+    final manager = $$DayEntryHistoryTableTableManager(
+      $_db,
+      $_db.dayEntryHistory,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _dayEntryHistoryRefsTable($_db),
     );
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
@@ -11170,6 +11751,31 @@ class $$ProfilesTableFilterComposer
           }) => $$ProfileTagRegistryTableFilterComposer(
             $db: $db,
             $table: $db.profileTagRegistry,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> dayEntryHistoryRefs(
+    Expression<bool> Function($$DayEntryHistoryTableFilterComposer f) f,
+  ) {
+    final $$DayEntryHistoryTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayEntryHistory,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntryHistoryTableFilterComposer(
+            $db: $db,
+            $table: $db.dayEntryHistory,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11633,6 +12239,31 @@ class $$ProfilesTableAnnotationComposer
         );
     return f(composer);
   }
+
+  Expression<T> dayEntryHistoryRefs<T extends Object>(
+    Expression<T> Function($$DayEntryHistoryTableAnnotationComposer a) f,
+  ) {
+    final $$DayEntryHistoryTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.dayEntryHistory,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DayEntryHistoryTableAnnotationComposer(
+            $db: $db,
+            $table: $db.dayEntryHistory,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager
@@ -11658,6 +12289,7 @@ class $$ProfilesTableTableManager
             bool visitPrepItemsRefs,
             bool dayEntryMergeEventsRefs,
             bool profileTagRegistryRefs,
+            bool dayEntryHistoryRefs,
           })
         > {
   $$ProfilesTableTableManager(_$LunarLogDatabase db, $ProfilesTable table)
@@ -11794,6 +12426,7 @@ class $$ProfilesTableTableManager
                 visitPrepItemsRefs = false,
                 dayEntryMergeEventsRefs = false,
                 profileTagRegistryRefs = false,
+                dayEntryHistoryRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -11807,6 +12440,7 @@ class $$ProfilesTableTableManager
                     if (visitPrepItemsRefs) db.visitPrepItems,
                     if (dayEntryMergeEventsRefs) db.dayEntryMergeEvents,
                     if (profileTagRegistryRefs) db.profileTagRegistry,
+                    if (dayEntryHistoryRefs) db.dayEntryHistory,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -12000,6 +12634,27 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (dayEntryHistoryRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          DayEntryHistoryData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._dayEntryHistoryRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).dayEntryHistoryRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -12030,6 +12685,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool visitPrepItemsRefs,
         bool dayEntryMergeEventsRefs,
         bool profileTagRegistryRefs,
+        bool dayEntryHistoryRefs,
       })
     >;
 typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
@@ -16608,6 +17264,380 @@ typedef $$ProfileTagRegistryTableProcessedTableManager =
       ProfileTagRegistryEntry,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$DayEntryHistoryTableCreateCompanionBuilder =
+    DayEntryHistoryCompanion Function({
+      required String id,
+      required String entryId,
+      required String profileId,
+      required String changedByUserId,
+      required DateTime changedAt,
+      required String changeKind,
+      required List<String> changedFields,
+      Value<int> rowid,
+    });
+typedef $$DayEntryHistoryTableUpdateCompanionBuilder =
+    DayEntryHistoryCompanion Function({
+      Value<String> id,
+      Value<String> entryId,
+      Value<String> profileId,
+      Value<String> changedByUserId,
+      Value<DateTime> changedAt,
+      Value<String> changeKind,
+      Value<List<String>> changedFields,
+      Value<int> rowid,
+    });
+
+final class $$DayEntryHistoryTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $DayEntryHistoryTable,
+          DayEntryHistoryData
+        > {
+  $$DayEntryHistoryTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('day_entry_history__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DayEntryHistoryTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryHistoryTable> {
+  $$DayEntryHistoryTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get changedByUserId => $composableBuilder(
+    column: $table.changedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get changedAt => $composableBuilder(
+    column: $table.changedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get changeKind => $composableBuilder(
+    column: $table.changeKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<List<String>, List<String>, String>
+  get changedFields => $composableBuilder(
+    column: $table.changedFields,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryHistoryTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryHistoryTable> {
+  $$DayEntryHistoryTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get changedByUserId => $composableBuilder(
+    column: $table.changedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get changedAt => $composableBuilder(
+    column: $table.changedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get changeKind => $composableBuilder(
+    column: $table.changeKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get changedFields => $composableBuilder(
+    column: $table.changedFields,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryHistoryTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $DayEntryHistoryTable> {
+  $$DayEntryHistoryTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get entryId =>
+      $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<String> get changedByUserId => $composableBuilder(
+    column: $table.changedByUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get changedAt =>
+      $composableBuilder(column: $table.changedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get changeKind => $composableBuilder(
+    column: $table.changeKind,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<List<String>, String> get changedFields =>
+      $composableBuilder(
+        column: $table.changedFields,
+        builder: (column) => column,
+      );
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DayEntryHistoryTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $DayEntryHistoryTable,
+          DayEntryHistoryData,
+          $$DayEntryHistoryTableFilterComposer,
+          $$DayEntryHistoryTableOrderingComposer,
+          $$DayEntryHistoryTableAnnotationComposer,
+          $$DayEntryHistoryTableCreateCompanionBuilder,
+          $$DayEntryHistoryTableUpdateCompanionBuilder,
+          (DayEntryHistoryData, $$DayEntryHistoryTableReferences),
+          DayEntryHistoryData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$DayEntryHistoryTableTableManager(
+    _$LunarLogDatabase db,
+    $DayEntryHistoryTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DayEntryHistoryTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DayEntryHistoryTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DayEntryHistoryTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> entryId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> changedByUserId = const Value.absent(),
+                Value<DateTime> changedAt = const Value.absent(),
+                Value<String> changeKind = const Value.absent(),
+                Value<List<String>> changedFields = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DayEntryHistoryCompanion(
+                id: id,
+                entryId: entryId,
+                profileId: profileId,
+                changedByUserId: changedByUserId,
+                changedAt: changedAt,
+                changeKind: changeKind,
+                changedFields: changedFields,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String entryId,
+                required String profileId,
+                required String changedByUserId,
+                required DateTime changedAt,
+                required String changeKind,
+                required List<String> changedFields,
+                Value<int> rowid = const Value.absent(),
+              }) => DayEntryHistoryCompanion.insert(
+                id: id,
+                entryId: entryId,
+                profileId: profileId,
+                changedByUserId: changedByUserId,
+                changedAt: changedAt,
+                changeKind: changeKind,
+                changedFields: changedFields,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$DayEntryHistoryTable, DayEntryHistoryData>(
+                    table,
+                  ),
+                  $$DayEntryHistoryTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$DayEntryHistoryTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$DayEntryHistoryTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DayEntryHistoryTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $DayEntryHistoryTable,
+      DayEntryHistoryData,
+      $$DayEntryHistoryTableFilterComposer,
+      $$DayEntryHistoryTableOrderingComposer,
+      $$DayEntryHistoryTableAnnotationComposer,
+      $$DayEntryHistoryTableCreateCompanionBuilder,
+      $$DayEntryHistoryTableUpdateCompanionBuilder,
+      (DayEntryHistoryData, $$DayEntryHistoryTableReferences),
+      DayEntryHistoryData,
+      PrefetchHooks Function({bool profileId})
+    >;
 typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String key,
@@ -16794,6 +17824,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorDeletedProfiles,
   Value<int> cursorDayEntryMergeEvents,
   Value<int> cursorProfileTagRegistry,
+  Value<int> cursorDayEntryHistory,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -16814,6 +17845,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorDeletedProfiles,
   Value<int> cursorDayEntryMergeEvents,
   Value<int> cursorProfileTagRegistry,
+  Value<int> cursorDayEntryHistory,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -16896,6 +17928,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorProfileTagRegistry => $composableBuilder(
     column: $table.cursorProfileTagRegistry,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorDayEntryHistory => $composableBuilder(
+    column: $table.cursorDayEntryHistory,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16999,6 +18036,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorDayEntryHistory => $composableBuilder(
+    column: $table.cursorDayEntryHistory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -17095,6 +18137,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorDayEntryHistory => $composableBuilder(
+    column: $table.cursorDayEntryHistory,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -17159,6 +18206,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<int> cursorProfileTagRegistry = const Value.absent(),
+                Value<int> cursorDayEntryHistory = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -17178,6 +18226,7 @@ class $$SyncStateTableTableManager
                 cursorDeletedProfiles: cursorDeletedProfiles,
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 cursorProfileTagRegistry: cursorProfileTagRegistry,
+                cursorDayEntryHistory: cursorDayEntryHistory,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -17199,6 +18248,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorDeletedProfiles = const Value.absent(),
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<int> cursorProfileTagRegistry = const Value.absent(),
+                Value<int> cursorDayEntryHistory = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -17218,6 +18268,7 @@ class $$SyncStateTableTableManager
                 cursorDeletedProfiles: cursorDeletedProfiles,
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 cursorProfileTagRegistry: cursorProfileTagRegistry,
+                cursorDayEntryHistory: cursorDayEntryHistory,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -17464,6 +18515,8 @@ class $LunarLogDatabaseManager {
       $$DayEntryMergeEventsTableTableManager(_db, _db.dayEntryMergeEvents);
   $$ProfileTagRegistryTableTableManager get profileTagRegistry =>
       $$ProfileTagRegistryTableTableManager(_db, _db.profileTagRegistry);
+  $$DayEntryHistoryTableTableManager get dayEntryHistory =>
+      $$DayEntryHistoryTableTableManager(_db, _db.dayEntryHistory);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$SyncStateTableTableManager get syncState =>

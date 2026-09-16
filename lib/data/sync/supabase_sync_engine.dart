@@ -164,6 +164,11 @@ const List<SyncTable> _pullTableOrder = [
   // only a profile, and nothing references the registry (unknown codes
   // never drop).
   SyncTable.profileTagRegistry,
+  // Issue #170: the change-history feed follows the registry — a row
+  // references only a profile (the entry_id reference is deliberately not
+  // an FK locally, see the domain model), and rows are immutable, so no
+  // ordering requirement exists.
+  SyncTable.dayEntryHistory,
   SyncTable.deletedProfiles,
 ];
 
@@ -1318,6 +1323,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.dayEntryMergeEvents,
     // Issue #257: same — sync_pull's tenth per-profile key.
     SyncTable.profileTagRegistry,
+    // Issue #170: same — sync_pull's eleventh per-profile key (and a
+    // table the RPC covers; the fallback select's own relation-not-found
+    // leniency covers a server predating this table's migration).
+    SyncTable.dayEntryHistory,
   ];
 
   /// One [_storage.readSyncState] read, turned into the persisted starting
@@ -1425,6 +1434,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.visitPrepItems: (s) => s.cursorVisitPrepItems,
     SyncTable.dayEntryMergeEvents: (s) => s.cursorDayEntryMergeEvents,
     SyncTable.profileTagRegistry: (s) => s.cursorProfileTagRegistry,
+    SyncTable.dayEntryHistory: (s) => s.cursorDayEntryHistory,
     SyncTable.profileGuardians: (s) => s.cursorProfileGuardians,
     SyncTable.deletedProfiles: (s) => s.cursorDeletedProfiles,
   };

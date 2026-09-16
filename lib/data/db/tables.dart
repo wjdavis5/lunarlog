@@ -814,6 +814,49 @@ class ProfileTagRegistry extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One row of `public.day_entry_history` (Issue #170): a machine-written,
+/// content-free audit record of one day-entry change. Mirrors the server
+/// table column-for-column EXCEPT the local store deliberately carries no
+/// FK from [entryId] to day entries (the server does; locally, the
+/// tombstone sweep may remove an old day-entry row while its 90-day
+/// history is still inside the feed window — see the domain model's doc
+/// comment) and no `dirty`/`localRev` (PULL-ONLY: rows are never pushed,
+/// the [ProfileGuardians] precedent).
+@DataClassName('DayEntryHistoryData')
+class DayEntryHistory extends Table {
+  /// Server-generated ULID (random identity; rows are keyed by event, never
+  /// ordered by id).
+  TextColumn get id => text()();
+
+  /// The day_entries row the change happened to (a plain text reference
+  /// locally — see the class doc comment).
+  TextColumn get entryId => text().named('entry_id')();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// Display attribution only: who made the change.
+  TextColumn get changedByUserId =>
+      text().named('changed_by_user_id')();
+
+  DateTimeColumn get changedAt => dateTime().named('changed_at')();
+
+  /// Raw `change_kind` wire string ('logged' | 'updated' | 'tombstoned' |
+  /// 'merged_discard'); `DayEntryChangeKind.fromDb` normalises on the way
+  /// to the domain model.
+  TextColumn get changeKind => text().named('change_kind')();
+
+  /// day_entries COLUMN NAMES only, never values — the table's whole
+  /// contract (content-free, enforced server-side by CHECK). Stored as a
+  /// JSON array via [TagsConverter] (the same List&lt;String&gt; mapping the
+  /// day-entry `tags` column uses).
+  TextColumn get changedFields =>
+      text().named('changed_fields').map(const TagsConverter())();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {  TextColumn get key => text()();
   TextColumn get value => text()();
@@ -906,6 +949,13 @@ class SyncState extends Table {
   /// [cursorDayEntries].
   IntColumn get cursorProfileTagRegistry =>
       integer().named('cursor_profile_tag_registry')
+          .withDefault(const Constant(0))();
+
+  /// Issue #170: the `day_entry_history` pull cursor, same shape as
+  /// [cursorDayEntries] (the table is pull-only, so this cursor plus the
+  /// apply path are its entire sync surface).
+  IntColumn get cursorDayEntryHistory =>
+      integer().named('cursor_day_entry_history')
           .withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>

@@ -166,6 +166,7 @@ const Map<SyncTable, String> _syncTableNames = {
   SyncTable.dayEntryMergeEvents: 'day_entry_merge_events',
   SyncTable.profileTagRegistry: 'profile_tag_registry',
   SyncTable.deletedProfiles: 'deleted_profiles',
+  SyncTable.dayEntryHistory: 'day_entry_history',
 };
 
 /// [syncTableName]'s inverse, precomputed once from it rather than
@@ -873,6 +874,33 @@ RemoteProfileTagRegistryRow decodeProfileTagRegistryEntry(JsonRow json) {
   );
 }
 
+/// Decodes a `day_entry_history` row (Issue #170). `change_kind` is
+/// normalised against the closed set on decode — an unrecognised value can
+/// only come from a broken writer and degrades to 'updated' (the generic
+/// kind) rather than crashing a pull over display metadata. `entry_id` is
+/// read as a plain string, NOT validated as a ULID the way `id` is: rows
+/// arrive ordered and immutable, and a legacy-shaped entry id must not
+/// fail an entire pull page over display metadata.
+RemoteDayEntryHistoryRow decodeDayEntryHistory(JsonRow json) {
+  const table = SyncTable.dayEntryHistory;
+  final r = _Reader(json, table);
+  return RemoteDayEntryHistoryRow(
+    id: r.ulid('id'),
+    entryId: r.string('entry_id'),
+    profileId: r.ulid('profile_id'),
+    changedByUserId: r.string('changed_by_user_id'),
+    changedAt: r.timestamp('changed_at'),
+    changeKind: switch (r.string('change_kind')) {
+      'logged' => 'logged',
+      'tombstoned' => 'tombstoned',
+      'merged_discard' => 'merged_discard',
+      _ => 'updated',
+    },
+    changedFields: r.tags('changed_fields'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a pull-page row of [table].
 RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) =>
     _remoteRowDecoders[table]!(json);
@@ -891,6 +919,7 @@ const Map<SyncTable, RemoteRow Function(JsonRow)> _remoteRowDecoders = {
   SyncTable.dayEntryMergeEvents: decodeDayEntryMergeEvent,
   SyncTable.profileTagRegistry: decodeProfileTagRegistryEntry,
   SyncTable.deletedProfiles: decodeDeletedProfile,
+  SyncTable.dayEntryHistory: decodeDayEntryHistory,
 };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`

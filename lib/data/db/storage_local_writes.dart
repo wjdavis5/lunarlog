@@ -1831,12 +1831,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     return _pushedTableTargets[table]!();
   }
 
-  /// The two pull-only tables ([SyncTable.profileGuardians],
-  /// [SyncTable.deletedProfiles]): nothing is ever pushed for them, so
+  /// The pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles], and Issue #170's
+  /// [SyncTable.dayEntryHistory]): nothing is ever pushed for them, so
   /// there is no `dirty` flag for [markPushedBatch] to clear — the same
   /// no-op cases [markPushed] carries.
   static bool _neverPushed(SyncTable table) => switch (table) {
-    SyncTable.profileGuardians || SyncTable.deletedProfiles => true,
+    SyncTable.profileGuardians ||
+    SyncTable.deletedProfiles ||
+    SyncTable.dayEntryHistory => true,
     _ => false,
   };
 

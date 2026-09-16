@@ -71,6 +71,7 @@ import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
+import 'package:lunarlog/domain/models/day_entry_history.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
 import '../sync/conflict_rules.dart';
@@ -85,6 +86,7 @@ export '../sync/remote_rows.dart'
     show
         RemoteCareNoteRow,
         RemoteCycleOverrideRow,
+        RemoteDayEntryHistoryRow,
         RemoteDayEntryMergeEventRow,
         RemoteDayEntryRow,
         RemoteDeletedProfileRow,
@@ -115,6 +117,16 @@ const Duration kTombstoneRetentionHorizon = Duration(hours: 48);
 /// day sheet's read (`getDayEntryMergeEventsForDay` filters on it), so
 /// behavior converges with the server without a local sweep job.
 const Duration kDayEntryMergeEventRetention = Duration(days: 30);
+
+/// Issue #170: how long a day-entry change-history row stays in the local
+/// feed read — the client mirror of the server-side `enforce_retention()`
+/// purge window (`day_entry_history` rows older than 90 days are
+/// hard-deleted there by the step 20260915200000 shipped pre-armed for
+/// exactly this table). Local rows are not deleted — they simply age out
+/// of `getDayEntryHistoryForProfile`'s window, so behavior converges with
+/// the server without a local sweep job (the kDayEntryMergeEventRetention
+/// posture).
+const Duration kDayEntryHistoryRetention = Duration(days: 90);
 
 /// Issue #42: how many rows one batched statement may cover — the ceiling
 /// for a page prefetch's `IN (...)` lookup and for a

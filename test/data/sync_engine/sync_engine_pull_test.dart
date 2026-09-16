@@ -110,6 +110,7 @@ void main() {
             SyncTable.dayEntryMergeEvents => const [],
             SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
+            SyncTable.dayEntryHistory => const [],
           };
 
       await rig.start();
@@ -150,6 +151,7 @@ void main() {
             SyncTable.dayEntryMergeEvents => const [],
             SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
+            SyncTable.dayEntryHistory => const [],
           };
 
       await rig.start();
@@ -183,7 +185,7 @@ void main() {
       ));
       await rig.start();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522), 12th is day_entry_history (#170)
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
 
       // (c) Issue #525: a push whose answer carries resolved rows is no
@@ -202,7 +204,7 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0], // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0], // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522), 12th is day_entry_history (#170)
           reason: 'resolved rows in a push answer must not force a '
               'full reconcile (issue #525)');
       expect((await rig.state()).lastFullPullAt?.toUtc(), t0,
@@ -212,7 +214,7 @@ void main() {
       rig.transport.pulls.clear();
       await rig.sync();
       expect(rig.transport.pulls.map((c) => c.afterVersion),
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522)
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // 9th 0 is day_entry_merge_events (#130), 10th is profile_tag_registry (#257), 11th is deletedProfiles (#522), 12th is day_entry_history (#170)
 
       // (e) Older than 24h: due again.
       rig.clock.now = rig.clock.now.add(const Duration(hours: 25));
@@ -223,7 +225,7 @@ void main() {
           // (deletedProfiles, issue #522, adds its `0` to each half;
           // dayEntryMergeEvents, issue #130, the tenth; profileTagRegistry,
           // issue #257, the eleventh).
-          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+          [100, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
       expect((await rig.state()).lastFullPullAt?.toUtc(), rig.clock.now);
     });
 
@@ -244,6 +246,7 @@ void main() {
         SyncTable.dayEntryMergeEvents: 0,
         SyncTable.profileTagRegistry: 0,
         SyncTable.deletedProfiles: 0,
+        SyncTable.dayEntryHistory: 0,
       };
 
       Future<void> bindStale(Rig rig) => rig.storage.writeSyncState(
@@ -266,14 +269,14 @@ void main() {
 
         expect(
           rig.transport.pulls,
-          hasLength(11),
+          hasLength(12),
           reason:
-              'incremental only — the 11 reconcile re-pulls were '
+              'incremental only — the 12 reconcile re-pulls were '
               'skipped because nothing changed server-side',
         );
         expect(
           rig.transport.fetchMaxVersionCalls,
-          hasLength(11),
+          hasLength(12),
           reason: 'one probe per pull table before the reconcile',
         );
         expect(
@@ -298,9 +301,9 @@ void main() {
 
         expect(
           rig.transport.pulls,
-          hasLength(22),
+          hasLength(24),
           reason:
-              '11 incremental + 11 reconcile: the probe reported a '
+              '12 incremental + 12 reconcile: the probe reported a '
               'change, so the full re-pull runs',
         );
         expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
@@ -317,7 +320,7 @@ void main() {
 
         expect(
           rig.transport.pulls,
-          hasLength(22),
+          hasLength(24),
           reason: 'a probe failure is conservative: the full re-pull runs',
         );
         expect((await rig.state()).lastFullPullAt?.toUtc(), t0);
@@ -343,9 +346,9 @@ void main() {
 
         expect(
           rig.transport.pulls,
-          hasLength(22),
+          hasLength(24),
           reason:
-              '11 incremental + 11 reconcile: the forced reconcile '
+              '12 incremental + 12 reconcile: the forced reconcile '
               're-pulled even though the probe says nothing changed',
         );
         expect(
@@ -366,7 +369,7 @@ void main() {
 
         expect(
           rig.transport.pulls,
-          hasLength(22),
+          hasLength(24),
           reason:
               'a bind-time reconcile re-pulls everything regardless '
               'of the probe',
@@ -542,7 +545,7 @@ void main() {
       // observations (Issue #240), the two Issue #188 tables, the two
       // Issue #128 tables, deletedProfiles (Issue #522), and merge events
       // (Issue #130) — 10 pull calls — and NO reconcile pull is made.
-      expect(rig.transport.pullCount, pullsBeforeCycle4 + 11,
+      expect(rig.transport.pullCount, pullsBeforeCycle4 + 12,
           reason: 'cycle 4 ran incremental pulls only, no full reconcile');
     });
 
@@ -571,6 +574,7 @@ void main() {
             SyncTable.profileTagRegistry => const [],
             SyncTable.profileGuardians => [stuck],
             SyncTable.deletedProfiles => const [],
+            SyncTable.dayEntryHistory => const [],
           };
 
       // Re-primes cursorProfiles to a nonzero value before each cycle, so a
@@ -976,6 +980,7 @@ void main() {
         cursorProfileGuardians: 19,
         cursorDayEntryMergeEvents: 21,
         cursorProfileTagRegistry: 23,
+        cursorDayEntryHistory: 25,
       ));
 
       await rig.start();
@@ -992,6 +997,7 @@ void main() {
         SyncTable.visitPrepItems: 17,
         SyncTable.dayEntryMergeEvents: 21,
         SyncTable.profileTagRegistry: 23,
+        SyncTable.dayEntryHistory: 25,
       }, reason: 'deletedProfiles is deliberately excluded — sync_pull does '
           'not cover it');
       expect(
@@ -1033,6 +1039,7 @@ void main() {
           SyncTable.visitPrepItems,
           SyncTable.dayEntryMergeEvents,
           SyncTable.profileTagRegistry,
+          SyncTable.dayEntryHistory,
         ])
           table: 0,
       }, reason: 'reconcile always pages from version 0, so priming must '
