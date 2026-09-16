@@ -2254,6 +2254,36 @@ abstract class AppLocalizations {
   /// **'Switch profile'**
   String get profileDetailSwitchProfileTooltip;
 
+  /// Issue #241: tooltip on the app shell's quick profile switcher (the app-bar profile title, a popup listing active profiles).
+  ///
+  /// In en, this message translates to:
+  /// **'Switch profile'**
+  String get appShellProfileSwitcherTooltip;
+
+  /// Issue #241: the quick profile switcher menu's entry that opens the full profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage profiles…'**
+  String get quickSwitcherManageProfiles;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state).
+  ///
+  /// In en, this message translates to:
+  /// **'No history yet'**
+  String get profileStatusNoHistory;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode).
+  ///
+  /// In en, this message translates to:
+  /// **'Period predictions off'**
+  String get profileStatusPredictionsSuppressed;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
+  ///
+  /// In en, this message translates to:
+  /// **'Period predictions off'**
+  String get profileStatusPredictionsOff;
+
   /// Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.
   ///
   /// In en, this message translates to:

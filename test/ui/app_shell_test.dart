@@ -1,6 +1,7 @@
 /// Widget tests for AppShell (issue #182): four bottom-nav destinations,
 /// per-tab state preservation across a switch, the sync glyph on every tab
-/// except More, the profile switcher opening the existing picker, and
+/// except More, the profile switcher's quick-switcher popup and its
+/// "Manage profiles…" route to the existing picker (issue #241), and
 /// Settings reachable from every tab without going through "Switch
 /// profile". Issue #223: the Insights destination now mounts the real
 /// [AnalysisTab] rather than the placeholder `_InsightsTab` #182 shipped —
@@ -276,8 +277,9 @@ void main() {
   });
 
   testWidgets(
-      'tapping the profile switcher opens the picker; Settings is reachable '
-      'from the shell app bar without it', (tester) async {
+      'tapping the profile switcher opens the quick-switcher popup, whose '
+      '"Manage profiles…" entry opens the full picker (issue #241)',
+      (tester) async {
     final h = Harness(tester);
     await h.pump();
 
@@ -295,8 +297,21 @@ void main() {
     await tester.tap(switcherFinder);
     await tester.pumpAndSettle();
 
+    // Issue #241: the tap opens the quick-switcher popup over the shell,
+    // not the full picker — the shell (and its tab state) stays mounted.
+    expect(find.byKey(ValueKey('quick-switcher-profile-${h.profileId}')),
+        findsOneWidget,
+        reason: 'the active profile is listed with its avatar');
+    expect(find.byKey(const ValueKey('quick-switcher-manage')),
+        findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget,
+        reason: 'the popup is an overlay; the picker has not replaced home');
+
+    await tester.tap(find.byKey(const ValueKey('quick-switcher-manage')));
+    await tester.pumpAndSettle();
+
     expect(find.text('Profiles'), findsOneWidget,
-        reason: 'the profile switcher opened the existing picker');
+        reason: '"Manage profiles…" opened the existing full picker');
     expect(find.byType(NavigationBar), findsNothing,
         reason: 'the picker is not the shell');
     await h.dispose();

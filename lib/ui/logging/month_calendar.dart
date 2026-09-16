@@ -147,9 +147,29 @@ LocalDate _lastOfMonth(int year, int month) {
 /// and pure for direct testing, mirroring [dayCellSemanticLabel] and
 /// [canDrivePageController] elsewhere in this file.
 (LocalDate, LocalDate) calendarEntriesWindowFor(int year, int month) => (
-  _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
-  _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
-);
+      _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
+      _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
+    );
+
+/// Whether [entries] include any day inside [year]/[month] (issue #241,
+/// B-16): the predicate behind keeping the displayed calendar month
+/// across a profile switch -- a guardian comparing two profiles' calendars
+/// keeps their place when the newly selected profile also has data in the
+/// month they were viewing, and only falls back to today's month when it
+/// does not (an empty month for that profile reads as "nothing here",
+/// which today's month explains better than a stale position does).
+/// Public and pure for direct testing. Callers pass an already
+/// range-filtered, tombstone-excluded list (the repository's
+/// `watchForProfile(from: first, to: last)`); the year/month check itself
+/// is the whole contract, kept here so the policy is testable without a
+/// repository.
+bool hasEntriesInMonth(Iterable<DayEntry> entries, int year, int month) {
+  for (final entry in entries) {
+    final date = entry.localDate;
+    if (date.year == year && date.month == month) return true;
+  }
+  return false;
+}
 
 /// Confidence-appropriate band weight (KTD4): a hatched band's opacity by
 /// its cycle's tier. `high` reads strongest, `irregular` faintest — and
@@ -801,8 +821,8 @@ class _MonthCalendarState extends State<MonthCalendar>
     // Issue #574: captured once here, not re-read on every build — safe
     // today because nothing above this widget in the tree ever swaps
     // these providers after first build (they come from the one
-    // AppDependencies bundle a running app never rebuilds with a
-    // different instance); worth this comment because a future provider
+    // AppDependencies bundle a running app never rebuilds with
+    // a different instance); worth this comment because a future provider
     // that *can* change would need a didChangeDependencies re-read
     // instead, the same way `ProfileGuardiansRepository` already gets a
     // live re-subscribe via `didUpdateWidget` rather than a one-shot read.
@@ -873,24 +893,22 @@ class _MonthCalendarState extends State<MonthCalendar>
     if (oldWidget.profileId != widget.profileId) {
       _rewatchPrediction();
       _watchGuardians();
-      _resetToTodaysMonth();
       // A different profile invalidates whatever window the old one's
-      // subscription covered — force a fresh subscription below rather
-      // than trusting the previous profile's now-irrelevant bounds. Reset
-      // immediately (not just on the new subscription's first tick), the
-      // same discipline [_watchGuardians] already applies, so a profile
-      // switch never keeps rendering the previous profile's days in the
-      // meantime — unlike a same-profile window crossing, this is a
-      // genuinely different data set, not a case [_entries] should bridge.
+      // subscription covered — force a fresh subscription (inside
+      // [_syncDisplayedMonthForNewProfile], once the displayed month is
+      // decided) rather than trusting the previous profile's
+      // now-irrelevant bounds. Cancel and clear immediately (not just on
+      // the new subscription's first tick), the same discipline
+      // [_watchGuardians] already applies, so a profile switch never keeps
+      // rendering the previous profile's days in the meantime — unlike a
+      // same-profile window crossing, this is a genuinely different data
+      // set, not a case [_entries] should bridge.
+      unawaited(_entriesSub?.cancel());
+      _entriesSub = null;
       _entries = null;
       _entriesWindowFrom = null;
       _entriesWindowTo = null;
-      _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(
-          _pageIndexFor(_displayedYear, _displayedMonth),
-        );
-      }
+      unawaited(_syncDisplayedMonthForNewProfile());
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -971,6 +989,84 @@ class _MonthCalendarState extends State<MonthCalendar>
     final today = widget.todayProvider();
     _displayedYear = today.year;
     _displayedMonth = today.month;
+  }
+
+  /// Generation counter for [_syncDisplayedMonthForNewProfile] (issue
+  /// #241): a second profile switch before the first one's month-deciding
+  /// query lands must not let the older query's answer apply — each call
+  /// claims the latest token, and only the continuation still holding it
+  /// may touch `_displayed*`/the subscription (the same shape
+  /// [_animateToken] uses for superseded page animations).
+  int _profileSwitchToken = 0;
+
+  /// One-shot [hasEntriesInMonth] over a windowed `watchForProfile` — a
+  /// bounded repository query (the new profile's entries for [year]/
+  /// [month] only, never its full history), answered off the stream's
+  /// first emission and cancelled immediately.
+  ///
+  /// Deliberately an explicit [StreamSubscription] rather than `.first`:
+  /// the one-shot `.first` future parked on a drift `watch()` stream's
+  /// first event never gets a turn inside a fake-async widget test until
+  /// something else drives the loop — a plain `listen` (the same
+  /// mechanism [_maybeRewatchEntriesFor] already uses) completes through
+  /// a [Completer] instead.
+  Future<bool> _hasEntriesInMonthViaListen(int year, int month) {
+    final completer = Completer<bool>();
+    late final StreamSubscription<List<DayEntry>> sub;
+    sub = _repository
+        .watchForProfile(
+          widget.profileId,
+          from: _firstOfMonth(year, month),
+          to: _lastOfMonth(year, month),
+        )
+        .listen(
+          (entries) {
+            if (!completer.isCompleted) {
+              completer.complete(hasEntriesInMonth(entries, year, month));
+            }
+            unawaited(sub.cancel());
+          },
+          // Fail closed to the reset path: a repository error must not
+          // wedge the calendar on the loading state.
+          onError: (Object error) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+        );
+    return completer.future;
+  }
+
+  /// Issue #241 (B-16): decides the displayed month after a profile
+  /// switch. The previously displayed month is *kept* when the new
+  /// profile has at least one live entry inside it (a guardian comparing
+  /// profiles keeps their place — [hasEntriesInMonth] over
+  /// [_hasEntriesInMonthViaListen]'s bounded query); otherwise today's
+  /// month, the pre-#241 behavior. Already on today's month there is
+  /// nothing to preserve and no query is made.
+  ///
+  /// Async because the answer needs that one repository read; everything
+  /// the old synchronous switch path did after the reset (window
+  /// subscription, page jump) happens here once the month is decided.
+  /// `_entries` is already null (see [didUpdateWidget]), so the
+  /// in-between frames render the loading state, never the previous
+  /// profile's days.
+  Future<void> _syncDisplayedMonthForNewProfile() async {
+    final token = ++_profileSwitchToken;
+    final displayedYear = _displayedYear;
+    final displayedMonth = _displayedMonth;
+    final today = widget.todayProvider();
+    final offTodaysMonth =
+        displayedYear != today.year || displayedMonth != today.month;
+    final keepMonth = !offTodaysMonth ||
+        await _hasEntriesInMonthViaListen(displayedYear, displayedMonth);
+    if (!mounted || token != _profileSwitchToken) return;
+    if (!keepMonth) _resetToTodaysMonth();
+    _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
+    setState(() {});
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(
+        _pageIndexFor(_displayedYear, _displayedMonth),
+      );
+    }
   }
 
   /// Fixed epoch offset (issue #191): keeps every [_pageIndexFor] result

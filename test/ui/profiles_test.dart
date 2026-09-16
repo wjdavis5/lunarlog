@@ -334,7 +334,12 @@ void main() {
       expect(find.text('Alice'), findsOneWidget,
           reason: 'last-active opens the profile');
 
+      // Issue #241: the app-bar switcher now opens the quick-switcher
+      // popup; the full picker (whose rows are ListTiles) is reached
+      // through its "Manage profiles…" entry.
       await tester.tap(find.byTooltip('Switch profile'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manage profiles…'));
       await tester.pumpAndSettle();
 
       final aliceTile =

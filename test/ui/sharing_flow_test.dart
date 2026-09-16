@@ -287,8 +287,20 @@ void main() {
     );
   });
 
+  // Deliberately unawaited (issue #241): `await db.close()` from this
+  // group-level tearDown deadlocks whenever any drift `watch()` stream
+  // was subscribed during the test — a pre-existing drift/fake-async
+  // hazard, reproducible on `origin/main` with a bare
+  // `select(...).watch().listen()` and no app code at all: the stream
+  // teardown work drift schedules lives in the test's fake-async zone,
+  // which nothing advances once the body has returned, so the real-zone
+  // teardown await can never resolve. #241's picker ProfileCard is the
+  // first surface this suite reaches (a signed-in accept-invite pump with
+  // the seeded profile) that holds such a subscription, so the invite
+  // deep-link group hung at teardown. Closing without awaiting lets the
+  // test complete; nothing touches the database after this point.
   tearDown(() async {
-    await db.close();
+    unawaited(db.close());
   });
 
   group('InviteGuardianDialog', () {

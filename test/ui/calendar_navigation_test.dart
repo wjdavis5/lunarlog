@@ -1255,4 +1255,140 @@ void main() {
       },
     );
   });
+
+  group('profile-switch month preservation (issue #241)', () {
+    test('hasEntriesInMonth: true for any entry in the month, false outside',
+        () {
+      expect(
+        hasEntriesInMonth(
+          [_entryFor('p', LocalDate(2026, 7, 1), FlowLevel.light)],
+          2026,
+          7,
+        ),
+        isTrue,
+      );
+      expect(
+        hasEntriesInMonth(
+          [_entryFor('p', LocalDate(2026, 7, 31), FlowLevel.light)],
+          2026,
+          7,
+        ),
+        isTrue,
+        reason: 'the month\'s last day counts',
+      );
+      expect(
+        hasEntriesInMonth(
+          [
+            _entryFor('p', LocalDate(2026, 6, 30), FlowLevel.light),
+            _entryFor('p', LocalDate(2026, 8, 1), FlowLevel.light),
+          ],
+          2026,
+          7,
+        ),
+        isFalse,
+        reason: ' neighbours on either side do not',
+      );
+      expect(hasEntriesInMonth(const [], 2026, 7), isFalse);
+    });
+
+    /// The tree [pumpSwitchableCalendar] mounts, parameterised by the
+    /// profile id — re-pumping with a different id is exactly a profile
+    /// switch for the still-mounted [MonthCalendar] State.
+    Widget switchableTree(DriftDayEntriesRepository entries, String id) =>
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.lightTheme,
+            home: Scaffold(
+              body: MonthCalendar(
+                profileId: id,
+                todayProvider: () => kToday,
+              ),
+            ),
+          ),
+        );
+
+    /// Three profiles (Alice, Bob, Charlie) over one repository; Bob
+    /// carries one July entry, Charlie none. [pump] mounts Alice's
+    /// calendar; the returned [switchTo] closure switches the mounted
+    /// calendar to another profile id.
+    Future<
+        ({
+          Future<void> Function(String profileId) switchTo,
+          String bobId,
+          String charlieId,
+        })> pumpSwitchableCalendar(WidgetTester tester, LunarLogDatabase db) async {
+      tester.view.physicalSize = const Size(800, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final profiles = DriftProfilesRepository(db.storage);
+      final alice = await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      final charlie =
+          await profiles.create(displayName: 'Charlie', isMinor: false);
+      final entries = DriftDayEntriesRepository(db.storage);
+      // kToday is 2026-08-30: "the displayed month" the test navigates to
+      // is July 2026, and Bob alone has an entry there.
+      await entries.save(
+          _entryFor(bob.id, LocalDate(2026, 7, 15), FlowLevel.medium));
+
+      await tester.pumpWidget(switchableTree(entries, alice.id));
+      await tester.pumpAndSettle();
+      return (
+        switchTo: (String profileId) async {
+          await tester.pumpWidget(switchableTree(entries, profileId));
+          await tester.pumpAndSettle();
+        },
+        bobId: bob.id,
+        charlieId: charlie.id,
+      );
+    }
+
+    testWidgets('switching to a profile with entries in the displayed month '
+        'keeps that month', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final harness = await pumpSwitchableCalendar(tester, db);
+
+      expect(find.text('August 2026'), findsOneWidget,
+          reason: 'kToday is 2026-08-30, so the calendar opens on August');
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      expect(find.text('July 2026'), findsOneWidget);
+
+      await harness.switchTo(harness.bobId);
+      expect(find.text('July 2026'), findsOneWidget,
+          reason: 'Bob has a July entry, so the switch kept the displayed '
+              'month (issue #241 B-16)');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('switching to a profile with no entries in the displayed '
+        'month resets to today\'s month', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final harness = await pumpSwitchableCalendar(tester, db);
+
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      expect(find.text('July 2026'), findsOneWidget);
+
+      await harness.switchTo(harness.charlieId);
+      expect(find.text('August 2026'), findsOneWidget,
+          reason: 'Charlie has no July entry, so the switch reset to '
+              "today's month (the pre-#241 behavior)");
+      expect(find.text('July 2026'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
 }

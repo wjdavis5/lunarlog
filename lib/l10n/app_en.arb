@@ -1557,6 +1557,26 @@
   "@profileDetailSwitchProfileTooltip": {
     "description": "Tooltip on the profile detail screen's switch-profile action."
   },
+  "appShellProfileSwitcherTooltip": "Switch profile",
+  "@appShellProfileSwitcherTooltip": {
+    "description": "Issue #241: tooltip on the app shell's quick profile switcher (the app-bar profile title, a popup listing active profiles)."
+  },
+  "quickSwitcherManageProfiles": "Manage profiles…",
+  "@quickSwitcherManageProfiles": {
+    "description": "Issue #241: the quick profile switcher menu's entry that opens the full profile picker."
+  },
+  "profileStatusNoHistory": "No history yet",
+  "@profileStatusNoHistory": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state)."
+  },
+  "profileStatusPredictionsSuppressed": "Period predictions off",
+  "@profileStatusPredictionsSuppressed": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode)."
+  },
+  "profileStatusPredictionsOff": "Period predictions off",
+  "@profileStatusPredictionsOff": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
+  },
 
   "daysCount": "{count} {count, plural, =1{day} other{days}}",
   "@daysCount": {

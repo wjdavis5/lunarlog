@@ -227,6 +227,13 @@ const String kRoutePinAuthorizationDialog = 'PinAuthorizationDialog';
 /// the PIN off.
 const String kRoutePinRemoveConfirmDialog = 'PinRemoveConfirmDialog';
 
+/// `lib/ui/components/app_shell.dart` (issue #241, B-16) — the app-bar
+/// profile title's quick-switcher popup (active profiles plus "Manage
+/// profiles…"). A popup route, not a pushed screen, but still named
+/// through `showMenu`'s `routeSettings` so it is visible in the Sentry
+/// navigation trail like every other destination.
+const String kRouteQuickProfileSwitcherMenu = 'QuickProfileSwitcherMenu';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -281,5 +288,6 @@ const Set<String> kSentryRouteNames = {
   kRoutePinChangeScreen,
   kRoutePinAuthorizationDialog,
   kRoutePinRemoveConfirmDialog,
+  kRouteQuickProfileSwitcherMenu,
 };
 
