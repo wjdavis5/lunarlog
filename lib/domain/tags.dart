@@ -1,10 +1,10 @@
-/// Symptom tag taxonomy (KTD6): 86 codes in 28 categories, grown from the
-/// original 17-code cycle/flow-only set by Issue #249 (the physical
+/// Symptom tag taxonomy (KTD6): 113 codes in 31 categories, grown from
+/// the original 17-code cycle/flow-only set by Issue #249 (the physical
 /// categories of Clue's attested taxonomy — pain, energy, sleep, skin,
 /// hair, digestion, stool, cravings, plus the option-set-unverified
 /// categories), Issue #251 (the feelings/mind/lifestyle categories —
 /// `feelings`, `mind`, `motivation`, `social_life`, `partying`, plus the
-/// option-set-unverified `pms`, `meditation`, `leisure`), and Issue #252
+/// option-set-unverified `pms`, `meditation`, `leisure`), Issue #252
 /// (the events-and-care categories — `collection_method`, `exercise`,
 /// `medication`, `ailments`, plus the option-set-unverified
 /// `appointments` and `supplements`), Issue #253 (the sensitive and
