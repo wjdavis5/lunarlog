@@ -276,6 +276,67 @@ void main() {
     await h.dispose();
   });
 
+  group('issue #568: sync failure banner', () {
+    testWidgets(
+        'session expired shows banner, tapping action selects More tab',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('sync-failure-banner')),
+        findsOneWidget,
+      );
+      expect(find.text(kSignInAgainCopy), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'persistent error while signed in shows banner, tapping retry requests sync',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'test@example.com'),
+      );
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.network);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('sync-failure-banner')),
+        findsOneWidget,
+      );
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pump();
+
+      expect(h.engine.requestSyncCalls, 1);
+      await h.dispose();
+    });
+
+    testWidgets('idle phase shows no banner', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.idle);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('sync-failure-banner')), findsNothing);
+      await h.dispose();
+    });
+  });
+
   testWidgets(
       'tapping the profile switcher opens the quick-switcher popup, whose '
       '"Manage profiles…" entry opens the full picker (issue #241)',

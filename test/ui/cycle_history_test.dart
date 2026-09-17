@@ -1,7 +1,7 @@
 /// Widget tests for issue #132: the cycle-history section (R4/R5) — the
 /// reverse-chronological list, omit-from-average with reversibility,
 /// confidence framing, statistics, read-only gating, and the disclaimer/
-/// device-local captions.
+/// sync captions.
 ///
 /// Issue #314: [CycleHistorySection] no longer mounts inside
 /// `OverviewPanel`/`ProfileDetailScreen` — its only production mount point
@@ -43,8 +43,7 @@ import 'package:provider/provider.dart';
 import '../support/erroring_day_entries_repository.dart';
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
-const String kDeviceLocalNote =
-    'Omissions stay on this device — other devices are not affected.';
+const String kSyncNote = 'Omissions sync across your devices.';
 
 /// R13 vocabulary sweep over every rendered Text in the tree.
 const List<String> kForbiddenStems = [
@@ -383,7 +382,7 @@ void main() {
 
   group('AC4/AC5: confidence and statistics', () {
     testWidgets('steady 30-day history: high confidence, avg cycle 30, avg '
-        'period 4, variation 0, disclaimer, device-local note', (tester) async {
+        'period 4, variation 0, disclaimer, sync note', (tester) async {
       final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
 
       expect(
@@ -409,9 +408,9 @@ void main() {
         reason: 'the statistics carry the disclaimer (AC8)',
       );
       expect(
-        find.text(kDeviceLocalNote),
+        find.text(kSyncNote),
         findsOneWidget,
-        reason: 'multi-device divergence is stated, not hidden (KTD2)',
+        reason: 'omissions sync across devices (issue #568)',
       );
       await disposeHistory(tester, h);
     });
@@ -527,11 +526,11 @@ void main() {
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('history-stats')), findsNothing);
       expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
-      // The rest of the card (item list, device-local note) is unaffected.
+      // The rest of the card (item list, sync note) is unaffected.
       expect(find.text('Cycle history'), findsOneWidget);
       expect(
         find.text(
-          'Omissions stay on this device — other devices are not affected.',
+          'Omissions sync across your devices.',
         ),
         findsOneWidget,
       );
