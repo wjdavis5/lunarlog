@@ -111,7 +111,10 @@ void main() {
             SyncTable.cycleOverrides => const [],
             SyncTable.careNotes => const [],
             SyncTable.visitPrepItems => const [],
+            SyncTable.dayEntryMergeEvents => const [],
+            SyncTable.profileTagRegistry => const [],
             SyncTable.deletedProfiles => const [],
+            SyncTable.dayEntryHistory => const [],
           };
       SyncPhase? phaseDuringPull;
       rig.transport.onPull = (_) {

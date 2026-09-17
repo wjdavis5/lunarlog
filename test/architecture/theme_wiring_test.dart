@@ -1,17 +1,19 @@
-/// #137 guard (issue #176 review): `AppTheme.darkTheme` exists and is
-/// unit-tested (`test/ui/theme_test.dart`), but no `MaterialApp` in `lib/`
-/// wires it in yet -- flipping the app to follow system brightness is
-/// issue #137's own job. This source-scan (in the style of
-/// `test/architecture/layering_test.dart`) fails the moment any
-/// `MaterialApp` sets `darkTheme:` or `themeMode:`, so that only happens
-/// when #137 does it deliberately rather than as a drive-by side effect of
-/// some unrelated change.
+/// #137 wiring guard (issue #176 review): every `MaterialApp` in `lib/`
+/// must set **both** `darkTheme:` and `themeMode:`. Before #137 landed,
+/// this same source scan asserted the exact opposite — that no
+/// `MaterialApp` set either — so the flip to dark-following could only
+/// happen when #137 did it deliberately. Now that it has, the invariant
+/// inverts: a light-only `MaterialApp` (someone adding a new self-
+/// constructing surface, or reverting one of the #137 wirings) must fail
+/// this scan, because a surface without `darkTheme:`/`themeMode:` is by
+/// definition hardcoding the light theme against the app's appearance
+/// override (issue #137's last acceptance criterion).
 ///
 /// Detection extracts each `MaterialApp(...)` call's balanced argument list
 /// (rather than matching `darkTheme:`/`themeMode:` anywhere in the file) so
 /// a doc comment merely mentioning either name -- like this file's own --
-/// never trips the guard, and a `//` line comment is stripped first so it
-/// can't hide a real violation either.
+/// never satisfies or trips the guard, and a `//` line comment is stripped
+/// first so it can't hide a real gap either.
 library;
 
 import 'dart:io';
@@ -53,15 +55,18 @@ Iterable<String> _materialAppArgLists(String contents) sync* {
 final _darkThemeKey = RegExp(r'\bdarkTheme\s*:');
 final _themeModeKey = RegExp(r'\bthemeMode\s*:');
 
-/// Whether any `MaterialApp(...)` call in [contents] sets `darkTheme:` or
-/// `themeMode:`.
-bool setsDarkThemeOrThemeMode(String contents) => _materialAppArgLists(
-      contents,
-    ).any((args) => _darkThemeKey.hasMatch(args) || _themeModeKey.hasMatch(args));
+/// The `MaterialApp(...)` argument lists in [contents] that are missing
+/// `darkTheme:` or `themeMode:` (issue #137's wiring, both required).
+Iterable<String> argListsMissingDarkWiring(String contents) =>
+    _materialAppArgLists(contents).where(
+      (args) =>
+          !_darkThemeKey.hasMatch(args) || !_themeModeKey.hasMatch(args),
+    );
 
 void main() {
   group('theme wiring (#137 guard)', () {
-    test('no MaterialApp in lib/ sets darkTheme: or themeMode:', () {
+    test('every MaterialApp in lib/ sets both darkTheme: and themeMode:',
+        () {
       final files = Directory('lib')
           .listSync(recursive: true)
           .whereType<File>()
@@ -74,16 +79,17 @@ void main() {
         reason: 'scanned zero files under lib -- check the path',
       );
 
-      final offenders = [
+      final offenders = <String>[
         for (final file in files)
-          if (setsDarkThemeOrThemeMode(file.readAsStringSync())) file.path,
+          if (argListsMissingDarkWiring(file.readAsStringSync()).isNotEmpty)
+            file.path,
       ];
       expect(
         offenders,
         isEmpty,
-        reason: 'no MaterialApp may set darkTheme:/themeMode: until #137 '
-            'wires system-brightness following deliberately, but these do:\n'
-            '${offenders.join('\n')}',
+        reason: 'every MaterialApp must wire darkTheme: + themeMode: so no '
+            'surface can render light-only against the appearance override '
+            '(issue #137), but these do not:\n${offenders.join('\n')}',
       );
     });
 
@@ -91,48 +97,56 @@ void main() {
     // `layering_test.dart`'s "detects the forms a layering violation can
     // take" -- without this, a detector that silently stopped matching
     // would leave the scan above vacuously green.
-    test('detects darkTheme:/themeMode: and ignores prose mentions', () {
-      const withDarkTheme = '''
+    test('detects a missing darkTheme:/themeMode: and ignores prose mentions',
+        () {
+      const missingDarkTheme = '''
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          themeMode: ThemeMode.system,
+        )
+      ''';
+      expect(
+          argListsMissingDarkWiring(missingDarkTheme).isNotEmpty, isTrue,
+          reason: 'should flag themeMode: without darkTheme:');
+
+      const missingThemeMode = '''
         MaterialApp(
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
         )
       ''';
-      expect(setsDarkThemeOrThemeMode(withDarkTheme), isTrue,
-          reason: 'should flag darkTheme:');
+      expect(
+          argListsMissingDarkWiring(missingThemeMode).isNotEmpty, isTrue,
+          reason: 'should flag darkTheme: without themeMode:');
 
-      const withThemeMode = '''
-        MaterialApp(
-          themeMode: ThemeMode.system,
-        )
-      ''';
-      expect(setsDarkThemeOrThemeMode(withThemeMode), isTrue,
-          reason: 'should flag themeMode:');
-
-      const clean = '''
+      const fullyWired = '''
         MaterialApp(
           title: 'lunarlog',
           theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeMode,
           home: Scaffold(body: SizedBox()),
         )
       ''';
-      expect(setsDarkThemeOrThemeMode(clean), isFalse,
-          reason: 'should not flag a MaterialApp without either key');
+      expect(argListsMissingDarkWiring(fullyWired), isEmpty,
+          reason: 'a MaterialApp with both keys is fully wired');
 
       const prose = '''
-        /// Doesn't wire darkTheme: or themeMode: yet -- #137's job.
+        /// Mentions darkTheme: or themeMode: in a doc comment only.
         MaterialApp(
           theme: AppTheme.lightTheme,
         )
       ''';
-      expect(setsDarkThemeOrThemeMode(prose), isFalse,
-          reason: 'a doc comment mentioning either name must not trip this');
+      expect(argListsMissingDarkWiring(prose).isNotEmpty, isTrue,
+          reason: 'prose names must not satisfy the detector: the '
+              'MaterialApp behind this comment has neither key and is a '
+              'real offender');
 
       const noMaterialApp = '''
         final themeMode = ThemeMode.system;
         Widget build(BuildContext context) => Scaffold();
       ''';
-      expect(setsDarkThemeOrThemeMode(noMaterialApp), isFalse,
+      expect(argListsMissingDarkWiring(noMaterialApp), isEmpty,
           reason: 'themeMode used outside any MaterialApp(...) call');
     });
   });

@@ -69,6 +69,9 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
+import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
+import 'package:lunarlog/domain/models/day_entry_history.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
 import '../sync/conflict_rules.dart';
@@ -83,11 +86,14 @@ export '../sync/remote_rows.dart'
     show
         RemoteCareNoteRow,
         RemoteCycleOverrideRow,
+        RemoteDayEntryHistoryRow,
+        RemoteDayEntryMergeEventRow,
         RemoteDayEntryRow,
         RemoteDeletedProfileRow,
         RemoteObservationRow,
         RemoteProfileModeRow,
         RemoteProfileRow,
+        RemoteProfileTagRegistryRow,
         RemoteRow,
         RemoteVisitPrepItemRow,
         RetryableSyncApplyError,
@@ -103,7 +109,48 @@ part 'storage_remote_apply.dart';
 /// has had a chance to reconcile.
 const Duration kTombstoneRetentionHorizon = Duration(hours: 48);
 
-class LunarLogStorage with LunarLogStorageQueries, LunarLogStorageLocalWrites, LunarLogStorageRemoteApply {
+/// Issue #130: how long a same-date merge disclosure stays visible and its
+/// discarded text recoverable — the client mirror of the server-side
+/// `enforce_retention()` purge window (`day_entry_merge_events` rows older
+/// than 30 days are hard-deleted there; 20260916000000's header documents
+/// the choice). Local rows are not deleted — they simply age out of the
+/// day sheet's read (`getDayEntryMergeEventsForDay` filters on it), so
+/// behavior converges with the server without a local sweep job.
+const Duration kDayEntryMergeEventRetention = Duration(days: 30);
+
+/// Issue #170: how long a day-entry change-history row stays in the local
+/// feed read — the client mirror of the server-side `enforce_retention()`
+/// purge window (`day_entry_history` rows older than 90 days are
+/// hard-deleted there by the step 20260915200000 shipped pre-armed for
+/// exactly this table). Local rows are not deleted — they simply age out
+/// of `getDayEntryHistoryForProfile`'s window, so behavior converges with
+/// the server without a local sweep job (the kDayEntryMergeEventRetention
+/// posture).
+const Duration kDayEntryHistoryRetention = Duration(days: 90);
+
+/// Issue #42: how many rows one batched statement may cover — the ceiling
+/// for a page prefetch's `IN (...)` lookup and for a
+/// [LunarLogStorage.markPushedBatch] chunk. SQLite's default
+/// `SQLITE_MAX_VARIABLE_NUMBER` is 999 on the builds this app targets (a
+/// markPushed chunk binds *two* variables per row, so 400 rows = 800
+/// bindings), and staying well under it costs nothing meaningful per chunk.
+const int kSyncBatchChunkSize = 400;
+
+/// Issue #42: splits [rows] into runs of at most [size] entries, so a
+/// batched statement never binds more variables than SQLite allows.
+List<List<T>> chunkedBy<T>(List<T> rows, int size) {
+  if (rows.length <= size) return [rows];
+  return [
+    for (var i = 0; i < rows.length; i += size)
+      rows.sublist(i, i + size > rows.length ? rows.length : i + size),
+  ];
+}
+
+class LunarLogStorage
+    with
+        LunarLogStorageQueries,
+        LunarLogStorageLocalWrites,
+        LunarLogStorageRemoteApply {
   LunarLogStorage(this.db, {DateTime Function()? clock, UlidGenerator? ulid})
       : _clock = clock ?? (() => DateTime.now().toUtc()),
         _generator = ulid ?? _ulid;

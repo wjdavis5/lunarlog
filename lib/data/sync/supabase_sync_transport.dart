@@ -60,6 +60,8 @@ class SupabaseSyncTransport implements SyncTransport {
         'p_cycle_overrides': batch.cycleOverrides,
         'p_care_notes': batch.careNotes,
         'p_visit_prep_items': batch.visitPrepItems,
+        'p_merge_events': batch.mergeEvents,
+        'p_tag_registry': batch.tagRegistry,
       });
     } catch (error) {
       throw mapSyncTransportError(error);
@@ -93,6 +95,17 @@ class SupabaseSyncTransport implements SyncTransport {
     return _pullPageViaSelect(table: table, afterVersion: afterVersion, limit: limit);
   }
 
+  /// The migration-gated tables whose absence on an older server must read
+  /// as "nothing to pull yet" rather than a cycle-failing error: issue
+  /// #522's `deleted_profiles` (the original carve-out) and issue #170's
+  /// `day_entry_history` (pull-only — a server predating its migration
+  /// never wrote a row this client could miss). Every other table is
+  /// expected to exist unconditionally.
+  static const Set<SyncTable> _migrationGatedTables = {
+    SyncTable.deletedProfiles,
+    SyncTable.dayEntryHistory,
+  };
+
   /// The original per-table select, unchanged (issue #598's fallback path):
   /// used directly for [SyncTable.deletedProfiles] (never covered by
   /// `sync_pull`), and for every other table whenever [_cachedSlice] has
@@ -115,10 +128,12 @@ class SupabaseSyncTransport implements SyncTransport {
       // this PR does not include — a server predating it answers with
       // PostgREST's "relation not found" shape. Every other table is
       // expected to exist unconditionally, so this leniency is deliberately
-      // scoped to just this one, new, migration-gated table: an empty page
-      // (the caller reads exactly like "nothing to pull yet") rather than a
-      // cycle-failing error.
-      if (table == SyncTable.deletedProfiles && _isRelationNotFound(error)) {
+      // scoped to the migration-gated tables (see [_migrationGatedTables]):
+      // an empty page (the caller reads exactly like "nothing to pull
+      // yet") rather than a cycle-failing error. Issue #170 extends the
+      // same carve-out to the pull-only day_entry_history.
+      if (_migrationGatedTables.contains(table) &&
+          _isRelationNotFound(error)) {
         return const [];
       }
       throw mapSyncTransportError(error);
@@ -165,6 +180,36 @@ class SupabaseSyncTransport implements SyncTransport {
   }
 
   static const String _pullRpc = 'sync_pull';
+
+  /// Issue #42: [SyncTransport.fetchMaxVersion] over a plain PostgREST
+  /// select — the newest visible row's `server_version`, via
+  /// `order by server_version desc limit 1` (one index-ordered lookup, no
+  /// aggregate support required). Answers `0` for a table with nothing
+  /// visible and `null` on any failure, per the interface contract.
+  @override
+  Future<int?> fetchMaxVersion(SyncTable table) async {
+    final List<Map<String, dynamic>> data;
+    try {
+      data = await _client
+          .from(syncTableName(table))
+          .select(_versionColumn)
+          .order(_versionColumn, ascending: false)
+          .limit(1);
+    } catch (_) {
+      // The probe is an optimization for the scheduled daily reconcile
+      // only: any failure means "unknown", and the caller falls back to
+      // the full re-pull rather than silently skipping sync.
+      return null;
+    }
+    if (data.isEmpty) return 0;
+    final value = data.first[_versionColumn];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    // A bigint's wire representation is not guaranteed never to be a
+    // quoted string (the same leniency fetchWatermark applies).
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
 
   @override
   Future<void> primePullCycle(Map<SyncTable, int> cursors) async {

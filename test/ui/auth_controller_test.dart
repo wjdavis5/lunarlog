@@ -368,4 +368,35 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(notifications, 0);
   });
+
+  group('MFA feature flag (issue #738)', () {
+    test('mfaEnabled defaults to the build flag (off in this test run)', () {
+      expect(controller().mfaEnabled, isFalse);
+    });
+
+    test('mfaEnabled is injectable for the flag-on build', () {
+      final c = AuthController(authService: service, mfaEnabled: true);
+      addTearDown(c.dispose);
+      expect(c.mfaEnabled, isTrue);
+    });
+
+    test('requiresMfaStepUp is always false while the flag is off, and '
+        'never consults the service', () async {
+      service.mfaStepUpRequired = true;
+      final c = controller();
+      expect(await c.requiresMfaStepUp(), isFalse);
+      expect(service.requiresMfaStepUpCalls, 0);
+    });
+
+    test('requiresMfaStepUp follows the service while the flag is on '
+        '(#714 behavior unchanged)', () async {
+      final c = AuthController(authService: service, mfaEnabled: true);
+      addTearDown(c.dispose);
+      service.mfaStepUpRequired = true;
+      expect(await c.requiresMfaStepUp(), isTrue);
+      expect(service.requiresMfaStepUpCalls, 1);
+      service.mfaStepUpRequired = false;
+      expect(await c.requiresMfaStepUp(), isFalse);
+    });
+  });
 }

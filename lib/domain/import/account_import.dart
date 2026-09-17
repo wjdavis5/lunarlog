@@ -736,6 +736,12 @@ ProfileLifecycleMode? _parseProfileMode(Object? raw, {required String context}) 
   }
   return (
     mode: LifecycleMode.values.firstWhere((m) => m.toDb() == rawMode),
+    modeStartedOn: _parseOptionalLocalDate(raw['modeStartedOn'],
+            context: '$modeContext modeStartedOn')
+        ?.iso,
+    estimatedDueDate: _parseOptionalLocalDate(raw['estimatedDueDate'],
+            context: '$modeContext estimatedDueDate')
+        ?.iso,
     birthControlMethod: _boundedString(raw['birthControlMethod'],
         kMaxBirthControlMethodLength, context: '$modeContext birthControlMethod'),
     birthControlStartedOn: _parseOptionalLocalDate(raw['birthControlStartedOn'],

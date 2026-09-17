@@ -1,0 +1,330 @@
+/// `ProfileCard` (issue #241, B-15): one profile row carrying the facts a
+/// multi-profile guardian actually scans for — a deterministic-hue avatar
+/// (colour is the identifier, so minors' names never *need* to be read at
+/// a glance), the profile name, a one-line cycle status sourced from
+/// [CyclePredictionService] ("Cycle day 14" / "Period, day 2" / "No
+/// history yet"), and the #126 shared/pending badges — replacing the
+/// picker's former created-date-only `ListTile` (the created date stays
+/// as the secondary line under the status).
+///
+/// Everything status-shaped is pure and testable with no widget tree:
+/// [profileAvatarHue]/[profileAvatarColor] derive the avatar from the
+/// profile id alone (djb2 — a stable, cross-platform hash; never
+/// `String.hashCode`, which Dart does not guarantee across runs), and
+/// [profileCycleStatus] maps a [CyclePrediction] onto localized copy,
+/// reusing the exact `cycleWheel*` strings the overview wheel renders so
+/// the same state never reads two ways in one app. No business logic
+/// lives here — the widget only renders what the prediction service
+/// already computed.
+///
+/// Colours follow the repo's theme discipline (#727): no literal hex, the
+/// avatar derives from a data hue the same way `LunarLogColors` derives
+/// its flow ramp, with a brightness-aware tone pair so both themes keep
+/// the avatar glanceable against their own surfaces.
+library;
+
+import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/sharing/sharing_overview.dart';
+import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/sharing/pending_invite_badge.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
+
+/// The avatar's hue for [profileId], in `[0, 360)` — deterministic and
+/// stable across runs, devices, and the web VM (djb2 kept under 30 bits
+/// so every intermediate stays exactly representable as a web `double`;
+/// see the library doc on why `String.hashCode` is deliberately not used).
+int profileAvatarHue(String profileId) {
+  var hash = 5381;
+  for (final codeUnit in profileId.codeUnits) {
+    hash = ((hash << 5) + hash + codeUnit) & 0x3FFFFFFF;
+  }
+  return hash % 360;
+}
+
+/// The avatar's colour for [profileId] under [brightness]. The hue is
+/// [profileAvatarHue]; saturation/lightness are fixed per brightness so
+/// the disc always separates from the list background (a colour-only
+/// identifier must not also carry a glyph, so no foreground is derived).
+Color profileAvatarColor(String profileId, Brightness brightness) {
+  final hue = profileAvatarHue(profileId).toDouble();
+  return brightness == Brightness.light
+      ? HSLColor.fromAHSL(1, hue, 0.45, 0.44).toColor()
+      : HSLColor.fromAHSL(1, hue, 0.30, 0.62).toColor();
+}
+
+/// The one-line cycle status for a picker/switcher row (issue #241),
+/// from the prediction the [CyclePredictionService] already computed —
+/// or null while the first emission has not landed (and for a null
+/// prediction, which a not-yet-emitted stream produces; callers render
+/// no status line rather than guessing).
+///
+/// Reuses the overview wheel's exact `cycleWheel*` copy so the same state
+/// reads identically everywhere it appears; the three #241-specific
+/// strings (no history / suppressed / turned off) live in the ARB
+/// alongside them.
+String? profileCycleStatus({
+  required CyclePrediction? prediction,
+  required AppLocalizations l10n,
+}) {
+  switch (prediction) {
+    case null:
+      return null;
+    case final ActivePrediction active:
+      // During a logged bleed, `cycleDay` *is* the period day (it counts
+      // from the episode start), so both lines come from the same field.
+      return active.duringEpisode
+          ? l10n.cycleWheelPhasePeriodDay(active.cycleDay)
+          : l10n.cycleWheelCenterCycleDay(active.cycleDay);
+    case NotEnoughHistory():
+      return l10n.profileStatusNoHistory;
+    case PredictionsSuppressed():
+      return l10n.profileStatusPredictionsSuppressed;
+    case PredictionsDisabled():
+      return l10n.profileStatusPredictionsOff;
+  }
+}
+
+/// The colour-identified avatar itself (B-15): a plain disc whose hue is
+/// [profileAvatarColor] of the profile id. No initial, no icon — colour
+/// is the identifier, precisely so a minor's name never has to be.
+class ProfileAvatar extends StatelessWidget {
+  const ProfileAvatar({super.key, required this.profileId, this.radius = 20});
+
+  final String profileId;
+
+  /// Visual radius; the picker row uses the 40dp Material list avatar.
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      key: ValueKey('profile-avatar-$profileId'),
+      radius: radius,
+      backgroundColor:
+          profileAvatarColor(profileId, Theme.of(context).colorScheme.brightness),
+    );
+  }
+}
+
+/// The status line for one profile, subscribed to that profile's
+/// [CyclePredictionService.watch] stream. Stateful so the stream is
+/// created once per (profile, service) pair rather than on every build —
+/// `watch()` builds a fresh combine graph per call.
+class ProfileCycleStatusText extends StatefulWidget {
+  const ProfileCycleStatusText({
+    super.key,
+    required this.profileId,
+    required this.predictionService,
+    this.todayProvider = LocalDate.today,
+    this.style,
+  });
+
+  final String profileId;
+  final CyclePredictionService predictionService;
+  final LocalDate Function() todayProvider;
+  final TextStyle? style;
+
+  @override
+  State<ProfileCycleStatusText> createState() => _ProfileCycleStatusTextState();
+}
+
+class _ProfileCycleStatusTextState extends State<ProfileCycleStatusText> {
+  late Stream<CyclePrediction> _predictions;
+
+  @override
+  void initState() {
+    super.initState();
+    _predictions = widget.predictionService.watch(
+      widget.profileId,
+      today: widget.todayProvider,
+    );
+  }
+
+  @override
+  void didUpdateWidget(ProfileCycleStatusText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profileId != widget.profileId ||
+        oldWidget.predictionService != widget.predictionService) {
+      _predictions = widget.predictionService.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<CyclePrediction>(
+      stream: _predictions,
+      builder: (context, snapshot) {
+        final status = profileCycleStatus(
+          prediction: snapshot.data,
+          l10n: AppLocalizations.of(context),
+        );
+        if (status == null) return const SizedBox.shrink();
+        return Text(
+          status,
+          key: ValueKey('profile-cycle-status-${widget.profileId}'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: widget.style,
+        );
+      },
+    );
+  }
+}
+
+/// The profile row (issue #241): [ProfileAvatar] + name + the
+/// [ProfileCycleStatusText] status line + the #126 shared/pending badges
+/// + the caller's own trailing control (the picker's overflow menu).
+///
+/// The badge assembly mirrors `ProfileSharingTile`'s (this issue's card
+/// is that tile plus avatar/status; the settings section keeps the bare
+/// tile), keys included, so #126's tests and semantics carry over
+/// unchanged.
+class ProfileCard extends StatelessWidget {
+  const ProfileCard({
+    super.key,
+    required this.profile,
+    required this.info,
+    this.predictionService,
+    this.todayProvider = LocalDate.today,
+    this.subtitle,
+    this.sharingService,
+    this.refreshToken = 0,
+    this.onTap,
+    this.trailing,
+  });
+
+  final Profile profile;
+  final SharingProfileInfo info;
+
+  /// Null in an unconfigured tree (or a bare test harness): no status
+  /// line renders — never a guessed "No history yet" for a profile whose
+  /// entries were simply never asked about.
+  final CyclePredictionService? predictionService;
+
+  final LocalDate Function() todayProvider;
+
+  /// Secondary line under the status (issue #126's role subtitle, or the
+  /// picker's created-date fallback) — rendered in the theme's small
+  /// variant style so the status reads as the primary fact.
+  final String? subtitle;
+
+  /// Null when the build has no sharing service: the row still renders
+  /// its local shared state, but no badge is fetched.
+  final SharingService? sharingService;
+
+  /// From the owning screen's `SharingOverviewController.badgeEpoch`.
+  final int refreshToken;
+
+  final VoidCallback? onTap;
+
+  /// The caller's own trailing control, rendered after the indicator and
+  /// badge (the picker's row menu) — the overflow menu this issue
+  /// preserves.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final service = predictionService;
+    final subtitleText = subtitle;
+    final trailingRow = _trailingRow();
+    return ListTile(
+      leading: ProfileAvatar(profileId: profile.id),
+      title: Text(profile.displayName),
+      subtitle: _subtitle(theme, service, subtitleText),
+      isThreeLine: service != null && subtitleText != null,
+      onTap: onTap,
+      trailing: trailingRow,
+    );
+  }
+
+  /// The #126 badge assembly (mirroring `ProfileSharingTile`) plus the
+  /// caller's own trailing control, or null when nothing renders.
+  Widget? _trailingRow() {
+    final showBadge = sharingService != null &&
+        SharingProfileInfo.canShowPendingBadge(info.myRole);
+    final showIndicator = info.isCoManaged;
+    final extraTrailing = trailing;
+    if (!showBadge && !showIndicator && extraTrailing == null) return null;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showIndicator) _sharedIndicator(),
+        if (showBadge) ...[
+          const SizedBox(width: 8),
+          PendingInviteBadge(
+            key: ValueKey('pending-invite-badge-${profile.id}'),
+            profileId: profile.id,
+            sharingService: sharingService!,
+            refreshToken: refreshToken,
+          ),
+        ],
+        if (extraTrailing != null) ...[
+          const SizedBox(width: 4),
+          extraTrailing,
+        ],
+      ],
+    );
+  }
+
+  Widget _sharedIndicator() => Tooltip(
+        message: 'Shared · ${info.acceptedCount} guardians',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.people_outline,
+              key: ValueKey('shared-indicator-${profile.id}'),
+            ),
+            const SizedBox(width: 2),
+            Text('${info.acceptedCount}'),
+          ],
+        ),
+      );
+
+  /// The status line (when a prediction service exists) plus the caller's
+  /// secondary line, stacked small-under-primary.
+  Widget? _subtitle(
+    ThemeData theme,
+    CyclePredictionService? service,
+    String? subtitleText,
+  ) {
+    if (service == null) {
+      return subtitleText == null ? null : Text(subtitleText);
+    }
+    final secondary = subtitleText == null
+        ? null
+        : Text(
+            subtitleText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ProfileCycleStatusText(
+          profileId: profile.id,
+          predictionService: service,
+          todayProvider: todayProvider,
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+        if (secondary != null) ...[
+          const SizedBox(height: LLSpace.space1),
+          secondary,
+        ],
+      ],
+    );
+  }
+}

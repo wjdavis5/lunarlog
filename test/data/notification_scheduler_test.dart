@@ -24,53 +24,6 @@ void main() {
     tzdata.initializeTimeZones();
   });
 
-  group('calculateReminderFireAt', () {
-    final date = LocalDate(2026, 8, 30);
-
-    test('pins 9:00 AM local civil time across various time zones', () {
-      final ny = tz.getLocation('America/New_York');
-      final fireNy = calculateReminderFireAt(fireOn: date, location: ny);
-      expect(fireNy.year, 2026);
-      expect(fireNy.month, 8);
-      expect(fireNy.day, 30);
-      expect(fireNy.hour, 9);
-      expect(fireNy.minute, 0);
-      // New York is EDT (UTC-4) in August -> 09:00 EDT == 13:00 UTC
-      expect(fireNy.toUtc(), DateTime.utc(2026, 8, 30, 13, 0));
-
-      final la = tz.getLocation('America/Los_Angeles');
-      final fireLa = calculateReminderFireAt(fireOn: date, location: la);
-      expect(fireLa.hour, 9);
-      // Los Angeles is PDT (UTC-7) in August -> 09:00 PDT == 16:00 UTC
-      expect(fireLa.toUtc(), DateTime.utc(2026, 8, 30, 16, 0));
-
-      final tokyo = tz.getLocation('Asia/Tokyo');
-      final fireTokyo = calculateReminderFireAt(fireOn: date, location: tokyo);
-      expect(fireTokyo.hour, 9);
-      // Tokyo is JST (UTC+9) year-round -> 09:00 JST == 00:00 UTC
-      expect(fireTokyo.toUtc(), DateTime.utc(2026, 8, 30, 0, 0));
-
-      final sydney = tz.getLocation('Australia/Sydney');
-      final fireSydney = calculateReminderFireAt(fireOn: date, location: sydney);
-      expect(fireSydney.hour, 9);
-      // Sydney is AEST (UTC+10) in August -> 09:00 AEST == 23:00 UTC previous day
-      expect(fireSydney.toUtc(), DateTime.utc(2026, 8, 29, 23, 0));
-    });
-
-    test('supports custom reminder times (minutes since local midnight)', () {
-      final utc = tz.getLocation('UTC');
-      final fire =
-          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 8 * 60);
-      expect(fire.hour, 8);
-      expect(fire.toUtc(), DateTime.utc(2026, 8, 30, 8, 0));
-
-      final afternoon =
-          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 20 * 60 + 30);
-      expect(afternoon.hour, 20);
-      expect(afternoon.minute, 30);
-    });
-  });
-
   group('defaultLocalTimeZoneProvider', () {
     test('falls back safely to UTC on test environment without platform channel and records breadcrumb', () async {
       final log = BreadcrumbLog();
@@ -627,6 +580,54 @@ void main() {
       final platformSpecifics =
           (scheduleCall.arguments as Map)['platformSpecifics'] as Map;
       expect(platformSpecifics['actions'], isNull);
+    });
+  });
+
+  group('Custom notification text (Issue #184)', () {
+    test(
+        'the built notification carries the resolved custom '
+        'title and body verbatim', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.upcoming,
+          title: 'Tea time',
+          body: 'Bring the blue bottle.',
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], 'Tea time',
+          reason: 'the custom title reaches the OS exactly as configured');
+      expect(args['body'], 'Bring the blue bottle.');
+      expect(args['title'], isNot(contains('profile-1')));
+      expect(args['body'], isNot(contains('2026')));
+    });
+
+    test('a reminder with no custom text still carries the generic copy',
+        () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.log,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], kReminderTitle);
+      expect(args['body'], kReminderBody);
     });
   });
 }

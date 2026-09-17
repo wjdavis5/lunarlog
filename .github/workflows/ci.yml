@@ -62,6 +62,10 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
@@ -212,6 +216,10 @@ jobs:
       - name: Run check-release-gate tests
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
+
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: always()
@@ -483,6 +491,9 @@ jobs:
       - name: Start local Supabase (database-only services)
         # pgTAP only needs Postgres; skip the services that would otherwise
         # pull images and consume runner time. Migrations are applied on start.
+        # The same stack also serves the Dart round-trip test below (issue
+        # #102): the `-x` list keeps REST (PostgREST) and Auth (GoTrue)
+        # running, which is exactly what that test needs on top of Postgres.
         run: |
           supabase start \
             -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
@@ -490,6 +501,59 @@ jobs:
       - name: Run pgTAP tests
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
         run: supabase test db --local
+
+      - name: Generated types snapshot freshness (supabase/database.types.ts)
+        # Issue #181: supabase/database.types.ts is a committed, reviewable
+        # schema snapshot -- the way a generated lockfile makes a dependency
+        # change visible in a PR diff, this makes a schema change visible
+        # without reading the migration SQL. Nothing consumes it (the
+        # Flutter app never imports it), so its only job is to fail here
+        # when a migration's schema change was committed without
+        # regenerating the snapshot. Regenerate locally with:
+        #   npx supabase@2.116.0 gen types typescript --local --schema public \
+        #     > supabase/database.types.ts
+        # (against the local stack after `supabase db reset --local`; the
+        # full migration chain is the source, so the snapshot equals
+        # production modulo drift -- which is exactly what catching drift
+        # in a PR diff is for). `--schema public` is pinned: the repo owns
+        # only the public schema, and Supabase-managed schemas
+        # (graphql_public & co.) would churn with platform versions rather
+        # than migrations. The DB is at the migration tip here: `start`
+        # above applied migrations and `test db` re-applied them.
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public > supabase/database.types.ts
+          dirty="$(git status --porcelain --untracked-files=all -- supabase/database.types.ts)"
+          if [ -n "$dirty" ]; then
+            echo "::error::supabase/database.types.ts is out of sync with the migrations. Run 'npx supabase@2.116.0 gen types typescript --local --schema public > supabase/database.types.ts' (after 'npx supabase@2.116.0 db reset --local') and commit the result."
+            echo "$dirty"
+            git diff -- supabase/database.types.ts
+            exit 1
+          fi
+
+      # Issue #102: the Dart sync round trip against the live local stack
+      # (real SupabaseSyncTransport + row codec through the real sync_push
+      # RPC and RLS select). Runs after pgTAP on purpose: this test is
+      # RLS-scoped to its own freshly created user, so it is robust to
+      # whatever rows pgTAP leaves behind, while pgTAP is not necessarily
+      # robust to rows this test creates.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Dart <-> local Supabase sync round trip (issue #102)
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env 2>/dev/null)"
+          export LUNARLOG_LOCAL_SUPABASE_URL="$API_URL"
+          export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          flutter test test/data/sync/local_supabase_round_trip_test.dart
 
       - name: Stop local Supabase
         if: always()
@@ -703,22 +767,26 @@ jobs:
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests on the simulator
-        # Scoped to the tests confirmed safe against a real device (issue
-        # #121): any test that manually drives the binding to
-        # AppLifecycleState.paused/hidden (transitionTo in this file)
-        # triggers genuine OS-level app suspension here, unlike host-mode
-        # where it is a pure Dart-level notification -- once suspended for
-        # real, the VM service connection this job's `flutter test`
-        # depends on hangs forever. The excluded tests ("backgrounding
-        # re-locks...", "inactivity timeout re-locks...") are still
-        # covered by test/ui/gate_test.dart's host-mode GateController
-        # tests, which exercise the same scenarios without a full
-        # on-device widget tree.
+        # Issue #121: this step used to be scoped with a --name filter to
+        # the four tests that never drive the binding into
+        # AppLifecycleState.paused/hidden. Driving the binding there was
+        # believed to trigger real OS-level app suspension, hanging the
+        # VM-service-driven run forever; in fact the manual binding call
+        # never reaches the OS at all — SchedulerBinding disables frame
+        # scheduling for exactly hidden/paused, and the live integration
+        # binding's pump() then waits for a real engine frame that
+        # scheduleFrame() can no longer request. gate_test.dart's
+        # transitionTo/disposeDb helpers now call scheduleForcedFrame()
+        # while frames are disabled (the framework's documented escape
+        # hatch for scheduling a frame regardless of lifecycle state), so
+        # the full file — lifecycle-driving tests included — runs here.
+        # The step timeout bounds a regression: a reintroduced hang fails
+        # in minutes instead of parking until the job-level timeout.
+        timeout-minutes: 15
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          flutter test integration_test/gate_test.dart -d "$SIM_UDID" \
-            --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
+          flutter test integration_test/gate_test.dart -d "$SIM_UDID"
 
       - name: Shut down simulator
         if: always()

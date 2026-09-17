@@ -34,6 +34,7 @@ import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
+import 'package:lunarlog/data/notifications/push_presentation.dart';
 import 'package:lunarlog/data/notifications/push_registration_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
@@ -55,6 +56,7 @@ import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_tag_registry_repository.dart';
 import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
@@ -85,6 +87,7 @@ import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -113,6 +116,7 @@ class AppDependencies {
     required this.dayEntries,
     required this.observations,
     required this.careContent,
+    required this.tagRegistry,
     required this.settings,
     required this.profileModes,
     required this.profileGuardians,
@@ -149,6 +153,11 @@ class AppDependencies {
   final DayEntriesRepository dayEntries;
   final ObservationsRepository observations;
   final CareContentRepository careContent;
+
+  /// Issue #257: the per-profile custom-tag registry (create/rename/
+  /// retire) the day sheet's tag picker drives.
+  final TagRegistryRepository tagRegistry;
+
   final SettingsStore settings;
   final ProfileModesRepository profileModes;
   final ProfileGuardiansRepository profileGuardians;
@@ -294,6 +303,7 @@ AppDependencies buildAppDependencies({
     dayEntries: dayEntries,
     observations: observations,
     careContent: DriftCareContentRepository(storage),
+    tagRegistry: DriftTagRegistryRepository(storage),
     settings: settings,
     profileModes: profileModes,
     profileGuardians: profileGuardians,
@@ -629,3 +639,11 @@ PushRegistrationCoordinator buildPushRegistrationCoordinator({
   currentAuthState: currentAuthState,
   onTap: onTap,
 );
+
+/// Constructs the foreground push presenter (Issue #174). The caller starts
+/// it next to the push-registration coordinator (the same
+/// `AppConfig.hasPush && !isWeb` gate in `lib/app_root.dart`) and disposes
+/// it with the coordinator — foreground caregiver alerts are presented only
+/// for a device that is registered to receive them at all.
+PushForegroundPresenter buildPushForegroundPresenter() =>
+    PushForegroundPresenter();

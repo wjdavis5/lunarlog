@@ -90,7 +90,8 @@ a third-party tool, `fxwx23/PrivacyReportGen`, that extracts the same data
 from an `.xcarchive` via `swift package plugin`, not exercised here).
 
 - [ ] **Operator action, before the next App Store submission:** build a
-      Runner archive on `Williams-Mini` (see `CLAUDE.md`'s iOS build section)
+      Runner archive on `Williams-Mini` (see `AGENTS.md`'s "iOS Local Device
+      Builds" section)
       and run `Generate Privacy Report` from Xcode's Organizer. Reconcile its
       findings against the two declarations above -- add anything it finds
       that this audit missed, and reconsider (but do not blindly remove)

@@ -8,10 +8,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:lunarlog/data/notifications/notification_permission_gate.dart';
-import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/notification_permission_action.dart';
-import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/reminder_fire_time.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart';
@@ -27,6 +26,45 @@ typedef LocalTimeZoneProvider = Future<String> Function();
 /// identifier so iOS offers its action buttons; the actions themselves are
 /// registered once in [FlutterLocalNotificationsScheduler.initialize].
 const String kReminderCategoryId = 'lunarlog_reminder';
+
+/// The Android notification channel every reminder-shaped notification is
+/// posted on (Issue #174: promoted from the scheduler's private constant so
+/// the FCM manifest meta-data and the push presenter in
+/// `push_presentation.dart` can pin FCM-delivered caregiver alerts onto the
+/// exact same channel locally scheduled reminders use, and
+/// `test/release/fcm_presentation_manifest_test.dart` can assert the
+/// manifest copy matches).
+const String kReminderChannelId = 'lunarlog_reminders';
+
+/// The "Reminders" channel itself, shared by [FlutterLocalNotificationsScheduler.initialize]
+/// and the FCM background handler (issue #174) so a channel created from
+/// either path is identical.
+const AndroidNotificationChannel kReminderNotificationChannel =
+    AndroidNotificationChannel(
+  kReminderChannelId,
+  'Reminders',
+  description: 'Period reminders from Lunarlog',
+);
+
+/// The Android notification details every reminder-shaped notification is
+/// posted with — locally scheduled (Issue #136/#178/#183) and FCM-delivered
+/// caregiver alerts (Issue #174) alike, so the two are visually identical:
+/// same channel, same lock-screen privacy (`secret`), and — when [actions]
+/// is passed — the same Started / Spotting / Not yet buttons.
+AndroidNotificationDetails reminderNotificationDetails({
+  List<AndroidNotificationAction>? actions,
+}) =>
+    AndroidNotificationDetails(
+      kReminderChannelId,
+      'Reminders',
+      channelDescription: 'Period reminders from Lunarlog',
+      // Lock-screen privacy: content hidden on the lock screen; the
+      // generic body is the second line of defense. iOS preview
+      // visibility is a user OS setting — generic content is the only
+      // app-controlled iOS control (KTD7).
+      visibility: NotificationVisibility.secret,
+      actions: actions,
+    );
 
 /// Which reminder kinds carry the Started / Spotting / Not yet action
 /// buttons (Issue #136, widened by Issue #178): the period-anchored kinds
@@ -52,23 +90,10 @@ bool reminderHasActions(ReminderKind kind) => switch (kind) {
         false,
     };
 
-/// Computes the exact [tz.TZDateTime] for a reminder on [fireOn] at
-/// [minuteOfDay] (minutes since local midnight; default 09:00 — the
-/// pre-#136 hardcoded hour) in the given [location].
-tz.TZDateTime calculateReminderFireAt({
-  required LocalDate fireOn,
-  required tz.Location location,
-  int minuteOfDay = kDefaultReminderTimeMinutes,
-}) {
-  return tz.TZDateTime(
-    location,
-    fireOn.year,
-    fireOn.month,
-    fireOn.day,
-    minuteOfDay ~/ 60,
-    minuteOfDay % 60,
-  );
-}
+// Issue #215: calculateReminderFireAt (the fire-time computation this file
+// used to own) moved to lib/domain/notifications/reminder_fire_time.dart —
+// same signature, same behavior — so its unit tests count toward the
+// coverage floor instead of living in this gate-excluded file.
 
 /// Resolves the host device's IANA time zone identifier via platform channels.
 /// Falls back to 'UTC' if unavailable.
@@ -126,8 +151,6 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
   // decision. Feeds that function so a permanently-denied permission opens
   // settings instead of re-prompting into silence.
   int _androidDeniedAttempts = 0;
-
-  static const String _channelId = 'lunarlog_reminders';
 
   /// Loads the persisted count ([SettingsKeys.androidNotificationDeniedAttempts])
   /// so a fresh process (after a restart) picks up where the last one left
@@ -226,11 +249,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        _channelId,
-        'Reminders',
-        description: 'Period reminders from Lunarlog',
-      ),
+      kReminderNotificationChannel,
     );
     // Issue #168: API 33+ (Android 13) treats POST_NOTIFICATIONS as a
     // runtime permission that stays denied until requested, no matter what
@@ -311,9 +330,12 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       } else if (macosPlugin != null) {
         enabled = (await macosPlugin.checkPermissions())?.isEnabled;
       }
-      return enabled == false
-          ? NotificationAvailability.denied
-          : NotificationAvailability.available;
+      // Issue #215: the enabled→availability mapping itself is the pure
+      // domain function notificationAvailabilityFromPlatformProbe()
+      // (lib/domain/notifications/notification_availability.dart),
+      // directly unit-tested and counted toward the coverage floor; only
+      // the platform probes above remain plugin-bound.
+      return notificationAvailabilityFromPlatformProbe(enabled);
     } catch (error) {
       // The OS remains the enforcement boundary. Preserve the historical
       // available fallback rather than aborting reminder coordination.
@@ -427,29 +449,30 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       final hasActions = reminderHasActions(reminder.kind);
       await _plugin.zonedSchedule(
         id: reminder.id,
-        title: kReminderTitle,
-        body: kReminderBody,
+        // Issue #184: the reminder's own resolved text — custom per-type
+        // copy when the profile configured it, else the generic defaults.
+        // The text is baked in here at schedule time (local notifications
+        // have no Dart callback at fire time) and stays current through
+        // #136's replan-on-every-change machinery, which cancels and
+        // re-arms the whole plan the moment stored text changes.
+        title: reminder.title,
+        body: reminder.body,
         scheduledDate: fireAt,
+        // Issue #136/#178/#183: the shared reminder presentation (channel,
+        // lock-screen privacy) plus this reminder's action buttons, when it
+        // carries any — see [reminderNotificationDetails].
+        // LLA-028 (issue #623) on the actions: `showsUserInterface: true`
+        // on every one — the default (`false`) selects Android's
+        // background-delivery path, which requires
+        // `onDidReceiveBackgroundNotificationResponse` (a top-level
+        // entry-point function running in a separate isolate, no Activity
+        // context) to be registered; it never is, since the gate-aware
+        // executor these actions must route through
+        // (`reminder_action_executor.dart`) needs a running, unlocked app.
+        // Without this flag every tap was silently dropped whenever the app
+        // was not already in the foreground.
         notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            'Reminders',
-            channelDescription: 'Period reminders from Lunarlog',
-            // Lock-screen privacy: content hidden on the lock screen; the
-            // generic body is the second line of defense. iOS preview
-            // visibility is a user OS setting — generic content is the only
-            // app-controlled iOS control (KTD7).
-            visibility: NotificationVisibility.secret,
-            // LLA-028 (issue #623): `showsUserInterface: true` on every
-            // action -- the default (`false`) selects Android's
-            // background-delivery path, which requires
-            // `onDidReceiveBackgroundNotificationResponse` (a top-level
-            // entry-point function running in a separate isolate, no
-            // Activity context) to be registered; it never is, since the
-            // gate-aware executor these actions must route through
-            // (`reminder_action_executor.dart`) needs a running, unlocked
-            // app. Without this flag every tap was silently dropped
-            // whenever the app was not already in the foreground.
+          android: reminderNotificationDetails(
             actions: hasActions
                 ? const [
                     AndroidNotificationAction(

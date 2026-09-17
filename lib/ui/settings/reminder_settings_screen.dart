@@ -17,9 +17,12 @@
 /// The profile picker at the top is what makes the configuration
 /// per-profile (the issue's routing requirement): each active profile
 /// holds its own schedule, defaulting to its care-mode preset until first
-/// edited. Lock-screen copy is deliberately *not* configurable here
-/// (KTD7) — only scheduling is, and every notification keeps the same
-/// generic title/body regardless of kind.
+/// edited. Notification copy became configurable here too with Issue
+/// #184 — per-type custom title/body behind each type's "Notification
+/// text" row, manual user-authored copy only (never auto-filled with a
+/// name or date), defaulting to the same generic strings every unedited
+/// type keeps, with a live preview in the editor showing exactly what the
+/// OS will present.
 library;
 
 import 'dart:async';
@@ -34,9 +37,12 @@ import 'package:lunarlog/domain/notifications/notification_preferences.dart'
     show QuietHours;
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart'
+    show resolveReminderText;
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
+import 'package:lunarlog/ui/settings/reminder_text_editor_screen.dart';
 import 'package:provider/provider.dart';
 
 /// The screen's time-prompt seam: the Material picker in production, a
@@ -278,6 +284,30 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     ));
   }
 
+  /// Opens the per-type notification text editor (Issue #184) and applies
+  /// its saved result — blank fields clear the custom text, so the type
+  /// falls back to the generic default rather than ever carrying an empty
+  /// title or body. A dismissed editor changes nothing.
+  Future<void> _editText(ReminderKind kind) async {
+    final config = _config;
+    if (config == null) return;
+    final typeConfig = config.typeConfig(kind);
+    final result = await pushReminderTextEditor(
+      context,
+      typeConfig: typeConfig,
+    );
+    if (result == null) return;
+    _update(config.withTypeConfig(
+      kind,
+      typeConfig.copyWith(
+        customTitle: result.title,
+        customBody: result.body,
+        clearCustomTitle: result.title == null,
+        clearCustomBody: result.body == null,
+      ),
+    ));
+  }
+
   Future<void> _pickQuietBoundary({required bool start}) async {
     final config = _config;
     if (config == null) return;
@@ -376,6 +406,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
           if (_hasLead(kind)) _leadTile(kind, config),
           if (kind == ReminderKind.log) _cadenceTile(kind, config),
           _timeTile(kind, config),
+          _textTile(kind, config),
           const Divider(),
         ],
       ];
@@ -422,6 +453,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
               : null,
         ),
         _timeTile(kind, config),
+        _textTile(kind, config),
       ],
       const Divider(),
     ];
@@ -585,6 +617,26 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
           _timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
       onTap:
           typeConfig.enabled ? () => _pickTime(kind) : null,
+    );
+  }
+
+  /// One type's "Notification text" row (Issue #184): opens the editor
+  /// with the live preview. The subtitle shows the effective title — the
+  /// custom one when set, else a "using the default" note — so the row
+  /// itself never renders a profile name or date, only this type's own
+  /// configured copy.
+  Widget _textTile(ReminderKind kind, ReminderConfig config) {
+    final typeConfig = config.typeConfig(kind);
+    final l10n = AppLocalizations.of(context);
+    final hasCustom =
+        typeConfig.customTitle != null || typeConfig.customBody != null;
+    return ListTile(
+      key: ValueKey('reminder-text-${kind.name}'),
+      title: Text(l10n.reminderTextTileTitle),
+      subtitle: Text(hasCustom
+          ? resolveReminderText(typeConfig).title
+          : l10n.reminderTextTileDefaultSubtitle),
+      onTap: typeConfig.enabled ? () => _editText(kind) : null,
     );
   }
 

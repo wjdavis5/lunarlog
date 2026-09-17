@@ -31,7 +31,7 @@ set -euo pipefail
 #              push. Added-file detection is `git diff --name-only
 #              --diff-filter=A "$BEFORE_SHA" HEAD -- supabase/migrations`,
 #              i.e. ADDED files only: a modified (e.g. comment-only UNDO
-#              note, per AGENTS.md Migration Flow item 9) or deleted
+#              note, per AGENTS.md Migration Flow item 10) or deleted
 #              migration is deliberately NOT expected to (re-)apply.
 #   EVENT_NAME github.event_name. Only "push" asserts: a workflow_dispatch
 #              re-run has no pushed range, and its whole purpose may be to

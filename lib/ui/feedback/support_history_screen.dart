@@ -228,6 +228,13 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
               key: ValueKey('support-history-reply-field-${ticket.id}'),
               controller: controller,
               enabled: !sending,
+              // #165: the ticket's only text field — "send" is the
+              // platform convention for a chat-style reply, and its
+              // handler is the Send button's own.
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {
+                if (!sending) unawaited(_sendReply(ticket));
+              },
               decoration: const InputDecoration(labelText: 'Reply'),
             ),
             Align(

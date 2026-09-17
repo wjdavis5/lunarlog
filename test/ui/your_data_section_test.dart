@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
@@ -26,6 +27,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
@@ -227,6 +229,7 @@ class _FakeExportSnapshotRepository implements AccountExportSnapshotRepository {
         observations: await _observations.listForProfile(profileId),
         profileMode: null,
         cycleOverrides: const <CycleOverride>[],
+        mergeEvents: const <DayEntryMergeEvent>[],
       );
 }
 
@@ -246,6 +249,8 @@ Future<void> _pump(
   final resolvedObservations = observations ?? FakeObservationsRepository();
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           Provider<ProfilesRepository>.value(value: profiles),
@@ -301,6 +306,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -353,6 +359,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -383,7 +390,11 @@ void main() {
         'no ProfilesRepository provided at all (unconfigured build): the '
         'tile is absent, same as no profiles', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: YourDataSection())),
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: YourDataSection()),
+        ),
       );
       await tester.pumpAndSettle();
       expect(key('your-data-export'), findsNothing);
@@ -449,6 +460,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -517,6 +529,8 @@ void main() {
       final profiles = FakeProfilesRepository([_profile('p1')]);
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               Provider<ProfilesRepository>.value(value: profiles),

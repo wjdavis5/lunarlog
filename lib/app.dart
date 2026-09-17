@@ -50,6 +50,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
@@ -71,6 +72,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart'
     show confirmedHealthSyncUserId;
+import 'package:lunarlog/ui/startup/qa_build_banner.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -80,6 +82,7 @@ import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -97,6 +100,8 @@ class LunarLogApp extends StatefulWidget {
     this.removePushRegistration,
     this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
+    this.mfaEnabled,
+    this.showQaBanner,
   });
 
   final LunarLogDatabase db;
@@ -138,6 +143,8 @@ class LunarLogApp extends StatefulWidget {
     RemovePushRegistrationCallback? removePushRegistration,
     RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
     bool showWebBanner = kIsWeb,
+    bool? mfaEnabled,
+    bool? showQaBanner,
   }) =>
       LunarLogApp(
         key: key,
@@ -169,6 +176,10 @@ class LunarLogApp extends StatefulWidget {
         removePushRegistration: removePushRegistration,
         removeAllPushRegistrations: removeAllPushRegistrations,
         showWebBanner: showWebBanner,
+        mfaEnabled: mfaEnabled,
+        // Passed through unresolved (null stays null): the State's
+        // `_showQaBanner` is the single resolution point.
+        showQaBanner: showQaBanner,
       );
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
@@ -217,6 +228,24 @@ class LunarLogApp extends StatefulWidget {
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
 
+  /// Issue #738: forwarded to the [AuthController] this widget constructs
+  /// (`_initAuthController`), whose `mfaEnabled` — and with it the whole
+  /// MFA client surface (tile group, enrolment screen, AAL2 step-up) —
+  /// follows the build's `LUNARLOG_ENABLE_MFA` define. Null means the
+  /// const default (off in every CI/workflow build); a test passes `true`
+  /// to exercise #714's MFA-on behavior through the real app shell.
+  final bool? mfaEnabled;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// null-means-AppConfig idiom (the `showWebBanner = kIsWeb` shape
+  /// cannot express "not injected", which the root's own pass-through
+  /// needs). While true the persistent [QaBuildBanner] renders above
+  /// every screen and the task-switcher title carries the QA suffix (see
+  /// [_appTitle]). The gate/relock/re-auth halves of the flag live in
+  /// [GateController] and `ensureAal2`, not here.
+  final bool? showQaBanner;
+
   @override
   State<LunarLogApp> createState() => _LunarLogAppState();
 }
@@ -235,6 +264,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final DayEntriesRepository _dayEntries;
   late final ObservationsRepository _observations;
   late final CareContentRepository _careContent;
+
+  /// Issue #257: the per-profile custom-tag registry.
+  late final TagRegistryRepository _tagRegistry;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
   late final CycleHistoryService _cycleHistory;
@@ -296,6 +328,25 @@ class _LunarLogAppState extends State<LunarLogApp>
   String? _pendingInviteKind;
   bool _inviteSheetOpen = false;
 
+  /// Issue #137: the resolved appearance override for this widget's
+  /// `MaterialApp.themeMode`. `ThemeMode.system` (follow the OS) until the
+  /// settings watch's first emission says otherwise — the store's own
+  /// seed emission arrives within a frame or two of mounting, and the
+  /// gate is still locked for the whole cold-start window before that.
+  ThemeMode _themeMode = ThemeMode.system;
+  StreamSubscription<String?>? _themeModeSub;
+
+  /// Issue #739: the `MaterialApp.title` (OS task-switcher label) —
+  /// `lunarlog`, with the QA suffix on a QA build. Computed once as a
+  /// field so the flag branch never counts against [build]'s CRAP budget.
+  late final String _appTitle =
+      _showQaBanner ? 'lunarlog$kQaBuildVersionSuffix' : 'lunarlog';
+
+  /// Issue #739: [widget.showQaBanner] resolved once (null means the
+  /// build's [AppConfig.qaBuild] const) — read through this field, never
+  /// the widget member, so the resolution genuinely happens once.
+  late final bool _showQaBanner = widget.showQaBanner ?? AppConfig.qaBuild;
+
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
   /// database on a *mounted* app would leave them bound to the old (closed)
   /// one while `build`'s row counter read the new one. `LunarLogRoot` never
@@ -323,6 +374,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _dayEntries = _deps.dayEntries;
     _observations = _deps.observations;
     _careContent = _deps.careContent;
+    _tagRegistry = _deps.tagRegistry;
     _settings = _deps.settings;
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
@@ -360,6 +412,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // every build with a Supabase client (web and no-push included), so
     // its publisher must start on every one of them too.
     _startPredictionProjectionPublisher();
+    _watchAppearanceSetting();
     WidgetsBinding.instance.addObserver(this);
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
@@ -374,8 +427,11 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _initAuthController() {
     final authService = _deps.authService;
     if (authService == null) return;
-    final controller = AuthController(authService: authService)
-      ..addListener(_onAuthChanged);
+    // Issue #738: `widget.mfaEnabled` (null in production) resolves to the
+    // build's `LUNARLOG_ENABLE_MFA` const inside the controller.
+    final controller =
+        AuthController(authService: authService, mfaEnabled: widget.mfaEnabled)
+          ..addListener(_onAuthChanged);
     _authController = controller;
     if (controller.signedIn) _clearAwaitingConfirmation();
   }
@@ -553,6 +609,20 @@ class _LunarLogAppState extends State<LunarLogApp>
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
 
+  /// Issue #137: subscribes to the persisted appearance override. The
+  /// store's `watch` seeds the current value on subscribe (null when
+  /// unset), then re-emits on every change — so the Settings picker's
+  /// `store.set` is the *only* write path and this subscription is the
+  /// *only* read path the `MaterialApp` needs: no controller, no
+  /// duplicate initial `get`. Extracted out of [initState] (the issue
+  /// #168 CRAP-gate discipline the neighbouring `_init*` methods follow).
+  void _watchAppearanceSetting() {
+    _themeModeSub = _settings.watch(SettingsKeys.themeMode).listen((value) {
+      if (!mounted) return;
+      setState(() => _themeMode = themeModeFromStored(value));
+    });
+  }
+
   /// Issue #535 (b): a latched cold-start/live invite code (see
   /// [_maybePresentInvite]) is otherwise consumed exactly once, silently,
   /// by [_onAuthChanged] — a signed-out recipient who doesn't sign in right
@@ -573,6 +643,21 @@ class _LunarLogAppState extends State<LunarLogApp>
     return Column(
       children: [
         _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
+  /// QA build; a no-op (the child, unchanged) on every store build. Same
+  /// `MaterialApp.builder` placement — above the Navigator — as the web
+  /// banner beside it, so the marker renders over whatever screen is
+  /// showing.
+  Widget _wrapWithQaBanner(Widget child) {
+    if (!_showQaBanner) return child;
+    return Column(
+      children: [
+        const QaBuildBanner(),
         Expanded(child: child),
       ],
     );
@@ -891,6 +976,11 @@ class _LunarLogAppState extends State<LunarLogApp>
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_inviteSub?.cancel());
     _inviteSub = null;
+    // Issue #137: cancelled here rather than leaked, mirroring the invite
+    // subscription above — this widget's unmount (a device reset,
+    // KTD16) always precedes the database closing underneath the store.
+    unawaited(_themeModeSub?.cancel());
+    _themeModeSub = null;
     _authController?.dispose();
     _authController = null;
     _actionExecutor?.dispose();
@@ -1021,6 +1111,10 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<CareContentRepository>.value(value: _careContent),
+        // Issue #257: the day sheet's tag picker reads/writes the
+        // custom-tag registry through this domain seam, never the raw
+        // storage object.
+        Provider<TagRegistryRepository>.value(value: _tagRegistry),
         Provider<SettingsStore>.value(value: _settings),
         // Issue #136: the per-profile reminder configuration store. Present
         // whenever reminders are (a scheduler was provided); the reminder
@@ -1072,8 +1166,16 @@ class _LunarLogAppState extends State<LunarLogApp>
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         navigatorObservers: _navigatorObservers,
-        title: 'lunarlog',
+        title: _appTitle,
         theme: AppTheme.lightTheme,
+        // Issue #137: the app follows the OS appearance by default
+        // (`ThemeMode.system`, this state field's value until the settings
+        // watch's first emission) and honours the in-app override after
+        // that. `darkTheme` is the #176 factory's dark scheme — same seed
+        // token, same `LunarLogColors` derivation contract, so
+        // theme-driven consumers needed zero changes for dark mode.
+        darkTheme: AppTheme.darkTheme,
+        themeMode: _themeMode,
         // Issue #160: localization scaffolding. `en` is the only supported
         // locale today; the delegates (AppLocalizations plus Flutter's own
         // material/cupertino/widgets delegates) make every screen's copy
@@ -1087,7 +1189,13 @@ class _LunarLogAppState extends State<LunarLogApp>
           showBanner: widget.showWebBanner,
           onWipe: resetDevice ?? widget.db.wipeAllData,
           navigatorKey: _navigatorKey,
-          child: _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+          // Issue #739: the QA banner wraps outside the invite banner so
+          // it stays the topmost strip on every screen — a persistent
+          // marker, never dismissed by an auth change like the invite
+          // banner below it can be.
+          child: _wrapWithQaBanner(
+            _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+          ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
         // always built with WidgetsApp.defaultRouteName, `/`, which

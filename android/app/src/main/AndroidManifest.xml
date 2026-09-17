@@ -133,6 +133,23 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Issue #174: FCM's own tray presentations (a backgrounded
+             caregiver alert's notification payload) land on the same
+             "Reminders" channel and the same launcher icon the locally
+             scheduled reminders use (kReminderChannelId in
+             lib/data/notifications/notification_scheduler.dart, which the
+             scheduler creates at initialize; AndroidInitializationSettings
+             uses the same @mipmap/ic_launcher), so a caregiver alert is
+             visually identical to a local reminder instead of landing in
+             the system default channel with a generic icon. The two values
+             are pinned against the Dart constants by
+             test/release/fcm_presentation_manifest_test.dart. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="lunarlog_reminders" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

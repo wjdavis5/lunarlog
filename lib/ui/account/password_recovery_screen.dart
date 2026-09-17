@@ -3,6 +3,13 @@
 /// unlocked (KTD8). Saving calls `updatePassword` and consumes the latch;
 /// "Not now" consumes it without a change (the recovery session stays
 /// usable).
+///
+/// Issue #165 (form accessibility): the new-password and confirm fields
+/// sit in one [AutofillGroup] (`newPassword` on the new-password field, so
+/// password managers can offer to fill or generate), "next" on the
+/// new-password field advances to the confirm field, "done" on the confirm
+/// field saves, and each obscured field carries a local-only reveal
+/// toggle — the toggles flip nothing but their own field's `obscureText`.
 library;
 
 import 'package:flutter/material.dart';
@@ -22,12 +29,27 @@ class PasswordRecoveryScreen extends StatefulWidget {
 
 class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
   final _password = TextEditingController();
+  final _confirm = TextEditingController();
+
+  /// #165: the explicit focus chain — "next" on the new-password field
+  /// advances to the confirm field.
+  final _passwordFocus = FocusNode();
+  final _confirmFocus = FocusNode();
+
+  /// #165: each obscured field's own reveal-toggle state. Local-only by
+  /// design: flipping one changes that field's `obscureText`, nothing else.
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
     _password.dispose();
+    _confirm.dispose();
+    _passwordFocus.dispose();
+    _confirmFocus.dispose();
     super.dispose();
   }
 
@@ -38,6 +60,12 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
         () => _error =
             'Use at least $kMinPasswordLength characters for the password.',
       );
+      return;
+    }
+    // #165: the confirm field's match check — same imperative-error shape
+    // as the length check above it.
+    if (_confirm.text != _password.text) {
+      setState(() => _error = 'Passwords do not match.');
       return;
     }
     setState(() {
@@ -74,15 +102,65 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
             'your account.',
           ),
           const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('recovery-new-password'),
-            controller: _password,
-            enabled: !_busy,
-            obscureText: true,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: 'New password',
-              helperText: 'At least $kMinPasswordLength characters',
+          // #165: one AutofillGroup over the password pair so password
+          // managers see a single saveable form.
+          AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  key: const ValueKey('recovery-new-password'),
+                  controller: _password,
+                  focusNode: _passwordFocus,
+                  enabled: !_busy,
+                  obscureText: _obscureNew,
+                  autofocus: true,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _confirmFocus.requestFocus(),
+                  autofillHints: const [AutofillHints.newPassword],
+                  decoration: InputDecoration(
+                    labelText: 'New password',
+                    helperText: 'At least $kMinPasswordLength characters',
+                    suffixIcon: IconButton(
+                      key: const ValueKey('recovery-new-password-reveal'),
+                      onPressed: () =>
+                          setState(() => _obscureNew = !_obscureNew),
+                      tooltip: _obscureNew ? 'Show password' : 'Hide password',
+                      icon: Icon(
+                        _obscureNew
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('recovery-confirm-password'),
+                  controller: _confirm,
+                  focusNode: _confirmFocus,
+                  enabled: !_busy,
+                  obscureText: _obscureConfirm,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _save(),
+                  decoration: InputDecoration(
+                    labelText: 'Confirm password',
+                    suffixIcon: IconButton(
+                      key: const ValueKey('recovery-confirm-password-reveal'),
+                      onPressed: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
+                      tooltip:
+                          _obscureConfirm ? 'Show password' : 'Hide password',
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           if (_error != null) ...[

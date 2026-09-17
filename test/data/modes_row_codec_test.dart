@@ -23,6 +23,7 @@ ProfileModeData modeRow({
   String? birthControlMethod = 'copper_iud',
   String? birthControlStartedOn = '2026-01-10',
   String? birthControlStoppedOn,
+  String? estimatedDueDate,
   bool healthSyncConsent = true,
   DateTime? updatedAt,
 }) =>
@@ -30,6 +31,7 @@ ProfileModeData modeRow({
       profileId: profileIdOf,
       mode: mode,
       modeStartedOn: modeStartedOn,
+      estimatedDueDate: estimatedDueDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: birthControlStartedOn,
       birthControlStoppedOn: birthControlStoppedOn,
@@ -63,10 +65,11 @@ CycleOverrideData overrideRow({
 void main() {
   group('encodeProfileMode', () {
     test('emits exactly the p_profile_modes shape', () {
-      expect(encodeProfileMode(modeRow()), {
+      expect(encodeProfileMode(modeRow(estimatedDueDate: '2027-06-21')), {
         'profile_id': profileId,
         'mode': 'perimenopause',
         'mode_started_on': '2026-09-02',
+        'estimated_due_date': '2027-06-21',
         'birth_control_method': 'copper_iud',
         'birth_control_started_on': '2026-01-10',
         'birth_control_stopped_on': null,
@@ -91,6 +94,7 @@ void main() {
         'profile_id': profileId,
         'mode': 'conceive',
         'mode_started_on': '2026-09-02',
+        'estimated_due_date': '2027-06-21',
         'birth_control_method': 'pill',
         'birth_control_started_on': '2026-01-01',
         'birth_control_stopped_on': '2026-06-01',
@@ -102,6 +106,7 @@ void main() {
       expect(row.profileId, profileId);
       expect(row.mode, 'conceive');
       expect(row.modeStartedOn, '2026-09-02');
+      expect(row.estimatedDueDate, '2027-06-21');
       expect(row.birthControlMethod, 'pill');
       expect(row.birthControlStartedOn, '2026-01-01');
       expect(row.birthControlStoppedOn, '2026-06-01');

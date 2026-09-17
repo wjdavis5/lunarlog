@@ -40,6 +40,7 @@ library;
 
 import 'dart:convert';
 
+import '../logging/day_entry_merge_event.dart';
 import '../models/care_note.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
@@ -104,7 +105,18 @@ import 'account_export_remote_source.dart';
 /// collected/customized" reading the v3/v6/v8 precedents already
 /// established. A reader of an old (v9) export treats the key's absence
 /// identically.
-const int kAccountExportSchemaVersion = 10;
+/// v11 (Issue #130) adds `profiles[].mergeEvents`: the profile's
+/// window-live same-date merge disclosures (one row per discarded
+/// `flow`/`note` value, carrying the losing value's retained text). Only
+/// events still inside the 30-day recovery window are exported — the file
+/// must not extend the retention the app itself enforces — and a reader
+/// of an old (v10) export treats the key's absence as "not yet
+/// collected," the same v3/v6 precedent. The importer (#140) deliberately
+/// does NOT restore them: they are machine-written records of merges that
+/// already happened, not user data a restore needs to replay as fresh
+/// notices (`account_import.dart` reads known keys only, so a v11 file
+/// round-trips through import with the key harmlessly ignored).
+const int kAccountExportSchemaVersion = 11;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -129,6 +141,8 @@ Map<String, Object?> buildAccountExport({
   // Issue #140 review, LLA-084 (kAccountExportSchemaVersion v9).
   Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
   Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
+  // Issue #130 (kAccountExportSchemaVersion v11).
+  Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -148,6 +162,7 @@ Map<String, Object?> buildAccountExport({
           visitPrepByProfile[profile.id] ?? const [],
           profileModesByProfile[profile.id],
           cycleOverridesByProfile[profile.id] ?? const [],
+          mergeEventsByProfile[profile.id] ?? const [],
         ),
     ],
   };
@@ -161,6 +176,7 @@ Map<String, Object?> _exportProfile(
   List<VisitPrepItem> prepItems,
   ProfileLifecycleMode? profileMode,
   List<CycleOverride> cycleOverrides,
+  List<DayEntryMergeEvent> mergeEvents,
 ) {
   final sortedEntries = [...entries]
     ..sort((a, b) => a.localDate.compareTo(b.localDate));
@@ -172,6 +188,8 @@ Map<String, Object?> _exportProfile(
     ..sort((a, b) => a.id.compareTo(b.id));
   final sortedCycleOverrides = [...cycleOverrides]
     ..sort((a, b) => a.cycleStartDate.compareTo(b.cycleStartDate));
+  final sortedMergeEvents = [...mergeEvents]
+    ..sort((a, b) => a.id.compareTo(b.id));
   return {
     'id': profile.id,
     'displayName': profile.displayName,
@@ -227,8 +245,32 @@ Map<String, Object?> _exportProfile(
     'visitPrepItems': [
       for (final item in sortedPrepItems) _exportVisitPrepItem(item),
     ],
+    // Issue #130 (kAccountExportSchemaVersion v11): the profile's
+    // window-live same-date merge disclosures. Attribution ids stay out
+    // per this file's R9 rule (see careNotes above); the losing value's
+    // retained text is exported because it is the user's own discarded
+    // writing, exactly the text the in-app notice recovers.
+    'mergeEvents': [
+      for (final event in sortedMergeEvents) _exportMergeEvent(event),
+    ],
   };
 }
+
+/// Issue #130 (kAccountExportSchemaVersion v11): one recorded same-date
+/// merge discard. `field` is the wire string (`flow`/`note`); attribution
+/// ids stay out per R9. [DayEntryMergeEvent.createdAt] is exported as
+/// `recordedAt` — the instant the merge was recorded, which drives the
+/// 30-day recovery window.
+Map<String, Object?> _exportMergeEvent(DayEntryMergeEvent event) => {
+      'id': event.id,
+      'localDate': event.localDateIso,
+      'winningRowId': event.winningRowId,
+      'losingRowId': event.losingRowId,
+      'field': event.field.toDb(),
+      'losingValueText': event.losingValueText,
+      'recordedAt': event.createdAt.toUtc().toIso8601String(),
+      'updatedAt': event.updatedAt.toUtc().toIso8601String(),
+    };
 
 /// `null` when no `profile_modes` row was ever written for the profile
 /// (the lazy-default contract — see `ProfileLifecycleMode`'s own doc
@@ -243,6 +285,10 @@ Map<String, Object?>? _exportProfileMode(ProfileLifecycleMode? mode) {
   if (mode == null) return null;
   return {
     'mode': mode.mode.toDb(),
+    // Issue #192: full fidelity for restore — the mode's start date and
+    // the pregnancy due date ride the export alongside the mode itself.
+    'modeStartedOn': mode.modeStartedOn,
+    'estimatedDueDate': mode.estimatedDueDate,
     'birthControlMethod': mode.birthControlMethod,
     'birthControlStartedOn': mode.birthControlStartedOn,
     'birthControlStoppedOn': mode.birthControlStoppedOn,
@@ -348,6 +394,8 @@ Future<Map<String, Object?>> buildMergedAccountExport({
   // Issue #140 review, LLA-084 (kAccountExportSchemaVersion v9).
   Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
   Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
+  // Issue #130 (kAccountExportSchemaVersion v11).
+  Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -361,6 +409,7 @@ Future<Map<String, Object?>> buildMergedAccountExport({
     visitPrepByProfile: visitPrepByProfile,
     profileModesByProfile: profileModesByProfile,
     cycleOverridesByProfile: cycleOverridesByProfile,
+    mergeEventsByProfile: mergeEventsByProfile,
     exportedAt: exportedAt,
     appName: appName,
     appVersion: appVersion,

@@ -43,6 +43,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -57,6 +58,7 @@ import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -77,11 +79,13 @@ import 'package:provider/provider.dart';
 /// The weekday the month grid's weeks start on, as a `DateTime` weekday
 /// constant (`DateTime.monday` .. `DateTime.sunday`). Explicit seam
 /// (issue #160): the grid previously baked Sunday-start into
-/// `DateTime.weekday % 7` arithmetic. The value stays Sunday to preserve
-/// today's layout; deriving a default from the active locale and persisting
-/// a user override in Settings are tracked follow-on work — both consumers
-/// of this seam ([leadingBlanksFor] and [weekdayHeaderLabels]) already
-/// honour it.
+/// `DateTime.weekday % 7` arithmetic. This constant is now the *default*
+/// only (issue #226): the user's Calendar → "First day of week" override,
+/// persisted under [SettingsKeys.calendarFirstDayOfWeek], is watched by
+/// `_MonthCalendarState` and feeds the same seam both consumers
+/// ([leadingBlanksFor] and [weekdayHeaderLabels], plus the weekday
+/// header's Semantics labels) already honour. Deriving a default from the
+/// active locale remains follow-on work.
 const int kFirstDayOfWeek = DateTime.sunday;
 
 /// Leading blank cells before day 1 of [year]/[month] in a grid whose weeks
@@ -143,9 +147,29 @@ LocalDate _lastOfMonth(int year, int month) {
 /// and pure for direct testing, mirroring [dayCellSemanticLabel] and
 /// [canDrivePageController] elsewhere in this file.
 (LocalDate, LocalDate) calendarEntriesWindowFor(int year, int month) => (
-  _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
-  _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
-);
+      _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
+      _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
+    );
+
+/// Whether [entries] include any day inside [year]/[month] (issue #241,
+/// B-16): the predicate behind keeping the displayed calendar month
+/// across a profile switch -- a guardian comparing two profiles' calendars
+/// keeps their place when the newly selected profile also has data in the
+/// month they were viewing, and only falls back to today's month when it
+/// does not (an empty month for that profile reads as "nothing here",
+/// which today's month explains better than a stale position does).
+/// Public and pure for direct testing. Callers pass an already
+/// range-filtered, tombstone-excluded list (the repository's
+/// `watchForProfile(from: first, to: last)`); the year/month check itself
+/// is the whole contract, kept here so the policy is testable without a
+/// repository.
+bool hasEntriesInMonth(Iterable<DayEntry> entries, int year, int month) {
+  for (final entry in entries) {
+    final date = entry.localDate;
+    if (date.year == year && date.month == month) return true;
+  }
+  return false;
+}
 
 /// Confidence-appropriate band weight (KTD4): a hatched band's opacity by
 /// its cycle's tier. `high` reads strongest, `irregular` faintest — and
@@ -547,6 +571,14 @@ class _MonthCalendarState extends State<MonthCalendar>
   int _displayedYear = 1970;
   int _displayedMonth = 1;
 
+  /// The grid's week-start day (Issue #226): [kFirstDayOfWeek] until the
+  /// ambient [SettingsStore]'s watch for [SettingsKeys.calendarFirstDayOfWeek]
+  /// seeds the user's override (absent/unparsable still parses to Sunday).
+  /// Null store (a test harness or local-only mount) just keeps the
+  /// default — the pre-#226 layout, unchanged.
+  int _firstDayOfWeek = kFirstDayOfWeek;
+  StreamSubscription<String?>? _firstDaySub;
+
   /// The currently-subscribed window's day entries (review follow-up on
   /// issue #197): kept in state via an explicit subscription rather than
   /// read off a `StreamBuilder` snapshot, so a window crossing
@@ -789,14 +821,29 @@ class _MonthCalendarState extends State<MonthCalendar>
     // Issue #574: captured once here, not re-read on every build — safe
     // today because nothing above this widget in the tree ever swaps
     // these providers after first build (they come from the one
-    // AppDependencies bundle a running app never rebuilds with a
-    // different instance); worth this comment because a future provider
+    // AppDependencies bundle a running app never rebuilds with
+    // a different instance); worth this comment because a future provider
     // that *can* change would need a didChangeDependencies re-read
     // instead, the same way `ProfileGuardiansRepository` already gets a
     // live re-subscribe via `didUpdateWidget` rather than a one-shot read.
     _repository = context.read<DayEntriesRepository>();
     _predictionService = context.read<CyclePredictionService?>();
     _historyService = context.read<CycleHistoryService?>();
+    // Issue #226: the user's week-start override. The store's watch seeds
+    // the current value on subscribe, so this covers both the initial read
+    // and later changes from the Settings picker (same mechanism the
+    // appearance override uses).
+    final settingsStore = context.read<SettingsStore?>();
+    if (settingsStore != null) {
+      _firstDaySub = settingsStore
+          .watch(SettingsKeys.calendarFirstDayOfWeek)
+          .listen((value) {
+            if (mounted) {
+              setState(() => _firstDayOfWeek =
+                  CalendarFirstDay.fromStored(value).weekday);
+            }
+          });
+    }
     _rewatchPrediction();
     final auth = context.read<AuthController?>();
     if (auth != null) {
@@ -846,24 +893,22 @@ class _MonthCalendarState extends State<MonthCalendar>
     if (oldWidget.profileId != widget.profileId) {
       _rewatchPrediction();
       _watchGuardians();
-      _resetToTodaysMonth();
       // A different profile invalidates whatever window the old one's
-      // subscription covered — force a fresh subscription below rather
-      // than trusting the previous profile's now-irrelevant bounds. Reset
-      // immediately (not just on the new subscription's first tick), the
-      // same discipline [_watchGuardians] already applies, so a profile
-      // switch never keeps rendering the previous profile's days in the
-      // meantime — unlike a same-profile window crossing, this is a
-      // genuinely different data set, not a case [_entries] should bridge.
+      // subscription covered — force a fresh subscription (inside
+      // [_syncDisplayedMonthForNewProfile], once the displayed month is
+      // decided) rather than trusting the previous profile's
+      // now-irrelevant bounds. Cancel and clear immediately (not just on
+      // the new subscription's first tick), the same discipline
+      // [_watchGuardians] already applies, so a profile switch never keeps
+      // rendering the previous profile's days in the meantime — unlike a
+      // same-profile window crossing, this is a genuinely different data
+      // set, not a case [_entries] should bridge.
+      unawaited(_entriesSub?.cancel());
+      _entriesSub = null;
       _entries = null;
       _entriesWindowFrom = null;
       _entriesWindowTo = null;
-      _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
-      if (_pageController.hasClients) {
-        _pageController.jumpToPage(
-          _pageIndexFor(_displayedYear, _displayedMonth),
-        );
-      }
+      unawaited(_syncDisplayedMonthForNewProfile());
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -921,6 +966,8 @@ class _MonthCalendarState extends State<MonthCalendar>
   void dispose() {
     unawaited(_entriesSub?.cancel());
     _entriesSub = null;
+    unawaited(_firstDaySub?.cancel());
+    _firstDaySub = null;
     disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
@@ -942,6 +989,84 @@ class _MonthCalendarState extends State<MonthCalendar>
     final today = widget.todayProvider();
     _displayedYear = today.year;
     _displayedMonth = today.month;
+  }
+
+  /// Generation counter for [_syncDisplayedMonthForNewProfile] (issue
+  /// #241): a second profile switch before the first one's month-deciding
+  /// query lands must not let the older query's answer apply — each call
+  /// claims the latest token, and only the continuation still holding it
+  /// may touch `_displayed*`/the subscription (the same shape
+  /// [_animateToken] uses for superseded page animations).
+  int _profileSwitchToken = 0;
+
+  /// One-shot [hasEntriesInMonth] over a windowed `watchForProfile` — a
+  /// bounded repository query (the new profile's entries for [year]/
+  /// [month] only, never its full history), answered off the stream's
+  /// first emission and cancelled immediately.
+  ///
+  /// Deliberately an explicit [StreamSubscription] rather than `.first`:
+  /// the one-shot `.first` future parked on a drift `watch()` stream's
+  /// first event never gets a turn inside a fake-async widget test until
+  /// something else drives the loop — a plain `listen` (the same
+  /// mechanism [_maybeRewatchEntriesFor] already uses) completes through
+  /// a [Completer] instead.
+  Future<bool> _hasEntriesInMonthViaListen(int year, int month) {
+    final completer = Completer<bool>();
+    late final StreamSubscription<List<DayEntry>> sub;
+    sub = _repository
+        .watchForProfile(
+          widget.profileId,
+          from: _firstOfMonth(year, month),
+          to: _lastOfMonth(year, month),
+        )
+        .listen(
+          (entries) {
+            if (!completer.isCompleted) {
+              completer.complete(hasEntriesInMonth(entries, year, month));
+            }
+            unawaited(sub.cancel());
+          },
+          // Fail closed to the reset path: a repository error must not
+          // wedge the calendar on the loading state.
+          onError: (Object error) {
+            if (!completer.isCompleted) completer.complete(false);
+          },
+        );
+    return completer.future;
+  }
+
+  /// Issue #241 (B-16): decides the displayed month after a profile
+  /// switch. The previously displayed month is *kept* when the new
+  /// profile has at least one live entry inside it (a guardian comparing
+  /// profiles keeps their place — [hasEntriesInMonth] over
+  /// [_hasEntriesInMonthViaListen]'s bounded query); otherwise today's
+  /// month, the pre-#241 behavior. Already on today's month there is
+  /// nothing to preserve and no query is made.
+  ///
+  /// Async because the answer needs that one repository read; everything
+  /// the old synchronous switch path did after the reset (window
+  /// subscription, page jump) happens here once the month is decided.
+  /// `_entries` is already null (see [didUpdateWidget]), so the
+  /// in-between frames render the loading state, never the previous
+  /// profile's days.
+  Future<void> _syncDisplayedMonthForNewProfile() async {
+    final token = ++_profileSwitchToken;
+    final displayedYear = _displayedYear;
+    final displayedMonth = _displayedMonth;
+    final today = widget.todayProvider();
+    final offTodaysMonth =
+        displayedYear != today.year || displayedMonth != today.month;
+    final keepMonth = !offTodaysMonth ||
+        await _hasEntriesInMonthViaListen(displayedYear, displayedMonth);
+    if (!mounted || token != _profileSwitchToken) return;
+    if (!keepMonth) _resetToTodaysMonth();
+    _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
+    setState(() {});
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(
+        _pageIndexFor(_displayedYear, _displayedMonth),
+      );
+    }
   }
 
   /// Fixed epoch offset (issue #191): keeps every [_pageIndexFor] result
@@ -1351,10 +1476,13 @@ class _MonthCalendarState extends State<MonthCalendar>
                     child: Center(
                       child: Semantics(
                         container: true,
-                        label: fullWeekdays[(kFirstDayOfWeek + i) % 7],
+                        label: fullWeekdays[(_firstDayOfWeek + i) % 7],
                         excludeSemantics: true,
                         child: Text(
-                          weekdayHeaderLabels(locale: locale)[i],
+                          weekdayHeaderLabels(
+                            locale: locale,
+                            firstDayOfWeek: _firstDayOfWeek,
+                          )[i],
                           style: theme.textTheme.labelSmall,
                         ),
                       ),
@@ -1509,9 +1637,19 @@ class _MonthCalendarState extends State<MonthCalendar>
                         size: 16,
                       ),
                       const SizedBox(width: 2),
-                      Text(
-                        l10n.calendarLegend,
-                        style: theme.textTheme.bodySmall,
+                      // Issue #460's RTL/pseudo-locale smoke found this
+                      // label overflowing the row the moment localized
+                      // copy runs longer than English "Legend" (58px over
+                      // at ~2x expansion): the row had no flex or
+                      // ellipsis, so any longer translation (or large
+                      // text scale) painted past the tap area's edge.
+                      Flexible(
+                        child: Text(
+                          l10n.calendarLegend,
+                          style: theme.textTheme.bodySmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -1815,9 +1953,11 @@ class _MonthCalendarState extends State<MonthCalendar>
         ? LocalDate(year + 1, 1, 1)
         : LocalDate(year, month + 1, 1);
     final daysInMonth = firstOfNext.difference(firstOfMonth);
-    // Issue #160: the grid's week start is the explicit [kFirstDayOfWeek]
-    // seam (today Sunday), no longer `weekday % 7` arithmetic.
-    final leadingBlanks = leadingBlanksFor(year, month);
+    // Issue #160: the grid's week start is the explicit first-day seam, no
+    // longer `weekday % 7` arithmetic — and since #226 that seam is fed by
+    // the user's Calendar → "First day of week" override ([_firstDayOfWeek])
+    // rather than the constant alone.
+    final leadingBlanks = leadingBlanksFor(year, month, firstDayOfWeek: _firstDayOfWeek);
     return [
       // #138 (B-23): the blanks before day 1 are layout filler with no
       // meaning — explicitly excluded so no screen reader step lands on

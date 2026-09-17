@@ -24,7 +24,7 @@
 -- no-op in practice; it exists so the migration is unconditionally safe to
 -- apply.
 --
--- UNDO (Migration Flow item 9, issue #185 -- retrofit; see the end of this
+-- UNDO (Migration Flow item 10, issue #185 -- retrofit; see the end of this
 -- block for why a comment-only edit to an already-applied migration is
 -- safe): there is no SQL inverse. This migration REWRITES stored rows (the
 -- pre-clean UPDATE below), and the dropped over-length elements are not

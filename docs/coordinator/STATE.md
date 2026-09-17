@@ -1,14 +1,22 @@
-# Coordinator state
+# Coordinator state (claude-orch — ARCHIVED 2026-09-15T14:00Z; the live ZCode coordinator state moved to [zcode-orch/STATE.md](zcode-orch/STATE.md) after the owner flagged cross-engine id sharing. Rows below are the pre-migration record.)
 
 ## In progress
 | issue | branch | worktree | coder started | PR | status |
 |---|---|---|---|---|---|
-(In progress: none. Session resumed 2026-09-14 after a multi-day gap: the 2026-09-10 fleet rows — #208, #264, #255, #259, #218, #242, #125, #132 and the #234/#257/#266/#265/#211/#252/#183/#260 wave — all resolved while this session was down; GitHub issue/PR state is ground truth, their rows are dropped rather than back-filled. No open PR currently carries `owner:claude-orch`.)
+(Sibling claude-orch session active 2026-09-15: owns PR #714 (#268+#271 bundle, UNLABELED — needs its owner label) and a live 257-custom-tags worktree (no PR/label yet) — this session leaves 268/271/257 and PR #714 alone. Stale merged-issue worktrees under .worktrees/claude-orch/ (234, 265, 266, 472, 642) noted for a later cleanup sweep. Session resumed 2026-09-14 after a multi-day gap: the 2026-09-10 fleet rows — #208, #264, #255, #259, #218, #242, #125, #132 and the #234/#257/#266/#265/#211/#252/#183/#260 wave — all resolved while this session was down; GitHub issue/PR state is ground truth, their rows are dropped rather than back-filled. No open PR currently carries `owner:claude-orch`.)
 
 ## Done this session
 | issue | PR | merged at |
 |---|---|---|
 | 710 (+state sync) | 713, 711 | 2026-09-15T00:50Z |
+| (state sync) | 715 | 2026-09-15T01:04Z |
+| 583 | 717 | 2026-09-15T02:10Z |
+| 400 | 719 | 2026-09-15T02:25Z |
+| (state sync) | 716 | 2026-09-15T02:28Z |
+| 175 | 720 | 2026-09-15T03:05Z |
+| 137 | 727 | 2026-09-15T04:40Z |
+| 99 | 728 | 2026-09-15T04:55Z |
+| 268+271 (sibling bundle, adopted) | 714 | 2026-09-15T11:55Z |
 | 97 | 147 | 2026-09-08T22:05Z |
 | (docs+simulator CI) | 119 | 2026-09-08T22:07Z |
 | 94 follow-up (tag-length fix gaps) | 146 | 2026-09-08T22:16Z |

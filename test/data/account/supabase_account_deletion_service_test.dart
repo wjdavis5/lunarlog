@@ -66,6 +66,42 @@ void main() {
       );
     });
 
+    test(
+        '#268: a 401 carrying code mfa_required maps to mfaRequired, not the '
+        'generic unauthorized the bare 401 status would otherwise produce',
+        () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            throw const FunctionsHttpException(
+          status: 401,
+          details: {'ok': false, 'code': 'mfa_required'},
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.mfaRequired()),
+      );
+    });
+
+    test('a 2xx response body reporting ok:false with code mfa_required also '
+        'maps to mfaRequired', () async {
+      final client = FakeSupabaseClient(
+        functionsInvoke: (name, {headers, body}) async =>
+            const FunctionResponse(
+          data: {'ok': false, 'code': 'mfa_required'},
+          status: 200,
+        ),
+      );
+      final service = SupabaseAccountDeletionService(client: client);
+
+      await expectLater(
+        service.deleteAccount(),
+        throwsA(const AccountDeletionFailure.mfaRequired()),
+      );
+    });
+
     test('a non-2xx response body carrying code apple_code_required maps to '
         'appleCodeRequired (#17 P1 round 2 fix)', () async {
       final client = FakeSupabaseClient(

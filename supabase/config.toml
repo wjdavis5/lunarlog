@@ -64,10 +64,14 @@ schema_paths = []
 
 [db.seed]
 # If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# Deliberately disabled (issues #99, #710): this repo ships no seed.sql, and
+# must never grow one — test data comes from the operator-run, allowlist-gated
+# CLI (`dart run tool/seed_test_accounts/main.dart`), never from `db reset`.
+# See docs/ops/seed-test-account.md ("Local flow") for the rationale.
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = []
 
 [db.network_restrictions]
 # Enable management of network restrictions.

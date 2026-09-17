@@ -145,6 +145,21 @@ class FirebasePushTokenSource implements PushTokenSource {
     // Darwin permission request.
     await _permissionGate
         .guard(() => FirebaseMessaging.instance.requestPermission());
+    // Issue #174: without this, iOS silently drops the banner of a push
+    // arriving while the app is foregrounded (the pre-iOS-10 default is to
+    // present nothing) — a caregiver alert landing while the recipient has
+    // the app open just vanished. alert/badge/sound: the same presentation
+    // a backgrounded push gets. iOS-only: this API is Darwin-only, and
+    // Android's foreground presentation is the app's own job
+    // (`push_presentation.dart`).
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
   }
 
   @override

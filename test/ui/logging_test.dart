@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -29,6 +30,7 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
@@ -399,6 +401,21 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
     deleteCalls++;
     if (failDelete) throw Exception('simulated delete failure');
   }
+
+  // Issue #130: no merge-notice surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForDay(
+          String profileId, LocalDate date) async =>
+      const [];
+
+  @override
+  Future<void> dismissMergeEvent(String profileId, String eventId) async {}
+
+  // Issue #130: no per-profile export surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
+          String profileId) async =>
+      const [];
 }
 
 /// Guardians repository whose per-profile streams only emit when a test says
@@ -3711,6 +3728,25 @@ void main() {
         daySheetDateLabel(LocalDate(2024, 12, 31), today),
         'Tue 31 Dec 2024',
       );
+    });
+
+    test(
+        'daySheetDateLabel forwards the Issue #226 date-format preference '
+        '(the sheet resolves it from SettingsKeys.dateFormat)', () {
+      final today = LocalDate(2026, 8, 30);
+      expect(
+        daySheetDateLabel(today, today,
+            preference: DateFormatPreference.monthDay),
+        'Today · Sun Aug 30',
+      );
+      expect(
+        daySheetDateLabel(LocalDate(2026, 3, 5), today,
+            preference: DateFormatPreference.monthDay),
+        'Thu Mar 5 2026',
+      );
+      // The default is the system order — the exact pre-#226 rendering.
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
+          'Thu 5 Mar 2026');
     });
 
     testWidgets('keyboard inset: the note field and the pinned autosave area '

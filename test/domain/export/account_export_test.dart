@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/import/account_import.dart' show kMaxImportFileBytes;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
@@ -430,8 +431,9 @@ void main() {
       'portable state: subject metadata, profileMode, cycleOverrides '
       '(Issue #140 review, LLA-084, export v9)', () {
     test('schema version was bumped to 9 for the new keys (since moved to '
-        '10 for profiles[].trackingPreferences, Issue #648)', () {
-      expect(kAccountExportSchemaVersion, 10);
+        '10 for profiles[].trackingPreferences, Issue #648, and 11 for '
+        'profiles[].mergeEvents, Issue #130)', () {
+      expect(kAccountExportSchemaVersion, 11);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -478,6 +480,8 @@ void main() {
         profileModesByProfile: {
           'p-1': (
             mode: LifecycleMode.conceive,
+            modeStartedOn: null,
+            estimatedDueDate: null,
             birthControlMethod: 'pill',
             birthControlStartedOn: '2026-06-01',
             birthControlStoppedOn: null,
@@ -605,6 +609,97 @@ void main() {
       final p1 = (doc['profiles'] as List)[0] as Map;
       expect(p1['trackingPreferences'], isA<Map>());
       expect((p1['trackingPreferences'] as Map).isEmpty, isTrue);
+    });
+  });
+
+  group('same-date merge disclosures (Issue #130, export v11)', () {
+    final eventA = DayEntryMergeEvent(
+      id: '01JMERGEEVENT000000000000A',
+      profileId: 'p-1',
+      localDateIso: '2026-01-15',
+      winningRowId: '01JMERGEWINNER00000000000W',
+      losingRowId: '01JMERGELOSER000000000000L',
+      field: DayEntryMergeEventField.note,
+      losingValueText: 'she stayed home from school',
+      losingAuthorUserId: 'user-loser',
+      winningAuthorUserId: 'user-winner',
+      createdAt: DateTime.utc(2026, 1, 16),
+      updatedAt: DateTime.utc(2026, 1, 16),
+    );
+    final eventB = DayEntryMergeEvent(
+      id: '01JMERGEEVENT000000000000B',
+      profileId: 'p-1',
+      localDateIso: '2026-01-15',
+      winningRowId: '01JMERGEWINNER00000000000W',
+      losingRowId: '01JMERGELOSER000000000000L',
+      field: DayEntryMergeEventField.flow,
+      losingValueText: 'heavy',
+      createdAt: DateTime.utc(2026, 1, 16),
+      updatedAt: DateTime.utc(2026, 1, 16),
+    );
+
+    test('the schema version was bumped to 11 and each profile carries a '
+        'mergeEvents array (empty for a profile with none, the v3/v6 '
+        'absence-reading precedent)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      expect(kAccountExportSchemaVersion, 11);
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['mergeEvents'], isEmpty);
+      expect((profiles[1] as Map)['mergeEvents'], isEmpty);
+    });
+
+    test('each event round-trips id/date/row-ids/field/losing text, sorted '
+        'by id, with attribution ids excluded (R9)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        mergeEventsByProfile: {
+          'p-1': [eventB, eventA],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final events = ((doc['profiles'] as List)[0] as Map)['mergeEvents']
+          as List;
+      expect(events, hasLength(2));
+      // Sorted by id regardless of input order.
+      expect((events[0] as Map)['id'], eventA.id);
+      expect((events[1] as Map)['id'], eventB.id);
+      final noteEvent = events[0] as Map;
+      expect(noteEvent['localDate'], '2026-01-15');
+      expect(noteEvent['winningRowId'], eventA.winningRowId);
+      expect(noteEvent['losingRowId'], eventA.losingRowId);
+      expect(noteEvent['field'], 'note');
+      expect(noteEvent['losingValueText'], 'she stayed home from school');
+      expect(noteEvent['recordedAt'], '2026-01-16T00:00:00.000Z');
+      // R9: guardian attribution ids never ride along.
+      final encoded = jsonEncode(doc);
+      expect(encoded, isNot(contains('user-loser')));
+      expect(encoded, isNot(contains('user-winner')));
+      expect(encoded, isNot(contains('losingAuthorUserId')));
+      expect(encoded, isNot(contains('winningAuthorUserId')));
+    });
+
+    test('a flow discard exports its wire string as the losing value', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        mergeEventsByProfile: {
+          'p-1': [eventB],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final flowEvent =
+          (((doc['profiles'] as List)[0] as Map)['mergeEvents'] as List)[0]
+              as Map;
+      expect(flowEvent['field'], 'flow');
+      expect(flowEvent['losingValueText'], 'heavy');
     });
   });
 

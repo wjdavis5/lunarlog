@@ -468,6 +468,98 @@
   "@daySheetTagRecentLabel": {
     "description": "Issue #234: heading above CategoryPicker's Recent row, seeded from the profile's most-used tags."
   },
+  "daySheetCustomTagsLabel": "Custom tags",
+  "@daySheetCustomTagsLabel": {
+    "description": "Issue #257: heading above the profile's custom-tag registry section in the tag picker."
+  },
+  "daySheetCustomTagsManageTooltip": "Manage custom tags",
+  "@daySheetCustomTagsManageTooltip": {
+    "description": "Issue #257: tooltip for the tag picker's custom-tags manage affordance (create, rename, retire)."
+  },
+  "daySheetCustomTagsNone": "None yet — tap manage to add one",
+  "@daySheetCustomTagsNone": {
+    "description": "Issue #257: empty-state note under the custom-tags heading when the profile has no live, non-retired custom tags."
+  },
+  "customTagsSheetTitle": "Custom tags",
+  "@customTagsSheetTitle": {
+    "description": "Issue #257: title of the custom-tag manager sheet."
+  },
+  "customTagsEmptyList": "No custom tags yet — add one below.",
+  "@customTagsEmptyList": {
+    "description": "Issue #257: body copy in the manager sheet when the registry is empty."
+  },
+  "customTagsAddHint": "New tag name",
+  "@customTagsAddHint": {
+    "description": "Issue #257: visible hint in the manager sheet's create field."
+  },
+  "customTagsAddTooltip": "Add tag",
+  "@customTagsAddTooltip": {
+    "description": "Issue #257: tooltip/semantics for the manager sheet's add button."
+  },
+  "customTagsErrorEmpty": "Enter a name.",
+  "@customTagsErrorEmpty": {
+    "description": "Issue #257: create-field error for an empty custom-tag label."
+  },
+  "customTagsErrorTooLong": "Names are at most 40 characters.",
+  "@customTagsErrorTooLong": {
+    "description": "Issue #257: create-field error for a label past the 40-character CHECK."
+  },
+  "customTagsErrorNoLetters": "Include a letter or digit.",
+  "@customTagsErrorNoLetters": {
+    "description": "Issue #257: create-field error for a label no code can be derived from (e.g. only punctuation)."
+  },
+  "customTagsErrorDuplicate": "You already have a tag like this.",
+  "@customTagsErrorDuplicate": {
+    "description": "Issue #257: create-field error for a label deriving a code another live registry entry already owns (case-insensitive)."
+  },
+  "customTagsErrorTaxonomy": "That name is already a built-in tag.",
+  "@customTagsErrorTaxonomy": {
+    "description": "Issue #257: create-field error for a label deriving a code the static taxonomy owns (shadowing it would make one chip mean two things)."
+  },
+  "customTagsErrorCap": "This profile already has {max} custom tags — retire one first.",
+  "@customTagsErrorCap": {
+    "description": "Issue #257: create-field error at the per-profile registry cap (100 live rows).",
+    "placeholders": {
+      "max": {
+        "type": "int",
+        "example": "100"
+      }
+    }
+  },
+  "customTagsRenameTooltip": "Rename",
+  "@customTagsRenameTooltip": {
+    "description": "Issue #257: tooltip for a registry row's rename affordance."
+  },
+  "customTagsRenameTitle": "Rename tag",
+  "@customTagsRenameTitle": {
+    "description": "Issue #257: title of the rename dialog."
+  },
+  "customTagsRetireTooltip": "Retire",
+  "@customTagsRetireTooltip": {
+    "description": "Issue #257: tooltip for a registry row's retire affordance (hidden_at — removed from the picker, never deleted)."
+  },
+  "customTagsRetiredLabel": "Retired",
+  "@customTagsRetiredLabel": {
+    "description": "Issue #257: status label on a retired registry row in the manager sheet."
+  },
+  "customTagsRetireTitle": "Retire “{label}”?",
+  "@customTagsRetireTitle": {
+    "description": "Issue #257: title of the retire confirmation dialog.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Back cracking"
+      }
+    }
+  },
+  "customTagsRetireBody": "It leaves the tag picker. Days that already use it keep showing it.",
+  "@customTagsRetireBody": {
+    "description": "Issue #257: body of the retire confirmation dialog — retirement never deletes stored entries."
+  },
+  "customTagsRetireConfirm": "Retire",
+  "@customTagsRetireConfirm": {
+    "description": "Issue #257: confirm button of the retire dialog."
+  },
   "daySheetNoEntry": "No entry for this day.",
   "@daySheetNoEntry": {
     "description": "Read-only day sheet body when the day has no entry."
@@ -642,6 +734,26 @@
   "@settingsRelockSubtitle": {
     "description": "Subtitle of the inactivity auto-relock switch."
   },
+  "settingsAppearanceTitle": "Appearance",
+  "@settingsAppearanceTitle": {
+    "description": "Settings tile and picker-dialog title for the appearance override (issue #137)."
+  },
+  "settingsAppearanceSubtitle": "Follow your device's setting, or choose light or dark",
+  "@settingsAppearanceSubtitle": {
+    "description": "Subtitle of the appearance tile, naming the three override options."
+  },
+  "appearanceOptionSystem": "Follow system",
+  "@appearanceOptionSystem": {
+    "description": "Picker option: use the OS light/dark setting (the default)."
+  },
+  "appearanceOptionLight": "Light",
+  "@appearanceOptionLight": {
+    "description": "Picker option: always use the light theme."
+  },
+  "appearanceOptionDark": "Dark",
+  "@appearanceOptionDark": {
+    "description": "Picker option: always use the dark theme."
+  },
   "settingsHealthHeader": "Health",
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
@@ -673,6 +785,120 @@
   "settingsClose": "Close",
   "@settingsClose": {
     "description": "Close action of the settings dialogs."
+  },
+  "settingsSectionYourData": "Your data",
+  "@settingsSectionYourData": {
+    "description": "Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge."
+  },
+  "settingsSectionAppearance": "Appearance",
+  "@settingsSectionAppearance": {
+    "description": "Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker."
+  },
+  "settingsThemeTitle": "Theme",
+  "@settingsThemeTitle": {
+    "description": "Tile title inside the Appearance section (Issue #226 retitled from 'Appearance' once the section header carried that word): opens the system/light/dark picker; the subtitle names the current mode."
+  },
+  "settingsSectionReminders": "Reminders",
+  "@settingsSectionReminders": {
+    "description": "Header of the Settings 'Reminders' section (Issue #226): reminder scheduling and caregiver alert preferences."
+  },
+  "settingsSectionCalendar": "Calendar",
+  "@settingsSectionCalendar": {
+    "description": "Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units."
+  },
+  "settingsSectionFamilySharing": "Family & sharing",
+  "@settingsSectionFamilySharing": {
+    "description": "Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians."
+  },
+  "settingsSectionPrivacySecurity": "Privacy & security",
+  "@settingsSectionPrivacySecurity": {
+    "description": "Header of the Settings 'Privacy & security' section (Issue #226): relock, app PIN, privacy policy."
+  },
+  "settingsSectionHelp": "Help",
+  "@settingsSectionHelp": {
+    "description": "Header of the Settings 'Help' section (Issue #226): help library, feedback/support, support history."
+  },
+  "settingsSectionAbout": "About",
+  "@settingsSectionAbout": {
+    "description": "Header of the Settings 'About' section (Issue #226): version, build number, licences."
+  },
+  "settingsReminderSettingsTitle": "Reminder settings",
+  "@settingsReminderSettingsTitle": {
+    "description": "Tile (inside the Reminders section) opening the per-profile reminder configuration screen (Issue #136)."
+  },
+  "settingsReminderSettingsSubtitle": "Choose which reminders fire, when, and for whom",
+  "@settingsReminderSettingsSubtitle": {
+    "description": "Subtitle of the reminder-settings tile."
+  },
+  "settingsCaregiverAlertsTitle": "Caregiver alerts",
+  "@settingsCaregiverAlertsTitle": {
+    "description": "Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name."
+  },
+  "settingsFirstDayTitle": "First day of week",
+  "@settingsFirstDayTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing which day the month grid's weeks start on."
+  },
+  "settingsFirstDaySunday": "Sunday",
+  "@settingsFirstDaySunday": {
+    "description": "Week-start option: weeks start on Sunday (the historical default)."
+  },
+  "settingsFirstDayMonday": "Monday",
+  "@settingsFirstDayMonday": {
+    "description": "Week-start option: weeks start on Monday (ISO 8601)."
+  },
+  "settingsDateFormatTitle": "Date format",
+  "@settingsDateFormatTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing the month/day order of compact dates."
+  },
+  "settingsDateFormatSystemOption": "System default (5 Sep)",
+  "@settingsDateFormatSystemOption": {
+    "description": "Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering."
+  },
+  "settingsDateFormatDayMonthOption": "Day first (5 Sep)",
+  "@settingsDateFormatDayMonthOption": {
+    "description": "Date-format option: day before month, e.g. '5 Sep'."
+  },
+  "settingsDateFormatMonthDayOption": "Month first (Sep 5)",
+  "@settingsDateFormatMonthDayOption": {
+    "description": "Date-format option: month before day, e.g. 'Sep 5'."
+  },
+  "settingsHelpTitle": "Help & explanations",
+  "@settingsHelpTitle": {
+    "description": "Tile (inside the Help section) opening the offline help library (Issue #139)."
+  },
+  "settingsHelpSubtitle": "Plain-language answers about estimates, logging, sync, and sharing — works offline",
+  "@settingsHelpSubtitle": {
+    "description": "Subtitle of the help library tile."
+  },
+  "settingsAboutVersionTitle": "Version",
+  "@settingsAboutVersionTitle": {
+    "description": "About-section tile title (Issue #226); the subtitle carries the actual version and build number."
+  },
+  "settingsAboutVersion": "Version {version} (build {build})",
+  "@settingsAboutVersion": {
+    "description": "The version line shown in Settings → About and on the licence page (Issue #226).",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "1.2.3"
+      },
+      "build": {
+        "type": "String",
+        "example": "42"
+      }
+    }
+  },
+  "settingsAboutVersionUnavailable": "Not available",
+  "@settingsAboutVersionUnavailable": {
+    "description": "Shown in place of the version line when the platform package-info read failed (Issue #226)."
+  },
+  "settingsAboutLicensesTitle": "Open-source licences",
+  "@settingsAboutLicensesTitle": {
+    "description": "About-section tile opening Flutter's licence page (Issue #226)."
+  },
+  "settingsAboutLicensesSubtitle": "The packages and terms this app builds on",
+  "@settingsAboutLicensesSubtitle": {
+    "description": "Subtitle of the licences tile."
   },
   "firstRunValueHeadline": "A private cycle log for your family",
   "@firstRunValueHeadline": {
@@ -1423,6 +1649,26 @@
   "@profileDetailSwitchProfileTooltip": {
     "description": "Tooltip on the profile detail screen's switch-profile action."
   },
+  "appShellProfileSwitcherTooltip": "Switch profile",
+  "@appShellProfileSwitcherTooltip": {
+    "description": "Issue #241: tooltip on the app shell's quick profile switcher (the app-bar profile title, a popup listing active profiles)."
+  },
+  "quickSwitcherManageProfiles": "Manage profiles…",
+  "@quickSwitcherManageProfiles": {
+    "description": "Issue #241: the quick profile switcher menu's entry that opens the full profile picker."
+  },
+  "profileStatusNoHistory": "No history yet",
+  "@profileStatusNoHistory": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state)."
+  },
+  "profileStatusPredictionsSuppressed": "Period predictions off",
+  "@profileStatusPredictionsSuppressed": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode)."
+  },
+  "profileStatusPredictionsOff": "Period predictions off",
+  "@profileStatusPredictionsOff": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
+  },
 
   "daysCount": "{count} {count, plural, =1{day} other{days}}",
   "@daysCount": {
@@ -1517,5 +1763,271 @@
   "settingsMeasurementUnitsWeightLabel": "Weight unit",
   "@settingsMeasurementUnitsWeightLabel": {
     "description": "Row label for the weight display-unit selector in Settings (Issue #457)."
+  },
+  "mfaSectionTitle": "Two-factor authentication",
+  "@mfaSectionTitle": {
+    "description": "Heading of the Account section's TOTP MFA tile group (issue #268)."
+  },
+  "mfaEnrollTileTitle": "Set up two-factor authentication",
+  "@mfaEnrollTileTitle": {
+    "description": "Tile offering to start TOTP enrolment when the account has no factor yet (issue #268)."
+  },
+  "mfaEnrollTileSubtitle": "Add an authenticator app as a second sign-in factor.",
+  "@mfaEnrollTileSubtitle": {
+    "description": "Subtitle under mfaEnrollTileTitle (issue #268)."
+  },
+  "mfaFactorTileTitle": "Authenticator app",
+  "@mfaFactorTileTitle": {
+    "description": "Title of the row for an enrolled TOTP factor (issue #268)."
+  },
+  "mfaFactorTileSubtitleVerified": "Enabled",
+  "@mfaFactorTileSubtitleVerified": {
+    "description": "Subtitle for a verified TOTP factor row (issue #268)."
+  },
+  "mfaFactorTileSubtitlePending": "Setup not finished — remove and try again",
+  "@mfaFactorTileSubtitlePending": {
+    "description": "Subtitle for a still-unverified TOTP factor row, e.g. after an interrupted enrolment (issue #268)."
+  },
+  "mfaRemoveFactorTitle": "Remove two-factor authentication?",
+  "@mfaRemoveFactorTitle": {
+    "description": "Confirmation dialog title for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorBody": "You will only need your password to sign in and to confirm account actions.",
+  "@mfaRemoveFactorBody": {
+    "description": "Confirmation dialog body for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorConfirm": "Remove",
+  "@mfaRemoveFactorConfirm": {
+    "description": "Confirm button for removing a TOTP factor (issue #268)."
+  },
+  "mfaErrorGeneric": "Something went wrong. Please try again.",
+  "@mfaErrorGeneric": {
+    "description": "Generic inline error for an MFA action (enroll/verify/remove) that failed (issue #268)."
+  },
+  "mfaEnrollScreenTitle": "Set up two-factor authentication",
+  "@mfaEnrollScreenTitle": {
+    "description": "Title of the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollInstructions": "Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).",
+  "@mfaEnrollInstructions": {
+    "description": "Instructions above the manual-entry setup key on the TOTP enrolment screen (issue #268). No in-app QR code today — flutter_svg is not a project dependency, and gotrue's enrolment response encodes it only as an SVG data URI, which Image.network/Image.memory cannot rasterize; see mfa_enroll_screen.dart's doc comment."
+  },
+  "mfaEnrollSecretLabel": "Setup key",
+  "@mfaEnrollSecretLabel": {
+    "description": "Label above the manual-entry TOTP secret (issue #268)."
+  },
+  "mfaEnrollCodeLabel": "Enter the 6-digit code from your app",
+  "@mfaEnrollCodeLabel": {
+    "description": "Label for the verification-code field on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaCodeHint": "6-digit code",
+  "@mfaCodeHint": {
+    "description": "Hint text for a TOTP code entry field, shared by enrolment and step-up (issue #268)."
+  },
+  "mfaEnrollConfirmButton": "Confirm",
+  "@mfaEnrollConfirmButton": {
+    "description": "Confirm button on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollSuccessMessage": "Two-factor authentication is on.",
+  "@mfaEnrollSuccessMessage": {
+    "description": "Snackbar shown after a TOTP enrolment completes (issue #268)."
+  },
+  "mfaStepUpTitle": "Confirm it's you",
+  "@mfaStepUpTitle": {
+    "description": "Title of the AAL2 step-up dialog shown before a destructive account action (issue #268 D-6)."
+  },
+  "mfaStepUpBody": "Enter the 6-digit code from your authenticator app to continue.",
+  "@mfaStepUpBody": {
+    "description": "Body of the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "mfaStepUpConfirmButton": "Verify",
+  "@mfaStepUpConfirmButton": {
+    "description": "Confirm button on the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "pinSettingsSectionTitle": "App PIN",
+  "@pinSettingsSectionTitle": {
+    "description": "Heading of the optional in-app PIN settings row (issue #271)."
+  },
+  "pinSettingsToggleTitle": "Require a PIN to open lunarlog",
+  "@pinSettingsToggleTitle": {
+    "description": "Title of the in-app PIN settings tile (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOn": "On — an additional lock layer on top of your device credential.",
+  "@pinSettingsToggleSubtitleOn": {
+    "description": "Subtitle of the PIN settings tile when a PIN is set (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOff": "Off",
+  "@pinSettingsToggleSubtitleOff": {
+    "description": "Subtitle of the PIN settings tile when no PIN is set (issue #271)."
+  },
+  "pinSetScreenTitle": "Set a PIN",
+  "@pinSetScreenTitle": {
+    "description": "Title of the screen for setting a brand-new in-app PIN (issue #271)."
+  },
+  "pinChangeScreenTitle": "Change PIN",
+  "@pinChangeScreenTitle": {
+    "description": "Title of the screen for changing an existing in-app PIN (issue #271)."
+  },
+  "pinCurrentPinLabel": "Current PIN",
+  "@pinCurrentPinLabel": {
+    "description": "Field label for the current PIN, required to change or remove one (issue #271)."
+  },
+  "pinNewPinLabel": "New PIN (4-8 digits)",
+  "@pinNewPinLabel": {
+    "description": "Field label for the new PIN (issue #271)."
+  },
+  "pinConfirmPinLabel": "Confirm PIN",
+  "@pinConfirmPinLabel": {
+    "description": "Field label for re-entering the new PIN (issue #271)."
+  },
+  "pinMismatchError": "PINs don't match.",
+  "@pinMismatchError": {
+    "description": "Inline error when the new-PIN and confirm-PIN fields differ (issue #271)."
+  },
+  "pinTooShortError": "Enter at least 4 digits.",
+  "@pinTooShortError": {
+    "description": "Inline error when the new PIN is shorter than 4 digits (issue #271)."
+  },
+  "pinWrongCurrentError": "That PIN is incorrect.",
+  "@pinWrongCurrentError": {
+    "description": "Inline error when the current-PIN field does not match the stored PIN, while changing or removing it (issue #271)."
+  },
+  "pinSaveButton": "Save",
+  "@pinSaveButton": {
+    "description": "Save button on the set/change-PIN screen (issue #271)."
+  },
+  "pinRemoveConfirmTitle": "Turn off PIN?",
+  "@pinRemoveConfirmTitle": {
+    "description": "Confirmation dialog title for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmBody": "You can still use your device credential to unlock lunarlog.",
+  "@pinRemoveConfirmBody": {
+    "description": "Confirmation dialog body for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmButton": "Turn off",
+  "@pinRemoveConfirmButton": {
+    "description": "Confirm button for removing the in-app PIN (issue #271)."
+  },
+  "pinLockScreenPrompt": "Enter your PIN",
+  "@pinLockScreenPrompt": {
+    "description": "Prompt shown above the PIN field on the lock screen (issue #271)."
+  },
+  "pinLockScreenUnlockButton": "Unlock",
+  "@pinLockScreenUnlockButton": {
+    "description": "Submit button on the lock screen's PIN entry (issue #271)."
+  },
+  "pinLockScreenIncorrect": "Wrong PIN. {count} attempt(s) remaining before a short lockout.",
+  "@pinLockScreenIncorrect": {
+    "description": "Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "pinLockScreenLockedOut": "Too many attempts. Try again after {time}.",
+  "@pinLockScreenLockedOut": {
+    "description": "Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).",
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "reminderTextTileTitle": "Notification text",
+  "@reminderTextTileTitle": {
+    "description": "Row title for a reminder type's custom notification text editor entry (Issue #184)."
+  },
+  "reminderTextTileDefaultSubtitle": "Using the default text",
+  "@reminderTextTileDefaultSubtitle": {
+    "description": "Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184)."
+  },
+  "reminderTextEditorAppBarTitle": "Notification text",
+  "@reminderTextEditorAppBarTitle": {
+    "description": "App bar title of the per-type notification text editor (Issue #184)."
+  },
+  "reminderTextPreviewSection": "Preview",
+  "@reminderTextPreviewSection": {
+    "description": "Section header above the live notification preview in the text editor (Issue #184)."
+  },
+  "reminderTextPreviewAppName": "Lunarlog",
+  "@reminderTextPreviewAppName": {
+    "description": "The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184)."
+  },
+  "reminderTextPreviewNow": "now",
+  "@reminderTextPreviewNow": {
+    "description": "The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184)."
+  },
+  "reminderTextTitleLabel": "Title",
+  "@reminderTextTitleLabel": {
+    "description": "Label above the notification title field in the text editor (Issue #184)."
+  },
+  "reminderTextBodyLabel": "Body",
+  "@reminderTextBodyLabel": {
+    "description": "Label above the notification body field in the text editor (Issue #184)."
+  },
+  "reminderTextSaveButton": "Save",
+  "@reminderTextSaveButton": {
+    "description": "Save action in the notification text editor (Issue #184)."
+  },
+  "reminderTextResetButton": "Reset to default",
+  "@reminderTextResetButton": {
+    "description": "Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184)."
+  },
+  "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.",
+  "@reminderTextDiscretionNote": {
+    "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
+  },
+
+  "pregnancyWeekTitle": "Week {week} of pregnancy",
+  "@pregnancyWeekTitle": {
+    "description": "Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.",
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "pregnancyDueOn": "Estimated due date: {date}",
+  "@pregnancyDueOn": {
+    "description": "Pregnancy card line naming the estimated due date (Issue #192); date is the localized month-day-year.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "pregnancyDueDateMissing": "No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.",
+  "@pregnancyDueDateMissing": {
+    "description": "Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192)."
+  },
+  "pregnancyDueDateLabel": "Estimated due date",
+  "@pregnancyDueDateLabel": {
+    "description": "Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192)."
+  },
+  "pregnancyDueDateDerivedHint": "Derived from the last recorded period start (280 days). Tap the date to change it.",
+  "@pregnancyDueDateDerivedHint": {
+    "description": "Hint under the due-date field when the shown value was derived rather than manually picked (Issue #192)."
+  },
+  "pregnancyDueDateManualHint": "Pick the estimated due date — the last period start is unknown.",
+  "@pregnancyDueDateManualHint": {
+    "description": "Hint under the due-date field when no last period start could be derived from, so only a manual pick can set it (Issue #192)."
+  },
+  "pregnancyExitExclusionTitle": "Exclude this pregnancy from cycle averages?",
+  "@pregnancyExitExclusionTitle": {
+    "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
+  },
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "@pregnancyExitExclusionBody": {
+    "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
+  },
+  "pregnancyExitExclusionAccept": "Exclude pregnancy",
+  "@pregnancyExitExclusionAccept": {
+    "description": "Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192)."
+  },
+  "pregnancyExitExclusionDecline": "Keep in averages",
+  "@pregnancyExitExclusionDecline": {
+    "description": "Decline action of the pregnancy-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #192 AC5)."
+  },
+  "pregnancyExitExclusionDone": "Pregnancy excluded from cycle averages",
+  "@pregnancyExitExclusionDone": {
+    "description": "Snackbar confirming the exclusion rows were written (Issue #192)."
   }
+
 }

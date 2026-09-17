@@ -12,13 +12,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show ActivePrediction;
+import 'package:lunarlog/domain/prediction/prediction_service.dart'
+    show CyclePredictionService;
+import 'package:lunarlog/domain/pregnancy.dart'
+    show estimatedDueDateFromLastPeriod;
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
@@ -66,6 +74,7 @@ class ProfileEditResult {
     this.relationship,
     this.lifecycleMode = LifecycleMode.tracking,
     this.birthControlChoice = BirthControlChoice.notAnswered,
+    this.estimatedDueDate,
   });
 
   final String displayName;
@@ -91,6 +100,14 @@ class ProfileEditResult {
   /// Birth-control method answer (Issue #216; free-text storage owned by
   /// #260's future vocabulary). `notAnswered` stores null.
   final BirthControlChoice birthControlChoice;
+
+  /// Issue #192: the estimated due date (`yyyy-MM-dd`) collected when the
+  /// life-stage answer is `pregnancy` — pre-filled with the derived
+  /// estimate (last recorded period start + 280 days) when that start is
+  /// known, manually overridable through a date picker, and null when it
+  /// was neither derivable nor picked. Rides the recorder seam into
+  /// `profile_modes.estimated_due_date`.
+  final String? estimatedDueDate;
 }
 
 Future<ProfileEditResult?> showProfileEditDialog(
@@ -133,6 +150,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   );
   late ProfileRelationship? _relationship = widget.existing?.relationship;
 
+  /// #165: the dialog's two text fields' explicit focus chain — "next" on
+  /// the name field advances to the birth-year field.
+  final _nameFocus = FocusNode();
+  final _birthYearFocus = FocusNode();
+
   /// The two #216 onboarding answers that are editable here (Issue #188
   /// storage). Loaded asynchronously from the profile's `profile_modes`
   /// row; until it resolves (or on a tree with no storage wired) the
@@ -140,6 +162,15 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// row means.
   LifecycleMode _lifecycleMode = LifecycleMode.tracking;
   BirthControlChoice _birthControl = BirthControlChoice.notAnswered;
+
+  /// Issue #192: the pregnancy due-date answer. Null until the mode is
+  /// switched to `pregnancy` (which derives the default — see
+  /// [_onLifecycleModeChanged]) or a date is picked manually. `_dueDateDerived`
+  /// tracks whether the shown value is the derived estimate (a fresh
+  /// derivation) or something the user chose/edited.
+  String? _estimatedDueDate;
+  bool _dueDateDerived = false;
+  bool _derivingDueDate = false;
 
   @override
   void initState() {
@@ -158,6 +189,80 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     setState(() {
       _lifecycleMode = row.mode;
       _birthControl = birthControlChoiceForStored(row.birthControlMethod);
+      if (row.mode == LifecycleMode.pregnancy) {
+        // An already-pregnant profile edits with its stored due date
+        // pre-filled (not a fresh derivation — it is a chosen value).
+        _estimatedDueDate = row.estimatedDueDate;
+        _dueDateDerived = false;
+      }
+    });
+  }
+
+  /// Issue #192 AC1: switching the mode to `pregnancy` derives the
+  /// estimated due date — last recorded period start + 280 days,
+  /// Naegele's rule. The "last recorded period start" prefers the last
+  /// logged episode start (the prediction service's
+  /// `lastEpisodeStart`, the same derivation basis every estimate in the
+  /// app uses) and falls back to the profile's stored onboarding fact;
+  /// when neither exists the field stays empty for a manual pick. Runs
+  /// once per entry into `pregnancy` (a re-edit keeps whatever is shown).
+  Future<void> _onLifecycleModeChanged(LifecycleMode? value) async {
+    final mode = value ?? LifecycleMode.tracking;
+    final wasPregnancy = _lifecycleMode == LifecycleMode.pregnancy;
+    setState(() => _lifecycleMode = mode);
+    if (mode != LifecycleMode.pregnancy || wasPregnancy) return;
+    setState(() => _derivingDueDate = true);
+    final derived = await _deriveDueDate();
+    if (!mounted) return;
+    setState(() {
+      _derivingDueDate = false;
+      _estimatedDueDate = derived?.iso;
+      _dueDateDerived = derived != null;
+    });
+  }
+
+  /// The derived default: the last logged episode start when the
+  /// prediction service can produce one, else the profile's stored
+  /// `lastPeriodStart` fact, else null (manual pick only — the issue's
+  /// "manual override when unknown/imported").
+  Future<LocalDate?> _deriveDueDate() async {
+    final existing = widget.existing;
+    final service = Provider.of<CyclePredictionService?>(context,
+        listen: false);
+    if (existing != null && service != null) {
+      try {
+        final prediction = await service.current(existing.id);
+        if (prediction is ActivePrediction) {
+          return estimatedDueDateFromLastPeriod(prediction.lastEpisodeStart);
+        }
+      } on Exception {
+        // Fall through to the stored fact — a derivation failure must not
+        // block the mode switch.
+      }
+    }
+    final fact = existing?.lastPeriodStart;
+    if (fact != null) return estimatedDueDateFromLastPeriod(fact);
+    return null;
+  }
+
+  /// Manual override: the date picker bound to the derived default.
+  Future<void> _pickDueDate() async {
+    final today = LocalDate.today();
+    final initial = _estimatedDueDate == null
+        ? null
+        : DateTime.tryParse(_estimatedDueDate!);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate:
+          initial ?? DateTime(today.year, today.month, today.day).add(const Duration(days: 280 - 40)),
+      firstDate: DateTime(today.year - 1, today.month, today.day),
+      lastDate: DateTime(today.year + 2, today.month, today.day),
+      helpText: AppLocalizations.of(context).pregnancyDueDateLabel,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _estimatedDueDate = LocalDate.fromDateTime(picked).iso;
+      _dueDateDerived = false;
     });
   }
 
@@ -165,7 +270,90 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   void dispose() {
     _name.dispose();
     _birthYear.dispose();
+    _nameFocus.dispose();
+    _birthYearFocus.dispose();
     super.dispose();
+  }
+
+  /// The Create/Save action, shared by the button and the birth-year
+  /// field's "done" (#165): validate, then pop with the collected result.
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      final trimmedBirthYear = _birthYear.text.trim();
+      Navigator.of(context).pop(
+        ProfileEditResult(
+          _name.text,
+          _isMinor,
+          mode: _mode,
+          birthYear:
+              trimmedBirthYear.isEmpty ? null : int.tryParse(trimmedBirthYear),
+          relationship: _relationship,
+          lifecycleMode: _lifecycleMode,
+          birthControlChoice: _birthControl,
+          estimatedDueDate: _lifecycleMode == LifecycleMode.pregnancy
+              ? _estimatedDueDate
+              : null,
+        ),
+      );
+    }
+  }
+
+  /// Issue #192: the estimated-due-date field shown only while the
+  /// life-stage mode is Pregnancy — the derived value (or a manual pick,
+  /// or an explicit empty state when nothing is derivable) plus the hint
+  /// naming which of the three it is.
+  Widget _dueDateField(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final dueIso = _estimatedDueDate;
+    final LocalDate? due = dueIso == null ? null : _tryParseIso(dueIso);
+    final valueText = due == null
+        ? (_derivingDueDate ? '…' : '—')
+        : dates.formatMonthDayYear(
+            DateTime(due.year, due.month, due.day),
+            locale: dates.calendarLocale(context),
+          );
+    final hint = _dueDateDerived
+        ? l10n.pregnancyDueDateDerivedHint
+        : (dueIso == null ? l10n.pregnancyDueDateManualHint : null);
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: const ValueKey('edit-due-date-field'),
+            onTap: _pickDueDate,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: l10n.pregnancyDueDateLabel,
+              ),
+              child: Text(
+                valueText,
+                key: const ValueKey('edit-due-date-value'),
+              ),
+            ),
+          ),
+          if (hint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                hint,
+                key: const ValueKey('edit-due-date-hint'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static LocalDate? _tryParseIso(String iso) {
+    try {
+      return LocalDate.fromIso(iso);
+    } on ArgumentError {
+      return null;
+    }
   }
 
   @override
@@ -198,11 +386,17 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                     children: [
                       TextFormField(
                         controller: _name,
+                        focusNode: _nameFocus,
                         autofocus: true,
                         decoration: const InputDecoration(labelText: 'Name'),
                         maxLength: kMaxDisplayNameLength,
                         maxLengthEnforcement: MaxLengthEnforcement.enforced,
                         validator: validateProfileName,
+                        // #165: `name` is the honest hint; "next" moves to
+                        // the birth-year field below.
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) => _birthYearFocus.requestFocus(),
+                        autofillHints: const [AutofillHints.name],
                       ),
                       CheckboxListTile(
                         value: _isMinor,
@@ -255,7 +449,12 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                       ),
                       TextFormField(
                         controller: _birthYear,
+                        focusNode: _birthYearFocus,
                         keyboardType: TextInputType.number,
+                        // #165: the dialog's last text field — "done" is
+                        // the Create/Save action.
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => _submit(),
                         decoration: const InputDecoration(
                           labelText: 'Birth year (optional)',
                         ),
@@ -309,8 +508,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                               key: const ValueKey('edit-lifecycle-dropdown'),
                               value: _lifecycleMode,
                               isExpanded: true,
-                              onChanged: (value) => setState(() =>
-                                  _lifecycleMode = value ?? LifecycleMode.tracking),
+                              onChanged: _onLifecycleModeChanged,
                               items: [
                                 for (final mode in LifecycleMode.values)
                                   DropdownMenuItem<LifecycleMode>(
@@ -322,6 +520,16 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                           ],
                         ),
                       ),
+                      // Issue #192 AC1: entering Pregnancy mode collects (or
+                      // derives) an estimated due date. The field appears
+                      // only for that mode, pre-filled with the derived
+                      // estimate when the last recorded period start is
+                      // known; tapping it opens a date picker for a manual
+                      // override.
+                      if (_lifecycleMode == LifecycleMode.pregnancy) ...[
+                        const SizedBox(height: LLSpace.space2),
+                        _dueDateField(context),
+                      ],
                       const SizedBox(height: LLSpace.space3),
                       MergeSemantics(
                         child: Column(
@@ -370,24 +578,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: () {
-                    if (_formKey.currentState!.validate()) {
-                      final trimmedBirthYear = _birthYear.text.trim();
-                      Navigator.of(context).pop(
-                        ProfileEditResult(
-                          _name.text,
-                          _isMinor,
-                          mode: _mode,
-                          birthYear: trimmedBirthYear.isEmpty
-                              ? null
-                              : int.tryParse(trimmedBirthYear),
-                          relationship: _relationship,
-                          lifecycleMode: _lifecycleMode,
-                          birthControlChoice: _birthControl,
-                        ),
-                      );
-                    }
-                  },
+                  onPressed: _submit,
                   child: Text(existing == null ? 'Create' : 'Save'),
                 ),
               ],

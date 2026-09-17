@@ -13,7 +13,7 @@ library;
 import '../db/tables.dart';
 
 /// The synced tables (per-table pull cursors, KTD2, Issue #8, Issue #240,
-/// Issue #188, Issue #128).
+/// Issue #188, Issue #128, Issue #130, Issue #257).
 ///
 /// [deletedProfiles] (issue #522) is pull-only, like [profileGuardians]: a
 /// row here is never pushed. It now pages from a persisted cursor too
@@ -32,7 +32,10 @@ enum SyncTable {
   cycleOverrides,
   careNotes,
   visitPrepItems,
+  dayEntryMergeEvents,
+  profileTagRegistry,
   deletedProfiles,
+  dayEntryHistory,
 }
 
 /// A server copy of a synced row.
@@ -342,6 +345,7 @@ final class RemoteProfileModeRow extends RemoteRow {
     required this.profileId,
     required this.mode,
     this.modeStartedOn,
+    this.estimatedDueDate,
     this.birthControlMethod,
     this.birthControlStartedOn,
     this.birthControlStoppedOn,
@@ -362,6 +366,12 @@ final class RemoteProfileModeRow extends RemoteRow {
 
   /// ISO calendar date `yyyy-MM-dd`, or null.
   final String? modeStartedOn;
+
+  /// Issue #192: the pregnancy estimated due date (`yyyy-MM-dd`, or
+  /// null) — derived on entry from the last recorded period start + 280
+  /// days or manually supplied, synced like every other profile_modes
+  /// column and read by the Pregnancy-mode week counter.
+  final String? estimatedDueDate;
   final String? birthControlMethod;
   final String? birthControlStartedOn;
   final String? birthControlStoppedOn;
@@ -501,6 +511,63 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
   SyncTable get table => SyncTable.visitPrepItems;
 }
 
+/// A server copy of a `day_entry_merge_events` row (Issue #130): one
+/// recorded same-date merge discard. Machine-written by whichever resolver
+/// (the server's, inside `sync_push`, or a client's, pushed back through
+/// `p_merge_events`) witnessed the merge — never user-composed content.
+/// No tombstone exists on this table (nothing ever soft-deletes a merge
+/// event; dismissal is device-local), so [deletedAt] is always null.
+final class RemoteDayEntryMergeEventRow extends RemoteRow {
+  const RemoteDayEntryMergeEventRow({
+    required this.id,
+    required this.profileId,
+    required this.localDate,
+    required this.winningRowId,
+    required this.losingRowId,
+    required this.field,
+    required this.losingValueText,
+    this.losingAuthorUserId,
+    this.winningAuthorUserId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd` the colliding entries were both for.
+  final String localDate;
+
+  /// Raw `field` string: 'flow' | 'note'. Normalised on decode by
+  /// `row_codec.dart` against the closed set (an unrecognised value can
+  /// only come from a broken writer and degrades to 'note').
+  final String field;
+
+  final String winningRowId;
+  final String losingRowId;
+
+  /// The discarded value itself (health content — the losing note's text,
+  /// or the losing flow level's wire string).
+  final String losingValueText;
+
+  /// Display attribution only, like `RemoteDayEntryRow.loggedByUserId`.
+  final String? losingAuthorUserId;
+  final String? winningAuthorUserId;
+
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  DateTime? get deletedAt => null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.dayEntryMergeEvents;
+}
+
 /// A server copy of a `deleted_profiles` row (issue #522): the narrow
 /// tombstone `delete_profile_data()`/`delete_account_data()` write for a
 /// profile they hard-purge, so a co-guardian's device can tell "the server
@@ -532,6 +599,125 @@ final class RemoteDeletedProfileRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.deletedProfiles;
+}
+
+/// A server copy of a `profile_tag_registry` row (Issue #257): one
+/// user-defined custom tag for a profile. [hiddenAt] is retirement (the
+/// code leaves the picker; stored rows keep rendering). Tombstones
+/// ([deletedAt] set) carry no payload per the server's structural CHECK
+/// except [code], which survives — the #159 provenance-survives-tombstone
+/// precedent — so a future re-import can recognise the deliberate
+/// deletion. [createdBy]/[createdAt] are server-stamped display metadata,
+/// pulled but never pushed.
+final class RemoteProfileTagRegistryRow extends RemoteRow {
+  const RemoteProfileTagRegistryRow({
+    required this.id,
+    required this.profileId,
+    required this.code,
+    required this.displayName,
+    required this.category,
+    this.intensityEnabled = false,
+    this.hiddenAt,
+    this.sortOrder,
+    this.createdBy,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// The stable snake_case identifier persisted on day entries. Free text
+  /// — never validated against a closed set (the registry is display
+  /// vocabulary, never an allowlist; a code the registry does not know
+  /// still round-trips unchanged).
+  final String code;
+
+  /// The user's label. Empty on a tombstone.
+  final String displayName;
+
+  /// Free text, client-owned ('custom' for in-app creations). Empty on a
+  /// tombstone.
+  final String category;
+
+  final bool intensityEnabled;
+
+  /// Retirement: non-null removes the code from the picker while stored
+  /// rows keep rendering. Null on a tombstone.
+  final DateTime? hiddenAt;
+  final int? sortOrder;
+
+  /// Display attribution only (server-stamped from the creating caller).
+  final String? createdBy;
+  final DateTime createdAt;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.profileTagRegistry;
+}
+
+/// A server copy of a `day_entry_history` row (Issue #170): one
+/// machine-written, content-free audit record of a day-entry change —
+/// WHO/WHEN/WHICH column names/what kind. [changedFields] carries
+/// day_entries COLUMN NAMES only (never values; the server's CHECK
+/// enforces it). PULL-ONLY, like [deletedProfiles] and
+/// [profileGuardians]: rows are written by the server's day_entries
+/// trigger and its same-date resolver, never pushed by any client, so
+/// this type has no encode counterpart. Rows are immutable and nothing
+/// ever soft-deletes one (the server hard-purges past 90 days and wipes
+/// them on a profile content wipe), so [deletedAt] is always null and
+/// [updatedAt] mirrors [changedAt].
+final class RemoteDayEntryHistoryRow extends RemoteRow {
+  const RemoteDayEntryHistoryRow({
+    required this.id,
+    required this.entryId,
+    required this.profileId,
+    required this.changedByUserId,
+    required this.changedAt,
+    required this.changeKind,
+    required this.changedFields,
+    this.serverVersion = 0,
+  });
+
+  @override
+  final String id;
+
+  /// The day entry the change happened to (a plain text reference — not a
+  /// local foreign key; see the domain model's doc comment).
+  final String entryId;
+  final String profileId;
+
+  /// Display attribution only, like [RemoteDayEntryRow.loggedByUserId].
+  final String changedByUserId;
+  final DateTime changedAt;
+
+  /// Raw `change_kind` wire string: 'logged' | 'updated' | 'tombstoned' |
+  /// 'merged_discard'. `row_codec.dart`'s `decodeDayEntryHistory` already
+  /// normalises an unrecognised value to 'updated' against the closed set
+  /// before constructing this row; `DayEntryChangeKind.fromDb` normalises
+  /// again on the way to the domain model.
+  final String changeKind;
+
+  /// day_entries COLUMN NAMES only, never values.
+  final List<String> changedFields;
+
+  @override
+  DateTime get updatedAt => changedAt;
+  @override
+  DateTime? get deletedAt => null;
+  @override
+  final int serverVersion;
+
+  @override
+  SyncTable get table => SyncTable.dayEntryHistory;
 }
 
 /// Applying a remote row failed for a reason the next cycle can fix — today

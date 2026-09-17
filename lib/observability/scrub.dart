@@ -113,6 +113,17 @@ const List<String> sentryDenyListedKeys = [
   'p_profiles',
   'p_care_notes',
   'p_visit_prep_items',
+  // Issue #257: the custom-tag registry push param — carries the
+  // user's own health vocabulary (display_name et al), exactly the
+  // content class p_day_entries/p_care_notes protect.
+  'p_tag_registry',
+  // Issue #130: the same-date merge disclosure's retained losing value
+  // (a discarded note's text, or a flow level string) is health content
+  // exactly like `note` — it must never reach a crash report or breadcrumb.
+  'losing_value_text',
+  'merge_event',
+  'merge_events',
+  'p_merge_events',
   'authorization',
   'apikey',
   // Identity payloads (#2 U6; KTD7).
@@ -158,6 +169,10 @@ const List<String> sentryDenyListedKeys = [
   'birth_control_stopped_on',
   'health_sync_consent',
   'mode_started_on',
+  // Issue #192: a pregnancy due date is health content of the most
+  // sensitive kind the app carries (it dates a pregnancy) — scrubbed
+  // like its `mode_started_on` sibling.
+  'estimated_due_date',
   'cycle_start_date',
   'last_period_start',
   'typical_cycle_length_days',

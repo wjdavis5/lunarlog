@@ -73,16 +73,29 @@ one (SNOMED, when verified) and the lunarlog local one, always, so an
 importer can recover the exact original tag without reversing a clinical
 code (`dualCodingFor` in the Dart module implements this).
 
-All 86 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
-rows plus issue #249's 28, issue #251's 22, and issue #252's 19 explicit
-local decisions (see the sections at the end of this document). Every
-SNOMED
+All 113 codes in `lib/domain/tags.dart` are covered — 17 verified SNOMED
+rows plus issue #249's 28, issue #251's 22, issue #252's 19, issue
+#253's 22, and issue #456's 5 explicit local decisions (see the sections
+at the end of this document). Every SNOMED
 row was checked live against the HL7 FHIR terminology server
 (`https://tx.fhir.org`, R4, SNOMED CT edition `900000000000207008`
 version `20250201`) via its `CodeSystem/$lookup` operation, confirming
 the concept is **active** and recording its preferred term. The exact
 query URL used for each row is that row's `provenanceUrl` in the Dart
 module.
+
+**Grown-taxonomy policy (binding, from #152's "no guessed codes"
+rule):** #152 was written against a 17-tag taxonomy; the taxonomy has
+since grown to 113. Every code added after #152 gets either a
+fetch-verified external concept or an **explicit local decision** —
+never a guess. Since no verification pass has been run for the
+post-#152 additions, the default decision for each is explicit local
+coding (lunarlog system URI + the tag's own human-readable display):
+honest, valid FHIR, and round-trippable, with promotion to a verified
+SNOMED row as follow-up work. A Dart test enumerates `kTagTaxonomy` and
+fails if a new tag lands without a row in `kTagClinicalCodes`, so the
+"every code has a decision" guarantee cannot silently rot as the
+taxonomy grows.
 
 ### Pain
 
@@ -201,32 +214,45 @@ tag-taxonomy code) and no dedicated `ClinicalCode` rows in the Dart
 module; a future export of `FlowLevel` should emit a local coding only,
 following the same policy as any other unmapped concept above.
 
-## Deferred rows (blocked on #249/#260/#192)
+## Reserved rows (shape decisions recorded ahead of the builder)
 
-The issue's own body reserves the shape for three more concept groups
-that don't exist in lunarlog yet — this pass documents the intended
-mapping now (per #152's own instructions) but ships no code for any of
-them, since the underlying data doesn't exist on `main`:
+The issue's own body reserves the shape for three more concept groups.
+Per #152 AC, these decisions are now documented **in the code-table
+module itself** (`clinical_terminology.dart`'s "Reserved shapes" library
+doc plus `kBodyTemperatureLoinc`, `estimatedDeliveryDateCode`, and
+`kBirthControlResourceShapes`), pinned by tests; this section is their
+prose record. The underlying tracking features have all landed since
+#152 was written — BBT observation logging (#144 — `observations` rows
+with `category: 'bbt'`, consumed by `lib/domain/insights/bbt_chart.dart`,
+#245), #188's pregnancy lifecycle mode, and #260's birth-control
+model (`lib/domain/birth_control.dart`) — but the FHIR builder (#157,
+`fhir_bundle.dart`) does not yet emit any of these shapes; those rows
+ride its generic local-coding fallback meanwhile, which is valid FHIR
+and guesses nothing. No premature code ships ahead of that builder work.
 
-### Basal body temperature (blocked on #144)
+### Basal body temperature (tracking landed; builder emission pending)
 
-LOINC `8310-5` "Body temperature" is the standard vital-sign code US
-Core / IPS vital-signs profiles expect, but on its own it understates
-BBT as a distinct clinical concept (resting, first-waking). Once #144
-ships BBT tracking, emit `8310-5` with a `bodySite`/method qualifier or
-an additional local coding marking the reading as basal — do not invent
-a BBT-specific LOINC code.
+LOINC `8310-5` "Body temperature" (https://loinc.org/8310-5) is the
+standard vital-sign code US Core / IPS vital-signs profiles expect, but
+on its own it understates BBT as a distinct clinical concept (resting,
+first-waking). When the builder starts emitting BBT observations, it
+must emit `8310-5` — reserved as `kBodyTemperatureLoinc`, deliberately
+**not** in `kLoincCodes` (that table is exactly the A3-44 menstrual
+question seven) — with a `bodySite`/method qualifier or an additional
+local coding marking the reading as basal — do not invent a
+BBT-specific LOINC code. Revisit once a BBT-specific LOINC is confirmed.
 
-### Pregnancy + estimated due date (blocked on #131 pregnancy mode)
+### Pregnancy + estimated due date (mode landed; no due-date data yet)
 
 Pregnancy status is conventionally a `Condition` (or an `Observation` of
 pregnancy status); estimated delivery date is an `Observation` using the
 already-verified LOINC `11778-8` "Delivery date Estimated" (USCDI:
-https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery). This
-mapping is already verified above — only the pregnancy-mode data model
-is missing.
+https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery,
+reserved as `estimatedDeliveryDateCode`). #188's lifecycle modes carry a
+pregnancy *mode*, but no pregnancy-status or due-date data model exists
+yet — only the shape is reserved.
 
-### Birth control (blocked on #260/#192, A3-9)
+### Birth control (model landed; builder emission pending, A3-9/#260)
 
 | Method shape | FHIR resource |
 |---|---|
@@ -234,10 +260,11 @@ is missing.
 | IUD / implant (device in situ) | `Device` / `DeviceUseStatement` |
 | Insertion event | `Procedure` |
 
-Not modeled as `Observation` for any of these — doing so would make the
+Reserved as `kBirthControlResourceShapes` in the Dart module. Not
+modeled as `Observation` for any of these — doing so would make the
 export look machine-generated rather than clinically credible. No
-specific medication/device codes are reserved here since #260/#192
-haven't landed the method taxonomy this would key off of.
+specific medication/device codes are reserved since none has been
+verified against an external system.
 
 ## Issue #249's expanded taxonomy — local decisions (2026-09)
 
@@ -312,6 +339,27 @@ are category-qualified codes (`cold_flu_medication` /
 as the Pain category. The `appointments` and `supplements` categories
 ship no codes yet (option sets unverified — `kUnverifiedTagCategories`),
 so they add no rows here.
+
+## Issue #253's sensitive/fertility taxonomy — local decisions (2026-09)
+
+Issue #253 grew `lib/domain/tags.dart` from 86 codes to 108 across 31
+categories, adding `sex_life` (12 codes), `discharge` (5), and `tests`
+(5). The same rule as every section above: each new code gets an
+**explicit local decision**, no SNOMED CT concept fetch-verified in this
+pass — `dualCodingFor` degrades each to its single local coding, which
+is valid FHIR and round-trips exactly. Fetch-verify against
+`tx.fhir.org` and promote clean resolves in the same follow-up pass as
+the earlier sections' candidates.
+
+New codes carrying local rows: `no_sex_today`, `low_sex_drive`,
+`high_sex_drive`, `masturbation`, `withdrawal`, `protected_sex`,
+`unprotected_sex`, `sex_toys`, `orgasm`, `no_orgasm`, `fantasies`,
+`painful_intercourse` (sex_life); `none`, `sticky`, `creamy`,
+`egg_white`, `atypical` (discharge); `ovulation_negative`,
+`ovulation_positive`, `ovulation_peak`, `pregnancy_negative`,
+`pregnancy_positive` (tests — deliberately local: these are self-read
+home-test results, and coding them as clinical laboratory findings
+would overstate what a self-reported test strip log entry is).
 
 ## Issue #456's `hot_flashes` taxonomy — local decisions (2026-09)
 

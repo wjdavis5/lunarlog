@@ -127,8 +127,9 @@ void main() {
       expect(active.validCycleCount, 0);
     });
 
-    test('builds the 12-cycle forecast off the supplied mean, anchored at '
-        'the estimate, with the tier floored at provisional', () {
+    test('builds the horizon-sized forecast off the supplied mean, '
+        'anchored at the estimate, with the tier floored at provisional '
+        '(issue #693: horizon-sized, not the old fixed 12-cycle count)', () {
       final active = seedProvisionalPrediction(
         facts: CycleFacts(
           lastPeriodStart: LocalDate(2026, 4, 20),
@@ -137,10 +138,15 @@ void main() {
         ),
         today: today,
       ) as ActivePrediction;
-      expect(active.forecast, hasLength(kPredictionWindowCycles));
+      // today 2026-05-20 → the horizon ends 2027-05-31; the estimate
+      // (2026-05-18, still within the late grace) chains in 28-day
+      // steps: 28*(i-1) ≤ 378 days of headroom → 14 cycles, the last
+      // starting 2026-05-18 + 28*13 = 2027-05-17 (a 15th would start
+      // 2027-06-14, past the horizon).
+      expect(active.forecast, hasLength(14));
       expect(active.forecast.first.start, active.estimatedNextStart);
       expect(active.forecast[1].start, LocalDate(2026, 6, 15));
-      expect(active.forecast.last.start, LocalDate(2026, 6, 15).addDays(28 * 10));
+      expect(active.forecast.last.start, LocalDate(2026, 6, 15).addDays(28 * 12));
       // The spread widens geometrically but the tier floors: there is no
       // lower honest rung below "computed from onboarding answers"
       // (`irregular` would claim observed variation a seed has no data

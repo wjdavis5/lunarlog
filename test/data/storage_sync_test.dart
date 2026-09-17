@@ -1767,6 +1767,61 @@ void main() {
       );
     });
 
+    test('a resolved merge event and profile_tag_registry row each take '
+        'the server copy clean (Issue #257 keeps applyResolved flat at '
+        'the CRAP ceiling — every per-table loop body stays covered)', () async {
+      await storage.applyResolved([
+        RemoteDayEntryMergeEventRow(
+          id: '01J0000000000000000000000M',
+          profileId: 'unknown-profile',
+          localDate: '2026-01-15',
+          winningRowId: '01J0000000000000000000000W',
+          losingRowId: '01J0000000000000000000000L',
+          field: 'note',
+          losingValueText: 'resolution is a no-op for an unheld id',
+          createdAt: t0,
+          updatedAt: t0,
+        ),
+      ]);
+      expect(
+        await (db.select(db.dayEntryMergeEvents).get()),
+        isEmpty,
+        reason: 'a resolution never inserts (onlyExisting)',
+      );
+    });
+
+    test('a resolved profile_tag_registry row takes the server copy clean '
+        '(Issue #257)', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      final created = await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'resolved_tag',
+        displayName: 'Local label',
+      );
+      final resolvedAt = created.updatedAt.add(const Duration(seconds: 1));
+      await storage.applyResolved([
+        RemoteProfileTagRegistryRow(
+          id: created.id,
+          profileId: p.id,
+          code: 'resolved_tag',
+          displayName: 'Server label',
+          category: 'custom',
+          createdAt: t0,
+          updatedAt: resolvedAt,
+          deletedAt: null,
+        ),
+      ]);
+      final rows = await storage.getProfileTagRegistry(p.id);
+      expect(rows.single.displayName, 'Server label',
+          reason: 'the server copy wins an equal-timestamp decline');
+      expect(rows.single.dirty, isFalse,
+          reason: 'a resolved row is never pushed back');
+      expect(
+        await storage.readDirtyProfileTagRegistry(),
+        isEmpty,
+      );
+    });
+
     test('a later live remote edit to a resolved loser revives it and '
         're-runs the same-date rule', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
@@ -1982,6 +2037,84 @@ void main() {
         throwsArgumentError,
       );
       expect((await storage.readSyncState()).cursorProfiles, 7);
+    });
+
+    // Issue #102: the transaction around a page is load-bearing, and the
+    // test above could not prove that by itself — it pins the real path's
+    // outcome but never demonstrates the divergence shape the transaction
+    // prevents, so a reader (or a refactor) could mistake it for redundant
+    // wrapping. This test runs the SAME mid-page failure both ways:
+    // without a page-level transaction (each row its own committed write —
+    // the public per-row applies, i.e. exactly what a regression that
+    // drops `applyRemotePage`'s `db.transaction()` silently reverts to) a
+    // failure at row k leaves rows <k stored while the cursor write is
+    // never reached — rows and cursor describing different worlds. The
+    // real path under the same failure keeps them together: nothing
+    // lands, the cursor does not move. Removing the transaction (or
+    // moving the cursor write ahead of the row loop so a later row's
+    // failure strands an advanced cursor) fails the second half.
+    test('issue #102: a mid-page failure diverges rows and cursor without '
+        'the one-transaction contract; the real path keeps them together '
+        'under the same failure', () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+
+      // The no-transaction variant: the same page shape a pull delivers
+      // (good row, then a row referencing a profile this device does not
+      // hold), applied one committed write per row instead of one page
+      // transaction. This is the documented divergence the transaction
+      // exists to prevent, not a behavior anyone wants.
+      const v1 = '01J0000000000000000000000V';
+      final variantRows = [
+        remoteEntry(v1,
+            profileId: p.id, localDate: '2026-06-01', updatedAt: t0),
+        remoteEntry('01J0000000000000000000000W',
+            profileId: '01J0000000000000000000000Q',
+            localDate: '2026-06-02',
+            updatedAt: t0),
+      ];
+      await storage.applyRemoteDayEntry(variantRows[0]);
+      await expectLater(
+        storage.applyRemoteDayEntry(variantRows[1]),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+      expect(
+        (await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
+        contains(v1),
+        reason: 'the un-transactional variant commits row 1 — this is the '
+            'divergence shape',
+      );
+      expect((await storage.readSyncState()).cursorDayEntries, 0,
+          reason: 'the un-transactional variant never reaches the cursor '
+              'write: rows and cursor have diverged');
+
+      // The real path, same failure injection, distinct row ids (the
+      // variant above already stored v1, and a rollback must be able to
+      // prove a *fresh* row did not land).
+      const r1 = '01J0000000000000000000000X';
+      await expectLater(
+        storage.applyRemotePage(
+          table: SyncTable.dayEntries,
+          rows: [
+            remoteEntry(r1,
+                profileId: p.id, localDate: '2026-06-03', updatedAt: t0),
+            remoteEntry('01J0000000000000000000000Y',
+                profileId: '01J0000000000000000000000Q',
+                localDate: '2026-06-04',
+                updatedAt: t0),
+          ],
+          newCursor: 50,
+        ),
+        throwsA(isA<RetryableSyncApplyError>()),
+      );
+      expect(
+        (await storage.getDayEntries(profileId: p.id)).map((e) => e.id),
+        isNot(contains(r1)),
+        reason: 'the good row of the failed page rolled back with it — '
+            'had applyRemotePage lost its transaction it would behave like '
+            'the variant above and land',
+      );
+      expect((await storage.readSyncState()).cursorDayEntries, 0,
+          reason: 'the cursor rolled back with the rows: one world, not two');
     });
 
     test('issue #525: profileGuardians now persists its own cursor, '
@@ -2269,6 +2402,9 @@ void main() {
       'cycle_overrides',
       'care_notes',
       'visit_prep_items',
+      'day_entry_merge_events',
+      'profile_tag_registry',
+      'day_entry_history',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2327,6 +2463,43 @@ void main() {
       );
       await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
       await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+      // Issue #130: a merge-disclosure row (discarded note text — health
+      // content about the shared profile) must be wiped with everything
+      // else.
+      // Issue #257: a custom-tag registry row (the user's own health
+      // vocabulary about the shared profile) must leave the device with
+      // everything else — tombstoned payload-cleared, code surviving.
+      await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'shared_custom_tag',
+        displayName: 'Shared custom tag',
+      );
+      await db.into(db.dayEntryMergeEvents).insert(
+            DayEntryMergeEventsCompanion.insert(
+              id: '01JWIPE00000000000000000A',
+              profileId: p.id,
+              localDate: '2026-01-15',
+              winningRowId: entry.id,
+              losingRowId: '01JWIPE00000000000000000B',
+              field: 'note',
+              losingValueText: 'wiped with the profile',
+              createdAt: t0,
+              updatedAt: t0,
+            ),
+          );
+      // Issue #170: a change-history row (content-free, but still the
+      // family's feed) must leave the device with everything else.
+      await db.into(db.dayEntryHistory).insert(
+            DayEntryHistoryCompanion.insert(
+              id: '01JWIPE00000000000000000C',
+              entryId: entry.id,
+              profileId: p.id,
+              changedByUserId: 'user-b',
+              changedAt: t0,
+              changeKind: 'logged',
+              changedFields: const ['local_date', 'note'],
+            ),
+          );
 
       // Sanity: every table actually holds live content before revocation.
       expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
@@ -2365,6 +2538,39 @@ void main() {
       );
       expect(await storage.getCareNotesForProfile(p.id), isEmpty);
       expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+      // Issue #130: the profile's merge-disclosure rows are hard-deleted
+      // (no tombstone on this table) — a removed guardian's device keeps
+      // no trace of the family's discarded note texts.
+      expect(
+        await (db.select(db.dayEntryMergeEvents)
+              ..where((t) => t.profileId.equals(p.id)))
+            .get(),
+        isEmpty,
+      );
+      // Issue #170: the profile's change-history rows are hard-deleted too
+      // (no tombstone; machine-written feed metadata), mirroring the
+      // server's own tombstone_profile_content step.
+      expect(
+        await (db.select(db.dayEntryHistory)
+              ..where((t) => t.profileId.equals(p.id)))
+            .get(),
+        isEmpty,
+      );
+      // Issue #257: the registry row is tombstoned payload-cleared — no
+      // live row (the repository read excludes tombstones) and no label
+      // left on the removed guardian's device.
+      expect(
+        await storage.getProfileTagRegistry(p.id),
+        isEmpty,
+      );
+      expect(
+        (await db.select(db.profileTagRegistry).get())
+            .every((row) =>
+                row.deletedAt != null &&
+                row.displayName == '' &&
+                row.code == 'shared_custom_tag'),
+        isTrue,
+      );
 
       // profile_modes has no tombstone (Issue #188): an absent-row-equivalent
       // reset is the wipe for this table (issue #532).

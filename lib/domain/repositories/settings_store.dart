@@ -135,4 +135,32 @@ abstract final class SettingsKeys {
   /// per-device logging-UI shortlist, not health data — and never synced,
   /// the same posture as [reminderConfigs].
   static const String tagRecents = 'tag_recents';
+
+  /// The device-local appearance override (issue #137): one of `'system'`,
+  /// `'light'`, or `'dark'`, parsed by `themeModeFromStored`
+  /// (`lib/ui/theme/appearance.dart`). Absent — or any unrecognized value,
+  /// so a future value can never wedge the app on a light-only build —
+  /// reads as "follow the system appearance", the issue's own default
+  /// posture. Device-local **by design**: appearance is a property of the
+  /// display this device happens to be on, not of the account, the same
+  /// posture as [relockEnabled].
+  static const String themeMode = 'theme_mode';
+
+  /// The calendar grid's week-start day (Issue #226): `'sunday'` (the
+  /// historical default) or `'monday'`, parsed by
+  /// `CalendarFirstDay.fromStored`
+  /// (`lib/domain/calendar_preferences.dart`). Device-local by design —
+  /// the same display-preference posture as [themeMode]; the month
+  /// calendar watches this key and re-lays-out its grid live.
+  static const String calendarFirstDayOfWeek = 'calendar_first_day_of_week';
+
+  /// The compact date-order preference (Issue #226): `'system'` (the
+  /// locale's own order — the pre-#226 behaviour), `'day_month'` ("5 Sep"),
+  /// or `'month_day'` ("Sep 5"), parsed by
+  /// `DateFormatPreference.fromStored`
+  /// (`lib/domain/calendar_preferences.dart`). Consumed by
+  /// `lib/ui/l10n/dates.dart`'s short-date helpers, so the day sheet's
+  /// date header and every relative-day label follow it. Device-local,
+  /// same posture as [themeMode].
+  static const String dateFormat = 'date_format';
 }

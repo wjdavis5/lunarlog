@@ -162,6 +162,8 @@ void main() {
         'p_cycle_overrides': [],
         'p_care_notes': [],
         'p_visit_prep_items': [],
+        'p_merge_events': [],
+        'p_tag_registry': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -232,7 +234,8 @@ void main() {
       expect(jsonDecode(requests.single.body),
           {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
             'p_profile_modes': [], 'p_cycle_overrides': [],
-            'p_care_notes': [], 'p_visit_prep_items': []});
+            'p_care_notes': [], 'p_visit_prep_items': [],
+            'p_merge_events': [], 'p_tag_registry': []});
     });
 
     test('sends at most 500 rows per array', () async {
@@ -252,6 +255,16 @@ void main() {
       final tooMany = List.generate(501, (i) => <String, Object?>{'id': '$i'});
       expect(() => PushBatch(profiles: tooMany), throwsArgumentError);
       expect(() => PushBatch(dayEntries: tooMany), throwsArgumentError);
+      // Issue #257: every array carries the same per-array ceiling — the
+      // constructor's cap branches all stay covered (and the CRAP gate
+      // green) as the batch grows with each synced table.
+      expect(() => PushBatch(observations: tooMany), throwsArgumentError);
+      expect(() => PushBatch(profileModes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(cycleOverrides: tooMany), throwsArgumentError);
+      expect(() => PushBatch(careNotes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(visitPrepItems: tooMany), throwsArgumentError);
+      expect(() => PushBatch(mergeEvents: tooMany), throwsArgumentError);
+      expect(() => PushBatch(tagRegistry: tooMany), throwsArgumentError);
       expect(PushBatch.maxRows, 500);
     });
 
@@ -742,6 +755,114 @@ void main() {
     test('a non-numeric string falls back to null', () async {
       client = makeClient((_) async => json('not-a-number'));
       expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+  });
+
+  group('fetchMaxVersion (issue #42)', () {
+    test(
+      'GETs the table\'s newest server_version row — order desc, limit 1',
+      () async {
+        client = makeClient(
+          (_) async => json([
+            {'server_version': 4242},
+          ]),
+        );
+        final max = await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles);
+
+        expect(requests, hasLength(1));
+        expect(requests.single.method, 'GET');
+        expect(requests.single.url.path, '/rest/v1/profiles');
+        expect(requests.single.url.queryParameters['select'], 'server_version');
+        expect(
+          requests.single.url.queryParameters['order'],
+          'server_version.desc.nullslast',
+        );
+        expect(requests.single.url.queryParameters['limit'], '1');
+        expect(max, 4242);
+      },
+    );
+
+    test('a table with nothing visible answers 0, not null — an empty '
+        'table cannot hold a change', () async {
+      client = makeClient((_) async => json([]));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.dayEntries),
+        0,
+      );
+    });
+
+    test('a quoted-string bigint still decodes', () async {
+      client = makeClient(
+        (_) async => json([
+          {'server_version': '4242'},
+        ]),
+      );
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        4242,
+      );
+    });
+
+    test('a non-integer number shape decodes through toInt', () async {
+      client = makeClient(
+        (_) async => json([
+          {'server_version': 4242.0},
+        ]),
+      );
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        4242,
+      );
+    });
+
+    test(
+      'a value the shape rules cannot decode answers null (unknown)',
+      () async {
+        client = makeClient(
+          (_) async => json([
+            {'server_version': null},
+          ]),
+        );
+        expect(
+          await SupabaseSyncTransport(client!)
+              .fetchMaxVersion(SyncTable.profiles),
+          isNull,
+        );
+        await client!.dispose();
+
+        client = makeClient(
+          (_) async => json([
+            {'server_version': 'not-a-number'},
+          ]),
+        );
+        expect(
+          await SupabaseSyncTransport(client!)
+              .fetchMaxVersion(SyncTable.profiles),
+          isNull,
+        );
+      },
+    );
+
+    test('any transport failure answers null — the caller falls back to the '
+        'full re-pull rather than silently skipping sync', () async {
+      client = makeClient((_) async => http.Response('bad gateway', 502));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        isNull,
+      );
+      await client!.dispose();
+
+      client = makeClient((_) async => throw const SocketException('down'));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.deletedProfiles),
+        isNull,
+      );
     });
   });
 

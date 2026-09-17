@@ -13,6 +13,7 @@ import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
@@ -30,6 +31,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -225,6 +227,7 @@ class _HarnessExportSnapshotRepository implements AccountExportSnapshotRepositor
         observations: await _observations.listForProfile(profileId),
         profileMode: null,
         cycleOverrides: const <CycleOverride>[],
+        mergeEvents: const <DayEntryMergeEvent>[],
       );
 }
 
@@ -238,13 +241,14 @@ class DeletionHarness {
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
     this.showAddApple,
+    this.mfaEnabled,
   })  : auth = FakeAuthService(),
         deletion = deletionService ??
             (provideDeletionService ? FakeAccountDeletionService() : null),
         gate = FakeGate(grantNext: grantReauth) {
     auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1', email: 'a@b.c'));
     auth.providers = providers;
-    controller = AuthController(authService: auth);
+    controller = AuthController(authService: auth, mfaEnabled: mfaEnabled);
     // A real Timer factory would leave the inactivity/system-UI timers
     // pending past the end of each test (the same reason
     // test/ui/account_test.dart's pumpSection uses this fake).
@@ -259,6 +263,11 @@ class DeletionHarness {
   final FakeAccountDeletionService? deletion;
   final ExportAccountCollaborator? exportAccount;
   final AppleAuthorizationCodeRequest? appleAuthorizationCodeRequest;
+
+  /// Issue #738: forwarded to the [AuthController] so the AAL2 step-up
+  /// group can run the flag-on (`LUNARLOG_ENABLE_MFA=true`) build; null
+  /// means the default-off build this test run compiles with.
+  final bool? mfaEnabled;
 
   /// Forces [AccountSection]'s platform gate for the native Apple ceremony
   /// (Issue #605/LLA-052): `true` simulates an iOS-capable device, `false`
@@ -291,6 +300,12 @@ class DeletionHarness {
   Future<void> pump(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        // Issue #268: MfaSettingsSection renders unconditionally whenever
+        // AccountSection is signed-in, and calls AppLocalizations.of
+        // immediately — this harness needs the real delegates now, not
+        // just the ones a screen-specific failure path used to reach.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             ChangeNotifierProvider<AuthController>.value(value: controller),
@@ -328,16 +343,23 @@ class DeletionHarness {
             ),
           ],
           child: Scaffold(
-            body: ValueListenableBuilder<bool>(
-              valueListenable: _sectionVisible,
-              builder: (context, visible, _) => visible
-                  ? AccountSection(
-                      showExportAndDelete: true,
-                      exportAccount: exportAccount,
-                      appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
-                      showAddApple: showAddApple,
-                    )
-                  : const SizedBox.shrink(),
+            // Issue #268: MfaSettingsSection adds another tile group to
+            // AccountSection's Column, which the real Settings screen
+            // always hosts inside a scrolling ListView (see
+            // settings_screen.dart) — this harness needs the same, or the
+            // fixed test viewport overflows on a small screen size.
+            body: SingleChildScrollView(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _sectionVisible,
+                builder: (context, visible, _) => visible
+                    ? AccountSection(
+                        showExportAndDelete: true,
+                        exportAccount: exportAccount,
+                        appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
+                        showAddApple: showAddApple,
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ),
           ),
         ),
@@ -379,6 +401,128 @@ void main() {
       expect(h.deletion!.deleteCalls, 1);
       expect(h.resetCalls, 1);
       expect(h.gate.requests, 1, reason: 'the device credential came first');
+    });
+  });
+
+  group('AAL2 step-up before deletion (issue #268 D-6)', () {
+    // Issue #738: this group runs the flag-on build (`mfaEnabled: true`,
+    // what `--dart-define=LUNARLOG_ENABLE_MFA=true` compiles to) — #714's
+    // behavior exactly, nothing deleted. The flag-off default is pinned by
+    // the closing test.
+    testWidgets(
+        'a verified MFA factor requires a correct step-up code, after the '
+        'device credential and before the delete confirmation dialog',
+        (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(h.gate.requests, 1,
+          reason: 'the device credential still runs first, unchanged');
+      expect(find.text("Confirm it's you"), findsOneWidget);
+      expect(find.text('Delete account?'), findsNothing,
+          reason: 'the delete confirmation must wait for the step-up');
+      expect(h.deletion!.deleteCalls, 0);
+
+      await tester.enterText(
+          find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+      await tester.tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(h.auth.verifyTotpCodeCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+      expect(find.text('Delete account?'), findsOneWidget);
+
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.deletion!.deleteCalls, 1);
+      expect(h.resetCalls, 1);
+    });
+
+    testWidgets('cancelling the step-up dialog never opens the confirmation '
+        'or calls the deletion service', (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete account?'), findsNothing);
+      expect(h.deletion!.deleteCalls, 0);
+      expect(h.resetCalls, 0);
+    });
+
+    testWidgets('no verified MFA factor: the delete confirmation opens '
+        'immediately with no step-up dialog (unaffected pre-#268 path)',
+        (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing);
+      expect(find.text('Delete account?'), findsOneWidget);
+    });
+
+    testWidgets(
+        'feature flag off (issue #738, the default build): even a '
+        'step-up-required account deletes with no step-up dialog — '
+        'ensureAal2 auto-passes', (tester) async {
+      final h = DeletionHarness();
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing,
+          reason: 'a flag-off build never demands an AAL2 step-up');
+      expect(find.text('Delete account?'), findsOneWidget);
+      expect(h.auth.requiresMfaStepUpCalls, 0,
+          reason: 'the gate short-circuits before consulting the service');
+      expect(h.auth.listMfaFactorsCalls, 0,
+          reason: 'the MFA settings tile group never rendered either');
+
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.deletion!.deleteCalls, 1);
     });
   });
 
@@ -430,6 +574,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -468,6 +613,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -519,6 +665,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -553,6 +700,7 @@ void main() {
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;
@@ -875,6 +1023,7 @@ void main() {
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
+      AccountDeletionFailure.mfaRequired(),
     ]) {
       testWidgets('$failure', (tester) async {
         final service = FakeAccountDeletionService()..nextError = failure;
@@ -1173,6 +1322,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),

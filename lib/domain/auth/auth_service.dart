@@ -16,8 +16,11 @@
 /// (#31 U1; KTD1, KTD6).
 library;
 
+import 'package:lunarlog/domain/auth/mfa.dart';
 import 'package:lunarlog/domain/util/list_equals.dart';
 import 'package:meta/meta.dart';
+
+export 'package:lunarlog/domain/auth/mfa.dart';
 
 /// The session as the app sees it.
 ///
@@ -428,6 +431,51 @@ abstract interface class AuthService {
   /// Throws [AuthFailure]; a [AuthSignOutScope.local] failure still leaves
   /// no session on this device.
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local});
+
+  /// Starts TOTP enrolment (#268 U1). Requires [state] to be
+  /// [AuthSessionState.signedIn] — throws [AuthUnknownFailure] otherwise, as
+  /// [linkGoogle] does. Throws [AuthFailure] for any other rejection (e.g.
+  /// the project's `[auth.mfa.totp]` not enabled).
+  Future<TotpEnrollmentOffer> enrollTotp();
+
+  /// Verifies [code] against [factorId] via a fresh challenge+verify —
+  /// used both to complete an enrolment (#268 U2) and, for an
+  /// already-verified factor, as the AAL2 step-up before a destructive
+  /// account action (D-6; see [requiresMfaStepUp]). On success the current
+  /// session is promoted to [AuthAssuranceLevel.aal2] (gotrue's own
+  /// behavior — every other session is also signed out). Throws
+  /// [AuthInvalidCodeFailure] for a wrong/expired code, [AuthFailure]
+  /// otherwise.
+  Future<void> verifyTotpCode({required String factorId, required String code});
+
+  /// Every TOTP factor on the account, verified or still-pending enrolment
+  /// (#268 U2).
+  Future<List<MfaFactor>> listMfaFactors();
+
+  /// Removes [factorId] (#268 U2). The server itself requires an
+  /// [AuthAssuranceLevel.aal2] session to unenroll a verified factor —
+  /// callers should resolve [requiresMfaStepUp] via [verifyTotpCode] first.
+  /// Throws [AuthFailure].
+  Future<void> unenrollMfaFactor(String factorId);
+
+  /// The current session's assurance level, or null with no session
+  /// (#268 D-6).
+  AuthAssuranceLevel? get assuranceLevel;
+
+  /// True when the account has at least one verified TOTP factor and the
+  /// current session has not completed an MFA challenge (#268 D-6) — the
+  /// gate every destructive-action AAL2 check consults before proceeding.
+  /// False for an account with no enrolled factor, so its destructive
+  /// actions behave exactly as they did before this issue (the
+  /// unaffected-path acceptance criterion).
+  ///
+  /// #738: this interface is the *flag-on* behavior. The client-side
+  /// feature toggle lives one layer up (`AuthController.mfaEnabled`, the
+  /// `LUNARLOG_ENABLE_MFA` build define) and short-circuits to false
+  /// without consulting the service; the server's own AAL2 checks (the
+  /// `delete-account` Edge Function, gotrue's unenroll precondition) stay
+  /// unconditional regardless of any client flag.
+  Future<bool> requiresMfaStepUp();
 
   /// The current user, or null without a session.
   AuthUser? get currentUser;

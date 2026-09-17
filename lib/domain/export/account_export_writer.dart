@@ -6,6 +6,7 @@
 /// `lib/data/export/`; the contract takes and returns only domain models.
 library;
 
+import '../logging/day_entry_merge_event.dart';
 import '../models/care_note.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
@@ -31,6 +32,8 @@ abstract interface class AccountExportWriter {
     // Issue #140 review, LLA-084 (kAccountExportSchemaVersion v9).
     Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
     Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
+    // Issue #130 (kAccountExportSchemaVersion v11).
+    Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
     required String appVersion,
   });
 }

@@ -47,7 +47,9 @@ import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/pregnancy.dart' show pregnancyWeekOf;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
@@ -56,6 +58,7 @@ import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -66,6 +69,7 @@ import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
+import 'package:lunarlog/ui/components/pregnancy_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -198,6 +202,13 @@ class _OverviewPanelState extends State<OverviewPanel>
     context,
     listen: false,
   );
+
+  /// Issue #192: the profile's life-stage mode row (null repository on a
+  /// test/unwired tree — no Pregnancy card, exactly the pre-#192 view).
+  late final ProfileModesRepository? _profileModes =
+      Provider.of<ProfileModesRepository?>(context, listen: false);
+  StreamSubscription<ProfileLifecycleMode?>? _modeRowSub;
+  ProfileLifecycleMode? _modeRow;
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
   AuthController? _auth;
@@ -223,6 +234,23 @@ class _OverviewPanelState extends State<OverviewPanel>
     }
     _watchGuardians();
     _watchSuggestionDismissed();
+    _watchModeRow();
+  }
+
+  /// Issue #192: watches the profile's `profile_modes` row so the
+  /// Pregnancy card (week-of-pregnancy counter) renders while the mode is
+  /// `pregnancy` and disappears the moment it is switched away — the same
+  /// re-derive-on-write cadence the prediction stream above already has.
+  void _watchModeRow() {
+    unawaited(_modeRowSub?.cancel());
+    _modeRowSub = null;
+    _modeRow = null;
+    final modes = _profileModes;
+    if (modes == null) return;
+    _modeRowSub = modes.watch(widget.profileId).listen((row) {
+      if (!mounted) return;
+      setState(() => _modeRow = row);
+    });
   }
 
   void _onAuthChanged() {
@@ -272,6 +300,7 @@ class _OverviewPanelState extends State<OverviewPanel>
       );
       _watchGuardians();
       _watchSuggestionDismissed();
+      _watchModeRow();
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -293,6 +322,8 @@ class _OverviewPanelState extends State<OverviewPanel>
     disposeGuardianWatch();
     unawaited(_suggestionDismissedSub?.cancel());
     _suggestionDismissedSub = null;
+    unawaited(_modeRowSub?.cancel());
+    _modeRowSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -432,6 +463,14 @@ class _OverviewPanelState extends State<OverviewPanel>
     return ListView(
       padding: const EdgeInsets.all(LLSpace.space4),
       children: [
+        // Issue #192: while the profile is in Pregnancy mode, the
+        // week-of-pregnancy counter replaces the ordinary cycle countdown
+        // as the panel's headline. Prediction below stays suppressed
+        // (#528) with its explanatory card — this card is the "instead"
+        // half of the Cycle View swap, not a replacement for the
+        // explanation.
+        if (_modeRow?.mode == LifecycleMode.pregnancy)
+          _pregnancyCard(context),
         switch (prediction) {
           ActivePrediction() => _activeCard(context, prediction),
           NotEnoughHistory() => _notEnoughCard(context),
@@ -455,6 +494,33 @@ class _OverviewPanelState extends State<OverviewPanel>
           const _ReminderHint(),
         ...widget.trailingChildren,
       ],
+    );
+  }
+
+  /// Issue #192: the Pregnancy-mode headline — the week counter and due
+  /// date computed from the synced `profile_modes.estimated_due_date`, or
+  /// the quiet "not recorded" line when no due date was collected. The
+  /// week math is `pregnancyWeekOf` (pure, `lib/domain/pregnancy.dart`);
+  /// this only renders it.
+  Widget _pregnancyCard(BuildContext context) {
+    final dueIso = _modeRow?.estimatedDueDate;
+    LocalDate? due;
+    if (dueIso != null) {
+      try {
+        due = LocalDate.fromIso(dueIso);
+      } on ArgumentError {
+        due = null; // defensive: a malformed stored date renders as unset
+      }
+    }
+    final today = widget.todayProvider();
+    return PregnancyCard(
+      week: due == null ? null : pregnancyWeekOf(dueDate: due, today: today),
+      dueDateText: due == null
+          ? null
+          : dates.formatMonthDayYear(
+              DateTime(due.year, due.month, due.day),
+              locale: dates.calendarLocale(context),
+            ),
     );
   }
 

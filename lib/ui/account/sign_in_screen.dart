@@ -27,6 +27,14 @@
 /// email form — Apple (the package's HIG widget, iOS only) first, then
 /// Google (the branded widget, only when [AppConfig.hasGoogle] or
 /// [showGoogle] says so) — and a dismissed picker is not a failure.
+///
+/// Issue #165 (form accessibility): the email + password pair sits in one
+/// [AutofillGroup] with honest hints (`email`; `password` in sign-in mode,
+/// `newPassword` in create mode so password managers offer to generate),
+/// every field declares its `textInputAction` ("next" advances focus into
+/// the next field, "done" submits), and the password field carries a
+/// local-only reveal toggle — the toggle flips nothing but this field's
+/// `obscureText`.
 library;
 
 import 'dart:async';
@@ -88,6 +96,17 @@ class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+
+  /// #165: the credential fields' explicit focus chain — the email field's
+  /// "next" advances here, so keyboard traversal never depends on tree
+  /// order around the provider buttons above.
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+
+  /// #165: the reveal toggle's state. Local-only by design: flipping it
+  /// changes this field's `obscureText` and nothing else.
+  bool _obscurePassword = true;
+
   bool _createMode = false;
   bool _busy = false;
   String? _error;
@@ -160,6 +179,8 @@ class _SignInScreenState extends State<SignInScreen> {
     _email.dispose();
     _password.dispose();
     _code.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -395,25 +416,52 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
+  /// #165: "next" from the email field moves focus to the password field
+  /// (an explicit [FocusNode] chain, not tree order).
   Widget _buildEmailField() => TextField(
         key: const ValueKey('auth-email'),
         controller: _email,
+        focusNode: _emailFocus,
         enabled: !_busy,
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => _passwordFocus.requestFocus(),
+        autofillHints: const [AutofillHints.email],
         decoration: const InputDecoration(labelText: 'Email'),
       );
 
+  /// #165: "done" submits (whichever primary action the current mode
+  /// shows), the hint follows the mode (`password` for signing in,
+  /// `newPassword` so password managers can offer generation on create),
+  /// and the suffix toggle reveals what was typed — locally only.
   Widget _buildPasswordField() => TextField(
         key: const ValueKey('auth-password'),
         controller: _password,
+        focusNode: _passwordFocus,
         enabled: !_busy,
-        obscureText: true,
+        obscureText: _obscurePassword,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _createMode ? _createAccount() : _signIn(),
+        autofillHints: _createMode
+            ? const [AutofillHints.newPassword]
+            : const [AutofillHints.password],
         decoration: InputDecoration(
           labelText: 'Password',
           helperText: _createMode
               ? 'At least $kMinPasswordLength characters'
               : null,
+          suffixIcon: IconButton(
+            key: const ValueKey('auth-password-reveal'),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
+            tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+            ),
+          ),
         ),
       );
 
@@ -519,7 +567,8 @@ class _SignInScreenState extends State<SignInScreen> {
 
   /// The revealed half of [_buildMagicLinkSection]: a numeric code field
   /// plus its verify button, disabled until the field holds a plausible
-  /// code ([_codeLooksValid]).
+  /// code ([_codeLooksValid]). #165: `oneTimeCode` is the honest hint (an
+  /// emailed OTP), and "done" verifies when the code is plausible.
   List<Widget> _buildCodeField() => [
         if (_showCodeField) ...[
           const SizedBox(height: 8),
@@ -528,6 +577,11 @@ class _SignInScreenState extends State<SignInScreen> {
             controller: _code,
             enabled: !_busy,
             keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (_codeLooksValid) unawaited(_verifyCode());
+            },
+            autofillHints: const [AutofillHints.oneTimeCode],
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Code from the email',
@@ -579,9 +633,20 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           ..._buildEmbeddedIntro(),
           ..._buildProviderButtons(),
-          _buildEmailField(),
-          const SizedBox(height: 8),
-          _buildPasswordField(),
+          // #165: one AutofillGroup around the credential pair so iOS
+          // Keychain / Android Autofill see a single fillable (and
+          // saveable) form rather than two unannotated fields.
+          AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildEmailField(),
+                const SizedBox(height: 8),
+                _buildPasswordField(),
+              ],
+            ),
+          ),
           ..._buildStatusMessages(context),
           const SizedBox(height: 16),
           ..._buildPendingIndicator(),

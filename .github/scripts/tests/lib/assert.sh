@@ -24,7 +24,9 @@ assert_eq() {
 
 assert_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF "$needle"; then
+  # `--` so a needle beginning with dashes (e.g. a --dart-define line,
+  # issue #739's workflow wiring assertions) is a pattern, not an option.
+  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
     echo "PASS: $desc"
     pass=$((pass + 1))
   else
@@ -36,7 +38,7 @@ assert_contains() {
 
 assert_not_contains() {
   local desc="$1" haystack="$2" needle="$3"
-  if printf '%s' "$haystack" | grep -qF "$needle"; then
+  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
     echo "FAIL: $desc (did not expect to find '$needle')"
     echo "$haystack" | sed 's/^/  /'
     fail=$((fail + 1))

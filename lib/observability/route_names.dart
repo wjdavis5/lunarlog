@@ -64,6 +64,13 @@ const String kRouteProfileEditDialog = 'ProfileEditDialog';
 /// `lib/ui/profiles/profile_dialogs.dart` (archive a profile).
 const String kRouteProfileArchiveDialog = 'ProfileArchiveDialog';
 
+/// `lib/ui/profiles/pregnancy_exit_exclusion.dart` — the offer made when
+/// leaving Pregnancy mode to exclude the pregnancy interval from cycle
+/// averages (Issue #192); a genuine choice with data consequences, not a
+/// trivial confirm (U2 Approach 2b).
+const String kRoutePregnancyExitExclusionDialog =
+    'PregnancyExitExclusionDialog';
+
 /// The read-only future-day explainer (`lib/ui/logging/month_calendar.dart`
 /// pushes it for a tapped future cell, issue #133 KTD8) — a genuine
 /// destination explaining the predicted state, never the log sheet.
@@ -159,6 +166,11 @@ const String kRoutePurgeImportedDataDialog = 'PurgeImportedDataDialog';
 /// per-profile local reminder configuration, pushed from Settings.
 const String kRouteReminderSettingsScreen = 'ReminderSettingsScreen';
 
+/// `lib/ui/settings/reminder_text_editor_screen.dart` (Issue #184) — the
+/// per-type custom notification text editor with live preview, pushed
+/// from a reminder type's row in the reminder settings.
+const String kRouteReminderTextEditorScreen = 'ReminderTextEditorScreen';
+
 /// `lib/ui/help/help_library_screen.dart` (Issue #139) — offline help cards.
 const String kRouteHelpLibraryScreen = 'HelpLibraryScreen';
 
@@ -188,6 +200,47 @@ const String kRouteExportRangePickerSheet = 'ExportRangePickerSheet';
 /// ProfileDetailScreen).
 const String kRouteCycleComparisonScreen = 'CycleComparisonScreen';
 
+/// `lib/ui/account/mfa_enroll_screen.dart` (issue #268) — the TOTP QR/secret
+/// + verification-code enrolment flow, pushed from the Account section's
+/// "Set up two-factor authentication" tile.
+const String kRouteMfaEnrollScreen = 'MfaEnrollScreen';
+
+/// `lib/ui/account/mfa_step_up_dialog.dart` (issue #268 D-6) — the AAL2
+/// step-up code prompt shown before a destructive account action for an
+/// account with a verified TOTP factor.
+const String kRouteMfaStepUpDialog = 'MfaStepUpDialog';
+
+/// `lib/ui/account/account_section.dart` (issue #268) — confirms removing
+/// the account's TOTP factor.
+const String kRouteMfaRemoveFactorDialog = 'MfaRemoveFactorDialog';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the "App PIN"
+/// settings screen (status, change, turn off).
+const String kRoutePinSettingsScreen = 'PinSettingsScreen';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the set-a-new-PIN
+/// form, reached when no PIN exists yet.
+const String kRoutePinSetScreen = 'PinSetScreen';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the change-PIN
+/// form, reached only after [kRoutePinAuthorizationDialog] succeeds.
+const String kRoutePinChangeScreen = 'PinChangeScreen';
+
+/// `lib/ui/gate/pin_authorization_dialog.dart` (issue #271) — "requires the
+/// current PIN or device auth" before a change or removal.
+const String kRoutePinAuthorizationDialog = 'PinAuthorizationDialog';
+
+/// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — confirms turning
+/// the PIN off.
+const String kRoutePinRemoveConfirmDialog = 'PinRemoveConfirmDialog';
+
+/// `lib/ui/components/app_shell.dart` (issue #241, B-16) — the app-bar
+/// profile title's quick-switcher popup (active profiles plus "Manage
+/// profiles…"). A popup route, not a pushed screen, but still named
+/// through `showMenu`'s `routeSettings` so it is visible in the Sentry
+/// navigation trail like every other destination.
+const String kRouteQuickProfileSwitcherMenu = 'QuickProfileSwitcherMenu';
+
 /// Every registered route name (KTD2's real gate). A name in this set is
 /// kept verbatim by `scrubRouteName`; anything else falls through to the
 /// shape check and, failing that, becomes `unknown`.
@@ -208,6 +261,7 @@ const Set<String> kSentryRouteNames = {
   kRouteDeleteAccountDialog,
   kRouteProfileEditDialog,
   kRouteProfileArchiveDialog,
+  kRoutePregnancyExitExclusionDialog,
   kRouteFutureDayExplainerScreen,
   kRouteMonthYearPickerDialog,
   kRouteAttachmentConsentDialog,
@@ -227,11 +281,21 @@ const Set<String> kSentryRouteNames = {
   kRouteDeleteProfileFinalConfirmDialog,
   kRoutePurgeImportedDataDialog,
   kRouteReminderSettingsScreen,
+  kRouteReminderTextEditorScreen,
   kRouteHelpLibraryScreen,
   kRouteHelpCardSheet,
   kRouteCycleLiteracyLibraryScreen,
   kRouteCycleLiteracyArticleSheet,
   kRouteExportRangePickerSheet,
   kRouteCycleComparisonScreen,
+  kRouteMfaEnrollScreen,
+  kRouteMfaStepUpDialog,
+  kRouteMfaRemoveFactorDialog,
+  kRoutePinSettingsScreen,
+  kRoutePinSetScreen,
+  kRoutePinChangeScreen,
+  kRoutePinAuthorizationDialog,
+  kRoutePinRemoveConfirmDialog,
+  kRouteQuickProfileSwitcherMenu,
 };
 

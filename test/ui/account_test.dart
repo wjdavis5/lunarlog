@@ -52,6 +52,19 @@ const String kWaitingCopy =
     'Waiting for email confirmation — open the link on this device';
 const String kUploadPendingCopy = 'Upload pending — tap to review';
 
+
+/// Issue #226 made Settings a much taller sectioned list: the Account
+/// section and the relock toggle now sit below the fold of the default
+/// 800x600 test surface (a `ListView` only builds children near the
+/// viewport), so these tests use a tall viewport instead of scrolling
+/// tile by tile.
+void useTallSettingsViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 class AccountHarness {
   AccountHarness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
 
@@ -75,13 +88,19 @@ class AccountHarness {
   Future<void> pump({
     bool withEngine = true,
     Future<void> Function(LunarLogDatabase db)? seed,
+    bool? mfaEnabled,
   }) async {
+    useTallSettingsViewport(tester);
     if (seed != null) await seed(db);
     await tester.pumpWidget(
       LunarLogApp.withCollaborators(
         db: db,
         authService: auth,
         syncEngine: withEngine ? engine : null,
+        // Issue #738: `true` compiles this harness as the flag-on build
+        // (what LUNARLOG_ENABLE_MFA=true produces) for the AAL2 step-up
+        // tests; the default (null) is the default-off build.
+        mfaEnabled: mfaEnabled,
         // Mirrors the root's reset (test/ui/device_reset_test.dart proves
         // the real order): local wipe first, local sign-out last.
         resetDevice: () async {
@@ -840,6 +859,9 @@ void main() {
       );
 
       await tester.enterText(key('recovery-new-password'), 'a brand new pass');
+      // #165: the confirm field must match before the save proceeds.
+      await tester.enterText(
+          key('recovery-confirm-password'), 'a brand new pass');
       await tester.tap(key('recovery-save'));
       await tester.pumpAndSettle();
       await drainIsolateTraffic(tester);
@@ -1977,6 +1999,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Some entries could not be uploaded'), findsOneWidget);
+      expect(find.text('Tap to retry'), findsOneWidget);
+      await tester.tap(key('sync-status'));
+      await tester.pump();
+      expect(h.engine.retryRejectedCalls, 1);
       await h.dispose();
     });
 
@@ -2363,6 +2389,53 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets(
+        'Sign out everywhere (issue #268 D-6): a verified MFA factor '
+        'requires a correct step-up code before signing out',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final h = AccountHarness(tester);
+      // Issue #738: the flag-on build — #714's behavior exactly.
+      await h.pump(seed: AccountHarness.seedOneProfile, mfaEnabled: true);
+      h.signIn();
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+      await h.openSettings();
+      await h.settle();
+
+      await tester.tap(key('account-sign-out-everywhere'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-sign-out-everywhere-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsOneWidget);
+      expect(h.auth.signOutCalls, isEmpty,
+          reason: 'signOut must wait for the step-up to succeed');
+
+      await tester.enterText(
+          find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+      await tester.tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+      await h.settle();
+
+      expect(h.auth.verifyTotpCodeCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+      expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+      expect(h.resets, 1);
+      await h.dispose();
+    });
+
     testWidgets('Sign out everywhere when global sign out fails still runs '
         'reset and shows snackbar', (tester) async {
       // Issue #157 review fix (mirrors #325) — see the taller-viewport
@@ -2497,6 +2570,7 @@ void main() {
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await AccountHarness.seedOneProfile(db);
+      useTallSettingsViewport(tester);
       await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Settings'));

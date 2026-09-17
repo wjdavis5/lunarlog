@@ -11,12 +11,14 @@
 /// independent (and slightly different — linear spread growth, tier
 /// stepping down unconditionally after cycle 0) curve, so the calendar's
 /// predicted bands and the overview's headline estimate/tier could
-/// disagree for the same profile even though both ultimately trace back to
-/// the same [ActivePrediction]. [deriveForecast] now only re-indexes the
+/// disagree for the same profile even though both ultimately trace back
+/// to the same [ActivePrediction]. [deriveForecast] now only re-indexes the
 /// engine's 1-based [PredictedCycle.cycleIndex] to the 0-based
-/// [ForecastCycle.index] the calendar keys off, truncates the engine's
-/// fixed-length forecast to the navigable horizon (never extends past what
-/// the engine already computed), and layers on the one thing the engine
+/// [ForecastCycle.index] the calendar keys off, truncates to the navigable
+/// horizon (never extends past what the engine already computed — and
+/// since issue #693 the engine's own forecast is horizon-sized, so at the
+/// default horizon the calendar shows every cycle the engine computed),
+/// and layers on the one thing the engine
 /// deliberately does not compute itself — each cycle's own fertile window
 /// (issue #143, see below) — since `prediction.dart` stays intentionally
 /// unaware of `fertile_window.dart`'s back-calculation (that file's own doc
@@ -44,11 +46,21 @@ import '../models/local_date.dart';
 import 'fertile_window.dart';
 import 'pms.dart' show PmsEstimate;
 import 'prediction.dart'
-    show ActivePrediction, CycleConfidence, PredictedCycle, PredictionBasis;
+    show
+        ActivePrediction,
+        CycleConfidence,
+        PredictedCycle,
+        PredictionBasis,
+        endOfHorizonMonth;
 
 /// The forward calendar navigates this many months past the current one
 /// (R1). Forecast cycles are derived far enough to cover the end of that
-/// month, so every navigable month carries bands even for short cycles.
+/// month, so every navigable month carries bands even for short cycles —
+/// true end-to-end since issue #693 sized the engine's own forecast by
+/// this same horizon (`prediction.dart`'s [kPredictionHorizonMonths] is
+/// deliberately equal to this constant; changing either without the other
+/// truncates the calendar short of its navigable horizon or computes
+/// cycles it can never show).
 const int kForecastHorizonMonths = 12;
 
 /// PMS badges (Issue #220) are data-driven, not fixed-offset: they cover
@@ -203,15 +215,14 @@ class ForecastDayCell {
 /// Derives the calendar's forward forecast from [ActivePrediction.forecast]
 /// (issue #300) — a thin adapter, not a second derivation. Every
 /// [PredictedCycle] up to the navigable horizon (today's month +
-/// [horizonMonths]) becomes one [ForecastCycle]; the engine's own fixed
-/// [PredictedCycle] count (`kPredictionWindowCycles` in `prediction.dart`)
-/// is never extended past, only truncated early once a cycle's start
-/// passes [horizonEnd] — so an unusually short mean cycle length may cover
-/// less than the full navigable horizon, where the pre-#300 chaining loop
-/// (bounded only by a defensive `kForecastMaxCycles` guard) always filled
-/// it; see this file's library doc comment for why that trade-off is the
-/// point, not a regression (one confidence-degradation curve, computed
-/// once, by the engine).
+/// [horizonMonths]) becomes one [ForecastCycle]. Since issue #693 the
+/// engine's own forecast is horizon-sized too ([prediction.dart]'s
+/// [kPredictionHorizonMonths] is deliberately equal to
+/// [kForecastHorizonMonths]), so at the default horizon nothing is
+/// truncated and every navigable month carries bands even for short
+/// cycles; the [horizonEnd] cut below only bites for a caller-supplied
+/// shorter [horizonMonths] (the tests) and stays as a defensive belt to
+/// the engine's suspenders.
 ///
 /// [PredictedCycle.cycleIndex] is 1-based (1 = the next cycle); this
 /// function re-indexes it to the 0-based [ForecastCycle.index] the
@@ -232,7 +243,12 @@ List<ForecastCycle> deriveForecast({
   int horizonMonths = kForecastHorizonMonths,
 }) {
   final lengthDays = prediction.meanCycleLengthDays.round();
-  final horizonEnd = _endOfHorizonMonth(today, horizonMonths);
+  // Issue #693: `endOfHorizonMonth` is the engine's own public helper —
+  // the same arithmetic that bounds `_buildForecast`'s chain loop — so the
+  // adapter's cut and the engine's horizon can never disagree about where
+  // the horizon ends (this file's former private `_endOfHorizonMonth` was
+  // an exact duplicate of it).
+  final horizonEnd = endOfHorizonMonth(today, horizonMonths);
 
   // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
   // prediction carries no ovulatory signal — see [PredictionBasis]'s own
@@ -432,8 +448,6 @@ void _markBadge(
 }
 
 /// The last day of the month [horizonMonths] after [today]'s month — the
-/// navigable horizon the forecast must cover.
-LocalDate _endOfHorizonMonth(LocalDate today, int horizonMonths) {
-  final total = today.year * 12 + (today.month - 1) + horizonMonths + 1;
-  return LocalDate(total ~/ 12, total % 12 + 1, 1).addDays(-1);
-}
+/// navigable horizon the forecast must cover — is [endOfHorizonMonth] in
+/// `prediction.dart` (issue #693 moved it there so the engine's chain
+/// loop and this adapter share one definition).

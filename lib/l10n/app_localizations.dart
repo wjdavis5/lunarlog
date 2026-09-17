@@ -718,6 +718,126 @@ abstract class AppLocalizations {
   /// **'Recent'**
   String get daySheetTagRecentLabel;
 
+  /// Issue #257: heading above the profile's custom-tag registry section in the tag picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom tags'**
+  String get daySheetCustomTagsLabel;
+
+  /// Issue #257: tooltip for the tag picker's custom-tags manage affordance (create, rename, retire).
+  ///
+  /// In en, this message translates to:
+  /// **'Manage custom tags'**
+  String get daySheetCustomTagsManageTooltip;
+
+  /// Issue #257: empty-state note under the custom-tags heading when the profile has no live, non-retired custom tags.
+  ///
+  /// In en, this message translates to:
+  /// **'None yet — tap manage to add one'**
+  String get daySheetCustomTagsNone;
+
+  /// Issue #257: title of the custom-tag manager sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom tags'**
+  String get customTagsSheetTitle;
+
+  /// Issue #257: body copy in the manager sheet when the registry is empty.
+  ///
+  /// In en, this message translates to:
+  /// **'No custom tags yet — add one below.'**
+  String get customTagsEmptyList;
+
+  /// Issue #257: visible hint in the manager sheet's create field.
+  ///
+  /// In en, this message translates to:
+  /// **'New tag name'**
+  String get customTagsAddHint;
+
+  /// Issue #257: tooltip/semantics for the manager sheet's add button.
+  ///
+  /// In en, this message translates to:
+  /// **'Add tag'**
+  String get customTagsAddTooltip;
+
+  /// Issue #257: create-field error for an empty custom-tag label.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name.'**
+  String get customTagsErrorEmpty;
+
+  /// Issue #257: create-field error for a label past the 40-character CHECK.
+  ///
+  /// In en, this message translates to:
+  /// **'Names are at most 40 characters.'**
+  String get customTagsErrorTooLong;
+
+  /// Issue #257: create-field error for a label no code can be derived from (e.g. only punctuation).
+  ///
+  /// In en, this message translates to:
+  /// **'Include a letter or digit.'**
+  String get customTagsErrorNoLetters;
+
+  /// Issue #257: create-field error for a label deriving a code another live registry entry already owns (case-insensitive).
+  ///
+  /// In en, this message translates to:
+  /// **'You already have a tag like this.'**
+  String get customTagsErrorDuplicate;
+
+  /// Issue #257: create-field error for a label deriving a code the static taxonomy owns (shadowing it would make one chip mean two things).
+  ///
+  /// In en, this message translates to:
+  /// **'That name is already a built-in tag.'**
+  String get customTagsErrorTaxonomy;
+
+  /// Issue #257: create-field error at the per-profile registry cap (100 live rows).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile already has {max} custom tags — retire one first.'**
+  String customTagsErrorCap(int max);
+
+  /// Issue #257: tooltip for a registry row's rename affordance.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename'**
+  String get customTagsRenameTooltip;
+
+  /// Issue #257: title of the rename dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Rename tag'**
+  String get customTagsRenameTitle;
+
+  /// Issue #257: tooltip for a registry row's retire affordance (hidden_at — removed from the picker, never deleted).
+  ///
+  /// In en, this message translates to:
+  /// **'Retire'**
+  String get customTagsRetireTooltip;
+
+  /// Issue #257: status label on a retired registry row in the manager sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Retired'**
+  String get customTagsRetiredLabel;
+
+  /// Issue #257: title of the retire confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Retire “{label}”?'**
+  String customTagsRetireTitle(String label);
+
+  /// Issue #257: body of the retire confirmation dialog — retirement never deletes stored entries.
+  ///
+  /// In en, this message translates to:
+  /// **'It leaves the tag picker. Days that already use it keep showing it.'**
+  String get customTagsRetireBody;
+
+  /// Issue #257: confirm button of the retire dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Retire'**
+  String get customTagsRetireConfirm;
+
   /// Read-only day sheet body when the day has no entry.
   ///
   /// In en, this message translates to:
@@ -958,6 +1078,36 @@ abstract class AppLocalizations {
   /// **'Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.'**
   String get settingsRelockSubtitle;
 
+  /// Settings tile and picker-dialog title for the appearance override (issue #137).
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearanceTitle;
+
+  /// Subtitle of the appearance tile, naming the three override options.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow your device\'s setting, or choose light or dark'**
+  String get settingsAppearanceSubtitle;
+
+  /// Picker option: use the OS light/dark setting (the default).
+  ///
+  /// In en, this message translates to:
+  /// **'Follow system'**
+  String get appearanceOptionSystem;
+
+  /// Picker option: always use the light theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get appearanceOptionLight;
+
+  /// Picker option: always use the dark theme.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get appearanceOptionDark;
+
   /// Section header above the health-sync settings tile.
   ///
   /// In en, this message translates to:
@@ -1005,6 +1155,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close'**
   String get settingsClose;
+
+  /// Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge.
+  ///
+  /// In en, this message translates to:
+  /// **'Your data'**
+  String get settingsSectionYourData;
+
+  /// Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsSectionAppearance;
+
+  /// Tile title inside the Appearance section (Issue #226 retitled from 'Appearance' once the section header carried that word): opens the system/light/dark picker; the subtitle names the current mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get settingsThemeTitle;
+
+  /// Header of the Settings 'Reminders' section (Issue #226): reminder scheduling and caregiver alert preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders'**
+  String get settingsSectionReminders;
+
+  /// Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get settingsSectionCalendar;
+
+  /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'Family & sharing'**
+  String get settingsSectionFamilySharing;
+
+  /// Header of the Settings 'Privacy & security' section (Issue #226): relock, app PIN, privacy policy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy & security'**
+  String get settingsSectionPrivacySecurity;
+
+  /// Header of the Settings 'Help' section (Issue #226): help library, feedback/support, support history.
+  ///
+  /// In en, this message translates to:
+  /// **'Help'**
+  String get settingsSectionHelp;
+
+  /// Header of the Settings 'About' section (Issue #226): version, build number, licences.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsSectionAbout;
+
+  /// Tile (inside the Reminders section) opening the per-profile reminder configuration screen (Issue #136).
+  ///
+  /// In en, this message translates to:
+  /// **'Reminder settings'**
+  String get settingsReminderSettingsTitle;
+
+  /// Subtitle of the reminder-settings tile.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose which reminders fire, when, and for whom'**
+  String get settingsReminderSettingsSubtitle;
+
+  /// Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver alerts'**
+  String get settingsCaregiverAlertsTitle;
+
+  /// Calendar-section tile (Issue #226) choosing which day the month grid's weeks start on.
+  ///
+  /// In en, this message translates to:
+  /// **'First day of week'**
+  String get settingsFirstDayTitle;
+
+  /// Week-start option: weeks start on Sunday (the historical default).
+  ///
+  /// In en, this message translates to:
+  /// **'Sunday'**
+  String get settingsFirstDaySunday;
+
+  /// Week-start option: weeks start on Monday (ISO 8601).
+  ///
+  /// In en, this message translates to:
+  /// **'Monday'**
+  String get settingsFirstDayMonday;
+
+  /// Calendar-section tile (Issue #226) choosing the month/day order of compact dates.
+  ///
+  /// In en, this message translates to:
+  /// **'Date format'**
+  String get settingsDateFormatTitle;
+
+  /// Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering.
+  ///
+  /// In en, this message translates to:
+  /// **'System default (5 Sep)'**
+  String get settingsDateFormatSystemOption;
+
+  /// Date-format option: day before month, e.g. '5 Sep'.
+  ///
+  /// In en, this message translates to:
+  /// **'Day first (5 Sep)'**
+  String get settingsDateFormatDayMonthOption;
+
+  /// Date-format option: month before day, e.g. 'Sep 5'.
+  ///
+  /// In en, this message translates to:
+  /// **'Month first (Sep 5)'**
+  String get settingsDateFormatMonthDayOption;
+
+  /// Tile (inside the Help section) opening the offline help library (Issue #139).
+  ///
+  /// In en, this message translates to:
+  /// **'Help & explanations'**
+  String get settingsHelpTitle;
+
+  /// Subtitle of the help library tile.
+  ///
+  /// In en, this message translates to:
+  /// **'Plain-language answers about estimates, logging, sync, and sharing — works offline'**
+  String get settingsHelpSubtitle;
+
+  /// About-section tile title (Issue #226); the subtitle carries the actual version and build number.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get settingsAboutVersionTitle;
+
+  /// The version line shown in Settings → About and on the licence page (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version} (build {build})'**
+  String settingsAboutVersion(String version, String build);
+
+  /// Shown in place of the version line when the platform package-info read failed (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Not available'**
+  String get settingsAboutVersionUnavailable;
+
+  /// About-section tile opening Flutter's licence page (Issue #226).
+  ///
+  /// In en, this message translates to:
+  /// **'Open-source licences'**
+  String get settingsAboutLicensesTitle;
+
+  /// Subtitle of the licences tile.
+  ///
+  /// In en, this message translates to:
+  /// **'The packages and terms this app builds on'**
+  String get settingsAboutLicensesSubtitle;
 
   /// Headline of the first onboarding card (identity/value).
   ///
@@ -2068,6 +2374,36 @@ abstract class AppLocalizations {
   /// **'Switch profile'**
   String get profileDetailSwitchProfileTooltip;
 
+  /// Issue #241: tooltip on the app shell's quick profile switcher (the app-bar profile title, a popup listing active profiles).
+  ///
+  /// In en, this message translates to:
+  /// **'Switch profile'**
+  String get appShellProfileSwitcherTooltip;
+
+  /// Issue #241: the quick profile switcher menu's entry that opens the full profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage profiles…'**
+  String get quickSwitcherManageProfiles;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state).
+  ///
+  /// In en, this message translates to:
+  /// **'No history yet'**
+  String get profileStatusNoHistory;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode).
+  ///
+  /// In en, this message translates to:
+  /// **'Period predictions off'**
+  String get profileStatusPredictionsSuppressed;
+
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
+  ///
+  /// In en, this message translates to:
+  /// **'Period predictions off'**
+  String get profileStatusPredictionsOff;
+
   /// Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.
   ///
   /// In en, this message translates to:
@@ -2163,6 +2499,378 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Weight unit'**
   String get settingsMeasurementUnitsWeightLabel;
+
+  /// Heading of the Account section's TOTP MFA tile group (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Two-factor authentication'**
+  String get mfaSectionTitle;
+
+  /// Tile offering to start TOTP enrolment when the account has no factor yet (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Set up two-factor authentication'**
+  String get mfaEnrollTileTitle;
+
+  /// Subtitle under mfaEnrollTileTitle (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Add an authenticator app as a second sign-in factor.'**
+  String get mfaEnrollTileSubtitle;
+
+  /// Title of the row for an enrolled TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Authenticator app'**
+  String get mfaFactorTileTitle;
+
+  /// Subtitle for a verified TOTP factor row (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Enabled'**
+  String get mfaFactorTileSubtitleVerified;
+
+  /// Subtitle for a still-unverified TOTP factor row, e.g. after an interrupted enrolment (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Setup not finished — remove and try again'**
+  String get mfaFactorTileSubtitlePending;
+
+  /// Confirmation dialog title for removing the account's TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove two-factor authentication?'**
+  String get mfaRemoveFactorTitle;
+
+  /// Confirmation dialog body for removing the account's TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'You will only need your password to sign in and to confirm account actions.'**
+  String get mfaRemoveFactorBody;
+
+  /// Confirm button for removing a TOTP factor (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get mfaRemoveFactorConfirm;
+
+  /// Generic inline error for an MFA action (enroll/verify/remove) that failed (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Please try again.'**
+  String get mfaErrorGeneric;
+
+  /// Title of the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Set up two-factor authentication'**
+  String get mfaEnrollScreenTitle;
+
+  /// Instructions above the manual-entry setup key on the TOTP enrolment screen (issue #268). No in-app QR code today — flutter_svg is not a project dependency, and gotrue's enrolment response encodes it only as an SVG data URI, which Image.network/Image.memory cannot rasterize; see mfa_enroll_screen.dart's doc comment.
+  ///
+  /// In en, this message translates to:
+  /// **'Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).'**
+  String get mfaEnrollInstructions;
+
+  /// Label above the manual-entry TOTP secret (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Setup key'**
+  String get mfaEnrollSecretLabel;
+
+  /// Label for the verification-code field on the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit code from your app'**
+  String get mfaEnrollCodeLabel;
+
+  /// Hint text for a TOTP code entry field, shared by enrolment and step-up (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'6-digit code'**
+  String get mfaCodeHint;
+
+  /// Confirm button on the TOTP enrolment screen (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get mfaEnrollConfirmButton;
+
+  /// Snackbar shown after a TOTP enrolment completes (issue #268).
+  ///
+  /// In en, this message translates to:
+  /// **'Two-factor authentication is on.'**
+  String get mfaEnrollSuccessMessage;
+
+  /// Title of the AAL2 step-up dialog shown before a destructive account action (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm it\'s you'**
+  String get mfaStepUpTitle;
+
+  /// Body of the AAL2 step-up dialog (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the 6-digit code from your authenticator app to continue.'**
+  String get mfaStepUpBody;
+
+  /// Confirm button on the AAL2 step-up dialog (issue #268 D-6).
+  ///
+  /// In en, this message translates to:
+  /// **'Verify'**
+  String get mfaStepUpConfirmButton;
+
+  /// Heading of the optional in-app PIN settings row (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'App PIN'**
+  String get pinSettingsSectionTitle;
+
+  /// Title of the in-app PIN settings tile (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Require a PIN to open lunarlog'**
+  String get pinSettingsToggleTitle;
+
+  /// Subtitle of the PIN settings tile when a PIN is set (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'On — an additional lock layer on top of your device credential.'**
+  String get pinSettingsToggleSubtitleOn;
+
+  /// Subtitle of the PIN settings tile when no PIN is set (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get pinSettingsToggleSubtitleOff;
+
+  /// Title of the screen for setting a brand-new in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Set a PIN'**
+  String get pinSetScreenTitle;
+
+  /// Title of the screen for changing an existing in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Change PIN'**
+  String get pinChangeScreenTitle;
+
+  /// Field label for the current PIN, required to change or remove one (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Current PIN'**
+  String get pinCurrentPinLabel;
+
+  /// Field label for the new PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'New PIN (4-8 digits)'**
+  String get pinNewPinLabel;
+
+  /// Field label for re-entering the new PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm PIN'**
+  String get pinConfirmPinLabel;
+
+  /// Inline error when the new-PIN and confirm-PIN fields differ (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'PINs don\'t match.'**
+  String get pinMismatchError;
+
+  /// Inline error when the new PIN is shorter than 4 digits (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter at least 4 digits.'**
+  String get pinTooShortError;
+
+  /// Inline error when the current-PIN field does not match the stored PIN, while changing or removing it (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'That PIN is incorrect.'**
+  String get pinWrongCurrentError;
+
+  /// Save button on the set/change-PIN screen (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get pinSaveButton;
+
+  /// Confirmation dialog title for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off PIN?'**
+  String get pinRemoveConfirmTitle;
+
+  /// Confirmation dialog body for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'You can still use your device credential to unlock lunarlog.'**
+  String get pinRemoveConfirmBody;
+
+  /// Confirm button for removing the in-app PIN (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Turn off'**
+  String get pinRemoveConfirmButton;
+
+  /// Prompt shown above the PIN field on the lock screen (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your PIN'**
+  String get pinLockScreenPrompt;
+
+  /// Submit button on the lock screen's PIN entry (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get pinLockScreenUnlockButton;
+
+  /// Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong PIN. {count} attempt(s) remaining before a short lockout.'**
+  String pinLockScreenIncorrect(int count);
+
+  /// Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts. Try again after {time}.'**
+  String pinLockScreenLockedOut(String time);
+
+  /// Row title for a reminder type's custom notification text editor entry (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextTileTitle;
+
+  /// Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Using the default text'**
+  String get reminderTextTileDefaultSubtitle;
+
+  /// App bar title of the per-type notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Notification text'**
+  String get reminderTextEditorAppBarTitle;
+
+  /// Section header above the live notification preview in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Preview'**
+  String get reminderTextPreviewSection;
+
+  /// The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Lunarlog'**
+  String get reminderTextPreviewAppName;
+
+  /// The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get reminderTextPreviewNow;
+
+  /// Label above the notification title field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Title'**
+  String get reminderTextTitleLabel;
+
+  /// Label above the notification body field in the text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Body'**
+  String get reminderTextBodyLabel;
+
+  /// Save action in the notification text editor (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get reminderTextSaveButton;
+
+  /// Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'Reset to default'**
+  String get reminderTextResetButton;
+
+  /// Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184).
+  ///
+  /// In en, this message translates to:
+  /// **'The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.'**
+  String get reminderTextDiscretionNote;
+
+  /// Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.
+  ///
+  /// In en, this message translates to:
+  /// **'Week {week} of pregnancy'**
+  String pregnancyWeekTitle(int week);
+
+  /// Pregnancy card line naming the estimated due date (Issue #192); date is the localized month-day-year.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated due date: {date}'**
+  String pregnancyDueOn(String date);
+
+  /// Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.'**
+  String get pregnancyDueDateMissing;
+
+  /// Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated due date'**
+  String get pregnancyDueDateLabel;
+
+  /// Hint under the due-date field when the shown value was derived rather than manually picked (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Derived from the last recorded period start (280 days). Tap the date to change it.'**
+  String get pregnancyDueDateDerivedHint;
+
+  /// Hint under the due-date field when no last period start could be derived from, so only a manual pick can set it (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the estimated due date — the last period start is unknown.'**
+  String get pregnancyDueDateManualHint;
+
+  /// Title of the dialog offered when leaving Pregnancy mode (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude this pregnancy from cycle averages?'**
+  String get pregnancyExitExclusionTitle;
+
+  /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  String get pregnancyExitExclusionBody;
+
+  /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude pregnancy'**
+  String get pregnancyExitExclusionAccept;
+
+  /// Decline action of the pregnancy-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #192 AC5).
+  ///
+  /// In en, this message translates to:
+  /// **'Keep in averages'**
+  String get pregnancyExitExclusionDecline;
+
+  /// Snackbar confirming the exclusion rows were written (Issue #192).
+  ///
+  /// In en, this message translates to:
+  /// **'Pregnancy excluded from cycle averages'**
+  String get pregnancyExitExclusionDone;
 }
 
 class _AppLocalizationsDelegate

@@ -260,6 +260,14 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                 TextField(
                   controller: _nameController,
                   enabled: !_loading,
+                  // #165: the sheet's only text field — the accepting
+                  // guardian's own display name (`name` is the honest
+                  // hint), and "done" is the Accept & Sync action.
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    if (!_loading) unawaited(_accept());
+                  },
+                  autofillHints: const [AutofillHints.name],
                   decoration: const InputDecoration(
                     labelText: 'Your display name (e.g. Dad, Mom, Grandma)',
                     hintText: 'Shows when you log entries',

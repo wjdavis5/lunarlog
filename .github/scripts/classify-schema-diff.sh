@@ -28,24 +28,29 @@ function trigger_name(stmt,    tmp, parts, count) {
   }
   return parts[3]
 }
-# Issue #194 will move pg_net out of public; until then this one exact
-# statement is the local shadow image lacking pg_net, not real drift --
-# unquoted, quoted, or case-varied, but ONLY this extension in ONLY this
-# schema. Anything else (pg_cron, a different schema, ...) still fails.
-# Issue #194 own PR deferred the actual relocation (production pg_net is
-# supabase_admin-owned and confirmed non-relocatable -- see that migration
-# and supabase-migrate.yml advisor-gate step for the full rationale, and
-# check-advisor-gate.sh for how the advisor finding itself is handled
-# instead), so pg_net is expected to still be in `public` on every project
-# this reaches for the foreseeable future -- this exception is not stale,
-# just still pending its own follow-up.
+# The local shadow image lacks pg_net, so `db diff --linked` describes the
+# linked project pg_net as a CREATE EXTENSION statement the shadow cannot
+# have -- that is an image gap, not real drift. Issue #194 original PR
+# deferred the relocation itself (production pg_net is supabase_admin-owned
+# and confirmed non-relocatable -- see that migration and the advisor-gate
+# step comments in supabase-migrate.yml for the full rationale, and
+# check-advisor-gate.sh for how the advisor finding is handled instead), so
+# the shadow-vs-linked statement carries `with schema public` today. The
+# follow-up (20260918120000_pg_net_public_placement_guard.sql + the pg_net
+# relocation runbook in docs/ops/supabase-go-live.md) relocates the linked
+# project registration to `extensions` via the support-assisted catalog
+# update, after which the same image gap emits `with schema extensions`.
+# Both exact statements are therefore silent -- unquoted, quoted, or
+# case-varied, but ONLY this extension in ONLY those two schemas. Anything
+# else (pg_cron, a different schema, ...) still fails.
 function is_shadow_missing_pg_net(stmt,    t) {
   t = tolower(stmt)
   gsub(/"/, "", t)
   gsub(/[ \t\r\n]+/, " ", t)
   gsub(/^ +| +$/, "", t)
   sub(/;$/, "", t)
-  return (t == "create extension if not exists pg_net with schema public") ? 1 : 0
+  return (t == "create extension if not exists pg_net with schema public" ||
+          t == "create extension if not exists pg_net with schema extensions") ? 1 : 0
 }
 BEGIN { n = 0; buf = ""; in_dollar = 0; tag = "" }
 {

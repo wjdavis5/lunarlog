@@ -51,15 +51,20 @@
 /// destinations.
 library;
 
-import 'dart:async' show Timer, scheduleMicrotask, unawaited;
+import 'dart:async'
+    show StreamSubscription, Timer, scheduleMicrotask, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/logging/widgets/merge_notice_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
 import 'package:lunarlog/domain/logging/tag_recents.dart';
@@ -75,6 +80,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -89,6 +95,7 @@ import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/intensity_selector.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
+import 'package:lunarlog/ui/logging/widgets/custom_tag_manager_sheet.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
@@ -108,10 +115,17 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// never the raw ISO string. Backed by `intl` so #160's shared
 /// date formatter can absorb this helper wholesale once it lands (same
 /// inputs, same shape); until then it is the sheet's own thin local helper.
-String daySheetDateLabel(LocalDate date, LocalDate today) {
+/// [preference] (Issue #226) reorders the month/day pair per the
+/// Calendar → "Date format" setting; it defaults to the system order, the
+/// exact pre-#226 rendering.
+String daySheetDateLabel(
+  LocalDate date,
+  LocalDate today, {
+  DateFormatPreference preference = DateFormatPreference.system,
+}) {
   // Thin bridge onto #160's shared helper: LocalDate -> civil DateTime.
   DateTime civil(LocalDate d) => DateTime(d.year, d.month, d.day);
-  return dates.relativeDayLabel(civil(date), civil(today));
+  return dates.relativeDayLabel(civil(date), civil(today), preference: preference);
 }
 
 /// Issue #457: formats a BBT/weight value for display in a text field or an
@@ -288,6 +302,11 @@ class _DaySheetState extends State<DaySheet> {
   /// repository write) is a side effect the widget layers on top.
   DaySheetSaveState _saveState = const DaySheetIdle();
   Timer? _saveDebounce;
+
+  /// Issue #130: the date's undismissed same-date merge disclosures — the
+  /// quiet notice list, loaded once when the sheet opens (the events for a
+  /// date are fixed once recorded; dismissal updates this list locally).
+  List<DayEntryMergeEvent> _mergeEvents = const [];
   Timer? _savedIndicatorTimer;
   String? _persistedEntryId;
 
@@ -417,6 +436,13 @@ class _DaySheetState extends State<DaySheet> {
   /// `initState` already attached both listeners).
   bool _seedingMeasurements = false;
 
+  /// #165: the editable sheet's text-field focus chain — "next" on the BBT
+  /// field advances to weight, "next" on weight advances to the note field
+  /// (the sheet's field order, explicit rather than tree-derived).
+  final _bbtFocus = FocusNode();
+  final _weightFocus = FocusNode();
+  final _noteFocus = FocusNode();
+
   /// Issue #220: the first-class PMS marker, tracked straight off the
   /// loaded entry (like flow and tags — it rides `DayEntry.pms` itself,
   /// not a child row).
@@ -445,6 +471,36 @@ class _DaySheetState extends State<DaySheet> {
   /// skipped the sync in that case; autosave must not silently drop the
   /// toggle's state instead).
   ObservationsRepository? _observationsRepository;
+
+  /// Issue #257: the profile's custom-tag registry repository, resolved
+  /// exactly like [_observationsRepository] (nullable lookup — a bare test
+  /// harness with no provider resolves null and the whole custom-tags
+  /// surface stays hidden). Watched live so a co-guardian's registry write
+  /// (a tag created on another device) re-renders the picker mid-session.
+  TagRegistryRepository? _tagRegistry;
+  List<CustomTag> _registry = const [];
+  StreamSubscription<List<CustomTag>>? _registrySub;
+
+  /// Issue #257: codes the registry owns (live rows, retired included — a
+  /// retired tag stays a valid stored value), for [validateTagCodes]: a
+  /// code this profile's registry owns is as valid as a curated one.
+  Set<String> get _registryCodes => {
+        for (final tag in _registry) tag.code,
+      };
+
+  /// Issue #257: resolves a stored tag code for display — the taxonomy's
+  /// label first, then the registry entry's display name (a retired tag's
+  /// rows keep rendering by name), else the raw code (#237's
+  /// unknown-never-drop rule: a code not yet synced to this device's
+  /// registry copy renders as text, never dropped).
+  String _displayOf(String code) {
+    final curated = tagByCode(code);
+    if (curated != null) return curated.display;
+    for (final tag in _registry) {
+      if (tag.code == code) return tag.displayName;
+    }
+    return code;
+  }
 
   /// The mode's headings and surfacing order (Issue #131).
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
@@ -490,9 +546,28 @@ class _DaySheetState extends State<DaySheet> {
   /// settings-store round trip.
   List<String> _tagRecents = const [];
 
+  /// Issue #226: the Calendar → "Date format" preference, resolved once the
+  /// ambient [SettingsStore] seeds it (null store — a bare test harness —
+  /// keeps `system`, the pre-#226 rendering). Watched live so a picker
+  /// change re-renders the sheet's date header on the next build.
+  DateFormatPreference _dateFormat = DateFormatPreference.system;
+  StreamSubscription<String?>? _dateFormatSub;
+
   @override
   void initState() {
     super.initState();
+    final settingsStore = context.read<SettingsStore?>();
+    if (settingsStore != null) {
+      _dateFormatSub = settingsStore
+          .watch(SettingsKeys.dateFormat)
+          .listen((value) {
+            if (mounted) {
+              setState(
+                () => _dateFormat = DateFormatPreference.fromStored(value),
+              );
+            }
+          });
+    }
     final existing = widget.existing;
     _persistedEntryId = existing?.id;
     _flow = existing?.flow ?? FlowLevel.none;
@@ -526,6 +601,61 @@ class _DaySheetState extends State<DaySheet> {
     // Issue #234: the read-only sheet never builds CategoryPicker, so it
     // has no Recent row to seed.
     if (!widget.readOnly) unawaited(_loadTagRecents());
+    // Issue #130: the merge-notice list for this date (rendered read-only
+    // or not — the disclosure is informational, never an edit).
+    unawaited(_loadMergeEvents());
+  }
+
+  /// Issue #130: loads this date's undismissed merge disclosures through
+  /// the day-entries repository (the notice surface this feature owns). A
+  /// failure never blocks the sheet — the notices are additive metadata,
+  /// not logging state.
+  Future<void> _loadMergeEvents() async {
+    try {
+      final events =
+          await widget.repository.mergeEventsForDay(widget.profileId, widget.date);
+      if (!mounted) return;
+      setState(() => _mergeEvents = events);
+    } on Exception {
+      // Deliberately quiet (R18's posture): a failed notice read leaves
+      // the sheet exactly as it was before this feature existed.
+    }
+  }
+
+  /// Issue #130: dismisses one notice on THIS device only (the repository
+  /// write is the device-local dismissal list, never a tombstone) and
+  /// drops it from the visible list immediately.
+  Future<void> _dismissMergeEvent(DayEntryMergeEvent event) async {
+    setState(() => _mergeEvents = [
+          for (final e in _mergeEvents)
+            if (e.id != event.id) e,
+        ]);
+    await widget.repository.dismissMergeEvent(widget.profileId, event.id);
+  }
+
+  /// Issue #130: restores the losing author's discarded note into the note
+  /// field — a re-entry of their own text, not an edit of the merged
+  /// entry's other values. An empty field takes the text outright;
+  /// a non-empty one appends it on a new line (never silently replaces
+  /// text the user may have typed since opening the sheet). The
+  /// controller's listener re-arms autosave.
+  void _restoreMergedNote(DayEntryMergeEvent event) {
+    final current = _noteController.text;
+    _noteController.text = current.trim().isEmpty
+        ? event.losingValueText
+        : '$current\n${event.losingValueText}';
+  }
+
+  /// Issue #130: restores the losing author's discarded flow level via the
+  /// sheet's single flow write path. Only offered when the retained wire
+  /// string parses to a real level (it always does — the server CHECKs
+  /// the set — but an unknown value degrades to leaving the selection
+  /// untouched rather than silently selecting `none`).
+  void _restoreMergedFlow(DayEntryMergeEvent event) {
+    final match = FlowLevel.values
+        .where((level) => level.toDb() == event.losingValueText)
+        .firstOrNull;
+    if (match != null) _selectFlow(match);
   }
 
   @override
@@ -539,16 +669,41 @@ class _DaySheetState extends State<DaySheet> {
       context,
       listen: false,
     );
+    // Issue #257: same nullable-lookup rule; the registry watch is armed
+    // once, here, because the repository only becomes reachable once the
+    // sheet is in the tree. A null (no provider in scope) leaves the
+    // custom-tags surface entirely absent — the pre-#257 sheet.
+    if (_tagRegistry == null) {
+      final tagRegistry = Provider.of<TagRegistryRepository?>(
+        context,
+        listen: false,
+      );
+      if (tagRegistry != null) {
+        _tagRegistry = tagRegistry;
+        _registrySub = tagRegistry
+            .watchForProfile(widget.profileId)
+            .listen((tags) {
+          if (mounted) setState(() => _registry = tags);
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
+    unawaited(_dateFormatSub?.cancel());
+    _dateFormatSub = null;
+    unawaited(_registrySub?.cancel());
+    _registrySub = null;
     if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
     _noteController.dispose();
     _bbtController.dispose();
     _weightController.dispose();
+    _bbtFocus.dispose();
+    _weightFocus.dispose();
+    _noteFocus.dispose();
     super.dispose();
   }
 
@@ -732,7 +887,11 @@ class _DaySheetState extends State<DaySheet> {
       // `_tags`, which may still hold a pre-existing code the running build
       // does not recognise (`_unrecognisedTags`). That code is preserved,
       // not silently re-validated and rejected, on every autosave.
-      validateTagCodes(_sessionSelectedTags);
+      // Issue #257: the profile's registry codes join the valid set — a
+      // custom tag picked from the picker's custom-tags section is as
+      // valid as a curated one (retired codes included: a retired tag
+      // stays a valid stored value).
+      validateTagCodes(_sessionSelectedTags, registryCodes: _registryCodes);
       final mutations = await _computeObservationMutations(
         pending,
         observations,
@@ -1083,7 +1242,11 @@ class _DaySheetState extends State<DaySheet> {
         content: SingleChildScrollView(
           child: Text(
             l10n.daySheetDeleteBody(
-              daySheetDateLabel(widget.date, widget.today),
+              daySheetDateLabel(
+                widget.date,
+                widget.today,
+                preference: _dateFormat,
+              ),
             ),
           ),
         ),
@@ -1426,6 +1589,20 @@ class _DaySheetState extends State<DaySheet> {
     if (added) _recordTagRecentUse(code);
   }
 
+  /// Issue #257: opens the custom-tag manager sheet (create / rename /
+  /// retire) over the profile's registry. Cached repository (never a
+  /// fresh `Provider.of` — the sheet may be mid-dismissal), the exact
+  /// [_observationsRepository] caching rule.
+  Future<void> _manageCustomTags() async {
+    final repository = _tagRegistry;
+    if (repository == null) return;
+    await showCustomTagManagerSheet(
+      context,
+      repository: repository,
+      profileId: widget.profileId,
+    );
+  }
+
   /// Issue #234: optimistically moves [code] to the front of this
   /// profile's Recent row (immediate UI feedback via
   /// [withRecordedTagUse]), then persists the change through the
@@ -1575,6 +1752,9 @@ class _DaySheetState extends State<DaySheet> {
     required VoidCallback onToggleExcluded,
     required Key excludeKey,
     required Key errorKey,
+    FocusNode? focusNode,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onFieldSubmitted,
   }) {
     final excludeLabel = excluded
         ? l10n.daySheetMeasurementIncludeLabel
@@ -1594,10 +1774,13 @@ class _DaySheetState extends State<DaySheet> {
                   child: TextFormField(
                     key: fieldKey,
                     controller: controller,
+                    focusNode: focusNode,
                     enabled: !_busy,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    textInputAction: textInputAction,
+                    onFieldSubmitted: onFieldSubmitted,
                     decoration: InputDecoration(labelText: label),
                   ),
                 ),
@@ -1651,7 +1834,11 @@ class _DaySheetState extends State<DaySheet> {
                         header: true,
                         child: Text(
                           key: const ValueKey('day-sheet-date-title'),
-                          daySheetDateLabel(widget.date, widget.today),
+                          daySheetDateLabel(
+                            widget.date,
+                            widget.today,
+                            preference: _dateFormat,
+                          ),
                           style: theme.textTheme.titleMedium,
                         ),
                       ),
@@ -1666,6 +1853,17 @@ class _DaySheetState extends State<DaySheet> {
                         ),
                     ],
                   ),
+                ),
+                // Issue #130: the quiet, dismissible same-date merge notice
+                // — shown to every guardian (the winner too), with the
+                // losing author's recovery affordance rendered inside.
+                DayEntryMergeNoticeSection(
+                  events: _mergeEvents,
+                  currentUserId: widget.currentUserId,
+                  guardians: widget.guardians,
+                  onDismiss: (event) => unawaited(_dismissMergeEvent(event)),
+                  onRestoreNote: _restoreMergedNote,
+                  onRestoreFlow: _restoreMergedFlow,
                 ),
                 _sectionHeading(theme, l10n.daySheetFlowLabel),
                 _flowChips(l10n),
@@ -1708,6 +1906,22 @@ class _DaySheetState extends State<DaySheet> {
                             _painIntensityRow(l10n, theme, tag),
                         ]
                       : const [],
+                  // Issue #257: the profile's custom-tag registry — one
+                  // collapsible section after every curated category,
+                  // offering the LIVE, non-retired entries (retired tags
+                  // never render here; their stored codes render as inert
+                  // chips by display name instead). The manage affordance
+                  // is present whenever a registry repository is in scope,
+                  // so the first tag can be created from the sheet itself.
+                  customTags: [
+                    for (final tag in _registry)
+                      if (tag.offered) (code: tag.code, label: tag.displayName),
+                  ],
+                  customLabel: l10n.daySheetCustomTagsLabel,
+                  customManageTooltip: l10n.daySheetCustomTagsManageTooltip,
+                  noneCustomNote: l10n.daySheetCustomTagsNone,
+                  onManageCustomTags:
+                      _tagRegistry == null ? null : _manageCustomTags,
                 ),
                 // Issue #457: BBT/weight, standalone like the PMS toggle —
                 // neither is a `TagCategory` (they are numeric, not
@@ -1727,6 +1941,10 @@ class _DaySheetState extends State<DaySheet> {
                   onToggleExcluded: _toggleBbtExcluded,
                   excludeKey: const ValueKey('bbt-exclude-toggle'),
                   errorKey: const ValueKey('bbt-error'),
+                  // #165: BBT → weight → note is the sheet's field order.
+                  focusNode: _bbtFocus,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _weightFocus.requestFocus(),
                 ),
                 _measurementField(
                   theme: theme,
@@ -1743,20 +1961,28 @@ class _DaySheetState extends State<DaySheet> {
                   onToggleExcluded: _toggleWeightExcluded,
                   excludeKey: const ValueKey('weight-exclude-toggle'),
                   errorKey: const ValueKey('weight-error'),
+                  focusNode: _weightFocus,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _noteFocus.requestFocus(),
                 ),
-                if (_unrecognisedTags.isNotEmpty)
+                if (_inertTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
                 Padding(
                   padding: const EdgeInsets.only(top: LLSpace.space3),
                   child: TextFormField(
                     key: const ValueKey('note-field'),
                     controller: _noteController,
+                    focusNode: _noteFocus,
                     enabled: !_busy,
                     decoration: InputDecoration(
                       labelText: l10n.daySheetNoteLabel,
                       alignLabelWithHint: true,
                     ),
                     maxLines: 3,
+                    // #165: the sheet's last field is multiline — the
+                    // honest keyboard action is "newline" (a "done" action
+                    // would steal the enter key from note line breaks).
+                    textInputAction: TextInputAction.newline,
                     // Mirrors the server CHECK; a longer note is rejected forever.
                     maxLength: kMaxNoteLength,
                     maxLengthEnforcement: MaxLengthEnforcement.enforced,
@@ -1864,11 +2090,27 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
-  /// Inert, visible chips for [_unrecognisedTags] (#237): unlike the
-  /// taxonomy [FilterChip] grid above, these carry no `onSelected` — they
-  /// cannot be toggled, only shown — so they round-trip through `_tags`
-  /// (and therefore through autosave) unchanged rather than being silently
-  /// dropped or invisibly resubmitted as if user-validated.
+  /// Issue #257: the inert subset of [_unrecognisedTags] that actually
+  /// renders as inert chips — stored codes this build's taxonomy does not
+  /// know AND the registry does not offer. An offered registry code
+  /// renders as a selectable chip in the picker's custom-tags section; a
+  /// RETIRED registry code stays here (it has no picker chip — retirement
+  /// removed it) and renders by display name via [_displayOf], so its
+  /// stored rows keep rendering (#257's retire-not-delete rule).
+  List<String> get _inertTags => [
+        for (final code in _unrecognisedTags)
+          if (!_registry.any((tag) => tag.offered && tag.code == code)) code,
+      ];
+
+  /// Inert, visible chips for [_inertTags] (#237, extended by #257):
+  /// unlike the taxonomy [FilterChip] grid above, these carry no
+  /// `onSelected` — they cannot be toggled, only shown — so they
+  /// round-trip through `_tags` (and therefore through autosave)
+  /// unchanged rather than being silently dropped or invisibly
+  /// resubmitted as if user-validated. #257: a retired custom tag's chip
+  /// shows its display name ([_displayOf]); a wholly unknown code (never
+  /// in the taxonomy, not in — or not yet synced to — this device's
+  /// registry copy) shows its raw code, never drops (#237).
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
       padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),
@@ -1881,8 +2123,8 @@ class _DaySheetState extends State<DaySheet> {
       spacing: LLSpace.space2,
       runSpacing: LLSpace.space1,
       children: [
-        for (final code in _unrecognisedTags)
-          Chip(key: ValueKey('unrecognised-tag-$code'), label: Text(code)),
+        for (final code in _inertTags)
+          Chip(key: ValueKey('unrecognised-tag-$code'), label: Text(_displayOf(code))),
       ],
     ),
   ];
@@ -1965,7 +2207,11 @@ class _DaySheetState extends State<DaySheet> {
                 header: true,
                 child: Text(
                   key: const ValueKey('day-sheet-date-title'),
-                  daySheetDateLabel(existing.localDate, widget.today),
+                  daySheetDateLabel(
+                    existing.localDate,
+                    widget.today,
+                    preference: _dateFormat,
+                  ),
                   style: theme.textTheme.titleMedium,
                 ),
               ),
@@ -2008,7 +2254,10 @@ class _DaySheetState extends State<DaySheet> {
               runSpacing: LLSpace.space1,
               children: [
                 for (final code in existing.tags)
-                  Chip(label: Text(tagByCode(code)?.display ?? code)),
+                  // Issue #257: registry-aware resolution — a custom tag's
+                  // display name where available (retired tags included),
+                  // the raw code otherwise (never dropped, #237).
+                  Chip(key: ValueKey('read-only-tag-$code'), label: Text(_displayOf(code))),
               ],
             ),
           ],

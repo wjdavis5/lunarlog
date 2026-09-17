@@ -151,7 +151,7 @@ assert_exit "added-but-not-pending (applied out of band) fails" 1
 assert_contains "out-of-band case names the missing migration" "$LAST_LOG" "20260106000000_applied_out_of_band.sql"
 
 # --- 6. Modified (not added) migration must not be expected to re-apply ----
-# The UNDO-note retrofit case (AGENTS.md Migration Flow item 9): a
+# The UNDO-note retrofit case (AGENTS.md Migration Flow item 10): a
 # comment-only edit to an already-applied migration file.
 
 dir="$(new_repo)"; tmp_dirs+=("$dir")
