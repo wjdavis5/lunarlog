@@ -37,6 +37,7 @@ import 'package:lunarlog/ui/components/profile_card.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/profiles/pregnancy_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
@@ -44,12 +45,8 @@ import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
 import 'package:provider/provider.dart';
 
-String formatCreatedDate(DateTime utc) {
-  final local = utc.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
-}
+String formatCreatedDate(DateTime utc, {String locale = dates.kFallbackLocale}) =>
+    dates.formatShortDate(utc.toLocal(), locale: locale);
 
 class ProfilePickerScreen extends StatefulWidget {
   const ProfilePickerScreen({super.key});
@@ -140,7 +137,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                         ListTile(
                           title: Text(profile.displayName),
                           subtitle: Text(
-                              'Created ${formatCreatedDate(profile.createdAt)}'),
+                              'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}'),
                           onTap: () => Navigator.of(context).push(
                             buildNamedRoute<void>(
                               name: kRouteProfileDetailScreen,
@@ -232,7 +229,8 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       predictionService: Provider.of<CyclePredictionService?>(context),
       sharingService: sharing,
       refreshToken: overview?.badgeEpoch ?? 0,
-      subtitle: roleSubtitle ?? 'Created ${formatCreatedDate(profile.createdAt)}',
+      subtitle: roleSubtitle ??
+          'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}',
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
       trailing: PopupMenuButton<String>(
         tooltip: AppLocalizations.of(context).profilePickerActionsTooltip,
