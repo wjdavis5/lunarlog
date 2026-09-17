@@ -53,6 +53,7 @@ library;
 
 import 'dart:async'
     show StreamSubscription, Timer, scheduleMicrotask, unawaited;
+import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -62,6 +63,8 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
+    show describeUnmappedRaw;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
@@ -537,6 +540,20 @@ class _DaySheetState extends State<DaySheet> {
   /// autosaved.
   final Set<String> _sessionSelectedTags = {};
 
+  /// The day's `observations` rows carrying a non-null `raw` escape-hatch
+  /// payload (Issue #199): an unrecognised Clue `type`/`value` shape the
+  /// importer kept as-is rather than dropping. Rendered below as readable
+  /// text ([_unmappedObservationsSection]) so an imported-but-unmapped row
+  /// is never invisible; inert like [_unrecognisedTags] (display only,
+  /// never edited here).
+  ///
+  /// Deliberately NOT counted by [_childObservationsLoadsPending]: that
+  /// counter gates the read-only body's loading row for spotting and pain
+  /// intensity, both of which the read-only view has no natural empty
+  /// state to fall back on. This section simply renders nothing until it
+  /// resolves, which reads correctly as "no unmapped rows on this day".
+  List<Observation> _unmappedObservations = [];
+
   /// Issue #234: this profile's "recently used tags" (device-local, per
   /// profile — `lib/domain/logging/tag_recents.dart`), backing
   /// [CategoryPicker]'s Recent row. Most-recent-first; loaded once per
@@ -597,6 +614,7 @@ class _DaySheetState extends State<DaySheet> {
       unawaited(_loadExistingSpotting(existing.id));
       unawaited(_loadExistingPainIntensity(existing.id));
       unawaited(_loadExistingMeasurements(existing.id));
+      unawaited(_loadUnmappedObservations(existing.id));
     }
     // Issue #234: the read-only sheet never builds CategoryPicker, so it
     // has no Recent row to seed.
@@ -1967,6 +1985,8 @@ class _DaySheetState extends State<DaySheet> {
                 ),
                 if (_inertTags.isNotEmpty)
                   ..._unrecognisedTagsSection(theme),
+                if (_unmappedObservations.isNotEmpty)
+                  ..._unmappedObservationsSection(theme),
                 Padding(
                   padding: const EdgeInsets.only(top: LLSpace.space3),
                   child: TextFormField(
@@ -2111,6 +2131,74 @@ class _DaySheetState extends State<DaySheet> {
   /// shows its display name ([_displayOf]); a wholly unknown code (never
   /// in the taxonomy, not in — or not yet synced to — this device's
   /// registry copy) shows its raw code, never drops (#237).
+  /// Issue #199: loads the day's escape-hatch rows — `observations` with
+  /// a non-null `raw` (an imported-but-unrecognised Clue datapoint) — so
+  /// the sheet can render them as readable text instead of leaving them
+  /// invisible. Read-only: nothing here writes, autosaves, or synthesises.
+  Future<void> _loadUnmappedObservations(String dayEntryId) async {
+    final rows = [
+      for (final o in await Provider.of<ObservationsRepository>(
+        context,
+        listen: false,
+      ).listForDayEntry(dayEntryId))
+        if (o.raw != null) o,
+    ];
+    if (!mounted) return;
+    setState(() {
+      _unmappedObservations = rows;
+    });
+  }
+
+  /// Inert, visible chips for [_unmappedObservations] (Issue #199): each
+  /// escape-hatch row renders as one readable line ([describeUnmappedRaw]),
+  /// never raw JSON and never nothing. A stored `raw` that is not JSON at
+  /// all (possible — storage bounds the string but does not parse it)
+  /// degrades to the same fallback copy `describeUnmappedRaw` uses for an
+  /// empty map, so rendering never throws on the very rows it exists to
+  /// make visible.
+  ///
+  /// Its own heading, not [_unrecognisedTagsSection]'s: that one names tag
+  /// *codes* this build does not recognise, this one names imported
+  /// datapoints that mapped to no field at all. Sharing a heading would
+  /// stack two differently-sourced "Unrecognised" lists back to back.
+  List<Widget> _unmappedObservationsSection(ThemeData theme) => [
+    Padding(
+      padding: const EdgeInsets.only(
+        top: LLSpace.space3,
+        bottom: LLSpace.space1,
+      ),
+      child: Text(
+        AppLocalizations.of(context).daySheetUnmappedImported,
+        style: theme.textTheme.labelMedium,
+      ),
+    ),
+    Wrap(
+      spacing: LLSpace.space2,
+      runSpacing: LLSpace.space1,
+      children: [
+        for (var i = 0; i < _unmappedObservations.length; i++)
+          Chip(
+            key: ValueKey('unmapped-observation-$i'),
+            label: Text(_describeUnmapped(_unmappedObservations[i].raw)),
+          ),
+      ],
+    ),
+  ];
+
+  String _describeUnmapped(String? raw) {
+    final fallback = AppLocalizations.of(context).daySheetUnmappedFallback;
+    if (raw == null) return fallback;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return describeUnmappedRaw(Map<String, Object?>.from(decoded));
+      }
+      return fallback;
+    } on FormatException {
+      return fallback;
+    }
+  }
+
   List<Widget> _unrecognisedTagsSection(ThemeData theme) => [
     Padding(
       padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),

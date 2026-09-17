@@ -688,6 +688,18 @@ abstract class AppLocalizations {
   /// **'Unrecognised'**
   String get daySheetUnrecognised;
 
+  /// Chip label for an imported datapoint whose stored raw payload could not be described (not JSON, or an empty object).
+  ///
+  /// In en, this message translates to:
+  /// **'Unrecognised data'**
+  String get daySheetUnmappedFallback;
+
+  /// Heading above inert chips for datapoints an import kept as-is because they mapped to no field in this app.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported, not recognised'**
+  String get daySheetUnmappedImported;
+
   /// Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them.
   ///
   /// In en, this message translates to:
