@@ -28,6 +28,25 @@ project memory, from an earlier orchestrated run): five concurrent `flutter test
    process-count check, not a cooperative slot file, so it catches load from any source —
    not just invocations that go through the guard.
 
+   **It counts working processes only, never `dart language-server --lsp` (issue #768).**
+   One LSP daemon is spawned per attached editor/agent session (`opencode.json` sets
+   `"lsp": true`), so the daemon count scales with the number of coders — exactly the
+   thing the cap is meant to manage. The original name-only `Get-Process -Name dart`
+   match therefore saturated at five concurrent coders, the wait loop never saw headroom,
+   and every invocation burned the full `MaxWaitSeconds` before running anyway: a
+   30-minute stall *and* no throttling, which is strictly worse than no guard at all.
+   Three coders sat blocked simultaneously before it was noticed, because the warning
+   scrolls past inside a coder's tool output.
+
+   To see what the guard counts and what it ignores, without running anything:
+
+   ```
+   pwsh -File tool/dart_concurrency_guard.ps1 -ShowCount -Command flutter
+   ```
+
+   If you ever see the `==== HEADROOM WAIT EXHAUSTED ====` warning, the run was **not**
+   throttled — report it rather than treating it as a normal run.
+
    Both of the actual dart-process-spawning steps route through it, **locally, on
    Windows only** — CI runs one isolated job per runner, so the guard is pointless
    overhead there and CI's own commands are untouched:
@@ -51,4 +70,10 @@ test processes alone.
 
 `tool/dart_concurrency_guard.ps1` takes `-MaxConcurrent`, `-PollSeconds`, and
 `-MaxWaitSeconds` parameters if this figure ever needs to change — see the script's own
-comment header.
+comment header. `-ShowCount` prints the current tally and exits.
+
+Raising `-MaxConcurrent` is the right lever when more coders are deliberately in flight;
+it is **not** the fix for a stall, since a stall now means the cap is genuinely binding on
+real work. Free physical memory is the constraint the process count only approximates —
+five LSP daemons alone held roughly 3.6 GB during the issue #768 incident — so check
+memory too before assuming the cap is the problem.
