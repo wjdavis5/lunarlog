@@ -63,11 +63,25 @@
 	<!-- Issue #156/#173: HealthKit platform plumbing, write-only by design
 	     (issue #515) — AppDelegate.swift's `requestAuthorization` call
 	     passes an empty `read` set (`toShare: toShare, read: []`), so this
-	     app never reads HealthKit data and NSHealthShareUsageDescription
-	     (Apple's read-access string) is not requested/needed; only the
-	     write-access string below is. Do not add NSHealthShareUsageDescription
-	     back without a matching `read:` call site and a PRIVACY.md update
-	     describing what is read and why. -->
+	     app never reads HealthKit data.
+
+	     BOTH strings are nevertheless required, and NSHealthShareUsageDescription
+	     must NOT be removed again (issue #766). #515 removed it as a
+	     privacy-accuracy correction on the reasoning that an unused read
+	     capability should not be declared; App Store Connect rejected build
+	     1135 for exactly that omission with ITMS-90683. That check fires on
+	     *entitlements that permit access*, not only on call sites, and
+	     Runner.entitlements declares `com.apple.developer.healthkit`, which
+	     permits read. An empty `read:` array does not exempt the bundle.
+	     Removing the key again re-breaks every upload.
+
+	     #515's substantive point is preserved in the string's wording: it
+	     states that the app does not read, rather than inventing a read
+	     purpose the code does not have. If a real read call site is ever
+	     added, rewrite this string to describe what is read and why, and
+	     update PRIVACY.md to match. -->
+	<key>NSHealthShareUsageDescription</key>
+	<string>lunarlog never reads anything from Apple Health. iOS requires this permission text because the app is able to write to Apple Health; only writing is ever requested.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>lunarlog writes the bound profile's period and symptom data to Apple Health, only for the one profile you choose in Settings.</string>
 	<!-- Issue #207: required by image_picker_ios the moment a gallery source

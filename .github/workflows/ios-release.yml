@@ -472,6 +472,23 @@ jobs:
 
           [ -f "$app/PrivacyInfo.xcprivacy" ] || { echo "::error::privacy manifest missing from the bundle"; exit 1; }
 
+          # Issue #766: App Store Connect rejected build 1135 with ITMS-90683
+          # for a missing NSHealthShareUsageDescription. That check fires on
+          # entitlements that PERMIT access, not only on call sites -- the app
+          # requests an empty HealthKit read set, but Runner.entitlements
+          # declares com.apple.developer.healthkit, which permits read, so both
+          # purpose strings are mandatory. Asserting them here fails the build
+          # before upload instead of after Apple rejects it; a code comment
+          # alone did not survive (the pre-#766 comment told the next editor to
+          # remove the key).
+          for key in NSHealthShareUsageDescription NSHealthUpdateUsageDescription; do
+            value="$(plutil -extract "$key" raw -o - "$plist" 2>/dev/null || echo "MISSING")"
+            [ "$value" != "MISSING" ] && [ -n "$value" ] || {
+              echo "::error::$key is missing from the exported Info.plist. It is required while Runner.entitlements declares com.apple.developer.healthkit (ITMS-90683, issue #766) -- an empty read: set does not exempt the bundle."
+              exit 1
+            }
+          done
+
           [ "$encryption" = "false" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected false (see docs/ops/ios-export-compliance.md)"; exit 1; }
 
       - name: Set up sentry-cli (checksum-verified download)
