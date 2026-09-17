@@ -176,8 +176,9 @@ void main() {
       expect(jsonDecode(requests[5].body), {'processed_rows': 2001});
 
       expect(requests[6].method, 'PATCH');
-      expect(jsonDecode(requests[6].body)['status'], 'completed');
-      expect(jsonDecode(requests[6].body)['error_kind'], isNull);
+      final finalPatch = jsonDecode(requests[6].body) as Map<String, dynamic>;
+      expect(finalPatch['status'], 'completed');
+      expect(finalPatch['error_kind'], isNull);
 
       expect(progress, [
         [kBulkImportMaxRowsPerChunk, 2001],
@@ -190,6 +191,53 @@ void main() {
       expect(result.written, 2001);
       expect(result.rejected, [
         const BulkImportRejectedRow(rowIndex: 3, reason: 'flow is not a known level'),
+      ]);
+    });
+
+    test(
+        'a rejection in the second chunk is offset onto the full input list '
+        '(Issue #140 review, LLA-045)', () async {
+      var rpcCalls = 0;
+      client = makeClient((request) async {
+        if (request.method == 'POST' && request.url.path == '/rest/v1/import_jobs') {
+          return json({'id': jobId});
+        }
+        if (request.url.path == '/rest/v1/rpc/bulk_import_entries') {
+          rpcCalls++;
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          final rows = body['p_rows'] as List;
+          return json({
+            'inserted': rows.length,
+            'updated': 0,
+            'revived': 0,
+            // The second chunk's own row 0 is declined -- the RPC itself
+            // only ever knows its position within the chunk it validated.
+            'rejected': rpcCalls == 2
+                ? [
+                    {'row_index': 0, 'reason': 'flow is not a known level'}
+                  ]
+                : [],
+          });
+        }
+        return empty();
+      });
+      await signIn(client!, testUid);
+      requests.clear();
+
+      final rows = [for (var i = 0; i < 2001; i++) row(i)];
+      final result = await SupabaseBulkImporter(client!).importEntries(
+        profileId: profileId,
+        source: 'clue_import',
+        rows: rows,
+      );
+
+      // Without the offset fix this would misreport rowIndex 0 -- the same
+      // slot as some entirely different row in the FIRST chunk -- instead
+      // of row 2000, the row that actually caused the rejection.
+      expect(result.rejected, [
+        const BulkImportRejectedRow(
+            rowIndex: kBulkImportMaxRowsPerChunk,
+            reason: 'flow is not a known level'),
       ]);
     });
 
@@ -282,7 +330,8 @@ void main() {
         ),
         throwsA(const BulkImportError.other()),
       );
-      expect(jsonDecode(requests.last.body)['error_kind'], 'other');
+      expect((jsonDecode(requests.last.body) as Map<String, dynamic>)['error_kind'],
+          'other');
     });
 
     test('a failure marking the job failed does not mask the real error',
@@ -348,15 +397,18 @@ void main() {
         throwsA(const BulkImportError.network()),
       );
 
+      bool isPatchWithStatus(http.Request r, String status) =>
+          r.method == 'PATCH' &&
+          (jsonDecode(r.body) as Map<String, dynamic>)['status'] == status;
+
       expect(
-        requests.any((r) =>
-            r.method == 'PATCH' && jsonDecode(r.body)['status'] == 'failed'),
+        requests.any((r) => isPatchWithStatus(r, 'failed')),
         isFalse,
         reason: 'the job must never be marked failed when only the '
             'completed PATCH fails',
       );
-      final attemptedCompletedPatch = requests.lastWhere((r) =>
-          r.method == 'PATCH' && jsonDecode(r.body)['status'] == 'completed');
+      final attemptedCompletedPatch =
+          requests.lastWhere((r) => isPatchWithStatus(r, 'completed'));
       expect(attemptedCompletedPatch.method, 'PATCH');
     });
   });

@@ -4,11 +4,21 @@
 /// persists (the per-profile omission list and the late-resolver snooze).
 ///
 /// Nothing here is Flutter; nothing derived is ever persisted (pure
-/// recompute per stream emission, matching `prediction.dart`). Only the
-/// two small settings values below cross the store boundary, and both are
-/// device-local by settled decision (issue #132 brief, KTD2) — an
-/// omission made on one device does not sync, which the history UI states
-/// in a caption rather than hiding.
+/// recompute per stream emission, matching `prediction.dart`). The
+/// late-resolver snooze stays a small, purely device-local settings value
+/// (issue #132 brief, KTD2) — a snooze made on one device is about that
+/// device's own reminder cadence, not a fact about the cycle itself.
+///
+/// The omission list is different as of issue #568 (b): [CycleExclusionList]
+/// now reads and writes it through a [CycleOverridesRepository] — a
+/// synced, RLS-protected `cycle_overrides` row per excluded cycle-start —
+/// in production, so an omission made on one device *does* follow to
+/// another guardian's. The device-local `SettingsStore` codecs below
+/// ([parseOmittedCycles]/[encodeOmittedCycles]/[omittedCyclesSettingKey])
+/// remain: they back [CycleExclusionList]'s fallback path (tests, and any
+/// caller that constructs it without a repository) and
+/// [migrateOmittedCyclesToCycleOverrides]'s one-time read of a device's
+/// pre-existing list.
 ///
 /// Vocabulary is cycle-only (R13/PRIVACY.md): period/cycle days, no
 /// fertility or ovulation wording anywhere in this file.
@@ -19,6 +29,7 @@ import 'dart:convert';
 import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
+import '../repositories/cycle_overrides_repository.dart';
 import '../repositories/settings_store.dart';
 import 'prediction.dart'
     show
@@ -45,6 +56,23 @@ String omittedCyclesSettingKey(String profileId) => 'omittedCycles.$profileId';
 /// which the "remind me in three days" choice keeps the late resolver
 /// quiet (it reappears on that date).
 String lateSnoozeSettingKey(String profileId) => 'lateSnooze.$profileId';
+
+/// Device-local toggle for whether predictions are enabled for [profileId] (issue #225).
+/// When set to `'false'`, predictions are turned off. Defaults to true (predictions on).
+String predictionsEnabledSettingKey(String profileId) =>
+    'predictionsEnabled.$profileId';
+
+/// Device-local flag indicating whether the user dismissed the suggestion
+/// to turn off predictions for [profileId] when confidence is irregular (issue #225).
+String predictionsSuggestionDismissedSettingKey(String profileId) =>
+    'predictionsSuggestionDismissed.$profileId';
+
+/// Parses a stored predictions-enabled boolean string.
+/// Defaults to true if null, empty, or anything other than 'false'.
+bool parsePredictionsEnabled(String? raw) => raw != 'false';
+
+/// Encodes a predictions-enabled boolean for storage.
+String encodePredictionsEnabled(bool enabled) => enabled ? 'true' : 'false';
 
 /// Days a "remind me in three days" choice quiets the late resolver (R6).
 const int kLateSnoozeDays = 3;
@@ -101,31 +129,86 @@ bool isLateSnoozed({
 
 // ------------------------------------------------------------- read/write seam
 
-/// Read-modify-write access to one profile's device-local omission list.
-/// Deliberately tiny: a read, a set-union/difference, a write — the drift
-/// watch on the key drives every recomputation downstream.
+/// Read-modify-write access to one profile's cycle omission list.
+///
+/// Issue #568 (b): omissions now read and write through [CycleOverridesRepository]
+/// — a synced, RLS-protected `cycle_overrides` row per excluded cycle-start —
+/// instead of the device-local `SettingsStore` list this class used
+/// exclusively before this issue. That old list never synced (KTD2's
+/// settled decision at the time), which was the whole point of building
+/// `cycle_overrides` in the first place (Issue #188) — a table this class
+/// simply never read from until now. [migrateOmittedCyclesToCycleOverrides]
+/// carries a device's pre-existing list over, once.
+///
+/// [overrides] is optional and defaults to null so every existing caller
+/// that constructs this with only a [SettingsStore] — most of this
+/// codebase's tests — keeps the exact pre-#568 device-local behavior
+/// unchanged; production wiring (`buildAppDependencies`) supplies a real
+/// [CycleOverridesRepository] and gets the synced behavior. This mirrors
+/// the optional-collaborator pattern [CyclePredictionService] already uses
+/// for its own optional [ProfilesRepository] (Issue #218): "a null
+/// collaborator keeps the old behavior" is a settled shape in this file's
+/// neighborhood, not a one-off.
 class CycleExclusionList {
-  CycleExclusionList(this._settings);
+  CycleExclusionList(this._settings, {CycleOverridesRepository? overrides})
+    // A named parameter cannot be private, so this direct pass-through
+    // cannot be an initializing formal (the same reason
+    // CyclePredictionService's constructor carries the same ignore).
+    // ignore: prefer_initializing_formals
+    : _overrides = overrides;
 
   final SettingsStore _settings;
+  final CycleOverridesRepository? _overrides;
 
-  Future<Set<LocalDate>> load(String profileId) async => parseOmittedCycles(
-    await _settings.get(omittedCyclesSettingKey(profileId)),
-  );
+  Future<Set<LocalDate>> load(String profileId) async {
+    final overrides = _overrides;
+    if (overrides != null) {
+      return _asLocalDates(await overrides.excludedCycleStarts(profileId));
+    }
+    return parseOmittedCycles(
+      await _settings.get(omittedCyclesSettingKey(profileId)),
+    );
+  }
 
-  Stream<Set<LocalDate>> watch(String profileId) => _settings
-      .watch(omittedCyclesSettingKey(profileId))
-      .map(parseOmittedCycles);
+  Stream<Set<LocalDate>> watch(String profileId) {
+    final overrides = _overrides;
+    if (overrides != null) {
+      return overrides
+          .watchExcludedCycleStarts(profileId)
+          .map(_asLocalDates);
+    }
+    return _settings
+        .watch(omittedCyclesSettingKey(profileId))
+        .map(parseOmittedCycles);
+  }
 
   /// Adds [cycleStart] (idempotent). Used by the history list's omit
   /// toggle and by "skip this cycle" in the late resolver, which pass the
   /// same cycle-start key.
   Future<void> omit(String profileId, LocalDate cycleStart) async {
+    final overrides = _overrides;
+    if (overrides != null) {
+      await overrides.setExcludedFromAverage(
+        profileId: profileId,
+        cycleStartDate: cycleStart.iso,
+        excluded: true,
+      );
+      return;
+    }
     await _write(profileId, {...await load(profileId), cycleStart});
   }
 
   /// Removes [cycleStart] (idempotent) — the reversible half of R4.
   Future<void> include(String profileId, LocalDate cycleStart) async {
+    final overrides = _overrides;
+    if (overrides != null) {
+      await overrides.setExcludedFromAverage(
+        profileId: profileId,
+        cycleStartDate: cycleStart.iso,
+        excluded: false,
+      );
+      return;
+    }
     final next = {...await load(profileId)}..remove(cycleStart);
     await _write(profileId, next);
   }
@@ -133,6 +216,63 @@ class CycleExclusionList {
   Future<void> _write(String profileId, Set<LocalDate> dates) => _settings.set(
     omittedCyclesSettingKey(profileId),
     encodeOmittedCycles(dates),
+  );
+
+  /// Parses [isoDates] into [LocalDate]s, silently dropping anything
+  /// malformed — [CycleOverridesRepository] always hands back well-formed
+  /// `yyyy-MM-dd` strings sourced from `cycle_overrides.cycle_start_date`
+  /// (itself validated on every write), so this is a defensive floor, not
+  /// an expected path, mirroring [parseOmittedCycles]'s own tolerance.
+  static Set<LocalDate> _asLocalDates(Set<String> isoDates) {
+    final dates = <LocalDate>{};
+    for (final iso in isoDates) {
+      try {
+        dates.add(LocalDate.fromIso(iso));
+      } on ArgumentError {
+        // Skip a value that is not a real date; keep the rest.
+      }
+    }
+    return dates;
+  }
+}
+
+/// One-time migration (issue #568 (b)) of every profile's pre-existing
+/// device-local omission list into `cycle_overrides` rows, so a device that
+/// already had omissions recorded the old way does not silently lose them
+/// the moment [CycleExclusionList] starts reading from [overrides] instead.
+///
+/// Idempotent twice over: [SettingsKeys.cycleOverridesMigratedFromOmissionList]
+/// short-circuits every call after the first real migration (a fast no-op
+/// on every later launch), and even a repeated real run would be harmless —
+/// [CycleOverridesRepository.setExcludedFromAverage] is itself a no-op for
+/// a date already excluded. The old `SettingsStore` keys are left in place
+/// (untouched, never read again once a [CycleExclusionList] here uses
+/// [overrides]) rather than deleted — [SettingsStore] has no delete
+/// operation, and leaving stale, unread data behind is harmless.
+Future<void> migrateOmittedCyclesToCycleOverrides({
+  required SettingsStore settings,
+  required CycleOverridesRepository overrides,
+  required List<String> profileIds,
+}) async {
+  final done = await settings.get(
+    SettingsKeys.cycleOverridesMigratedFromOmissionList,
+  );
+  if (done == 'true') return;
+  for (final profileId in profileIds) {
+    final dates = parseOmittedCycles(
+      await settings.get(omittedCyclesSettingKey(profileId)),
+    );
+    for (final date in dates) {
+      await overrides.setExcludedFromAverage(
+        profileId: profileId,
+        cycleStartDate: date.iso,
+        excluded: true,
+      );
+    }
+  }
+  await settings.set(
+    SettingsKeys.cycleOverridesMigratedFromOmissionList,
+    'true',
   );
 }
 

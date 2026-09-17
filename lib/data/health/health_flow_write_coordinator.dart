@@ -71,6 +71,15 @@ class LocalHealthFlowWriteCoordinator implements HealthFlowWriteCoordinator {
   void _onBoundProfileChanged(String? profileId) {
     if (_disposed) return;
     final previous = _lastBoundId;
+    // Issue #620 (LLA-017): an explicit same-ID guard alongside the
+    // upstream `distinct()` on the binding stream — belt and suspenders,
+    // since this coordinator is exactly the place an unchanged emission
+    // would otherwise be misread as unbind-then-rebind (clearing the
+    // cursor, re-requesting authorization, and repeating on every write
+    // that stream causes, in a self-sustaining loop). A value-equal
+    // reemission of the SAME binding is a no-op: leave the existing entry
+    // subscription and any pending debounce exactly as they are.
+    if (profileId == previous) return;
     _lastBoundId = profileId;
     final previousEntriesSub = _entriesSub;
     _entriesSub = null;

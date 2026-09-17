@@ -20,12 +20,16 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 
+export 'package:lunarlog/domain/auth/auth_service.dart' show AuthSignOutScope;
+
 class AuthController extends ChangeNotifier {
-  AuthController({required AuthService authService})
+  AuthController({required AuthService authService, bool? mfaEnabled})
       : _service = authService,
-        _state = authService.state {
+        _state = authService.state,
+        mfaEnabled = mfaEnabled ?? AppConfig.mfaEnabled {
     _stateSub = authService.states.listen(_onState);
     _failureSub = authService.linkFailures.listen((_) => notifyListeners());
   }
@@ -34,6 +38,22 @@ class AuthController extends ChangeNotifier {
   AuthSessionState _state;
   StreamSubscription<AuthSessionState>? _stateSub;
   StreamSubscription<AuthFailure>? _failureSub;
+
+  /// Whether the TOTP MFA client surface is available in this build
+  /// (issue #738): the compile-time `LUNARLOG_ENABLE_MFA=true` define,
+  /// resolved once here — the only place outside `AppConfig` itself that
+  /// reads the flag (pinned by `test/architecture/mfa_flag_seam_test.dart`).
+  ///
+  /// The `showGoogle`/`showApple` null-means-AppConfig injection precedent:
+  /// production (`LunarLogApp`) constructs this controller without the
+  /// parameter, so the const applies; widget tests pass `true` to exercise
+  /// #714's MFA-on behavior in a single default-off test run. While false
+  /// (the default in every CI/workflow build): [requiresMfaStepUp] is
+  /// always false, `ensureAal2` auto-passes, and the Account section's
+  /// "Two-factor authentication" tile group renders nothing. A future
+  /// build flag (issue #739's QA-build step-up bypass) composes by OR-ing
+  /// into exactly one of those gates rather than re-reading the define.
+  final bool mfaEnabled;
 
   /// The user adopted from the most recent successful [linkGoogle],
   /// [linkApple], or [unlinkProvider] call (#31 KTD6), preferred over
@@ -112,17 +132,17 @@ class AuthController extends ChangeNotifier {
   Future<void> updatePassword(String newPassword) =>
       _service.updatePassword(newPassword);
 
-  Future<AppleSignInResult> signInWithAppleNative() =>
+  Future<NativeSignInResult> signInWithAppleNative() =>
       _service.signInWithAppleNative();
 
-  Future<GoogleSignInResult> signInWithGoogleNative() =>
+  Future<NativeSignInResult> signInWithGoogleNative() =>
       _service.signInWithGoogleNative();
 
   /// Passkey sign-in (#30 U4; KTD5), mirroring
   /// [signInWithGoogleNative]/[signInWithAppleNative] exactly: no adoption
   /// step, since the resulting session's `signedIn` state arrives through
   /// [states] like every other sign-in path.
-  Future<PasskeySignInResult> signInWithPasskey() =>
+  Future<NativeSignInResult> signInWithPasskey() =>
       _service.signInWithPasskey();
 
   Future<void> sendMagicLink({
@@ -154,13 +174,13 @@ class AuthController extends ChangeNotifier {
 
   /// Adds a passkey to the current account (#30 U4; KTD5). Unlike
   /// [linkGoogle]/[linkApple], a passkey is never an identity provider
-  /// (R10), so [PasskeyRegistrationResult] — not a bare [AuthUser] — is the
-  /// return type; only a non-cancelled [PasskeyRegistrationSuccess] adopts
+  /// (R10), so [NativeSignInResult] — not a bare [AuthUser] — is the
+  /// return type; only a non-cancelled [NativeSignInSession] adopts
   /// its user and notifies listeners, the same adoption [_adopting] gives
   /// every other add-a-method call.
-  Future<PasskeyRegistrationResult> registerPasskey() async {
+  Future<NativeSignInResult> registerPasskey() async {
     final result = await _service.registerPasskey();
-    if (result is PasskeyRegistrationSuccess) {
+    if (result is NativeSignInSession) {
       _adoptFreshUser(result.user);
       notifyListeners();
     }
@@ -181,6 +201,34 @@ class AuthController extends ChangeNotifier {
 
   Future<void> signOut({AuthSignOutScope scope = AuthSignOutScope.local}) =>
       _service.signOut(scope: scope);
+
+  // -------------------------------------------------------------- MFA
+  // Thin delegations (#268): no adoption step needed — the settings
+  // screen re-reads [listMfaFactors] itself after each mutation, and a
+  // step-up's session promotion arrives through [AuthService.states] like
+  // every other session change.
+
+  Future<TotpEnrollmentOffer> enrollTotp() => _service.enrollTotp();
+
+  Future<void> verifyTotpCode({required String factorId, required String code}) =>
+      _service.verifyTotpCode(factorId: factorId, code: code);
+
+  Future<List<MfaFactor>> listMfaFactors() => _service.listMfaFactors();
+
+  Future<void> unenrollMfaFactor(String factorId) =>
+      _service.unenrollMfaFactor(factorId);
+
+  AuthAssuranceLevel? get assuranceLevel => _service.assuranceLevel;
+
+  /// Issue #738: with [mfaEnabled] false (the default build) this is
+  /// always false — no account can demand an AAL2 step-up, because no
+  /// client can enrol a factor in the first place. The service is never
+  /// consulted, so the flag-off posture is structural rather than a
+  /// filtered-away answer.
+  Future<bool> requiresMfaStepUp() async {
+    if (!mfaEnabled) return false;
+    return _service.requiresMfaStepUp();
+  }
 
   void _onState(AuthSessionState next) {
     // Any incoming state notification — a same-state signal (e.g.

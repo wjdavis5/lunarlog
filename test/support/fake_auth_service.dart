@@ -43,20 +43,20 @@ class FakeAuthService implements AuthService {
   SignUpResult? signUpResult;
 
   /// What [signInWithAppleNative] returns.
-  AppleSignInResult appleResult = const AppleSignInCancelled();
+  NativeSignInResult appleResult = const NativeSignInCancelled();
 
   /// What [signInWithGoogleNative] returns (#2 U2).
-  GoogleSignInResult googleResult =
-      const GoogleSignInSession(AuthUser(id: 'user-google'));
+  NativeSignInResult googleResult =
+      const NativeSignInSession(AuthUser(id: 'user-google'));
 
   /// What [signInWithPasskey] returns (#30 U2).
-  PasskeySignInResult passkeySignInResult = const PasskeySignInCancelled();
+  NativeSignInResult passkeySignInResult = const NativeSignInCancelled();
 
   /// What [registerPasskey] returns (#30 U2). Never touches [providers] —
   /// passkeys are not identity providers and do not appear in
   /// [AuthUser.providers] (R10).
-  PasskeyRegistrationResult passkeyRegistrationResult =
-      const PasskeyRegistrationCancelled();
+  NativeSignInResult passkeyRegistrationResult =
+      const NativeSignInCancelled();
 
   /// Throw [UnsupportedError] from [signInWithPasskey] / [registerPasskey]
   /// (build has no passkey configuration).
@@ -222,49 +222,49 @@ class FakeAuthService implements AuthService {
   }
 
   @override
-  Future<AppleSignInResult> signInWithAppleNative() async {
+  Future<NativeSignInResult> signInWithAppleNative() async {
     if (appleUnsupported) {
       throw UnsupportedError('Apple Sign-In is available on iOS only');
     }
     appleCalls++;
     await _maybeThrow();
     final result = appleResult;
-    if (result is AppleSignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<GoogleSignInResult> signInWithGoogleNative() async {
+  Future<NativeSignInResult> signInWithGoogleNative() async {
     if (googleUnsupported) {
       throw UnsupportedError('Google Sign-In is not available in this build');
     }
     googleCalls++;
     await _maybeThrow();
     final result = googleResult;
-    if (result is GoogleSignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<PasskeySignInResult> signInWithPasskey() async {
+  Future<NativeSignInResult> signInWithPasskey() async {
     if (passkeyUnsupported) {
       throw UnsupportedError('Passkeys are not available in this build');
     }
     passkeySignInCalls++;
     await _maybeThrow();
     final result = passkeySignInResult;
-    if (result is PasskeySignInSession) {
+    if (result is NativeSignInSession) {
       emit(AuthSessionState.signedIn, user: result.user);
     }
     return result;
   }
 
   @override
-  Future<PasskeyRegistrationResult> registerPasskey() async {
+  Future<NativeSignInResult> registerPasskey() async {
     if (passkeyUnsupported) {
       throw UnsupportedError('Passkeys are not available in this build');
     }
@@ -368,6 +368,86 @@ class FakeAuthService implements AuthService {
     signOutCalls.add(scope);
     await _maybeThrow();
     emit(AuthSessionState.signedOut);
+  }
+
+  // ---------------------------------------------------------------- MFA
+  // Issue #268: controllable knobs mirroring the rest of this fake's shape
+  // — a settable result/failure per call, plus a call recorder.
+
+  /// What [enrollTotp] returns.
+  TotpEnrollmentOffer enrollTotpResult = const TotpEnrollmentOffer(
+    factorId: 'factor-1',
+    qrCodeDataUri: 'data:image/svg+xml;utf-8,<svg></svg>',
+    secret: 'JBSWY3DPEHPK3PXP',
+  );
+
+  /// What [listMfaFactors] returns.
+  List<MfaFactor> mfaFactors = const [];
+
+  /// When true, [requiresMfaStepUp] returns true (an aal2 challenge is
+  /// needed) instead of the default false.
+  bool mfaStepUpRequired = false;
+
+  AuthAssuranceLevel? mfaAssuranceLevel;
+
+  final verifyTotpCodeCalls = <({String factorId, String code})>[];
+  final unenrollMfaFactorCalls = <String>[];
+  int enrollTotpCalls = 0;
+
+  /// Issue #738: call counters so a flag-off test can assert the client
+  /// surface never touched the service at all (not just that it rendered
+  /// nothing).
+  int listMfaFactorsCalls = 0;
+  int requiresMfaStepUpCalls = 0;
+
+  /// Throw a non-[AuthFailure] error from [verifyTotpCode] once, mirroring
+  /// [unlinkThrowsGeneric] — exercises a caller's generic (non-AuthFailure)
+  /// catch branch.
+  bool verifyTotpCodeThrowsGeneric = false;
+
+  @override
+  Future<TotpEnrollmentOffer> enrollTotp() async {
+    enrollTotpCalls++;
+    await _maybeThrow();
+    return enrollTotpResult;
+  }
+
+  @override
+  Future<void> verifyTotpCode({
+    required String factorId,
+    required String code,
+  }) async {
+    if (verifyTotpCodeThrowsGeneric) {
+      verifyTotpCodeThrowsGeneric = false;
+      throw StateError('verify failed unexpectedly');
+    }
+    verifyTotpCodeCalls.add((factorId: factorId, code: code));
+    await _maybeThrow();
+    mfaAssuranceLevel = AuthAssuranceLevel.aal2;
+    mfaStepUpRequired = false;
+  }
+
+  @override
+  Future<List<MfaFactor>> listMfaFactors() async {
+    listMfaFactorsCalls++;
+    await _maybeThrow();
+    return mfaFactors;
+  }
+
+  @override
+  Future<void> unenrollMfaFactor(String factorId) async {
+    unenrollMfaFactorCalls.add(factorId);
+    await _maybeThrow();
+    mfaFactors = mfaFactors.where((f) => f.id != factorId).toList();
+  }
+
+  @override
+  AuthAssuranceLevel? get assuranceLevel => mfaAssuranceLevel;
+
+  @override
+  Future<bool> requiresMfaStepUp() async {
+    requiresMfaStepUpCalls++;
+    return mfaStepUpRequired;
   }
 
   Future<void> dispose() async {

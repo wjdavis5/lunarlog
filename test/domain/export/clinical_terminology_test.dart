@@ -176,16 +176,16 @@ void main() {
       }
     });
 
-    test('row count matches taxonomy size exactly (86, issue #252)', () {
-      expect(kTagClinicalCodes, hasLength(86));
-      expect(kTagTaxonomy, hasLength(86));
+    test('row count matches taxonomy size exactly (113, issue #456)', () {
+      expect(kTagClinicalCodes, hasLength(113));
+      expect(kTagTaxonomy, hasLength(113));
     });
   });
 
   group('kTagClinicalCodes — golden table (BLOCKING: fails loudly on any '
       'edit to a verified tag mapping)', () {
     test('matches the full expected (system, code, display) triple for all '
-        '86 tags', () {
+        '113 tags', () {
       const snomed = 'http://snomed.info/sct';
       const local =
           'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
@@ -306,6 +306,59 @@ void main() {
         'allergy': (local, 'allergy', 'Allergy'),
         'injury': (local, 'injury', 'Injury'),
         'fever': (local, 'fever', 'Fever'),
+        // issue #253's 22 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #253 section).
+        'no_sex_today': (local, 'no_sex_today', 'No sex today'),
+        'low_sex_drive': (local, 'low_sex_drive', 'Low sex drive'),
+        'high_sex_drive': (local, 'high_sex_drive', 'High sex drive'),
+        'masturbation': (local, 'masturbation', 'Masturbation'),
+        'withdrawal': (local, 'withdrawal', 'Withdrawal'),
+        'protected_sex': (local, 'protected_sex', 'Protected sex'),
+        'unprotected_sex': (local, 'unprotected_sex', 'Unprotected sex'),
+        'sex_toys': (local, 'sex_toys', 'Sex toys'),
+        'orgasm': (local, 'orgasm', 'Orgasm'),
+        'no_orgasm': (local, 'no_orgasm', 'No orgasm'),
+        'fantasies': (local, 'fantasies', 'Fantasies'),
+        'painful_intercourse': (
+          local,
+          'painful_intercourse',
+          'Painful intercourse',
+        ),
+        'none': (local, 'none', 'No discharge'),
+        'sticky': (local, 'sticky', 'Sticky'),
+        'creamy': (local, 'creamy', 'Creamy'),
+        'egg_white': (local, 'egg_white', 'Egg white'),
+        'atypical': (local, 'atypical', 'Atypical'),
+        'ovulation_negative': (
+          local,
+          'ovulation_negative',
+          'Ovulation · negative',
+        ),
+        'ovulation_positive': (
+          local,
+          'ovulation_positive',
+          'Ovulation · positive',
+        ),
+        'ovulation_peak': (local, 'ovulation_peak', 'Ovulation · peak'),
+        'pregnancy_negative': (
+          local,
+          'pregnancy_negative',
+          'Pregnancy · negative',
+        ),
+        'pregnancy_positive': (
+          local,
+          'pregnancy_positive',
+          'Pregnancy · positive',
+        ),
+        // issue #456's 5 new codes - every one an explicit local decision
+        // (no SNOMED concept fetch-verified yet; see
+        // docs/clinical/terminology.md's #456 section).
+        'hot_flashes': (local, 'hot_flashes', 'Hot flash'),
+        'night_sweats': (local, 'night_sweats', 'Night sweats'),
+        'brain_fog': (local, 'brain_fog', 'Brain fog'),
+        'hrt': (local, 'hrt', 'HRT'),
+        'vaginal_dryness': (local, 'vaginal_dryness', 'Vaginal dryness'),
       };
       expect(kTagClinicalCodes, hasLength(expected.length));
       expect(kTagClinicalCodes.keys.toSet(), expected.keys.toSet());
@@ -517,6 +570,68 @@ void main() {
     test('cycleLengthCodes exposes 64700-8', () {
       expect(cycleLengthCodes.map((c) => c.code).toList(), ['64700-8']);
       expect(cycleLengthCodes.single.system, kSystemLoinc);
+    });
+  });
+
+  group('reserved shapes — BBT, pregnancy/EDD, birth control '
+      '(A3-46/A3-47/A3-48, AC6)', () {
+    test('kBodyTemperatureLoinc is the verified 8310-5 with loinc.org '
+        'provenance', () {
+      expect(kBodyTemperatureLoinc.system, kSystemLoinc);
+      expect(kBodyTemperatureLoinc.code, '8310-5');
+      expect(kBodyTemperatureLoinc.display, 'Body temperature');
+      expect(kBodyTemperatureLoinc.provenanceUrl, 'https://loinc.org/8310-5');
+    });
+
+    test('8310-5 is reserved only — not a menstrual question-table row '
+        '(kLoincCodes stays exactly the A3-44 seven)', () {
+      expect(
+        kLoincCodes.map((c) => c.code),
+        isNot(contains('8310-5')),
+      );
+      expect(loincByCode('8310-5'), isNull);
+    });
+
+    test('estimatedDeliveryDateCode is the verified 11778-8 row '
+        '(pregnancy EDD reservation, A3-47)', () {
+      expect(estimatedDeliveryDateCode.code, '11778-8');
+      expect(estimatedDeliveryDateCode.display, 'Delivery date Estimated');
+      expect(estimatedDeliveryDateCode.system, kSystemLoinc);
+      expect(estimatedDeliveryDateCode.provenanceUrl, 'https://loinc.org/11778-8');
+    });
+
+    test('kBirthControlResourceShapes is exactly A3-48\'s method-shape '
+        'table, and never an Observation', () {
+      expect(kBirthControlResourceShapes, const [
+        ('oral_patch_ring_injection', 'MedicationStatement'),
+        ('iud_implant', 'Device / DeviceUseStatement'),
+        ('insertion_event', 'Procedure'),
+      ]);
+      // A3-48's binding rule: no method shape is modeled as an
+      // Observation — "getting this wrong makes the export look
+      // machine-generated rather than clinically credible".
+      for (final (_, resource) in kBirthControlResourceShapes) {
+        expect(
+          resource,
+          isNot(contains('Observation')),
+          reason: 'birth-control method shape must not be an Observation',
+        );
+      }
+    });
+  });
+
+  group('A3-45 discipline — tags are findings, never LOINC questions', () {
+    test('no kTagClinicalCodes row uses the LOINC system', () {
+      for (final entry in kTagClinicalCodes.entries) {
+        expect(
+          entry.value.system,
+          isNot(kSystemLoinc),
+          reason:
+              '${entry.key}: symptom tags are coded as SNOMED CT findings '
+              'or explicit local decisions — LOINC codes the question '
+              '(A3-45)',
+        );
+      }
     });
   });
 

@@ -8,7 +8,11 @@
 /// daily log nudge (Issue #136, R10/R11). iOS delivers local notifications
 /// with no Dart callback, so a same-day re-arm loop cannot be relied on;
 /// each reschedule arms the next bounded window ahead. Every body/title is
-/// generic — no profile names, no dates (lock-screen privacy).
+/// generic — no profile names, no dates (lock-screen privacy) — unless the
+/// profile's operator authored custom text for that type (Issue #184),
+/// which is still manual user-authored copy: the resolver
+/// (`resolveReminderText`) accepts nothing but the config, so no code path
+/// can interpolate a name or date into it.
 ///
 /// Issue #136 (per-type configuration): each profile's
 /// [ReminderConfig] decides which types are armed, each type's own
@@ -97,6 +101,50 @@ const int kLogNudgeCadencePreArmOccurrences = 4;
 const String kReminderTitle = 'A reminder from Lunarlog';
 const String kReminderBody = 'Open Lunarlog to see what it is about.';
 
+/// The title and body one notification presents (Issue #184): either the
+/// type's user-authored custom text or the generic defaults — never
+/// anything else.
+class ReminderText {
+  const ReminderText({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReminderText && other.title == title && other.body == body;
+
+  @override
+  int get hashCode => Object.hash(title, body);
+
+  @override
+  String toString() => 'ReminderText($title | $body)';
+}
+
+/// Resolves the text one reminder of a type presents (Issue #184):
+/// [ReminderTypeConfig.customTitle]/[customBody] when set, else the
+/// generic [kReminderTitle]/[kReminderBody].
+///
+/// **The discretion invariant, made structural:** this function takes
+/// *only* the type config. It has no profile, no name, no date to read —
+/// no code path can concatenate either into notification text, because
+/// the one resolver through which every reminder's text flows accepts
+/// nothing but user-authored copy (and the fallback constants above).
+/// Clue's mechanism is manual user-authored text, not templated
+/// interpolation, and this signature is what keeps lunarlog's the same.
+/// `reminder_text_test.dart` pins it by feeding a name-bearing profile
+/// and a dated plan through and asserting the built text equals the
+/// configured strings verbatim.
+ReminderText resolveReminderText(ReminderTypeConfig config) => ReminderText(
+      title: _orDefault(config.customTitle, kReminderTitle),
+      body: _orDefault(config.customBody, kReminderBody),
+    );
+
+String _orDefault(String? custom, String fallback) {
+  final trimmed = custom?.trim() ?? '';
+  return trimmed.isEmpty ? fallback : trimmed;
+}
+
 /// Eviction priority under the [kMaxPendingReminders] cap (Issue #136,
 /// widened by Issue #178 and Issue #183): lower is kept longer. The
 /// documented eviction order is late over upcoming over
@@ -146,6 +194,8 @@ class PlannedReminder {
     required this.fireOn,
     required this.kind,
     this.timeOfDayMinutes = kDefaultReminderTimeMinutes,
+    this.title = kReminderTitle,
+    this.body = kReminderBody,
   });
 
   final String profileId;
@@ -156,12 +206,39 @@ class PlannedReminder {
   /// configured time after quiet-hours shifting (R10).
   final int timeOfDayMinutes;
 
+  /// The notification title the scheduler presents (Issue #184): this
+  /// kind's custom text when configured, else the generic
+  /// [kReminderTitle]. Resolved once at plan time from the profile's
+  /// [ReminderConfig] — local notifications carry their text at schedule
+  /// time (iOS delivers them with no Dart callback), and #136's replan-on-
+  /// every-change machinery re-arms the whole plan (through
+  /// `rescheduleAll`'s cancel-then-schedule) the moment the stored text
+  /// changes, so baked-at-schedule-time stays current exactly the way the
+  /// type's time-of-day already does.
+  final String title;
+
+  /// The notification body (see [title]).
+  final String body;
+
   /// The notification id the scheduler uses for this reminder. Derived
   /// from the reminder's full identity (see [stableReminderId]), so a
   /// replan that yields the same reminder reuses the id rather than
-  /// renumbering it.
+  /// renumbering it. Deliberately excludes [title]/[body]: a text edit is
+  /// not a different reminder, and `rescheduleAll` cancels every pending
+  /// notification before re-arming anyway.
   int get id => stableReminderId(
       '$profileId|${kind.name}|${fireOn.iso}|$timeOfDayMinutes');
+
+  /// This reminder with its presentation text resolved from [text] —
+  /// the one place plan-time text resolution happens (Issue #184).
+  PlannedReminder withText(ReminderText text) => PlannedReminder(
+        profileId: profileId,
+        fireOn: fireOn,
+        kind: kind,
+        timeOfDayMinutes: timeOfDayMinutes,
+        title: text.title,
+        body: text.body,
+      );
 
   @override
   bool operator ==(Object other) =>
@@ -169,10 +246,13 @@ class PlannedReminder {
       other.profileId == profileId &&
       other.fireOn == fireOn &&
       other.kind == kind &&
-      other.timeOfDayMinutes == timeOfDayMinutes;
+      other.timeOfDayMinutes == timeOfDayMinutes &&
+      other.title == title &&
+      other.body == body;
 
   @override
-  int get hashCode => Object.hash(profileId, fireOn, kind, timeOfDayMinutes);
+  int get hashCode =>
+      Object.hash(profileId, fireOn, kind, timeOfDayMinutes, title, body);
 
   @override
   String toString() =>
@@ -227,6 +307,16 @@ class PlannedReminder {
 /// statistic-change over the birth-control cadences over log-nudge). The
 /// result is sorted by fire date and capped at [kMaxPendingReminders],
 /// evicting in the same priority order.
+///
+/// [activeProfileIds] (Issue #634, LLA-098), when provided, is the
+/// authoritative active-profile-id set every other map is intersected
+/// against before planning: a stored [configs] row or [birthControlModes]
+/// entry for a profile that has since been archived or removed (per-device
+/// settings and the birth-control row watcher are never pruned just
+/// because a profile leaves the active set) can then never plan a
+/// reminder. Null (the default) keeps the unfiltered pre-#634 behaviour —
+/// every caller that doesn't track an authoritative active set (this
+/// file's own tests included) plans exactly as before.
 List<PlannedReminder> planReminders({
   required LocalDate today,
   required Map<String, ActivePrediction> predictions,
@@ -235,16 +325,23 @@ List<PlannedReminder> planReminders({
   Map<String, LocalDate> lateSnoozes = const {},
   Map<String, LocalDate> statisticChangeSignals = const {},
   Map<String, BirthControlState> birthControlModes = const {},
+  Set<String>? activeProfileIds,
 }) {
   final planned = <PlannedReminder>[];
   // The prediction-independent types plan even without a prediction (a
   // config entry can name a profile the prediction stream has nothing for
   // yet).
   final ids = {...predictions.keys, ...configs.keys, ...birthControlModes.keys};
-  for (final id in ids) {
+  final eligibleIds =
+      activeProfileIds == null ? ids : ids.intersection(activeProfileIds);
+  for (final id in eligibleIds) {
     final preset = presets[id] ?? ReminderPreset.all;
     final config = configs[id] ?? ReminderConfig.fromPreset(preset);
-    planned.addAll(_planProfile(
+    // Issue #184: each planned reminder resolves its presentation text
+    // from the profile's per-type config here — the one text-resolution
+    // point on the planning path. Types with no custom text (and profiles
+    // with no stored config) keep the generic defaults.
+    for (final reminder in _planProfile(
       profileId: id,
       today: today,
       prediction: predictions[id],
@@ -252,7 +349,10 @@ List<PlannedReminder> planReminders({
       snoozeUntil: lateSnoozes[id],
       statisticSignal: statisticChangeSignals[id],
       birthControlState: birthControlModes[id],
-    ));
+    )) {
+      planned.add(
+          reminder.withText(resolveReminderText(config.typeConfig(reminder.kind))));
+    }
   }
   return _coalesceAndCap(planned);
 }
@@ -321,62 +421,107 @@ List<PlannedReminder> _planProfile({
 /// [ReminderCadence.monthly]), pre-arms [kLogNudgeCadencePreArmOccurrences]
 /// future occurrences starting from [ReminderTypeConfig.anchorDate] (or
 /// [today] if no anchor is set).
+List<PlannedReminder> _planDailyLogNudge({
+  required String profileId,
+  required LocalDate today,
+  required int timeOfDayMinutes,
+  required QuietHours? quietHours,
+}) =>
+    [
+      for (var i = 0; i < kLogNudgePreArmDays; i++)
+        _planOne(
+          profileId,
+          ReminderKind.log,
+          today.addDays(i),
+          timeOfDayMinutes,
+          quietHours,
+        ),
+    ];
+
+List<PlannedReminder> _planIntervalLogNudge({
+  required String profileId,
+  required LocalDate today,
+  required LocalDate anchor,
+  required int intervalDays,
+  required int timeOfDayMinutes,
+  required QuietHours? quietHours,
+}) {
+  final offsetDays = today.difference(anchor);
+  final k =
+      offsetDays <= 0 ? 0 : (offsetDays + intervalDays - 1) ~/ intervalDays;
+  return [
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++)
+      _planOne(
+        profileId,
+        ReminderKind.log,
+        anchor.addDays((k + i) * intervalDays),
+        timeOfDayMinutes,
+        quietHours,
+      ),
+  ];
+}
+
+List<PlannedReminder> _planMonthlyLogNudge({
+  required String profileId,
+  required LocalDate today,
+  required LocalDate anchor,
+  required int timeOfDayMinutes,
+  required QuietHours? quietHours,
+}) {
+  final monthsDiff =
+      (today.year - anchor.year) * 12 + (today.month - anchor.month);
+  final candidate = anchor.addMonths(monthsDiff);
+  final startOffset = candidate.isBefore(today) ? monthsDiff + 1 : monthsDiff;
+  return [
+    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++)
+      _planOne(
+        profileId,
+        ReminderKind.log,
+        anchor.addMonths(startOffset + i),
+        timeOfDayMinutes,
+        quietHours,
+      ),
+  ];
+}
+
 List<PlannedReminder> _planLogNudge({
   required String profileId,
   required LocalDate today,
   required ReminderTypeConfig config,
   required QuietHours? quietHours,
 }) {
-  final cadence = config.cadence;
-  if (cadence == ReminderCadence.daily) {
-    return [
-      for (var i = 0; i < kLogNudgePreArmDays; i++)
-        _planOne(
-          profileId,
-          ReminderKind.log,
-          today.addDays(i),
-          config.timeOfDayMinutes,
-          quietHours,
-        ),
-    ];
-  }
-
   final anchor = config.anchorDate ?? today;
-  final planned = <PlannedReminder>[];
-
-  if (cadence == ReminderCadence.weekly ||
-      cadence == ReminderCadence.fortnightly) {
-    final intervalDays = cadence == ReminderCadence.weekly ? 7 : 14;
-    final offsetDays = today.difference(anchor);
-    final k =
-        offsetDays <= 0 ? 0 : (offsetDays + intervalDays - 1) ~/ intervalDays;
-    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
-      planned.add(_planOne(
-        profileId,
-        ReminderKind.log,
-        anchor.addDays((k + i) * intervalDays),
-        config.timeOfDayMinutes,
-        quietHours,
-      ));
-    }
-  } else if (cadence == ReminderCadence.monthly) {
-    final monthsDiff =
-        (today.year - anchor.year) * 12 + (today.month - anchor.month);
-    final candidate = anchor.addMonths(monthsDiff);
-    final startOffset =
-        candidate.isBefore(today) ? monthsDiff + 1 : monthsDiff;
-    for (var i = 0; i < kLogNudgeCadencePreArmOccurrences; i++) {
-      planned.add(_planOne(
-        profileId,
-        ReminderKind.log,
-        anchor.addMonths(startOffset + i),
-        config.timeOfDayMinutes,
-        quietHours,
-      ));
-    }
-  }
-
-  return planned;
+  return switch (config.cadence) {
+    ReminderCadence.daily => _planDailyLogNudge(
+        profileId: profileId,
+        today: today,
+        timeOfDayMinutes: config.timeOfDayMinutes,
+        quietHours: quietHours,
+      ),
+    ReminderCadence.weekly => _planIntervalLogNudge(
+        profileId: profileId,
+        today: today,
+        anchor: anchor,
+        intervalDays: 7,
+        timeOfDayMinutes: config.timeOfDayMinutes,
+        quietHours: quietHours,
+      ),
+    ReminderCadence.fortnightly => _planIntervalLogNudge(
+        profileId: profileId,
+        today: today,
+        anchor: anchor,
+        intervalDays: 14,
+        timeOfDayMinutes: config.timeOfDayMinutes,
+        quietHours: quietHours,
+      ),
+    ReminderCadence.monthly => _planMonthlyLogNudge(
+        profileId: profileId,
+        today: today,
+        anchor: anchor,
+        timeOfDayMinutes: config.timeOfDayMinutes,
+        quietHours: quietHours,
+      ),
+  };
 }
 
 /// The birth-control adherence kinds (Issue #183). A profile plans a kind
@@ -398,6 +543,13 @@ List<PlannedReminder> _planBirthControl({
   if (!typeConfig.enabled) return const [];
   final cadenceDays = birthControlCadenceDays(method)!;
   final startedOn = _tryParseIso(state!.startedOn);
+  // Issue #634, LLA-072: a known stop date bounds every pre-armed
+  // occurrence below, not just today's in-effect check above — the method
+  // being in effect *today* says nothing about whether it is still in
+  // effect on a date several days or cadence-periods out.
+  final stoppedOn = _tryParseIso(state.stoppedOn);
+  bool inEffect(LocalDate date) =>
+      stoppedOn == null || date.compareTo(stoppedOn) < 0;
   if (kind == ReminderKind.birthControlPill) {
     // The pill needs no anchor: while the method is in effect every day
     // is a dose day, so the reminder pre-arms the same bounded daily
@@ -406,13 +558,14 @@ List<PlannedReminder> _planBirthControl({
     // startedOn ≤ today here).
     return [
       for (var i = 0; i < kBirthControlPillPreArmDays; i++)
-        _planOne(
-          profileId,
-          kind,
-          today.addDays(i),
-          typeConfig.timeOfDayMinutes,
-          config.quietHours,
-        ),
+        if (inEffect(today.addDays(i)))
+          _planOne(
+            profileId,
+            kind,
+            today.addDays(i),
+            typeConfig.timeOfDayMinutes,
+            config.quietHours,
+          ),
     ];
   }
   if (startedOn == null) {
@@ -429,13 +582,14 @@ List<PlannedReminder> _planBirthControl({
   if (firstN < 1) firstN = 1;
   return [
     for (var i = 0; i < kBirthControlPreArmOccurrences; i++)
-      _planOne(
-        profileId,
-        kind,
-        startedOn.addDays((firstN + i) * cadenceDays),
-        typeConfig.timeOfDayMinutes,
-        config.quietHours,
-      ),
+      if (inEffect(startedOn.addDays((firstN + i) * cadenceDays)))
+        _planOne(
+          profileId,
+          kind,
+          startedOn.addDays((firstN + i) * cadenceDays),
+          typeConfig.timeOfDayMinutes,
+          config.quietHours,
+        ),
   ];
 }
 
@@ -513,6 +667,12 @@ List<PlannedReminder> _planEstimateRelative({
     prediction: prediction,
     config: config,
   ));
+  planned.addAll(_planPmsWatch(
+    profileId: profileId,
+    today: today,
+    prediction: prediction,
+    config: config,
+  ));
   if (config.late.enabled && prediction.isLate && !snoozed) {
     for (var i = 0; i < kLatePreArmDays; i++) {
       planned.add(_planOne(
@@ -527,12 +687,16 @@ List<PlannedReminder> _planEstimateRelative({
   return planned;
 }
 
-/// The estimate-anchored kinds (Issue #136's upcoming and PMS-watch plus
-/// Issue #178's period-starting-soon): each fires at
-/// `estimatedNextStart − leadDays` when enabled and still ahead of
-/// [today]. Period-starting-soon anchors on the same estimate at its own,
-/// longer lead — a separate reminder, not a second lead time of the due
-/// one (Clue ships the two as independently configurable reminders).
+/// The period-estimate-anchored kinds (Issue #136's upcoming plus Issue
+/// #178's period-starting-soon): each fires at `estimatedNextStart −
+/// leadDays` when enabled and still ahead of [today]. Period-starting-soon
+/// anchors on the same estimate at its own, longer lead — a separate
+/// reminder, not a second lead time of the due one (Clue ships the two as
+/// independently configurable reminders).
+///
+/// PMS-watch is deliberately NOT here (Issue #634, LLA-068): it has its
+/// own anchor, [_planPmsWatch], on the *predicted PMS start*, never the
+/// period estimate.
 List<PlannedReminder> _planEstimateAnchored({
   required String profileId,
   required LocalDate today,
@@ -553,11 +717,6 @@ List<PlannedReminder> _planEstimateAnchored({
       config.periodStartingSoon
           .effectiveLeadDays(kPeriodStartingSoonDefaultLeadDays)
     ),
-    (
-      ReminderKind.pms,
-      config.pms,
-      config.pms.effectiveLeadDays(kPmsDefaultLeadDays)
-    ),
   ];
   for (final (kind, typeConfig, leadDays) in anchored) {
     final fireOn = estimate.addDays(-leadDays);
@@ -572,6 +731,37 @@ List<PlannedReminder> _planEstimateAnchored({
     }
   }
   return planned;
+}
+
+/// PMS-watch (Issue #178, widened by Issue #634's LLA-068 fix): anchored
+/// on the PMS estimate's own [PmsEstimate.predictedStart] — never on the
+/// period estimate `_planEstimateAnchored`'s siblings use. A profile with
+/// no PMS estimate yet (fewer than [kMinPmsIntervalsForPrediction] usable
+/// logged intervals, or no period estimate at all) plans nothing rather
+/// than falling back to the period-due date, which would silently relabel
+/// a "before PMS" promise as "before period".
+List<PlannedReminder> _planPmsWatch({
+  required String profileId,
+  required LocalDate today,
+  required ActivePrediction prediction,
+  required ReminderConfig config,
+}) {
+  final typeConfig = config.pms;
+  if (!typeConfig.enabled) return const [];
+  final pms = prediction.pms;
+  if (pms == null) return const [];
+  final leadDays = typeConfig.effectiveLeadDays(kPmsDefaultLeadDays);
+  final fireOn = pms.predictedStart.addDays(-leadDays);
+  if (fireOn.compareTo(today) <= 0) return const [];
+  return [
+    _planOne(
+      profileId,
+      ReminderKind.pms,
+      fireOn,
+      typeConfig.timeOfDayMinutes,
+      config.quietHours,
+    ),
+  ];
 }
 
 /// Issue #178 (Clue item 4): anchored to the next *still-ahead* fertile
@@ -589,6 +779,10 @@ List<PlannedReminder> _planFertileWindowSoon({
 }) {
   final typeConfig = config.fertileWindowSoon;
   if (!typeConfig.enabled) return const [];
+  // Issue LLA-064: a regimen-schedule (pack-driven withdrawal-bleed)
+  // prediction carries no ovulatory signal — see [PredictionBasis]'s own
+  // doc comment — so no fertile-window reminder is ever planned from one.
+  if (prediction.basis == PredictionBasis.regimenSchedule) return const [];
   final fertileLead =
       typeConfig.effectiveLeadDays(kFertileWindowSoonDefaultLeadDays);
   for (final cycle in prediction.forecast) {

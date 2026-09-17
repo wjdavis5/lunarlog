@@ -147,6 +147,20 @@ int _complexityOf(FunctionBody body) {
   return 1 + visitor.decisionPoints;
 }
 
+/// Whether [file] declares at least one scoreable method/function/
+/// constructor (per [_methodsIn]'s rules — abstract/interface-only bodies
+/// don't count). Used by `coverage_inventory.dart`'s LLA-106 check to
+/// distinguish a file that legitimately has no executable code (fine to
+/// have no lcov record at all -- e.g. a pure-interface file) from one that
+/// does and is still missing coverage evidence (a real gap).
+bool fileHasScoreableCode(File file) {
+  final parsed = parseFile(
+    path: file.path,
+    featureSet: FeatureSet.latestLanguageVersion(),
+  );
+  return _methodsIn(parsed.unit, parsed.lineInfo).isNotEmpty;
+}
+
 /// Every scoreable method/constructor/top-level function in [unit] —
 /// abstract/interface signatures (`EmptyFunctionBody`) are skipped per the
 /// plan U3 Approach step 5 ("has no complexity to compute and no coverage
@@ -210,6 +224,33 @@ List<_ScoredMethod> _methodsIn(CompilationUnit unit, LineInfo lineInfo) {
           );
         }
       }
+    } else if (declaration is EnumDeclaration) {
+      // LLA-107: discovery previously handled classes/mixins/extensions/
+      // functions but never visited EnumDeclaration.body.members at all, so
+      // an enum's own methods (e.g. BirthControlMethod.toDb's switch
+      // expression) never entered the scoreable-method list and could never
+      // be reported no matter how complex or uncovered. EnumBody.members is
+      // a NodeList<ClassMember> just like ClassDeclaration.body.members
+      // (analyzer 14.x) -- same shape, same handling; enum *constants*
+      // (declaration.body.constants) are declarations, not methods, and are
+      // deliberately not visited here.
+      final enumName = declaration.namePart.typeName.lexeme;
+      for (final member in declaration.body.members) {
+        if (member is MethodDeclaration) {
+          addIfScoreable(
+            '$enumName.${member.name.lexeme}',
+            member,
+            member.body,
+          );
+        } else if (member is ConstructorDeclaration) {
+          final ctorName = member.name?.lexeme;
+          addIfScoreable(
+            '$enumName.${ctorName ?? "<constructor>"}',
+            member,
+            member.body,
+          );
+        }
+      }
     }
   }
   return methods;
@@ -260,10 +301,27 @@ CrapGateResult evaluateCrapGate(
     if (methods.isEmpty) continue;
 
     final libRelativePath = libFile.libRelativePath;
-    final daHits = normalizedFiltered[libRelativePath]?.daHits ?? const {};
+    final fileCoverage = normalizedFiltered[libRelativePath];
+
+    // LLA-106: a file with scoreable methods (we already know `methods` is
+    // non-empty above) but no entry at all in `filtered` was never loaded
+    // during the coverage run -- there is no evidence it was exercised, so
+    // its methods must not be scored as if fully covered. Previously this
+    // fell through to `?? const {}`, and `_coverageOf`'s "no measurable
+    // lines" branch (meant for a genuinely non-executable line range inside
+    // an otherwise-*present* file) silently substituted 100% coverage for a
+    // file that was simply never measured at all. Score every method in a
+    // wholly-absent file at 0% instead -- an absent record is the opposite
+    // of proof the method was exercised, not the same as "nothing to
+    // measure". (`quality_gate.dart` also hard-fails the whole gate run via
+    // `missingCoverageEvidence` before scores like these can pass CI, but
+    // this function must not silently launder a missing file into a passing
+    // score for a direct caller either.)
+    final daHits = fileCoverage?.daHits ?? const {};
+    final fileHasNoEvidence = fileCoverage == null;
 
     for (final method in methods) {
-      final coverage = _coverageOf(method, daHits);
+      final coverage = fileHasNoEvidence ? 0.0 : _coverageOf(method, daHits);
       final score = _crapScore(method.complexity, coverage);
       if (score > crapThreshold) {
         offenders.add(

@@ -25,6 +25,15 @@ abstract interface class ObservationsRepository {
   /// go through [listForProfile] instead.
   Future<List<Observation>> listForDayEntry(String dayEntryId);
 
+  /// [listForDayEntry], plus the same legacy `flow = 'spotting'` alias
+  /// synthesis [listForProfile] applies — but scoped to this one day entry
+  /// via a single-row day-entry lookup, not a full profile scan (issue
+  /// #549). For a caller (`DaySheet`'s spotting toggle) that needs the
+  /// alias for exactly one day and would otherwise have to pay for
+  /// [listForProfile]'s full decode of every observation and every day
+  /// entry the profile has ever logged just to answer a one-day question.
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(String dayEntryId);
+
   /// Creates or updates [observation], keyed by its `id` (a fresh one is
   /// generated when `observation.id` is empty) — mirrors
   /// [DayEntriesRepository.save]'s upsert-by-identity shape, but identity

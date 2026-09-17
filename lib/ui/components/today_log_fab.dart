@@ -17,13 +17,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
 import 'package:provider/provider.dart';
 
@@ -32,9 +35,13 @@ class TodayLogFab extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.trackingPreferences,
+    this.isMinor = false,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.bbtUnit = BbtUnit.celsius,
+    this.weightUnit = WeightUnit.kg,
   });
 
   final String profileId;
@@ -42,6 +49,14 @@ class TodayLogFab extends StatefulWidget {
   /// The profile's care mode (Issue #131): category headings and
   /// surfacing order in the day sheet this button opens.
   final ProfileMode mode;
+
+  /// The profile's curated tracking categories (Issue #259), forwarded to
+  /// [DaySheet]; null means never customized. Presentation only.
+  final TrackingPreferences? trackingPreferences;
+
+  /// Whether the profile subject is a minor (Issue #259): gates the
+  /// minor-visibility defaults in [DaySheet]. Presentation only.
+  final bool isMinor;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -55,12 +70,17 @@ class TodayLogFab extends StatefulWidget {
   /// `acceptedGuardianFor`'s own null-vs-empty discipline).
   final ProfileGuardiansRepository? guardiansRepository;
 
+  /// Per-profile BBT/weight display units (Issue #457), forwarded to
+  /// [DaySheet]. Presentation only.
+  final BbtUnit bbtUnit;
+  final WeightUnit weightUnit;
+
   @override
   State<TodayLogFab> createState() => _TodayLogFabState();
 }
 
-class _TodayLogFabState extends State<TodayLogFab> {
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+class _TodayLogFabState extends State<TodayLogFab>
+    with GuardianWatchMixin<TodayLogFab> {
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -84,29 +104,25 @@ class _TodayLogFabState extends State<TodayLogFab> {
   }
 
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
+        (guardians) => setState(() => _guardians = guardians));
   }
 
   @override
   void didUpdateWidget(covariant TodayLogFab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profileId != widget.profileId) {
+    // Issue #574: `guardiansRepository` also needs a fresh subscription on
+    // its own — `todayProvider` needs none, since every read of it
+    // (`widget.todayProvider()`) already happens at use time, never cached.
+    if (oldWidget.profileId != widget.profileId ||
+        oldWidget.guardiansRepository != widget.guardiansRepository) {
       _watchGuardians();
     }
   }
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
+    disposeGuardianWatch();
     _auth?.removeListener(_onAuthChanged);
     super.dispose();
   }
@@ -135,9 +151,13 @@ class _TodayLogFabState extends State<TodayLogFab> {
         existing: existing,
         today: today,
         mode: widget.mode,
+        trackingPreferences: widget.trackingPreferences,
+        isMinor: widget.isMinor,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
         guardians: _guardians,
+        bbtUnit: widget.bbtUnit,
+        weightUnit: widget.weightUnit,
       ),
     );
   }

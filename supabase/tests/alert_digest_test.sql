@@ -12,7 +12,7 @@
 -- so every live trigger insert shares one frozen now(), which makes
 -- "inside the window" deterministic without waiting out a real 30 minutes.
 begin;
-select plan(43);
+select plan(45);
 
 create function pg_temp.count_rows(p_profile text, p_recipient uuid, p_kind text, p_state text)
 returns bigint
@@ -100,6 +100,7 @@ values (tests.get_supabase_uid('dad_1'), tests.ulid(601), true);
 -- Five routine (non-bleed, non-boundary) events, all inside the same
 -- 30-minute window (one frozen transaction now()): one push, not five.
 select tests.authenticate_as('mom_1');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6010), tests.ulid(601), '2026-09-01', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
@@ -110,6 +111,7 @@ insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at
 values (tests.ulid(6013), tests.ulid(601), '2026-09-04', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6014), tests.ulid(601), '2026-09-05', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(601), tests.get_supabase_uid('dad_1'), 'logged', 'immediate'),
@@ -119,8 +121,10 @@ select is(
 
 -- A cycle_start event inside the same window is a different kind: the
 -- window is per (recipient, profile, kind), so it still enqueues.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6015), tests.ulid(601), '2026-09-06', 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(601), tests.get_supabase_uid('dad_1'), 'cycle_start', 'immediate'),
@@ -131,8 +135,10 @@ select is(
 -- Disabling the window (the operator GUC) lets the next logged event
 -- through again -- proving the guard was the window, not anything else.
 select set_config('app.settings.alert_coalesce_window', '0', true);
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6016), tests.ulid(601), '2026-09-07', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(601), tests.get_supabase_uid('dad_1'), 'logged', 'immediate'),
@@ -182,8 +188,10 @@ insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('step_2'), tests.ulid(602), true);
 
 select tests.authenticate_as('mom_2');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6020), tests.ulid(602), '2026-09-01', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'logged', 'held'),
@@ -198,10 +206,12 @@ select is(
 
 -- Two more routine events accumulate into the held set (the sweep below
 -- collapses them into one push).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6021), tests.ulid(602), '2026-09-02', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6022), tests.ulid(602), '2026-09-03', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'logged', 'held'),
@@ -211,8 +221,10 @@ select is(
 
 -- AC6: a cycle-start event (bleed day with no prior bleed day) goes
 -- immediate for dad while his routine log alerts are on digest.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6023), tests.ulid(602), '2026-09-10', 'UTC', 'medium', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'cycle_start', 'immediate'),
@@ -226,14 +238,33 @@ update public.notification_preferences
    set log_cadence = 'off'
  where user_id = tests.get_supabase_uid('dad_2') and profile_id = tests.ulid(602);
 
+-- LLA-076 (issue #630): cancel_outbox_on_preference_off() fires the
+-- instant log_cadence transitions to off, immediately cancelling dad's 3
+-- already-held 'logged' rows -- a held row is exactly as unsent as a
+-- not-yet-queued one, so it is exactly as cancellable. This is the fix's
+-- whole point, not a regression of this test's original property.
+select is(
+  pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'logged', 'held'),
+  0::bigint,
+  'LLA-076: turning log_cadence off immediately cancels the 3 already-held logged rows'
+);
+select is(
+  pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), 'cycle_start', 'immediate'),
+  1::bigint,
+  'LLA-076: the unrelated cycle_start row survives the log_cadence-off cancellation'
+);
+
 select tests.authenticate_as('mom_2');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6024), tests.ulid(602), '2026-09-11', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(602), tests.get_supabase_uid('dad_2'), null, 'any'),
-  4::bigint,
-  'off cadence suppresses routine events for that kind (dad still has only his 3 held + 1 immediate cycle_start)'
+  1::bigint,
+  'off cadence suppresses routine events for that kind: after the LLA-076 cancellation above, dad has only '
+  || 'his 1 immediate cycle_start row left, and the post-off event enqueues no new logged row either'
 );
 
 -- ---------------------------------------------------------------------------
@@ -270,11 +301,13 @@ select public.accept_guardian_invitation(
 -- Mom first logs an entry while nobody has preferences yet, so the only
 -- writes observed below are the two dad-authored ones.
 select tests.authenticate_as('mom_3');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, note, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(6031), tests.ulid(603), '2026-09-02', 'UTC', 'none', 'original', now(),
    tests.get_supabase_uid('mom_3'), tests.get_supabase_uid('mom_3'));
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('dad_3');
 insert into public.notification_preferences (user_id, profile_id, alert_on_log)
@@ -285,11 +318,13 @@ values (tests.get_supabase_uid('step_3'), tests.ulid(603), true);
 
 -- Dad logs his own entry from his device: no row for dad, one for step.
 select tests.authenticate_as('dad_3');
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(6030), tests.ulid(603), '2026-09-01', 'UTC', 'none', now(),
    tests.get_supabase_uid('dad_3'), tests.get_supabase_uid('dad_3'));
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(603), tests.get_supabase_uid('dad_3'), null, 'any'),
@@ -510,6 +545,7 @@ insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('dad_5'), tests.ulid(605), true);
 
 select tests.authenticate_as('mom_5');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6050), tests.ulid(605), '2026-09-01', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
@@ -526,6 +562,7 @@ insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at
 values (tests.ulid(6056), tests.ulid(605), '2026-09-07', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6057), tests.ulid(605), '2026-09-08', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(605), tests.get_supabase_uid('dad_5'), 'logged', 'immediate'),
@@ -591,10 +628,12 @@ insert into public.notification_preferences (user_id, profile_id, alert_on_log)
 values (tests.get_supabase_uid('dad_6'), tests.ulid(606), true);
 
 select tests.authenticate_as('mom_6');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6060), tests.ulid(606), '2026-09-01', 'UTC', 'none', now());
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(6061), tests.ulid(606), '2026-09-02', 'UTC', 'none', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.count_rows(tests.ulid(606), tests.get_supabase_uid('dad_6'), 'logged', 'immediate'),

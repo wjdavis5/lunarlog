@@ -126,12 +126,22 @@ class UsablePmsInterval {
   final int lengthDays;
 }
 
-/// Attributes each PMS [interval] to the first episode starting strictly
+/// Attributes each PMS [interval] to the first episode starting on or
 /// after the interval *begins*, keeping the usable ones. An interval is
 /// unusable — skipped, never averaged — when no episode follows it (the
 /// cycle it belongs to is still open; onset is unknowable), or when it
 /// starts on/after the following period start (nothing premenstrual about
 /// it; `onsetDays` would be zero or negative). [episodes] must be sorted.
+///
+/// Issue LLA-069: the "on or after" comparison (`!isBefore`, not the
+/// stricter `isAfter`) is deliberate — a PMS interval that starts on the
+/// SAME day a period begins must attribute to *that* period (and then be
+/// discarded below as non-premenstrual, `onsetDays == 0`), never skip past
+/// it to whatever period follows next. The strict `isAfter` this replaced
+/// let a coincident-day interval fall through to the *next* episode
+/// instead, manufacturing a bogus onset of a full cycle length. A profile
+/// with only one logged episode never exercised this — nothing "follows"
+/// a lone episode either way — which is why the bug shipped unnoticed.
 List<UsablePmsInterval> usablePmsIntervals({
   required List<Episode> episodes,
   required List<PmsInterval> intervalList,
@@ -140,7 +150,7 @@ List<UsablePmsInterval> usablePmsIntervals({
   for (final interval in intervalList) {
     Episode? following;
     for (final episode in episodes) {
-      if (episode.start.isAfter(interval.start)) {
+      if (!episode.start.isBefore(interval.start)) {
         following = episode;
         break;
       }

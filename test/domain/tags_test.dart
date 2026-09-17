@@ -27,16 +27,17 @@ void main() {
     'sensitive',
   ];
 
-  test('taxonomy has exactly 86 codes across 28 categories', () {
-    expect(kTagTaxonomy, hasLength(86));
-    // Codes exist for the 18 attested categories; the 10 unverified ones
-    // (kUnverifiedTagCategories) deliberately carry none — see their own
-    // test below.
-    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(18));
-    expect(TagCategory.values, hasLength(28));
+  test('taxonomy has exactly 113 codes across 31 categories', () {
+    expect(kTagTaxonomy, hasLength(113));
+    // Codes exist for the 22 attested categories (Issue #456 moved
+    // `hotFlashes` from unverified to attested); the 9 remaining
+    // unverified ones (kUnverifiedTagCategories) deliberately carry none
+    // — see their own test below.
+    expect(kTagTaxonomy.map((t) => t.category).toSet(), hasLength(22));
+    expect(TagCategory.values, hasLength(31));
     expect(
       kTagTaxonomy.map((t) => t.code).toSet(),
-      hasLength(86),
+      hasLength(113),
       reason: 'codes must be unique',
     );
   });
@@ -183,6 +184,36 @@ void main() {
       'injury',
       'fever',
     });
+    // Issue #253: the sensitive and fertility categories carry their
+    // attested/designed option sets exactly.
+    expect(codes(TagCategory.sexLife).toSet(), {
+      'no_sex_today',
+      'low_sex_drive',
+      'high_sex_drive',
+      'masturbation',
+      'withdrawal',
+      'protected_sex',
+      'unprotected_sex',
+      'sex_toys',
+      'orgasm',
+      'no_orgasm',
+      'fantasies',
+      'painful_intercourse',
+    });
+    expect(codes(TagCategory.discharge).toSet(), {
+      'none',
+      'sticky',
+      'creamy',
+      'egg_white',
+      'atypical',
+    });
+    expect(codes(TagCategory.tests).toSet(), {
+      'ovulation_negative',
+      'ovulation_positive',
+      'ovulation_peak',
+      'pregnancy_negative',
+      'pregnancy_positive',
+    });
   });
 
   test('issue #251 re-parenting moves categories, never code strings', () {
@@ -259,12 +290,26 @@ void main() {
     expect(() => validateTagCodes(['cravings', 'chocolate']), returnsNormally);
   });
 
+  test('hot_flashes carries the issue #456 attested code set', () {
+    Iterable<String> codes(TagCategory c) =>
+        kTagTaxonomy.where((t) => t.category == c).map((t) => t.code);
+
+    expect(codes(TagCategory.hotFlashes).toSet(), {
+      'hot_flashes',
+      'night_sweats',
+      'brain_fog',
+      'hrt',
+      'vaginal_dryness',
+    });
+    expect(isValidTagCode('hot_flashes'), isTrue);
+    expect(tagByCode('hrt')!.display, 'HRT');
+  });
+
   test('unverified categories exist in the enum but carry no codes', () {
-    expect(kUnverifiedTagCategories, hasLength(10));
+    expect(kUnverifiedTagCategories, hasLength(9));
     expect(kUnverifiedTagCategories.toSet(), {
       TagCategory.sleepQuality,
       TagCategory.breastsChest,
-      TagCategory.hotFlashes,
       TagCategory.urine,
       TagCategory.vulvaVagina,
       // Issue #251's three: pms (presence-based; the presence marker
@@ -410,41 +455,89 @@ void main() {
     expect(() => validateTagCodes(const []), returnsNormally);
   });
 
-  group('pain_free is a positive assertion, never a symptom (issue #249)', () {
-    test('it is a real, valid pain-category code that round-trips', () {
+  group('validateTagCodes registry union (issue #257)', () {
+    test('accepts a code the profile registry owns', () {
+      expect(
+        () => validateTagCodes(['back_cracking'],
+            registryCodes: {'back_cracking'}),
+        returnsNormally,
+      );
+    });
+
+    test('mixes registry and taxonomy codes in one set', () {
+      expect(
+        () => validateTagCodes(['cramps', 'back_cracking'],
+            registryCodes: {'back_cracking'}),
+        returnsNormally,
+      );
+    });
+
+    test('still rejects a code in neither taxonomy nor registry', () {
+      expect(
+        () => validateTagCodes(['cramps', 'not-a-tag'],
+            registryCodes: {'back_cracking'}),
+        throwsArgumentError,
+      );
+    });
+
+    test('a null registry set behaves exactly like the pre-#257 call',
+        () {
+      expect(
+        () => validateTagCodes(['back_cracking'], registryCodes: null),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('positive assertions are never counted or rendered as symptoms', () {
+    test('pain_free is a real, valid pain-category code that round-trips '
+        '(issue #249)', () {
       expect(kPainFreeCode, 'pain_free');
       expect(tagByCode(kPainFreeCode)!.category, TagCategory.pain);
       expect(() => validateTagCodes([kPainFreeCode]), returnsNormally);
     });
 
-    test('hasSymptomTags ignores it', () {
+    test('no_sex_today is a real sex_life code and a positive assertion, '
+        'never absence of data (issue #253)', () {
+      expect(kNoSexTodayCode, 'no_sex_today');
+      expect(tagByCode(kNoSexTodayCode)!.category, TagCategory.sexLife);
+      // Validates and round-trips like any other code.
+      expect(() => validateTagCodes([kNoSexTodayCode]), returnsNormally);
+      // It is a positive "did not have sex" assertion, not "no data": it
+      // never counts or renders as a symptom and never reads as a missing
+      // log.
+      expect(kPositiveAssertionCodes, contains(kNoSexTodayCode));
+      expect(hasSymptomTags([kNoSexTodayCode]), isFalse);
+    });
+
+    test("discharge 'none' is a real discharge code and a positive "
+        "'no discharge today' assertion (issue #253)", () {
+      expect(kDischargeNoneCode, 'none');
+      expect(tagByCode(kDischargeNoneCode)!.category, TagCategory.discharge);
+      expect(() => validateTagCodes([kDischargeNoneCode]), returnsNormally);
+      expect(kPositiveAssertionCodes, contains(kDischargeNoneCode));
+      expect(hasSymptomTags([kDischargeNoneCode]), isFalse);
+    });
+
+    test('hasSymptomTags ignores all positive assertions but keeps real '
+        'symptoms', () {
       expect(hasSymptomTags(['pain_free']), isFalse);
-      expect(hasSymptomTags(['pain_free', 'headache']), isTrue);
+      expect(hasSymptomTags([kNoSexTodayCode, kDischargeNoneCode]), isFalse);
+      expect(
+        hasSymptomTags([kNoSexTodayCode, 'headache']),
+        isTrue,
+        reason: 'a real symptom alongside a positive assertion is a symptom',
+      );
       expect(hasSymptomTags(['cramps']), isTrue);
       expect(hasSymptomTags(const <String>[]), isFalse);
     });
   });
 
-  test('taxonomy vocabulary guard: no fertility terms in any code or display, '
-      'except the attested ovulation pain symptom (issue #249 — a pain '
-      'option, not a fertility-status claim)', () {
-    const stems = ['fertili', 'luteal', 'follicular', 'concei'];
-    for (final tag in kTagTaxonomy) {
-      for (final stem in stems) {
-        expect(
-          '${tag.code} ${tag.display}'.toLowerCase().contains(stem),
-          isFalse,
-          reason: 'tag "${tag.code}" leaks forbidden vocabulary "$stem"',
-        );
-      }
-    }
-    // Exactly one exemption, and it is the documented one: `ovulation` the
-    // *pain* option. No other tag may carry the stem.
-    final ovulationStemTags = [
-      for (final tag in kTagTaxonomy)
-        if ('${tag.code} ${tag.display}'.toLowerCase().contains('ovulat'))
-          tag.code,
-    ];
-    expect(ovulationStemTags, ['ovulation']);
+  group('discharge is single-select (issue #253)', () {
+    test('kSingleSelectTagCategories contains exactly discharge', () {
+      expect(kSingleSelectTagCategories, {TagCategory.discharge});
+      expect(kSingleSelectTagCategories.contains(TagCategory.sexLife), isFalse);
+      expect(kSingleSelectTagCategories.contains(TagCategory.tests), isFalse);
+    });
   });
 }

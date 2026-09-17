@@ -203,6 +203,39 @@ void main() {
         );
       }
     });
+
+    test('issue #253: every mode surfaces all three sensitive/fertility '
+        'categories (sex_life, discharge, tests); they append after the '
+        'events/care cluster in every order', () {
+      const newCategories = [
+        TagCategory.sexLife,
+        TagCategory.discharge,
+        TagCategory.tests,
+      ];
+      for (final mode in ProfileMode.values) {
+        final copy = careModeCopyFor(mode);
+        for (final category in newCategories) {
+          expect(
+            copy.categoriesInOrder,
+            contains(category),
+            reason: '$mode must still surface $category (never a subset)',
+          );
+          expect(
+            copy.categoryLabel(category),
+            isNotEmpty,
+            reason: '$mode heading for $category',
+          );
+        }
+        // Appended after supplements in every mode's order.
+        final order = copy.categoriesInOrder;
+        expect(
+          order.indexOf(TagCategory.supplements) + 1,
+          order.indexOf(TagCategory.sexLife),
+          reason: '$mode appends the sensitive/fertility cluster after '
+              'supplements',
+        );
+      }
+    });
   });
 
   group('reminderPresetFor (Issue #131)', () {

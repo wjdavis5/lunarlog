@@ -9,19 +9,31 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/mfa_step_up_dialog.dart';
+import 'package:lunarlog/ui/l10n/transfer_failure_copy.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/models/profile.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
+import '../components/destructive_button.dart';
+import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
+import '../l10n/dates.dart' as dates;
 
-/// Renders [utc] in the device's local time as `YYYY-MM-DD HH:MM`, mirroring
-/// `formatCreatedDate` in `profile_picker_screen.dart`.
-String formatTransferExpiry(DateTime utc) {
+/// Renders [utc] in the device's local time, locale-aware date plus a
+/// clock-convention-aware time (issue #554) -- was a hand-rolled, always
+/// `YYYY-MM-DD HH:MM` string (mirrored in `formatCreatedDate` in
+/// `profile_picker_screen.dart`, which keeps its own hand-rolled form for
+/// now — see that file's PR note).
+String formatTransferExpiry(BuildContext context, DateTime utc) {
   final local = utc.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
+  final date =
+      dates.formatShortDate(local, locale: dates.calendarLocale(context));
+  final time = TimeOfDay.fromDateTime(local).format(context);
+  return '$date $time';
 }
 
 class TransferOwnershipScreen extends StatefulWidget {
@@ -94,28 +106,35 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Transfer ownership?'),
-        content: Text(
-          '${widget.profile.displayName} will become the owner of this '
-          "profile. You'll keep access as ${role.label}, and they can "
-          'remove that access at any time.',
+        content: SingleChildScrollView(
+          child: Text(
+            '${widget.profile.displayName} will become the owner of this '
+            "profile. You'll keep access as ${role.label}, and they can "
+            'remove that access at any time.',
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: const Text('Cancel'),
           ),
-          FilledButton(
+          DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-            ),
             child: const Text('Transfer'),
           ),
         ],
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
+    // #268 D-6: AAL2 step-up before arming a transfer, for an account with
+    // an enrolled TOTP factor; a no-op otherwise (unaffected pre-#268
+    // behavior). Read lazily (not at the top of the file) so a build with
+    // no AuthController configured — every non-Supabase test harness for
+    // this screen — still arms normally, exactly as before this issue.
+    final auth = context.read<AuthController?>();
+    if (auth != null && !await ensureAal2(context, auth)) return;
+    if (!mounted) return;
     await _armTransfer(role);
   }
 
@@ -148,18 +167,20 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
       // Without this, the parent would be stuck seeing only f's generic
       // message with no way to act, for up to the orphaned transfer's full
       // TTL. Look it up so they can cancel it and try again.
-      await _loadActiveTransfer(fallbackMessage: f.userFacingMessage);
+      if (!mounted) return;
+      await _loadActiveTransfer(
+          fallbackMessage: transferFailureCopy(AppLocalizations.of(context), f));
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }
@@ -180,7 +201,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
@@ -217,14 +238,14 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }
@@ -254,14 +275,14 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     } on TransferFailure catch (f) {
       if (mounted) {
         setState(() {
-          _error = f.userFacingMessage;
+          _error = transferFailureCopy(AppLocalizations.of(context), f);
           _loading = false;
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Something went wrong. Please try again.';
+          _error = AppLocalizations.of(context).commonSomethingWentWrong;
           _loading = false;
         });
       }
@@ -271,7 +292,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
   void _copyLink() {
     final transfer = _transfer;
     if (transfer == null) return;
-    Clipboard.setData(ClipboardData(text: transfer.claimUri.toString()));
+    unawaited(Clipboard.setData(ClipboardData(text: transfer.claimUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Transfer link copied to clipboard')),
     );
@@ -285,7 +306,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     // text share (the link is a custom `lunarlog://` scheme, not a
     // browsable http(s) URL, so `ShareParams.text` is the right field
     // rather than `ShareParams.uri`).
-    SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString()));
+    unawaited(SharePlus.instance.share(ShareParams(text: transfer.claimUri.toString())));
   }
 
   @override
@@ -303,6 +324,18 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
                 : _armableBody(context),
       ),
     );
+  }
+
+  /// #165: the label field's "done" — the Transfer Ownership button's own
+  /// action, guarded the same way (`_loading || _selectedRole == null`
+  /// disables the button; the keyboard path just no-ops instead).
+  ///
+  /// Extracted from [_armableBody] so its two conditions don't count
+  /// against that build method's CRAP-gate complexity.
+  void _submitFromLabelField() {
+    if (!_loading && _selectedRole != null) {
+      unawaited(_handleTransferPressed());
+    }
   }
 
   Widget _armableBody(BuildContext context) {
@@ -326,7 +359,12 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading || _selectedRole == null
+                ? null
+                : _handleTransferPressed,
+          ),
           const SizedBox(height: 12),
         ],
         Text('Your role after the transfer', style: theme.textTheme.titleMedium),
@@ -362,6 +400,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         TextField(
           controller: _labelController,
           enabled: !_loading,
+          // #165: the form's only text field — "done" is the Transfer
+          // Ownership action (guarded exactly like the button below).
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submitFromLabelField(),
           decoration: const InputDecoration(
             labelText: 'Recipient label (optional)',
             hintText: 'e.g. Sam',
@@ -416,12 +458,15 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(active.expiresAt)}',
+          'Expires ${formatTransferExpiry(context, active.expiresAt)}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading ? null : _cancelActiveTransfer,
+          ),
           const SizedBox(height: 12),
         ],
         FilledButton(
@@ -462,12 +507,15 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(transfer.expiresAt)}',
+          'Expires ${formatTransferExpiry(context, transfer.expiresAt)}',
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
-          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          InlineError(
+            message: _error!,
+            onRetry: _loading ? null : _cancelTransfer,
+          ),
           const SizedBox(height: 12),
         ],
         Wrap(

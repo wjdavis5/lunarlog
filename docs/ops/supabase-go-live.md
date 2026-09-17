@@ -48,6 +48,17 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (Authentication → URL Configuration). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
+- [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →
+      Providers → Multi-Factor Authentication → "Authenticator App (TOTP)" on.
+      `supabase/config.toml`'s `[auth.mfa.totp]` stays `enroll_enabled = false`/
+      `verify_enabled = false` deliberately (see #266's note above this
+      section — `config.toml`'s `[auth]` block governs the local stack only,
+      and `supabase config push` was never wired into `supabase-migrate.yml`)
+      — this dashboard toggle is what actually turns enrolment on for the
+      linked project. Until it's on, `lib/domain/auth/mfa.dart`'s enrolment
+      flow (`AuthService.enrollTotp`) fails with a generic `AuthUnknownFailure`
+      from the client's perspective, and the "Set up two-factor
+      authentication" tile in the Account section simply won't complete.
 
 ### Social logins and passwordless (issue #2)
 
@@ -447,6 +458,11 @@ registers no device, and shows no Notifications entry (R17).
       email address, encrypted in transit, user can request deletion —
       now true in-app via "Delete account" in the account section, issue
       #17).
+- [ ] **Issue #269 (minimum-age statement):** App Store Age Rating / Privacy Details
+      and Google Play Target Audience & Content questionnaires reflect
+      LunarLog's minimum-age policy of 13+ (primary account management 18+;
+      household minor profiles managed by adult guardians), stated in
+      `PRIVACY.md` Section 5 and acknowledged by users on first run.
 - [ ] **Issue #166 (human step, needs-human-review):** Play Console's Health
       apps declaration form filed before any Health Connect build reaches a
       Play track — see
@@ -478,6 +494,107 @@ registers no device, and shows no Notifications entry (R17).
       (or a full-access personal access token) — this does not block
       anything else in this checklist and is only discoverable by running
       the workflow.
+
+### pg_net relocation runbook (issue #194)
+
+Closes the deferred half of issue #194: the security advisor's
+`extension_in_public` warn-level finding for `pg_net`, whose
+`pg_extension.extnamespace` points at `public` while every callable object
+lives in its own `net` schema. The finding is cosmetic (no pg_net member
+resolves in `public`; `anon`/`authenticated` hold no grants there), but it is
+the last tracked warn-level advisor finding with a repo-side exclusion, and
+the relocation closes it for good. **A migration cannot do this** — three
+independently sufficient reasons, each verified against the local stack
+(which mirrors production exactly: pg_net 0.20.4, `public` registration,
+non-relocatable, `supabase_admin`-owned):
+
+1. Migrations run as `postgres`, which is not superuser locally or on
+   Supabase hosted; every path that moves a non-relocatable extension writes
+   `pg_extension` directly, and direct system-catalog writes are
+   superuser-only.
+2. `alter extension pg_net set schema extensions` fails with SQLSTATE 0A000
+   (`extrelocatable = false`).
+3. Even as superuser with `extrelocatable` flipped first (the sequence
+   Supabase community answers suggest for non-relocatable extensions), the
+   ALTER still fails: `extension "pg_net" does not support SET SCHEMA — type
+   net.http_method is not in the extension's schema "public"` — pg_net's 28
+   member objects live in `net`, not in the registered namespace. There is
+   no forward `alter extension pg_net update` path either (0.20.4 is the
+   newest version in the platform image).
+
+The one procedure that provably works — verified locally as superuser in a
+rolled-back transaction (all 28 member objects intact at the same OIDs,
+`net.http_post` still resolving, `net.http_request_queue` still readable,
+clean rollback) — is a single-column catalog update that moves no objects
+and touches no grants:
+
+```sql
+begin;
+update pg_extension set extnamespace = 'extensions'::regnamespace
+ where extname = 'pg_net' and extnamespace = 'public'::regnamespace;
+commit;
+```
+
+Do **not** substitute `drop extension pg_net` + `create extension pg_net
+with schema extensions`: the drop needs ownership the `postgres` role lacks
+(a failed migration would block every migration after it), and a recreate is
+not guaranteed to restore the Supabase-managed `net` schema grants
+(`supabase_admin` granted USAGE to postgres, anon, authenticated,
+service_role, and supabase_functions_admin) that push dispatch depends on.
+
+**On the cloud project (production):** open a Supabase Support ticket
+(Dashboard → Support) asking them to run the catalog update above as a
+superuser on project `dleexnnevuuddcgcpztq`. Suggested ticket body:
+
+> Our pg_net extension (v0.20.4) is registered under `public`
+> (`pg_extension.extnamespace`), which your security advisor flags as
+> `extension_in_public`. It is non-relocatable and Supabase-managed, so we
+> cannot move it ourselves: `ALTER EXTENSION pg_net SET SCHEMA extensions`
+> fails with SQLSTATE 0A000, and even with `extrelocatable` temporarily
+> flipped it fails because the members live in the `net` schema. Please run,
+> as a superuser, in one transaction:
+>
+> ```sql
+> begin;
+> update pg_extension set extnamespace = 'extensions'::regnamespace
+>  where extname = 'pg_net' and extnamespace = 'public'::regnamespace;
+> commit;
+> ```
+>
+> This is registration-only — no objects move, no grants change. Please
+> confirm the row count (must be 1) and that `net.http_post` still resolves
+> afterward.
+
+**For local parity** (optional — the pgTAP suite tolerates both states): the
+local stack's `postgres` role is likewise non-superuser, but the container's
+`supabase_admin` is superuser:
+
+```bash
+docker exec -i supabase_db_lunarlog psql -U supabase_admin -d postgres \
+  -c "update pg_extension set extnamespace = 'extensions'::regnamespace where extname = 'pg_net' and extnamespace = 'public'::regnamespace;"
+```
+
+Note that `supabase db reset --local` reinstalls the image's pg_net under
+`public`, so local parity lasts until the next reset — the placement tests
+in `supabase/tests/pg_net_placement_test.sql` assert the invariants that hold
+in both states rather than the final placement for exactly this reason.
+
+**Post-move verification and cleanup:**
+
+- [ ] `select extnamespace::regnamespace from pg_extension where extname =
+      'pg_net';` reports `extensions` (the migration
+      `20260918120000_pg_net_public_placement_guard.sql`'s deploy-log notice
+      flips from WARNING to NOTICE at the same moment).
+- [ ] `select to_regprocedure('net.http_post(text, jsonb, jsonb, jsonb,
+      integer)');` still resolves, and a `supabase-migrate.yml` run stays
+      green (the drift gate's `classify-schema-diff.sh` already accepts the
+      post-relocation `WITH SCHEMA extensions` shadow-image shape).
+- [ ] `supabase db advisors --linked --type security` no longer reports
+      `extension_in_public` for pg_net.
+- [ ] Delete the pg_net branch of the `extension_in_public` exclusion in
+      `.github/scripts/check-advisor-gate.sh` (it self-retires — the finding
+      no longer appears in the advisor JSON) and drop the now-stale test
+      case in `.github/scripts/tests/check-advisor-gate.test.sh`.
 
 ### delete-account Edge Function runbook (issue #17)
 
@@ -949,6 +1066,153 @@ entries only. Nothing here reaches real family data.
       `select public.scan_missed_entry_reminders();` against the cloud
       project, for a faster check) enqueues, and B's device receives, the
       check-in alert.
+- [ ] **Foreground alert shows a banner (issue #174, iOS).** With B's app
+      open in the foreground, A logs an entry on P: B's iPhone shows the
+      fixed generic banner immediately (via
+      `setForegroundNotificationPresentationOptions`) — not silence, and
+      not two banners.
+- [ ] **Foreground alert shows a banner (issue #174, Android).** Same
+      setup on B's Android device: the banner appears (FCM never
+      auto-presents in the foreground; the app presents it through
+      flutter_local_notifications), exactly once, with the same fixed
+      generic copy.
+- [ ] **Android FCM alerts match local reminders visually (issue #174).**
+      Compare an alert delivered while B's app is backgrounded against a
+      locally scheduled reminder: both appear under the app's "Reminders"
+      channel (long-press the notification → channel name) with the same
+      icon, not Android's default "Misc"/"Other" channel with a generic
+      icon.
+- [ ] **Copy stays generic everywhere (issue #174 discretion pin, both
+      platforms, foreground and background).** Every delivered alert reads
+      exactly "A reminder from Lunarlog / Open Lunarlog to see what it is
+      about." — no profile name, date, or health detail on the lock screen
+      or the banner, whatever was logged.
+
+### Gate-exclusion pairing (issue #215)
+
+Every file `tool/quality/exclusions.dart` keeps out of the coverage/CRAP
+gates' denominator owns a platform seam `flutter test` cannot drive — which
+is exactly where the least-tested code lives. Each excluded file is named
+once here so its platform-seam behavior is manually verified pre-release
+instead of being silently uncovered by both the automated gate and this
+checklist. Entries are titled with the excluded file's repo-relative path,
+and each exclusion in `tool/quality/exclusions.dart` carries a pointer
+comment back to its entry here, so neither side can drift silently. Where
+an item overlaps an existing checklist entry above it cross-references that
+entry rather than duplicating its on-device steps; running the overlapping
+entry satisfies this one too.
+
+Run on an iPhone build **and** an Android build unless an item names its own
+target (the web items run in Chrome; the inert-build items run on any
+build), always with a throwaway account and fabricated profiles only.
+
+- [ ] **`lib/startup/startup_native.dart` — iOS-only file protection plus
+      the path_provider-wrapped database paths.** Fresh install: the app
+      reaches first-run and creates its database where the platform expects
+      it (no fail-closed screen), and a profile plus entry survive a
+      force-quit and relaunch. The iOS-only `protectDatabaseFile` channel
+      call is verified by the "iOS database backup exclusion and at-rest
+      protection (issue #244, round 2 …)" item above — running that item
+      satisfies this entry's protection half.
+- [ ] **`lib/data/auth/google_sign_in_client.dart` — the google_sign_in
+      plugin wrapper.** Covered by the "Google sign-in on a fresh device
+      (#2 F1, AE2)" and "Google same-email auto-link (#2 F2)" items in the
+      Social logins section above (the native picker, a clean cancel, and a
+      binding sign-in are this file's whole surface); running those
+      satisfies this entry.
+- [ ] **`lib/data/auth/auth_gateway.dart` — the GoTrueClient and app_links
+      adapters.** Covered by "Cold-start password reset (F4, AE8)" and
+      "Confirmation link on the signing-up device (F1, AS10)" above — the
+      `lunarlog://auth-callback` cold-start deep link is exactly the
+      app_links seam — plus one restart check of the GoTrue session store:
+      while signed in, force-quit and relaunch; the session restores
+      without re-prompting sign-in.
+- [ ] **`lib/data/notifications/notification_scheduler.dart` — the
+      flutter_local_notifications wrapper.** Turn on reminders for a
+      fabricated profile with a reminder a few minutes out: the local
+      notification arrives at the configured local time. (The fire-time
+      computation and the permission-answer→availability mapping are
+      unit-tested in `lib/domain/notifications/reminder_fire_time.dart` and
+      `notification_availability.dart`; this item proves the plugin-bound
+      scheduling half.) Deny the OS prompt twice on Android, then tap "Turn
+      on reminders": OS notification settings open (not a dead button); on
+      iOS deny once and tap it: Settings opens the same way. A
+      period-anchored reminder presents its Started / Spotting / Not yet
+      action buttons on both platforms, and a plain tap opens the app
+      through the device-credential gate (cross-ref "Tap routing through
+      the lock gate (R11)" in Caregiver alerts above).
+- [ ] **`lib/data/export/account_export_writer.dart` — the path_provider
+      temp file plus the share_plus sheet.** Covered by the "Export on
+      iPhone and open the file" / "Export on Android and open the file"
+      items in Account deletion and export above (the share sheet and the
+      saved JSON file are this file's whole surface). Also export from a
+      signed-out device holding a local profile: the file is produced with
+      local data only.
+- [ ] **`lib/data/export/csv_export_writer.dart` — the same shape for the
+      CSV export.** Settings → Your data → the CSV export tile on each
+      platform: the share sheet offers a save target and the saved
+      spreadsheet files open with the fabricated profiles' cycle and daily
+      log rows — no identifiers the JSON export policy would not allow.
+- [ ] **`lib/data/import/import_file_picker.dart` — the file_picker
+      wrapper.** Settings → Your data → "Import from file": the document
+      picker opens; picking the JSON file produced by the export items
+      above imports it (additive merge, profile count grows, nothing
+      overwritten); cancelling the picker leaves the screen unchanged with
+      no error.
+- [ ] **`lib/data/notifications/firebase_push_token_source.dart` — the
+      firebase_messaging wrapper.** Covered by the "Caregiver alerts and
+      reminders (issue #5)" section above: an alert received with the app
+      killed proves the initialize → requestPermission → getToken
+      sequencing, and its tap-routing item proves the opened-app/initial
+      message streams. Issue #174's
+      `setForegroundNotificationPresentationOptions` call is proven by the
+      "Foreground alert shows a banner (issue #174, iOS)" item above.
+      Running those sections satisfies this entry.
+- [ ] **`lib/data/health/ios_health_channel.dart` — the Swift HKHealthStore
+      MethodChannel pin.** Inert in every current build
+      (`AppConfig.hasHealthSync` is false): confirm a normal build shows no
+      Health section anywhere in Settings. When a health-sync build exists,
+      verify the HealthKit authorization prompt appears and one fabricated
+      observation round-trips.
+- [ ] **`lib/data/health/android_health_channel.dart` — the Kotlin Health
+      Connect MethodChannel pin.** Same posture as the iOS item: inert in
+      every current build (no Health section); in a health-sync build,
+      verify the Health Connect permissions flow and one fabricated
+      observation round-trip.
+- [ ] **`lib/data/db/factory_unsupported.dart` — the neither-native-nor-web
+      conditional-export branch.** Structural: this branch cannot load on
+      any real target. Any successful launch above (device or Chrome)
+      proves it never executed — no `UnsupportedError`, app boots.
+- [ ] **`lib/data/db/web_db.dart` — the web drift (WASM/IndexedDB)
+      branch.** `flutter run -d chrome` on a configured build: the app
+      boots, a profile and an entry survive a page reload (IndexedDB
+      persistence), and accounts/sync stay off unless
+      `LUNARLOG_WEB_SYNC=true` is set.
+- [ ] **`lib/startup/gate/gate_unsupported.dart` — the
+      neither-native-nor-web gate branch.** Same structural check as
+      `factory_unsupported.dart`: any successful launch above proves this
+      branch never executed.
+- [ ] **`lib/startup/gate/web_gate.dart` — the web no-op gate.** On the
+      same Chrome run as `web_db.dart`: the app is usable with no
+      device-credential gate presented.
+- [ ] **`lib/startup/startup_unsupported.dart` — the neither-native-nor-web
+      startup branch.** Same structural check: any successful launch above
+      proves it never executed.
+- [ ] **`lib/startup/startup_web.dart` — the web startup branch.** On the
+      same Chrome run as `web_db.dart`: bootstrap completes and the app
+      reaches the profile picker or first-run, matching the native flow.
+- [ ] **`lib/main.dart` — the app entry point.** Cold-launch the installed
+      app from the home screen: splash → device-credential gate → profiles,
+      with no errors. A cold start by tapping a delivered notification
+      lands behind the same gate (overlaps "Alert received with the app
+      killed (AE1)" / "Tap routing through the lock gate (R11)" in
+      Caregiver alerts above).
+- [ ] **`lib/startup/supabase_bootstrap.dart` — Supabase client
+      initialization.** On a configured build: sign in once, force-quit,
+      relaunch — the session is restored and the account section renders.
+      On an unconfigured build (no `--dart-define`s): the app runs with no
+      account section, no sync, and nothing Supabase-related in the
+      console.
 
 ## Not yet run
 

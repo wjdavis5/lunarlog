@@ -13,18 +13,36 @@ name: Supabase migrate
 # FCM_PRIVATE_KEY, PUSH_DISPATCH_WEBHOOK_SECRET) -- see AGENTS.md's "Config
 # & Credential Locations".
 #
+# Issue #538: the dry run (`db push --dry-run`) is its own `dry-run` job,
+# which the `migrate` job below `needs`-gates on and which also fails
+# closed on a DROP/ALTER ... TYPE statement in any not-yet-applied
+# migration. Both jobs run inside the `production` environment, so a run
+# requires two separate required-reviewer approvals -- one to let the dry
+# run and destructive-statement scan execute, a second (with that job's
+# output now visible) to let the real push happen.
+#
 # The Apple-secret and push-dispatch-secret checks are each scoped to their
 # own function's secret-set step only, not to the whole job: an unrelated
 # supabase/** push (a new migration, another function) must not fail purely
 # because a signing key or FCM service-account value hasn't been
 # provisioned yet -- migrations still get pushed and every function still
-# gets its code deployed either way. The Apple check hard-fails just the
-# delete-account secret-set/deploy steps (that function cannot revoke an
-# Apple identity without them -- Issue #17 KTD3). The push-dispatch check is
-# softer: it warns and skips only the `supabase secrets set` step, because
-# push-dispatch is already live in production with secrets set out-of-band
-# (issue #163 / D-19), so a CI run without those secrets configured yet
-# should not be treated as a deploy failure.
+# gets its code deployed either way. Issue #513: the Apple check used to
+# hard-fail the delete-account secret-set/deploy steps whenever any of the
+# four GitHub secrets was unset, even though delete-account has been live in
+# production since v231 with its Apple secrets already set directly on the
+# Supabase project -- every run failed. It now reuses the project's existing
+# values when the GitHub secrets are partial or absent but the project
+# already has all four (via `supabase secrets list` +
+# .github/scripts/check-apple-secrets.sh). When a name is missing from BOTH
+# places, it warns (`mode=missing`), skips only the secret-set step, and
+# still deploys delete-account and records its evidence. This used to be a
+# hard failure, but no Apple credentials exist yet, so every run on main
+# failed. delete-account's Apple revocation fails closed at runtime without
+# them (Issue #17 KTD3), so a current deploy is never worse than stale code. The
+# push-dispatch check is softer: it warns and skips only the `supabase
+# secrets set` step, because push-dispatch is already live in production
+# with secrets set out-of-band (issue #163 / D-19), so a CI run without
+# those secrets configured yet should not be treated as a deploy failure.
 #
 # The "Reconcile Realtime publication" step re-invokes
 # public.reconcile_realtime_publication() after every push (Issue #77 / PR
@@ -37,35 +55,86 @@ name: Supabase migrate
 # Realtime" toggle used against an already-migrated project. It is
 # idempotent and safe to run even when that migration was not part of this
 # push, and runs before the Apple-secret check so it is never skipped by a
-# missing Apple key. There is still no *periodic* reconciliation between
-# deploys -- see the tracked follow-up in AGENTS.md's Migration Flow
-# section.
+# missing Apple key. Periodic reconciliation between deploys runs weekly
+# via .github/workflows/supabase-reconcile.yml (Issue #453).
 #
-# The "Check for schema drift" step (issue #163 / D-19, D-21) runs
-# `supabase db diff --linked --schema public` and fails the job on any
-# non-empty output -- this is what would have caught an out-of-band Studio
-# change (or a migration applied outside this workflow) before it went
-# unnoticed. The "Database advisor gate" step (also issue #163) runs
-# `supabase db advisors --linked --type security --fail-on error`, a
-# CI-enforced replacement for the old manual "check the Supabase MCP
-# get_advisors output before approving" step -- the CLI has had a `db
-# advisors` subcommand since at least 2.116.0 (confirmed via `supabase db
-# --help`/`supabase db advisors --help` against the pinned version below),
-# so the MCP-only caveat that used to live in this comment no longer
-# applies. Both gates run LAST, after every other step in this job
-# (db push, the Realtime reconcile, both Edge Function deploys, and the
+# The "Check for schema drift" step (issue #163 / D-19, D-21, #513) runs
+# `supabase db diff --linked --schema public --use-migra`. The CLI's
+# default engine re-emits every CREATE OR REPLACE FUNCTION even when
+# byte-identical to its migration and missed a real change migra caught
+# correctly, so migra is pinned explicitly. `classify-schema-diff.sh`
+# splits the diff into statements and warns (not fails) only on function
+# re-emission and a matched trigger DROP/CREATE pair; any other statement
+# fails the job, as does a non-zero `db diff` exit. The "Database advisor
+# gate" step (also issue #163) runs `supabase db advisors --linked --type
+# security`, a CI-enforced replacement for the old manual "check the
+# Supabase MCP get_advisors output before approving" step -- the CLI has
+# had a `db advisors` subcommand since at least 2.116.0 (confirmed via
+# `supabase db --help`/`supabase db advisors --help` against the pinned
+# version below), so the MCP-only caveat that used to live in this comment
+# no longer applies. Both gates run LAST, after every other step in this
+# job (db push, the Realtime reconcile, both Edge Function deploys, and the
 # push-dispatch / Apple secret checks) -- issue #163 review: they can only
 # report on what's already live, they can never prevent it, so placing them
 # before the function deploys would let a false-positive drift or advisor
 # finding block an unrelated function deploy instead of just flagging it
-# after the fact. The advisor gate is pinned to --fail-on error rather than
-# warn because production currently carries tracked warn-level findings --
-# anon-executable SECURITY DEFINER functions (issue #158, in flight),
-# search_path and extension-in-public lints (issue #194), and the
-# dashboard-only leaked-password-protection setting -- and --fail-on warn
-# would fail every run until all three land. TODO(#163 follow-up): tighten
-# to --fail-on warn once #158, #194, and leaked-password protection are
-# done.
+# after the fact.
+#
+# Issue #454 tightened the advisor gate from --fail-on error to a
+# hand-rolled --fail-on warn equivalent, implemented in
+# `.github/scripts/check-advisor-gate.sh` (unit tested) rather than the
+# CLI's own --fail-on (which has no per-rule exclusion -- see the step
+# below for why). It used to be pinned to error-only because production
+# carried tracked warn-level findings that would have failed every run --
+# anon-executable SECURITY DEFINER functions (issue #158, since closed),
+# search_path lints on four functions (issue #194 -- two closed by this
+# same PR, two pre-existing functions outside its named scope left open;
+# see that migration and the PR description), pg_net's extension-in-public
+# lint (issue #194's OWN extension relocation is DEFERRED, not done -- see
+# below), and the dashboard-only leaked-password-protection setting.
+# `check-advisor-gate.sh` excludes exactly three narrow, named findings --
+# see its own header for the full rationale on each -- and every other
+# finding, including one this script has never seen before, still fails
+# the gate:
+#   * `authenticated_security_definer_function_executable`, which by
+#     design covers roughly 30 RPCs (the whole point of that RPC API is to
+#     be called by `authenticated`).
+#   * `extension_in_public`, only when it names `pg_net` specifically:
+#     production's pg_net is supabase_admin-owned and confirmed locally to
+#     be non-relocatable (`alter extension pg_net set schema ...` fails,
+#     SQLSTATE 0A000), and its `net` schema ACL was granted by
+#     supabase_admin to postgres, anon, authenticated, service_role, and
+#     supabase_functions_admin -- a `drop extension pg_net` inside an
+#     unattended migration risks either a permission failure (blocking
+#     every later migration) or losing those Supabase-managed grants on
+#     recreate, silently breaking push dispatch. This needs a
+#     Supabase-supported relocation path, not a plain migration -- the
+#     follow-up landed as 20260918120000_pg_net_public_placement_guard.sql
+#     plus the support-assisted relocation runbook in docs/ops/
+#     supabase-go-live.md ("pg_net relocation runbook (issue #194)"); the
+#     exclusion self-retires once the runbook is executed on the linked
+#     project (the finding disappears from advisor output), and
+#     classify-schema-diff.sh already accepts the post-relocation
+#     `WITH SCHEMA extensions` shadow-image shape so the drift gate keeps
+#     passing through the transition.
+#   * `auth_leaked_password_protection` -- a dashboard toggle no migration
+#     or workflow change can flip, confirmed OFF in production as of this
+#     PR, and already on the owner's manual post-deploy checklist (issue
+#     #694). Remove this exclusion once that checklist item is done --
+#     until then it is deliberately excluded here rather than left
+#     failing, since the owner already has it tracked elsewhere.
+#
+# LLA-111: "run LAST" used to also mean "run only if everything before them
+# succeeded" -- GitHub Actions' default per-step `if:`. That silently
+# skipped both checks whenever any earlier step in the job failed (a
+# push-dispatch/Apple secret not configured yet, a function deploy
+# hiccup) -- exactly the case where independent verification of what did
+# make it live matters most, on a run that's already red for an unrelated
+# reason -- and skipped the advisor gate a second way whenever the drift
+# check itself found something and failed. Both steps now carry
+# `if: always() && steps.link.outcome == 'success'`, independent of each
+# other and of every step in between: they run whenever `supabase link`
+# itself succeeded, regardless of what happened after it.
 
 on:
   push:
@@ -83,11 +152,130 @@ permissions:
   contents: read
 
 jobs:
+  dry-run:
+    # Issue #538: this gate used to be `List pending migrations` (`db push
+    # --dry-run`) immediately followed by the real `db push` in the same
+    # job -- decorative output, never actually consulted before the push it
+    # was meant to precede. Split into its own job that `migrate` below
+    # `needs`-gates on: the `production` environment's required reviewer
+    # must approve *this* job (seeing nothing yet but the diff under
+    # review) and then, separately, approve `migrate` -- by which point
+    # this job's dry-run output and destructive-statement scan are visible
+    # in its logs. Two separate environment approvals, not one.
+    name: Preview and gate pending migrations (dry run)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Same IPv4-pooler rationale as migration-gate.yml: the direct host
+      # publishes AAAA-only records and GitHub-hosted runners have no IPv6
+      # route.
+      POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PGSSLMODE: require
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1.7.1
+        with:
+          # Pinned to the version the migrations and tests were written against.
+          version: 2.116.0
+
+      - name: Check deploy credentials
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN is not set. Create a Supabase personal access token (supabase.com dashboard -> Account -> Access Tokens) and add it as a \`production\` environment secret named SUPABASE_ACCESS_TOKEN (repository Settings -> Environments -> production -> Environment secrets), then re-run this workflow."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not set on the \`production\` environment. Add it (Environment secrets) and re-run."
+            exit 1
+          fi
+
+      - name: Link project
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: List pending migrations
+        run: supabase db push --dry-run
+
+      - name: Install psql
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null 2>&1 || {
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          }
+          psql --version
+
+      - name: Fail on a destructive statement in an unapplied migration
+        # Issue #538: asserts on the actual SQL of every migration file not
+        # yet recorded as applied in production (the same repo-vs-applied
+        # diff ios-release.yml's migration-gate job runs, just inverted --
+        # that job fails on a migration missing from prod, this one fails
+        # on a migration about to be *added* to it that looks destructive).
+        # DROP TABLE/COLUMN and ALTER TABLE ... TYPE are the two statement
+        # shapes that can destroy data or fail outright against a non-empty
+        # table; this is a text-pattern heuristic, not a query against the
+        # target tables' actual row counts, so it can't distinguish an
+        # empty table from a populated one -- it fails closed on the
+        # pattern either way. That is deliberate: a destructive schema
+        # change should never ship through the unattended path. Apply it
+        # by hand (a manual `supabase db push` or `psql` session) after
+        # reviewing it directly.
+        #
+        # LLA-109: the scan itself now lives in the statement-aware, unit-
+        # tested .github/scripts/check-destructive-sql.sh (the release-
+        # guards CI job runs its truth table on every PR) rather than a
+        # single line-based `grep -E` here -- see that script's header for
+        # exactly which false negatives (a statement split across lines)
+        # and false positives (ALTER PUBLICATION ... DROP TABLE, a comment
+        # mentioning "drop table") it fixes.
+        run: |
+          set -euo pipefail
+
+          applied="$(psql -h "$POOLER_HOST" -p 5432 -U "postgres.${SUPABASE_PROJECT_REF}" -d postgres \
+                       -t -A -c "select version from supabase_migrations.schema_migrations" \
+                     | tr -d '\r' | sed '/^$/d' | sort -u)"
+
+          hit=0
+          checked=0
+          for f in supabase/migrations/*.sql; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            ver="$(printf '%s\n' "$base" | sed -E 's/^([0-9]+)_.*/\1/')"
+            if printf '%s\n' "$applied" | grep -qx "$ver"; then
+              continue # already applied in production; not part of this push
+            fi
+            checked=$((checked + 1))
+            if ! reason="$(bash .github/scripts/check-destructive-sql.sh < "$f")"; then
+              echo "::error::$f is not yet applied to production and contains a destructive statement -- potentially destructive against a non-empty table. Blocked from the unattended push above."
+              echo "$reason"
+              hit=1
+            fi
+          done
+
+          echo "Scanned $checked pending migration(s) for destructive statements."
+          [ "$hit" -eq 0 ] || exit 1
+
   migrate:
     name: Push migrations
+    needs: dry-run
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 15
+    permissions:
+      # contents: read is needed for actions/checkout; deployments: write
+      # is LLA-110's addition -- see "Record delete-account deployment
+      # evidence" below. Job-level permissions replace the workflow-level
+      # default entirely for this job, so both must be listed explicitly.
+      contents: read
+      deployments: write
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -124,10 +312,8 @@ jobs:
           fi
 
       - name: Link project
+        id: link
         run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
-
-      - name: List pending migrations
-        run: supabase db push --dry-run
 
       - name: Push migrations
         run: supabase db push
@@ -178,13 +364,52 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_REF"
 
       - name: Check Apple secrets (account-deletion deploy only)
+        # Issue #513: the old version of this step hard-failed the whole
+        # job whenever any of the four GitHub `production` environment
+        # Apple secrets was unset -- but delete-account has been live in
+        # production since v231 (deployed out-of-band) with its Apple
+        # secrets already set directly on the Supabase project, so every
+        # run failed here regardless of whether migrations or the other
+        # three functions had anything to deploy. This never overwrites a
+        # working project secret with a missing GitHub one: it only ever
+        # reuses what is already confirmed present on the project, or (names
+        # missing from both places) warns with `mode=missing` and lets the
+        # deploy proceed without a secret-set.
+        #
+        # All four GitHub secrets set: unchanged behaviour, no project API
+        # call needed -- `check-apple-secrets.sh` returns `mode=set` from
+        # its env-var check alone. Otherwise, `supabase secrets list
+        # --output json` (names + digests only, confirmed against the
+        # pinned CLI's own source at tag v2.116.0 -- see the script's own
+        # header) is piped into the same script, which returns `mode=reuse`
+        # only if all four names already exist on the project, or
+        # `mode=missing` with a `::warning::` naming exactly which are
+        # missing from both places (malformed `secrets list` output still
+        # fails). The name-parsing/presence
+        # logic itself lives in .github/scripts/check-apple-secrets.sh
+        # (unit tested: .github/scripts/tests/check-apple-secrets.test.sh),
+        # not inline here, so it is covered by the release-guards /
+        # release-guards-macos CI jobs the same way the other
+        # .github/scripts/*.sh helpers are.
+        id: apple_secrets
         run: |
-          if [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_KEY_ID:-}" ] || [ -z "${APPLE_CLIENT_ID:-}" ] || [ -z "${APPLE_PRIVATE_KEY:-}" ]; then
-            echo "::error::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment. The delete-account function needs all four to revoke an Apple identity on deletion (Issue #17 KTD3) - add them (Environment secrets) and re-run. See AGENTS.md's 'Config & Credential Locations' for where each value comes from. This only blocks deploying delete-account - migrations for unrelated supabase/** changes already pushed successfully above."
-            exit 1
+          set -euo pipefail
+          if [ -n "${APPLE_TEAM_ID:-}" ] && [ -n "${APPLE_KEY_ID:-}" ] && [ -n "${APPLE_CLIENT_ID:-}" ] && [ -n "${APPLE_PRIVATE_KEY:-}" ]; then
+            mode_line="$(bash .github/scripts/check-apple-secrets.sh < /dev/null)"
+          else
+            mode_line="$(supabase secrets list --output json --project-ref "$SUPABASE_PROJECT_REF" | bash .github/scripts/check-apple-secrets.sh)"
+          fi
+          echo "$mode_line" >> "$GITHUB_OUTPUT"
+          if [ "$mode_line" = "mode=reuse" ]; then
+            echo "::notice::One or more Apple secrets (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID, APPLE_PRIVATE_KEY) are not set on the \`production\` environment, but all four already exist on the Supabase project (checked via \`supabase secrets list\`) -- reusing the existing project secrets as-is rather than overwriting them from a partial GitHub-secret set. Add the missing GitHub secrets if you want CI to manage them going forward; see AGENTS.md's 'Config & Credential Locations' for where each value comes from."
           fi
 
       - name: Set delete-account function secrets
+        # Only runs when all four GitHub secrets were present above
+        # (mode=set) -- skipped on mode=reuse so a partial GitHub-secret set
+        # can never overwrite the project's own good Apple secrets with
+        # empty/missing values.
+        if: steps.apple_secrets.outputs.mode == 'set'
         run: |
           supabase secrets set \
             APPLE_TEAM_ID="$APPLE_TEAM_ID" \
@@ -196,43 +421,178 @@ jobs:
       - name: Deploy delete-account function
         run: supabase functions deploy delete-account --project-ref "$SUPABASE_PROJECT_REF"
 
-      - name: Check for schema drift
-        # Issue #163 / D-19: catches a schema change made out-of-band (a
-        # Studio edit, a manual `psql`, or a migration applied outside this
-        # workflow) that supabase/migrations does not account for. `db diff`
-        # itself does not set a non-zero exit code on a non-empty diff, so
-        # this step captures the output and fails explicitly. Runs last,
-        # after every deploy step above (issue #163 review): a false
-        # positive here can only report on an already-completed deploy, it
-        # can never block one -- putting it earlier would risk failing an
-        # unrelated function deploy over a drift finding that has nothing
-        # to do with it.
+      - name: Record delete-account deployment evidence
+        # LLA-110: migration-gate.yml (the release-time gate ios-release.yml
+        # and play-store-release.yml both run) used to compare only
+        # *migration versions* between this repo and production -- it had
+        # no way to know whether the Edge Function a client build actually
+        # depends on (delete-account, issue #17 U2/U7 -- required for App
+        # Store guideline 5.1.1(v)) was itself deployed successfully and
+        # matches what this commit's source expects. A migration push can
+        # succeed while the very next step here (Apple secrets missing, a
+        # function deploy failure) leaves delete-account absent or stale in
+        # production, and the old gate would still see "all migrations
+        # applied" and wave the release through regardless.
+        #
+        # This step runs only once "Deploy delete-account function" above
+        # has actually succeeded (the default per-step `if:`), and records
+        # a content hash of the exact source this commit just deployed as a
+        # GitHub Deployment (native to the platform already in use here,
+        # not a bespoke tracking system) against a dedicated
+        # "edge-delete-account" environment. migration-gate.yml (LLA-110)
+        # later reads the most recent one back and compares its hash
+        # against whatever supabase/functions/delete-account looks like at
+        # release time -- on the same commit or a later one -- so drift
+        # between what's live and what a release build expects is caught
+        # even between deploys, the same "fail closed" posture the
+        # migration-version comparison already has.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          diff_output="$(supabase db diff --linked --schema public)"
-          if [ -n "$diff_output" ]; then
-            echo "::error::supabase db diff --linked --schema public found a non-empty diff between supabase/migrations and the linked project's public schema. This means something changed the live schema outside of a tracked migration file (a Studio edit, a manual psql session, or an out-of-band db push). Add a migration under supabase/migrations that captures the drift, or if the drift itself is a mistake, revert it on the project directly, then re-run this workflow."
-            echo "$diff_output"
+          set -euo pipefail
+
+          # Issue #735: this step runs after the deploy itself has
+          # succeeded, so a transient GitHub API error (observed: HTTP 502
+          # Server Error) must not fail the whole Push migrations job --
+          # evidence recording is bookkeeping, not deploy correctness.
+          # Three attempts with linear backoff; the here-string callers'
+          # stdin flows through to each retry unchanged.
+          gh_api_retry() {
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "::error::gh api failed after $attempt attempts (see output above)"
+                return 1
+              fi
+              echo "gh api attempt $attempt failed -- retrying in $((attempt * 10))s" >&2
+              sleep $((attempt * 10))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          hash="$(bash .github/scripts/edge-function-hash.sh supabase/functions/delete-account)"
+
+          # A single-line here-string (<<<), not a heredoc: a heredoc's
+          # closing delimiter must sit completely unindented at the very
+          # start of its line, which is impossible to write inside an
+          # indented YAML `run: |` block without also ending the block
+          # scalar itself early -- see the check-destructive-sql /
+          # extract-marketing-version workflow-YAML gotcha this repo's own
+          # tooling instructions call out.
+          create_payload="$(printf '{"ref":"%s","environment":"edge-delete-account","auto_merge":false,"required_contexts":[],"description":"delete-account Edge Function deploy","payload":{"function":"delete-account","source_sha256":"%s"}}' "${{ github.sha }}" "$hash")"
+          deployment_id="$(gh_api_retry gh api "repos/${{ github.repository }}/deployments" --input - --jq .id <<< "$create_payload")"
+
+          status_payload="$(printf '{"state":"success","description":"supabase functions deploy delete-account succeeded (source sha256 %s)"}' "$hash")"
+          gh_api_retry gh api "repos/${{ github.repository }}/deployments/$deployment_id/statuses" --input - >/dev/null <<< "$status_payload"
+
+          echo "Recorded delete-account deployment evidence: source sha256 $hash (deployment id $deployment_id)."
+
+      - name: Check for schema drift
+        # Issue #163 / D-19, #513: runs last (steps.link.outcome, LLA-111 --
+        # see the dry-run job's own comment) so a false positive here can
+        # only report on an already-live deploy, never block one. Prints
+        # any non-empty diff in a `::group::` (schema SQL, not a secret),
+        # then classify-schema-diff.sh decides fail vs. warn per statement
+        # -- see the header comment above. A non-zero `db diff` exit is a
+        # connectivity/auth failure, not a finding, and fails outright.
+        if: always() && steps.link.outcome == 'success'
+        run: |
+          set +e
+          diff_output="$(supabase db diff --linked --schema public --use-migra --output-format text)"
+          diff_exit=$?
+          set -e
+
+          if [ "$diff_exit" -ne 0 ]; then
+            echo "::error::supabase db diff --linked --schema public --use-migra exited $diff_exit -- it could not complete the comparison (a connectivity or auth problem, not a schema finding). See the command output above."
             exit 1
           fi
-          echo "No schema drift detected between supabase/migrations and the linked project's public schema."
+
+          if [ -z "$diff_output" ]; then
+            echo "No schema drift detected between supabase/migrations and the linked project's public schema."
+            exit 0
+          fi
+
+          echo "::group::Schema drift diff (supabase db diff --linked --schema public --use-migra)"
+          echo "$diff_output"
+          echo "::endgroup::"
+
+          set +e
+          real="$(printf '%s\n' "$diff_output" | bash .github/scripts/classify-schema-diff.sh)"
+          classify_exit=$?
+          set -e
+
+          if [ "$classify_exit" -eq 0 ]; then
+            echo "::warning::Non-empty diff, but every statement is known re-emission noise (unchanged CREATE OR REPLACE FUNCTION / a matched trigger drop+create pair) -- see the group above."
+          else
+            echo "::error::Schema drift beyond known noise -- add a migration under supabase/migrations to capture it, or revert it on the project directly."
+            printf '%s\n' "$real"
+            exit 1
+          fi
 
       - name: Database advisor gate
-        # Issue #163 / D-19: a CI-enforced replacement for the old "check
-        # the Supabase MCP get_advisors output before approving" manual
-        # step. Fails the job on any security-severity finding at error
-        # level (info-level lints are advisory noise, not a gate); narrowed
-        # to --type security because performance lints (e.g. an unindexed
-        # foreign key) are not a deploy blocker here. Pinned to --fail-on
-        # error rather than warn: production currently carries tracked
-        # warn-level findings -- anon-executable SECURITY DEFINER functions
-        # (issue #158, in flight), search_path and extension-in-public
-        # lints (issue #194), and the dashboard-only
-        # leaked-password-protection setting -- so --fail-on warn would fail
-        # every run until all three land. Runs last, after every deploy
-        # step above, for the same reason as the schema-drift check right
-        # before it: both gates can only report on what's already live,
-        # never prevent it, so placing them before the function deploys
-        # would turn a false positive into a blocked function deploy.
-        # TODO(#163 follow-up): tighten to --fail-on warn once #158, #194,
-        # and leaked-password protection are done.
-        run: supabase db advisors --linked --type security --fail-on error --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+        # Issue #163 / D-19, tightened by issue #454: a CI-enforced
+        # replacement for the old "check the Supabase MCP get_advisors
+        # output before approving" manual step, now failing the job on any
+        # security-severity finding at WARN level or above (previously
+        # error-only -- see the header comment above for why that was
+        # pinned, and why #454 could finally tighten it). Narrowed to
+        # --type security because performance lints (e.g. an unindexed
+        # foreign key) are not a deploy blocker here. Runs last, after
+        # every deploy step above, for the same reason as the schema-drift
+        # check right before it: both gates can only report on what's
+        # already live, never prevent it, so placing them before the
+        # function deploys would turn a false positive into a blocked
+        # function deploy.
+        #
+        # `--fail-on` is deliberately NOT passed to `db advisors` itself
+        # (its own exit code would short-circuit before the exclusions
+        # below ever ran) -- this step's own exit code gates the job
+        # instead, via `.github/scripts/check-advisor-gate.sh` (unit
+        # tested: `.github/scripts/tests/check-advisor-gate.test.sh`, same
+        # pattern as the other stdin-JSON gate scripts in this repo) over
+        # `--output-format json`. That script excludes exactly three
+        # narrow, named findings -- see its own header for the full
+        # rationale on each:
+        #   * `authenticated_security_definer_function_executable` -- by
+        #     design, covers the intentional ~30-RPC set.
+        #   * `extension_in_public`, only when it names `pg_net`
+        #     specifically -- issue #194's relocation of pg_net is
+        #     deferred (production's pg_net is supabase_admin-owned and
+        #     non-relocatable, confirmed locally; a plain migration is not
+        #     a safe way to move it -- see #194 and the script header).
+        #   * `auth_leaked_password_protection` -- a dashboard-only Auth
+        #     setting, confirmed OFF in production, already on the owner's
+        #     manual post-deploy checklist (issue #694). Remove this
+        #     exclusion once that checklist item is done.
+        # Every OTHER finding at warn or above, INCLUDING a lint name this
+        # script has never seen before, still fails the gate exactly as
+        # before -- this fails closed by construction (see the script's own
+        # test suite), not by review discipline alone.
+        #
+        # `--level warn` is passed to `db advisors` itself so the CLI
+        # already omits INFO-level findings -- production carries 7
+        # by-design INFO-level `rls_enabled_no_policy` findings (RLS
+        # enabled with no policy, on purpose, for service-only tables) that
+        # this gate was never meant to fail on. `check-advisor-gate.sh`
+        # also drops any INFO-level finding on its own (defense in depth
+        # for the same input shape regardless of how it arrived), while
+        # still failing closed on a finding with no `level` field or an
+        # unrecognised level string -- see the script's own header.
+        #
+        # LLA-111: independently gated the same way as "Check for schema
+        # drift" right above, and deliberately NOT conditioned on that
+        # step's own outcome -- a drift finding failing that step used to
+        # skip this one by the same default-success-only `if:` rule, so a
+        # run that already caught a drift problem would tell you nothing
+        # about the advisor findings on that same now-confirmed-drifted
+        # database. Both post-deploy checks now run independently of each
+        # other, gated only on `supabase link` having succeeded.
+        if: always() && steps.link.outcome == 'success'
+        run: |
+          set -euo pipefail
+
+          supabase db advisors --linked --type security --level warn --output-format json \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" > advisors.json
+          cat advisors.json
+
+          bash .github/scripts/check-advisor-gate.sh < advisors.json

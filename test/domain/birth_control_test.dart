@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
 void main() {
@@ -289,6 +290,44 @@ void main() {
         ),
         BirthControlMethod.ring,
       );
+    });
+  });
+
+  group('birthControlStateFromProfileMode (issue #551)', () {
+    test('null row maps to null state', () {
+      expect(birthControlStateFromProfileMode(null), isNull);
+    });
+
+    test('a row maps its method and effective dates through unchanged', () {
+      const row = (
+        mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
+        birthControlMethod: 'pill',
+        birthControlStartedOn: '2026-08-01',
+        birthControlStoppedOn: null,
+      );
+      final state = birthControlStateFromProfileMode(row);
+      expect(state, isNotNull);
+      expect(state!.method, 'pill');
+      expect(state.startedOn, '2026-08-01');
+      expect(state.stoppedOn, isNull);
+    });
+
+    test('a row with no recorded method still maps (all fields null)', () {
+      const row = (
+        mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      );
+      final state = birthControlStateFromProfileMode(row);
+      expect(state, isNotNull);
+      expect(state!.method, isNull);
+      expect(state.startedOn, isNull);
+      expect(state.stoppedOn, isNull);
     });
   });
 }

@@ -25,6 +25,25 @@
 ///   `typical_period_length_days` (Issue #218, onboarding cycle facts) are
 ///   pulled *and* pushed like any other profile column; the date stays a
 ///   `yyyy-MM-dd` string, same as `profile_modes.mode_started_on`.
+/// * `profiles.tracking_preferences` (Issue #259) is a JSON object on the
+///   wire and JSON text locally (the `observations.raw` precedent). It is
+///   pulled like any other column but pushed ONLY when locally non-null —
+///   a null means "not customized on this device", and emitting it would
+///   clear a co-guardian's curated document; the server's `?` containment
+///   guard backstops the same rule for old clients.
+/// * `profiles.bbt_unit` / `weight_unit` (Issue #255, display-unit
+///   preferences) get `mode`'s closed-set treatment exactly: non-null by
+///   default, an absent or unrecognised value normalises to the column
+///   default (`celsius`/`kg`) — presentation-only, never a security field.
+///   An `observations` value's own `unit` is untouched by this: the
+///   preference decides rendering only. Pushed ONLY while
+///   `Profiles.unitsUnconfirmed` is false (Issue #637, LLA-039) — the same
+///   emit-only-when-confirmed shape as `tracking_preferences` above, so an
+///   upgrade's local default never clobbers a real server value before a
+///   pull hydrates it.
+/// * `day_entries.pms` (Issue #220) gets the same LLA-039 treatment via
+///   `DayEntries.pmsUnconfirmed`: pushed only once this device has
+///   confirmed it against a real server value.
 /// * `observations.category`/`code` (Issue #240) are free text and
 ///   deliberately NOT validated against a closed set here — unlike
 ///   `flow`/`mode`, an unrecognised value round-trips unchanged (the D-10
@@ -48,6 +67,7 @@ library;
 import 'dart:convert';
 
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 
@@ -87,6 +107,18 @@ enum RowCodecErrorKind {
 
   /// `observations.raw` (Issue #240) does not parse as JSON.
   invalidRaw,
+
+  /// `profiles.tracking_preferences` (Issue #259) does not parse as a JSON
+  /// object on either direction of the codec.
+  invalidTrackingPreferences,
+
+  /// A numeric field holds a non-finite value (NaN or +/-Infinity) — Issue
+  /// #140 review, LLA-092: `dart:convert`'s `jsonEncode` cannot serialize
+  /// one at all (it throws `UnsupportedError`), so this is the codec's own
+  /// chance to fail with a typed, attributable error naming the offending
+  /// row/field instead of a bare encoder crash surfacing far from — and
+  /// long after — whatever local write actually let the value in.
+  invalidNumber,
 }
 
 /// Typed codec failure. Deliberately carries no payload: the table, the
@@ -112,30 +144,42 @@ final RegExp _shortOffset = RegExp(r'([+-]\d{2})$');
 
 /// Remote table name for [table] (`profiles` / `day_entries` /
 /// `profile_guardians` / `observations` / `profile_modes` /
-/// `cycle_overrides` / `care_notes` / `visit_prep_items`).
-String syncTableName(SyncTable table) => switch (table) {
-      SyncTable.profiles => 'profiles',
-      SyncTable.dayEntries => 'day_entries',
-      SyncTable.profileGuardians => 'profile_guardians',
-      SyncTable.observations => 'observations',
-      SyncTable.profileModes => 'profile_modes',
-      SyncTable.cycleOverrides => 'cycle_overrides',
-      SyncTable.careNotes => 'care_notes',
-      SyncTable.visitPrepItems => 'visit_prep_items',
-    };
+/// `cycle_overrides` / `care_notes` / `visit_prep_items` /
+/// `day_entry_merge_events` / `profile_tag_registry` /
+/// `deleted_profiles`).
+String syncTableName(SyncTable table) => _syncTableNames[table]!;
+
+/// The wire name per [SyncTable] — a const map rather than an exhaustive
+/// switch since Issue #130's tenth SyncTable: an exhaustive switch over a
+/// ten-member enum sits permanently over the quality gate's per-method
+/// complexity ceiling no matter how well covered it is, while a lookup
+/// stays flat as tables are added.
+const Map<SyncTable, String> _syncTableNames = {
+  SyncTable.profiles: 'profiles',
+  SyncTable.dayEntries: 'day_entries',
+  SyncTable.profileGuardians: 'profile_guardians',
+  SyncTable.observations: 'observations',
+  SyncTable.profileModes: 'profile_modes',
+  SyncTable.cycleOverrides: 'cycle_overrides',
+  SyncTable.careNotes: 'care_notes',
+  SyncTable.visitPrepItems: 'visit_prep_items',
+  SyncTable.dayEntryMergeEvents: 'day_entry_merge_events',
+  SyncTable.profileTagRegistry: 'profile_tag_registry',
+  SyncTable.deletedProfiles: 'deleted_profiles',
+  SyncTable.dayEntryHistory: 'day_entry_history',
+};
+
+/// [syncTableName]'s inverse, precomputed once from it rather than
+/// hand-duplicating the name/table pairing a second time (issue #525
+/// review: a second 9-arm switch here pushed [syncTableFromName]'s CRAP
+/// score over the gate as tables were added, on top of being one more
+/// place a new [SyncTable] value could be forgotten).
+final Map<String, SyncTable> _syncTableByName = {
+  for (final table in SyncTable.values) syncTableName(table): table,
+};
 
 /// Inverse of [syncTableName]; null for anything else.
-SyncTable? syncTableFromName(String name) => switch (name) {
-      'profiles' => SyncTable.profiles,
-      'day_entries' => SyncTable.dayEntries,
-      'profile_guardians' => SyncTable.profileGuardians,
-      'observations' => SyncTable.observations,
-      'profile_modes' => SyncTable.profileModes,
-      'cycle_overrides' => SyncTable.cycleOverrides,
-      'care_notes' => SyncTable.careNotes,
-      'visit_prep_items' => SyncTable.visitPrepItems,
-      _ => null,
-    };
+SyncTable? syncTableFromName(String name) => _syncTableByName[name];
 
 // ---------------------------------------------------------------------------
 // timestamps
@@ -194,11 +238,36 @@ JsonRow encodeProfile(Profile row) {
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
     'mode': row.mode,
+    // Issue #255 / #637 LLA-039: already the raw `toDb()` string on the
+    // drift row (the enum normalisation happens in
+    // `mappers.dart`/`decodeProfile`, never here) — but emitted ONLY once
+    // this device has confirmed it against a real server value at least
+    // once (`Profiles.unitsUnconfirmed`'s doc comment). An upgrade
+    // backfills both columns with a local default that may not match what
+    // the server already has; the key's absence leaves the server's
+    // stored value alone (its `?` containment guard, the same backstop
+    // `trackingPreferences` below relies on) until a pull actually
+    // confirms this device's copy.
+    if (row.unitsUnconfirmed != true) ...{
+      'bbt_unit': row.bbtUnit,
+      'weight_unit': row.weightUnit,
+    },
     'birth_year': row.birthYear,
     'relationship': row.relationship,
     'last_period_start': row.lastPeriodStart,
     'typical_cycle_length_days': row.typicalCycleLengthDays,
     'typical_period_length_days': row.typicalPeriodLengthDays,
+    // Issue #259: emitted ONLY when locally non-null — unlike the columns
+    // above, a null here is "never customized on this device", not an
+    // instruction to clear. Emitting an explicit null from a device that
+    // had simply not pulled yet would wipe a co-guardian's curated
+    // document server-side; the key's absence leaves the stored value
+    // alone (the server's `?` containment guard) and the next pull
+    // converges this device onto it. "Clear back to defaults" is a
+    // deliberate write of an empty document, not a null.
+    if (row.trackingPreferences != null)
+      'tracking_preferences':
+          _decodeTrackingPreferencesForWire(row.trackingPreferences),
   };
 }
 
@@ -225,10 +294,14 @@ JsonRow encodeDayEntry(DayEntry row) {
     'flow': row.flow.toDb(),
     'tags': List<String>.of(row.tags),
     'note': row.note,
-    // Issue #220: the first-class PMS marker rides the payload like any
-    // other day-level field; the server's sync_push update path guards it
-    // with `v_row ? 'pms'`, so always emitting the key is safe.
-    'pms': row.pms,
+    // Issue #220 / #637 LLA-039: the first-class PMS marker rides the
+    // payload like any other day-level field, emitted ONLY once this
+    // device has confirmed it against a real server value at least once
+    // (`DayEntries.pmsUnconfirmed`'s doc comment) — an upgrade backfills
+    // the column with a local default that may not match what the server
+    // already has. The server's sync_push update path already guards a
+    // missing key with `v_row ? 'pms'`, so omitting it here is safe.
+    if (row.pmsUnconfirmed != true) 'pms': row.pms,
     'source': row.source,
     'source_id': row.sourceId,
     'import_id': row.importId,
@@ -277,6 +350,7 @@ JsonRow encodeProfileMode(ProfileModeData row) {
     'profile_id': row.profileId,
     'mode': row.mode,
     'mode_started_on': row.modeStartedOn,
+    'estimated_due_date': row.estimatedDueDate,
     'birth_control_method': row.birthControlMethod,
     'birth_control_started_on': row.birthControlStartedOn,
     'birth_control_stopped_on': row.birthControlStoppedOn,
@@ -334,6 +408,68 @@ JsonRow encodeVisitPrepItem(VisitPrepItemData row) {
   };
 }
 
+/// The `p_merge_events` element for [row] (Issue #130). `created_at` is
+/// deliberately NOT emitted — the server stamps it, exactly as it stamps
+/// `day_entries.created_at`; the local row's [DayEntryMergeEventData.createdAt]
+/// rides along only for the display window. Emits exactly the keys
+/// `sync_push`'s c_merge_event_keys allowlist accepts.
+JsonRow encodeDayEntryMergeEvent(DayEntryMergeEventData row) {
+  const table = SyncTable.dayEntryMergeEvents;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  if (!_isoDate.hasMatch(row.localDate)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidDate,
+        table: table, field: 'local_date');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'local_date': row.localDate,
+    'winning_row_id': row.winningRowId,
+    'losing_row_id': row.losingRowId,
+    'field': row.field,
+    'losing_value_text': row.losingValueText,
+    'losing_author_user_id': row.losingAuthorUserId,
+    'winning_author_user_id': row.winningAuthorUserId,
+    'updated_at': encodeTimestamp(row.updatedAt),
+  };
+}
+
+/// The `p_tag_registry` element for [row] (Issue #257). `created_by` and
+/// `created_at` are deliberately NOT emitted — the server stamps both
+/// (created_by from the caller), and a row carrying either key would be
+/// rejected as an unknown key. Emits exactly the keys `sync_push`'s
+/// c_tag_registry_keys allowlist accepts.
+JsonRow encodeProfileTagRegistryEntry(ProfileTagRegistryEntry row) {
+  const table = SyncTable.profileTagRegistry;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'code': row.code,
+    'display_name': row.displayName,
+    'category': row.category,
+    'intensity_enabled': row.intensityEnabled,
+    'hidden_at': _encodeNullable(row.hiddenAt),
+    'sort_order': row.sortOrder,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
 String? _encodeNullable(DateTime? value) =>
     value == null ? null : encodeTimestamp(value);
 
@@ -347,6 +483,19 @@ Object? _decodeRawForWire(String? raw) {
   } on FormatException {
     throw const RowCodecError(RowCodecErrorKind.invalidRaw,
         table: SyncTable.observations, field: 'raw');
+  }
+}
+
+/// Issue #259: same wire shape as [_decodeRawForWire] (local JSON text ->
+/// decoded JSON object), with the codec failure attributed to
+/// `profiles.tracking_preferences`.
+Object? _decodeTrackingPreferencesForWire(String? text) {
+  if (text == null) return null;
+  try {
+    return jsonDecode(text);
+  } on FormatException {
+    throw const RowCodecError(RowCodecErrorKind.invalidTrackingPreferences,
+        table: SyncTable.profiles, field: 'tracking_preferences');
   }
 }
 
@@ -372,6 +521,16 @@ JsonRow encodeObservation(Observation row) {
     throw const RowCodecError(RowCodecErrorKind.invalidDate,
         table: table, field: 'local_date');
   }
+  // Issue #140 review, LLA-092: a nonfinite value_num (NaN/Infinity) can
+  // reach this far only if it slipped past every write-time guard — an
+  // older row from before the storage-layer check landed, say — but
+  // `jsonEncode`ing one for the push body below would throw an untyped
+  // `UnsupportedError` instead of this codec's own typed [RowCodecError],
+  // so it is checked explicitly rather than left to fail downstream.
+  if (row.valueNum != null && !row.valueNum!.isFinite) {
+    throw const RowCodecError(RowCodecErrorKind.invalidNumber,
+        table: table, field: 'value_num');
+  }
   return {
     'id': row.id,
     'day_entry_id': row.dayEntryId,
@@ -389,6 +548,11 @@ JsonRow encodeObservation(Observation row) {
     'source': row.source,
     'source_id': row.sourceId,
     'import_id': row.importId,
+    // Issue #186: the round-trip-write marker, synced like any other
+    // observations column; the server's sync_push update path guards it
+    // with `v_row ? 'exported_to_platform_at'`, so always emitting the key
+    // is safe (an old client omitting it never clears a stored value).
+    'exported_to_platform_at': _encodeNullable(row.exportedToPlatformAt),
     'raw': _decodeRawForWire(row.raw),
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
@@ -416,6 +580,12 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
     mode: ProfileMode.fromDb(r.stringOrNull('mode')).toDb(),
+    // Issue #255: same closed-set normalisation as `mode` above — an
+    // absent or unrecognised value degrades to the column default rather
+    // than surfacing garbage (or crashing a pull) for a presentation-only
+    // preference.
+    bbtUnit: BbtUnit.fromDb(r.stringOrNull('bbt_unit')).toDb(),
+    weightUnit: WeightUnit.fromDb(r.stringOrNull('weight_unit')).toDb(),
     birthYear: r.integerOrNull('birth_year'),
     relationship: _decodeRelationship(r.stringOrNull('relationship')),
     transferredAt: r.timestampOrNull('transferred_at'),
@@ -424,7 +594,25 @@ RemoteProfileRow decodeProfile(JsonRow json) {
         _decodeIsoDate(r.stringOrNull('last_period_start'), r, 'last_period_start'),
     typicalCycleLengthDays: r.integerOrNull('typical_cycle_length_days'),
     typicalPeriodLengthDays: r.integerOrNull('typical_period_length_days'),
+    // Issue #259: the wire carries a JSON object (or an absent/null key for
+    // a never-customized profile); it is stored locally as JSON text, the
+    // `observations.raw` precedent. A key present with a non-object value
+    // is a typed codec failure — that shape can only come from a broken
+    // writer, and silently dropping it would present a curated profile as
+    // a default one.
+    trackingPreferences: _decodeTrackingPreferencesFromWire(json, r),
   );
+}
+
+/// Issue #259: `profiles.tracking_preferences` off the wire. Absent or
+/// JSON-null -> null (never customized); a JSON object -> its text form;
+/// anything else -> a typed failure attributed to the field.
+String? _decodeTrackingPreferencesFromWire(JsonRow json, _Reader r) {
+  final value = json['tracking_preferences'];
+  if (value == null) return null;
+  if (value is Map) return jsonEncode(value);
+  r._fail(RowCodecErrorKind.invalidTrackingPreferences,
+      'tracking_preferences');
 }
 
 /// Normalises a raw `relationship` string against the closed set: an
@@ -511,6 +699,10 @@ RemoteObservationRow decodeObservation(JsonRow json) {
     source: r.stringOrNull('source') ?? 'manual',
     sourceId: r.stringOrNull('source_id'),
     importId: r.stringOrNull('import_id'),
+    // Issue #186: absent key (a pre-#186 server) decodes to null rather
+    // than failing the pull — the marker is optional round-trip metadata,
+    // not an identity field.
+    exportedToPlatformAt: r.timestampOrNull('exported_to_platform_at'),
     raw: json['raw'] == null ? null : jsonEncode(json['raw']),
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
@@ -531,6 +723,8 @@ RemoteProfileModeRow decodeProfileMode(JsonRow json) {
     profileId: r.ulid('profile_id'),
     mode: LifecycleMode.fromDb(r.stringOrNull('mode')).toDb(),
     modeStartedOn: _decodeIsoDate(r.stringOrNull('mode_started_on'), r, 'mode_started_on'),
+    estimatedDueDate:
+        _decodeIsoDate(r.stringOrNull('estimated_due_date'), r, 'estimated_due_date'),
     birthControlMethod: r.stringOrNull('birth_control_method'),
     birthControlStartedOn:
         _decodeIsoDate(r.stringOrNull('birth_control_started_on'), r, 'birth_control_started_on'),
@@ -609,17 +803,127 @@ RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
   );
 }
 
+/// Decodes a `day_entry_merge_events` row (Issue #130). `field` is
+/// normalised against the closed set ('flow' | 'note') on decode — an
+/// unrecognised value can only come from a broken writer, and degrades to
+/// 'note' rather than crashing a pull over display metadata. `created_at`
+/// falls back to `updated_at` when absent (only a hand-built row is ever
+/// null there).
+RemoteDayEntryMergeEventRow decodeDayEntryMergeEvent(JsonRow json) {
+  const table = SyncTable.dayEntryMergeEvents;
+  final r = _Reader(json, table);
+  final updatedAt = r.timestamp('updated_at');
+  return RemoteDayEntryMergeEventRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    localDate: r.isoDate('local_date'),
+    winningRowId: r.ulid('winning_row_id'),
+    losingRowId: r.ulid('losing_row_id'),
+    field: switch (r.string('field')) {
+      'flow' => 'flow',
+      _ => 'note',
+    },
+    losingValueText: r.string('losing_value_text'),
+    losingAuthorUserId: r.stringOrNull('losing_author_user_id'),
+    winningAuthorUserId: r.stringOrNull('winning_author_user_id'),
+    createdAt: r.timestampOrNull('created_at') ?? updatedAt,
+    updatedAt: updatedAt,
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
+/// Decodes a `deleted_profiles` row (issue #522): `deleted_at` is required
+/// here, unlike every other decoder's `timestampOrNull` — this table's own
+/// existence is the tombstone, so a row missing it is a codec failure, not
+/// an absent-optional-field default.
+RemoteDeletedProfileRow decodeDeletedProfile(JsonRow json) {
+  const table = SyncTable.deletedProfiles;
+  final r = _Reader(json, table);
+  return RemoteDeletedProfileRow(
+    profileId: r.ulid('profile_id'),
+    deletedAt: r.timestamp('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
+/// Decodes a `profile_tag_registry` row (Issue #257). `code`/
+/// `display_name`/`category` are read as-is — free text, never validated
+/// against a closed set (the registry is display vocabulary, never an
+/// allowlist). A tombstone renders with its payload already cleared
+/// server-side (the structural CHECK), so no client-side clearing is
+/// needed; `created_by`/`created_at` ride along for display only, with
+/// `created_at` falling back to `updated_at` when absent (only a
+/// hand-built row is ever null there).
+RemoteProfileTagRegistryRow decodeProfileTagRegistryEntry(JsonRow json) {
+  const table = SyncTable.profileTagRegistry;
+  final r = _Reader(json, table);
+  final updatedAt = r.timestamp('updated_at');
+  return RemoteProfileTagRegistryRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    code: r.string('code'),
+    displayName: r.string('display_name'),
+    category: r.string('category'),
+    intensityEnabled: json['intensity_enabled'] == null
+        ? false
+        : r.boolean('intensity_enabled'),
+    hiddenAt: r.timestampOrNull('hidden_at'),
+    sortOrder: r.integerOrNull('sort_order'),
+    createdBy: r.stringOrNull('created_by'),
+    createdAt: r.timestampOrNull('created_at') ?? updatedAt,
+    updatedAt: updatedAt,
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
+/// Decodes a `day_entry_history` row (Issue #170). `change_kind` is
+/// normalised against the closed set on decode — an unrecognised value can
+/// only come from a broken writer and degrades to 'updated' (the generic
+/// kind) rather than crashing a pull over display metadata. `entry_id` is
+/// read as a plain string, NOT validated as a ULID the way `id` is: rows
+/// arrive ordered and immutable, and a legacy-shaped entry id must not
+/// fail an entire pull page over display metadata.
+RemoteDayEntryHistoryRow decodeDayEntryHistory(JsonRow json) {
+  const table = SyncTable.dayEntryHistory;
+  final r = _Reader(json, table);
+  return RemoteDayEntryHistoryRow(
+    id: r.ulid('id'),
+    entryId: r.string('entry_id'),
+    profileId: r.ulid('profile_id'),
+    changedByUserId: r.string('changed_by_user_id'),
+    changedAt: r.timestamp('changed_at'),
+    changeKind: switch (r.string('change_kind')) {
+      'logged' => 'logged',
+      'tombstoned' => 'tombstoned',
+      'merged_discard' => 'merged_discard',
+      _ => 'updated',
+    },
+    changedFields: r.tags('changed_fields'),
+    serverVersion: r.integerOr('server_version', 0),
+  );
+}
+
 /// Decodes a pull-page row of [table].
-RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) => switch (table) {
-      SyncTable.profiles => decodeProfile(json),
-      SyncTable.dayEntries => decodeDayEntry(json),
-      SyncTable.profileGuardians => decodeProfileGuardian(json),
-      SyncTable.observations => decodeObservation(json),
-      SyncTable.profileModes => decodeProfileMode(json),
-      SyncTable.cycleOverrides => decodeCycleOverride(json),
-      SyncTable.careNotes => decodeCareNote(json),
-      SyncTable.visitPrepItems => decodeVisitPrepItem(json),
-    };
+RemoteRow decodeRemoteRow(SyncTable table, JsonRow json) =>
+    _remoteRowDecoders[table]!(json);
+
+/// Same growth rationale as [_syncTableNames]: dispatch by const map of
+/// decoder tear-offs rather than an exhaustive switch.
+const Map<SyncTable, RemoteRow Function(JsonRow)> _remoteRowDecoders = {
+  SyncTable.profiles: decodeProfile,
+  SyncTable.dayEntries: decodeDayEntry,
+  SyncTable.profileGuardians: decodeProfileGuardian,
+  SyncTable.observations: decodeObservation,
+  SyncTable.profileModes: decodeProfileMode,
+  SyncTable.cycleOverrides: decodeCycleOverride,
+  SyncTable.careNotes: decodeCareNote,
+  SyncTable.visitPrepItems: decodeVisitPrepItem,
+  SyncTable.dayEntryMergeEvents: decodeDayEntryMergeEvent,
+  SyncTable.profileTagRegistry: decodeProfileTagRegistryEntry,
+  SyncTable.deletedProfiles: decodeDeletedProfile,
+  SyncTable.dayEntryHistory: decodeDayEntryHistory,
+};
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`
 /// key. Throws [RowCodecErrorKind.unknownTable] when the key is absent or

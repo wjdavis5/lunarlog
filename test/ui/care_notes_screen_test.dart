@@ -6,6 +6,8 @@
 /// real repositories, [FakeAuthService]).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -106,6 +108,8 @@ Future<Harness> pumpCare(
         ChangeNotifierProvider<AuthController>.value(value: authController),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: CareNotesScreen(
           profile: profile,
           repository: care,
@@ -150,7 +154,10 @@ void main() {
       final stored =
           await h.db.storage.getCareNotesForProfile(h.profile.id);
       expect(stored.single.body, 'Prefers the blue inhaler.');
-      expect(find.text(careAttributionDate(stored.single.updatedAt)),
+      expect(
+          find.text(careAttributionDate(
+              tester.element(find.byType(CareNotesScreen)),
+              stored.single.updatedAt)),
           findsOneWidget,
           reason: 'the write time shows even before the first sync stamps '
               'authorship');
@@ -280,7 +287,9 @@ void main() {
       await disposeCare(tester, h);
     });
 
-    testWidgets('a note and an item can be removed', (tester) async {
+    testWidgets(
+        'a note and an item can be removed (issue #553: the note delete '
+        'goes through a confirmation dialog first)', (tester) async {
       final h = await pumpCare(
         tester,
         currentUserId: 'user-mom',
@@ -293,11 +302,39 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('care-note-delete-n-del')));
       await tester.pumpAndSettle();
+      expect(find.text('Delete this care note?'), findsOneWidget,
+          reason: 'a shared, multi-guardian record confirms before delete');
+      expect(find.text('Delete me.'), findsOneWidget,
+          reason: 'still present while the dialog is open');
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+      await tester.pumpAndSettle();
       expect(find.text('Delete me.'), findsNothing);
 
       await tester.tap(find.byKey(const ValueKey('visit-prep-delete-i-del')));
       await tester.pumpAndSettle();
       expect(find.text('Remove me.'), findsNothing);
+      await disposeCare(tester, h);
+    });
+
+    testWidgets('issue #553: cancelling the care-note delete confirmation '
+        'keeps the note', (tester) async {
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-mom',
+        seed: (db, profileId) async {
+          await db.storage.upsertCareNote(
+              id: 'n-keep', profileId: profileId, body: 'Keep me.');
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('care-note-delete-n-keep')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Keep me.'), findsOneWidget,
+          reason: 'a mistap on the trailing icon no longer destroys the '
+              'note outright');
       await disposeCare(tester, h);
     });
 
@@ -382,10 +419,14 @@ void main() {
             Provider<CareContentRepository>.value(
                 value: DriftCareContentRepository(db.storage)),
             ChangeNotifierProvider(
-              create: (_) => ProfileController(
-                profilesRepository: profiles,
-                settingsStore: DriftSettingsStore(db.storage),
-              )..load(),
+              create: (_) {
+                final controller = ProfileController(
+                  profilesRepository: profiles,
+                  settingsStore: DriftSettingsStore(db.storage),
+                );
+                unawaited(controller.load());
+                return controller;
+              },
             ),
           ],
           child: MaterialApp(

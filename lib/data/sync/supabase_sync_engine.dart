@@ -1,8 +1,20 @@
 /// The sync loop, trigger gating and transport coordination (U5; KTD1,
 /// KTD2, KTD4, KTD10, KTD11): pushes dirty rows through `sync_push` in
 /// batches, pulls remote pages per table by `server_version`, reconciles
-/// fully on bind / after resolutions / daily, and enforces the device
-/// binding guard with a non-destructive mismatch state.
+/// fully on bind / daily, and enforces the device binding guard with a
+/// non-destructive mismatch state.
+///
+/// Issue #42: the *scheduled* daily reconcile probes the server's
+/// per-table `max(server_version)` first ([_serverUnchangedSinceCursors])
+/// and skips the full re-pull when nothing changed since the incremental
+/// cursors; forced and bind-time reconciles always re-pull, and any probe
+/// failure falls back to the full re-pull.
+///
+/// Issue #525: a push batch's `resolved` rows are no longer, on their own,
+/// a reason to run a full reconcile — [SupabaseSyncApply.applyPushResult]
+/// already applies every resolved row as the correct per-row response
+/// (atomically, since issue #523), so forcing an 8-table-plus reconcile on
+/// top of that was pure overhead with no correctness benefit.
 ///
 /// The apply half of the same cycle — recording rejections, clearing
 /// `dirty` on accepted rows, storing the server's `resolved` copies and
@@ -40,6 +52,7 @@ import 'dart:math';
 
 import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery, Value;
 import 'package:flutter/widgets.dart';
+import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 
 import '../../domain/auth/auth_service.dart';
 import '../../domain/sync/sync_engine.dart';
@@ -79,6 +92,85 @@ const Duration kSyncFullPullInterval = Duration(hours: 24);
 /// (finding #4), a separate un-appliable-row loop with the same shape in
 /// [SupabaseSyncEngine._pullIncremental].
 const int kMaxConsecutiveReconcileRetries = 3;
+
+/// Issue #521: the incremental pull cursor is a value from the global
+/// `sync_version_seq`, assigned to a row *before* it commits — so `nextval`
+/// order is not commit order. Two writers (two guardians sharing a profile
+/// hold different advisory locks; several server-side paths take none at
+/// all) can commit out of that order, and the naive `cursor =
+/// max(page.server_version)` then skips whichever commit lands second: the
+/// device advances its cursor past a version another transaction is still
+/// in the middle of writing, and that row is never seen again until the
+/// next full reconcile (up to [kSyncFullPullInterval] later).
+///
+/// [SupabaseSyncEngine._pullTable] prefers a server-computed commit-safe
+/// watermark ([SyncTransport.fetchWatermark]) to clamp the new cursor.
+/// When that RPC is not available yet (a server predating its migration),
+/// this constant is the fallback instead: the new cursor is
+/// `max(page.server_version) - kCursorLookback`, never advancing past a
+/// point this many versions behind the page's own maximum. Fifty is a
+/// generous margin for the concurrency this app actually has (at most a
+/// handful of guardians writing one profile at once) while staying cheap —
+/// every remote apply is LWW-idempotent (an already-applied row re-arrives
+/// on the next page and re-applies as a no-op, or correctly overwrites, but
+/// is never applied wrongly), so re-fetching a small band of already-seen
+/// versions costs a little duplicate work, never correctness.
+const int kCursorLookback = 50;
+
+/// Issue #566: the weight a fresh clock-offset sample carries against the
+/// previously smoothed value (a simple exponential moving average — `next =
+/// previous + alpha * (sample - previous)`). `serverNow - deviceNow` is
+/// measured once per push batch (see [SupabaseSyncEngine._pushBatch]'s
+/// `sentAt`), and a single sample can be noisy — a slow or congested
+/// request inflates the apparent one-way trip, and `serverNow` is the
+/// transaction-start instant of a batch that may still be writing up to
+/// [PushBatch.maxRows] rows per table when it stamps that instant. `0.2`
+/// reacts within a handful of pushes (a real clock skew shows up quickly)
+/// while damping any one sample's noise rather than snapping the whole
+/// storage clock to it. `1.0` would disable smoothing entirely (every
+/// sample replaces the previous one outright, the pre-#566 behavior).
+const double kClockOffsetSmoothingAlpha = 0.2;
+
+/// The pull table order [SupabaseSyncEngine._pullIncremental],
+/// [SupabaseSyncEngine._reconcile], and (issue #42) the pre-reconcile
+/// version probe all share. Profiles first (everything else references
+/// one); day entries, then observations (an observation references a day
+/// entry, which references a profile — both must already be applied for
+/// the referential check to succeed without a retry); the two mode tables
+/// and two care tables after every content table (both reference only a
+/// profile); merge events after the care tables (issue #130: a row
+/// references only a profile, already applied by the time its turn
+/// comes); the tag registry after merge events (issue #257: same —
+/// references only a profile, and nothing references it; a day entry's
+/// tag referencing a registry code that has not arrived yet degrades to
+/// raw-text rendering by design, so there is no ordering requirement
+/// either); deletedProfiles last (issue #522: it only ever tombstones a
+/// profile — and cascades the wipe — that this same cycle may have just
+/// pulled fresh content for above; running it last means the deletion
+/// always wins).
+const List<SyncTable> _pullTableOrder = [
+  SyncTable.profiles,
+  SyncTable.profileGuardians,
+  SyncTable.dayEntries,
+  SyncTable.observations,
+  SyncTable.profileModes,
+  SyncTable.cycleOverrides,
+  SyncTable.careNotes,
+  SyncTable.visitPrepItems,
+  // Issue #130: merge events follow the care tables — a row references
+  // only a profile (already applied by the time its turn comes).
+  SyncTable.dayEntryMergeEvents,
+  // Issue #257: the tag registry follows merge events — a row references
+  // only a profile, and nothing references the registry (unknown codes
+  // never drop).
+  SyncTable.profileTagRegistry,
+  // Issue #170: the change-history feed follows the registry — a row
+  // references only a profile (the entry_id reference is deliberately not
+  // an FK locally, see the domain model), and rows are immutable, so no
+  // ordering requirement exists.
+  SyncTable.dayEntryHistory,
+  SyncTable.deletedProfiles,
+];
 
 final Random _jitter = Random();
 
@@ -121,12 +213,16 @@ class _PushCursor {
   String? _cycleOverrideCursor;
   String? _careNoteCursor;
   String? _visitPrepItemCursor;
+  String? _mergeEventCursor;
+  String? _tagRegistryCursor;
   bool entriesDone = false;
   bool observationsDone = false;
   bool profileModesDone = false;
   bool cycleOverridesDone = false;
   bool careNotesDone = false;
   bool visitPrepItemsDone = false;
+  bool mergeEventsDone = false;
+  bool tagRegistryDone = false;
 
   Future<List<Profile>> readProfilePage() async {
     final page = await _storage.readDirtyProfiles(
@@ -189,6 +285,24 @@ class _PushCursor {
     return page;
   }
 
+  /// Issue #130: same keyset-paging contract as [readEntryPage].
+  Future<List<DayEntryMergeEventData>> readMergeEventPage() async {
+    final page = await _storage.readDirtyDayEntryMergeEvents(
+        limit: batchSize, afterId: _mergeEventCursor);
+    mergeEventsDone = page.length < batchSize;
+    if (page.isNotEmpty) _mergeEventCursor = page.last.id;
+    return page;
+  }
+
+  /// Issue #257: same keyset-paging contract as [readEntryPage].
+  Future<List<ProfileTagRegistryEntry>> readTagRegistryPage() async {
+    final page = await _storage.readDirtyProfileTagRegistry(
+        limit: batchSize, afterId: _tagRegistryCursor);
+    tagRegistryDone = page.length < batchSize;
+    if (page.isNotEmpty) _tagRegistryCursor = page.last.id;
+    return page;
+  }
+
   /// Whether every child table's keyset scan is exhausted (the `done` half
   /// of [_readPushRound]'s contract, split out so that method's branch
   /// count stays under the CRAP gate as tables are added).
@@ -198,7 +312,9 @@ class _PushCursor {
       profileModesDone &&
       cycleOverridesDone &&
       careNotesDone &&
-      visitPrepItemsDone;
+      visitPrepItemsDone &&
+      mergeEventsDone &&
+      tagRegistryDone;
 }
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
@@ -276,6 +392,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   int _consecutiveNetworkFailures = 0;
   int _consecutiveReconcileRetries = 0;
 
+  /// Issue #566: the EMA-smoothed clock offset, seeded from the persisted
+  /// value on the first cycle ([_restoreOffset]) so smoothing continues
+  /// across app restarts instead of re-learning from a single fresh sample
+  /// every launch. `null` only before any sample has ever been taken (a
+  /// brand-new device, never yet synced) or restored.
+  Duration? _smoothedOffset;
+
   /// Consecutive cycles in a row where a profileGuardians page hit a
   /// [RetryableSyncApplyError] (finding #4): bounds the `cursorProfiles`
   /// rewind in [_pullIncremental] the same way [_consecutiveReconcileRetries]
@@ -315,6 +438,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           db.cycleOverrides,
           db.careNotes,
           db.visitPrepItems,
+          db.dayEntryMergeEvents,
+          db.profileTagRegistry,
         ]))
         .listen((_) => _onLocalWrite());
     _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
@@ -363,6 +488,14 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (state.boundUserId != null) return;
     await _storage.markAllDirty();
     await _bind(state, uid);
+    requestSync();
+  }
+
+  @override
+  Future<void> retryRejected() async {
+    if (_disposed) return;
+    await _apply.retryRejected();
+    _emit(_snapshot.copyWith(rejectedCount: _apply.rejectedCount));
     requestSync();
   }
 
@@ -426,35 +559,90 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (await _hasPushableDirty()) requestSync();
   }
 
+  @visibleForTesting
+  Future<bool> hasPushableDirtyForTest() => _hasPushableDirty();
+
+  Future<bool> _hasPushable<T>({
+    required Future<List<T>> Function({int? limit, String? afterId}) readPage,
+    required String Function(T) id,
+    required int Function(T) localRev,
+  }) async {
+    String? afterId;
+    while (!_disposed) {
+      final page = await readPage(limit: 1, afterId: afterId);
+      if (page.isEmpty) return false;
+      final row = page.first;
+      if (_apply.pushable([row], id, localRev).isNotEmpty) {
+        return true;
+      }
+      afterId = id(row);
+    }
+    return false;
+  }
+
+  /// Issue #257: the eleventh SyncTable pushed the old chain of nine
+  /// identical `if (await _hasPushable(...)) return true;` blocks past
+  /// the CRAP gate's complexity ceiling (each block's `return true`
+  /// arm needed its own seeding test to cover), so the walk is now over
+  /// this list — one closure per table, the same growth rationale as
+  /// storage_local_writes' `_pushedTableTargets` and this file's own
+  /// `_startingCursors`: a lookup stays flat as tables are added.
+  late final List<Future<bool> Function()> _pushableDirtyReaders = [
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfiles,
+          id: (p) => p.id,
+          localRev: (p) => p.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyDayEntries,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyObservations,
+          id: (o) => o.id,
+          localRev: (o) => o.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfileModes,
+          id: (m) => m.profileId,
+          localRev: (m) => m.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyCycleOverrides,
+          id: (o) => o.id,
+          localRev: (o) => o.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyCareNotes,
+          id: (n) => n.id,
+          localRev: (n) => n.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyVisitPrepItems,
+          id: (i) => i.id,
+          localRev: (i) => i.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyDayEntryMergeEvents,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+    () => _hasPushable(
+          readPage: _storage.readDirtyProfileTagRegistry,
+          id: (e) => e.id,
+          localRev: (e) => e.localRev,
+        ),
+  ];
+
+  /// Whether any dirty row across every pushed table is currently
+  /// pushable (not held out as rejected at its captured local_rev) —
+  /// the re-queue decision at the end of a cycle.
   Future<bool> _hasPushableDirty() async {
-    final profiles = await _storage.readDirtyProfiles();
-    if (_apply.pushable(profiles, (p) => p.id, (p) => p.localRev).isNotEmpty) {
-      return true;
+    for (final reader in _pushableDirtyReaders) {
+      if (await reader()) return true;
     }
-    final entries = await _storage.readDirtyDayEntries();
-    if (_apply.pushable(entries, (e) => e.id, (e) => e.localRev).isNotEmpty) {
-      return true;
-    }
-    final observations = await _storage.readDirtyObservations();
-    if (_apply.pushable(observations, (o) => o.id, (o) => o.localRev).isNotEmpty) {
-      return true;
-    }
-    final profileModes = await _storage.readDirtyProfileModes();
-    if (_apply.pushable(profileModes, (m) => m.profileId, (m) => m.localRev)
-        .isNotEmpty) {
-      return true;
-    }
-    final cycleOverrides = await _storage.readDirtyCycleOverrides();
-    if (_apply.pushable(cycleOverrides, (o) => o.id, (o) => o.localRev).isNotEmpty) {
-      return true;
-    }
-    final careNotes = await _storage.readDirtyCareNotes();
-    if (_apply.pushable(careNotes, (n) => n.id, (n) => n.localRev).isNotEmpty) {
-      return true;
-    }
-    final visitPrepItems = await _storage.readDirtyVisitPrepItems();
-    return _apply.pushable(visitPrepItems, (i) => i.id, (i) => i.localRev)
-        .isNotEmpty;
+    return false;
   }
 
   // ------------------------------------------------------------------- loop
@@ -511,15 +699,15 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       // rejections) before the
       // push so a previously-rejected row is retried once the reconcile
       // that follows re-evaluates it.
-      final reconcileDueBeforePush = _reconcileDueBeforePush(bindNow, state);
+      final reconcileDue = _reconcileDueBeforePush(bindNow, state);
 
-      final resolvedSeen = await _push(uid);
+      await _push(uid);
       final pullRetry = await _pullIncremental(uid);
       state = await _storage.readSyncState();
       final reconcileRetry = await _reconcileIfDue(
         uid: uid,
-        reconcileDueBeforePush: reconcileDueBeforePush,
-        resolvedSeen: resolvedSeen,
+        reconcileDueBeforePush: reconcileDue.due,
+        scheduledOnly: reconcileDue.scheduledOnly,
       );
       _logRetryIfNeeded(pullRetry: pullRetry, reconcileRetry: reconcileRetry);
 
@@ -613,7 +801,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// row is retried once the reconcile that follows re-evaluates it) —
   /// this must run before the push, so it lives here rather than in
   /// [_reconcileIfDue], which only sees post-push state.
-  bool _reconcileDueBeforePush(bool bindNow, SyncStateRow state) {
+  ///
+  /// Issue #42: also reports whether the reconcile is due *only* by the
+  /// 24h staleness window — the "scheduled daily reconcile" — as opposed
+  /// to a forced reconcile, a fresh bind, or a first-ever pull. Only the
+  /// scheduled kind may be skipped by [_serverUnchangedSinceCursors]'s
+  /// version probe: the others are explicit repair requests whose whole
+  /// point is to re-page everything regardless.
+  ({bool due, bool scheduledOnly}) _reconcileDueBeforePush(
+    bool bindNow,
+    SyncStateRow state,
+  ) {
     final now = _clock().toUtc();
     final lastFull = state.lastFullPullAt?.toUtc();
     final forced = _forceFullReconcile;
@@ -623,24 +821,45 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         lastFull == null ||
         now.difference(lastFull) > kSyncFullPullInterval;
     if (due) _apply.clearRejected();
-    return due;
+    return (due: due, scheduledOnly: !forced && !bindNow && lastFull != null);
   }
 
-  /// [_cycle]'s reconcile dispatch, split out verbatim. Due either because
-  /// [_reconcileDueBeforePush] already said so, or because the push saw a
-  /// resolved row ([resolvedSeen]). Returns whether the reconcile (if it
-  /// ran) hit a retryable apply failure.
+  /// [_cycle]'s reconcile dispatch, split out verbatim. Due exactly when
+  /// [_reconcileDueBeforePush] already said so (bind, forced, or the daily
+  /// staleness window) — issue #525 dropped a push batch's `resolved` rows
+  /// as an independent trigger here: [SupabaseSyncApply.applyPushResult]
+  /// already applies every one of them as the correct per-row response, so
+  /// this method no longer needs to know whether the push saw any. Returns
+  /// whether the reconcile (if it ran) hit a retryable apply failure.
+  ///
+  /// Issue #42: a due *scheduled* reconcile first probes the server
+  /// ([_serverUnchangedSinceCursors]); when nothing changed server-side
+  /// since the incremental pull's persisted cursors, the network re-pull
+  /// and re-apply of every row is skipped — every remote apply is
+  /// LWW-idempotent, so re-paging unchanged rows could only ever be a
+  /// no-op — while everything local that rides a clean reconcile still
+  /// runs (the `lastFullPullAt` advance and the issue #203 maintenance
+  /// sweep, so the tombstone-retention cadence is preserved). Any probe
+  /// failure answers "changed" and the full re-pull runs; sync is never
+  /// silently skipped.
   Future<bool> _reconcileIfDue({
     required String uid,
     required bool reconcileDueBeforePush,
-    required bool resolvedSeen,
+    required bool scheduledOnly,
   }) async {
-    if (!reconcileDueBeforePush && !resolvedSeen) return false;
-    final reconcileRetry = await _reconcile(uid);
+    if (!reconcileDueBeforePush) return false;
+    var reconcileRetry = false;
+    if (!scheduledOnly || !await _serverUnchangedSinceCursors()) {
+      reconcileRetry = await _reconcile(uid);
+    }
     if (!reconcileRetry) {
       _consecutiveReconcileRetries = 0;
       await _updateState(
           (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
+      // Issue #203: periodic maintenance (bounded tombstone sweep + VACUUM)
+      // runs after a clean full reconciliation, not unconditionally on every launch.
+      await _storage.sweepTombstones();
+      await _storage.db.vacuum();
     } else {
       _consecutiveReconcileRetries++;
       if (_consecutiveReconcileRetries >= kMaxConsecutiveReconcileRetries) {
@@ -652,7 +871,42 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     return reconcileRetry;
   }
 
-  void _logRetryIfNeeded({required bool pullRetry, required bool reconcileRetry}) {
+  /// Issue #42: the scheduled reconcile's version probe — `max =
+  /// fetchMaxVersion(table) <= startingCursor(table)` for *every* pull
+  /// table, read from the persisted post-incremental-pull state. Every
+  /// synced table stamps `server_version` from a trigger on every write
+  /// (including the RPCs `sync_push` never touches — see
+  /// [SyncTransport.fetchMaxVersion]), so a maximum at or below the cursor
+  /// proves the incremental pull already saw everything; anything else —
+  /// a higher maximum, an unknown probe, or a transport that throws
+  /// instead of answering `null` — reports "changed" so the caller runs
+  /// the full re-pull.
+  Future<bool> _serverUnchangedSinceCursors() async {
+    final state = await _storage.readSyncState();
+    for (final table in _pullTableOrder) {
+      final max = await _probeMaxVersion(table);
+      if (max == null || max > _startingCursor(table, state)) return false;
+    }
+    return true;
+  }
+
+  /// [_serverUnchangedSinceCursors]'s per-table probe, wrapped so a
+  /// transport that forgets [SyncTransport.fetchMaxVersion]'s own
+  /// never-throws contract still degrades to "unknown" (full re-pull)
+  /// instead of failing the whole cycle — the probe is an optimization,
+  /// never a correctness requirement.
+  Future<int?> _probeMaxVersion(SyncTable table) async {
+    try {
+      return await _transport.fetchMaxVersion(table);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _logRetryIfNeeded({
+    required bool pullRetry,
+    required bool reconcileRetry,
+  }) {
     if (pullRetry || reconcileRetry) {
       debugPrint('lunarlog sync: a remote row waits for its profile; '
           'retrying next cycle');
@@ -686,8 +940,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (_disposed) return;
     try {
       await _updateState((s) => s.copyWith(lastError: Value(kind.name)));
-    } catch (_) {
-      // The status is still surfaced in memory.
+    } catch (e, s) {
+      // The status is still surfaced in memory. Issue #547: recorded, not
+      // silenced — a persistently failing state write is worth seeing.
+      unawaited(Sentry.captureException(e, stackTrace: s));
     }
     if (kind == SyncErrorKind.network) {
       _consecutiveNetworkFailures++;
@@ -711,7 +967,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   Future<int> _safeDirtyCount() async {
     try {
       return await _storage.dirtyCount();
-    } catch (_) {
+    } catch (e, s) {
+      // Issue #547: recorded, not silenced — the stale in-memory count is
+      // still a reasonable fallback, but a persistently failing count
+      // query is worth seeing.
+      unawaited(Sentry.captureException(e, stackTrace: s));
       return _snapshot.dirtyCount;
     }
   }
@@ -729,7 +989,32 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (_offsetRestored) return;
     _offsetRestored = true;
     final ms = state.serverClockOffsetMs;
-    if (ms != null) _storage.setClockOffset(Duration(milliseconds: ms));
+    if (ms != null) {
+      final restored = Duration(milliseconds: ms);
+      _storage.setClockOffset(restored);
+      // Issue #566: seed the EMA from the last persisted value rather than
+      // starting fresh — otherwise every app restart would re-learn the
+      // offset from a single, unsmoothed sample.
+      _smoothedOffset = restored;
+    }
+  }
+
+  /// Issue #566: folds [sample] into [_smoothedOffset] via a simple EMA
+  /// ([kClockOffsetSmoothingAlpha]) and returns the new smoothed value. The
+  /// very first sample (no prior smoothed value, and [_restoreOffset] found
+  /// nothing persisted) is taken as-is — there is nothing to smooth against
+  /// yet.
+  Duration _smoothOffset(Duration sample) {
+    final previous = _smoothedOffset;
+    final smoothed = previous == null
+        ? sample
+        : Duration(
+            milliseconds: (previous.inMilliseconds +
+                    kClockOffsetSmoothingAlpha *
+                        (sample.inMilliseconds - previous.inMilliseconds))
+                .round());
+    _smoothedOffset = smoothed;
+    return smoothed;
   }
 
   Future<void> _updateState(SyncStateRow Function(SyncStateRow) change) async {
@@ -754,14 +1039,17 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// so the next cycle's fresh keyset scan (this method starting over
   /// with a fresh [_PushCursor]) sees only the rows still `dirty` and
   /// resumes from there — there is no separate persisted resume cursor to
-  /// maintain. Returns whether any batch answered with resolved rows (a
-  /// reconcile trigger).
-  Future<bool> _push(String uid) async {
+  /// maintain.
+  ///
+  /// Issue #525: no longer returns whether any batch saw resolved rows —
+  /// that used to be a second, independent reconcile trigger
+  /// ([_reconcileIfDue]'s old `resolvedSeen` parameter), dropped because
+  /// [_pushBatch] already applies every resolved row correctly on its own.
+  Future<void> _push(String uid) async {
     final totalDirty = await _storage.dirtyCount();
     _emit(_snapshot.copyWith(pushedRows: 0, totalDirtyRows: totalDirty));
-    if (totalDirty == 0) return false;
+    if (totalDirty == 0) return;
 
-    var resolvedSeen = false;
     var pushedRows = 0;
     final cursor = _PushCursor(_storage, _batchSize);
     while (true) {
@@ -770,13 +1058,11 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         if (round.done) break;
         continue;
       }
-      final outcome = await _pushBatch(uid, round.batch);
-      if (outcome.resolvedSeen) resolvedSeen = true;
+      await _pushBatch(uid, round.batch);
       pushedRows += round.batch.length;
       _emit(_snapshot.copyWith(pushedRows: pushedRows));
       if (round.done) break;
     }
-    return resolvedSeen;
   }
 
   /// One round of [_push]: a fresh profiles page is read on *every* call
@@ -892,17 +1178,50 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeVisitPrepItem(row), profileId: row.profileId),
       ]);
     }
+    // Issue #130: merge events ride the same chaining rule, once
+    // visit-prep items are exhausted.
+    if (cursor.visitPrepItemsDone && !cursor.mergeEventsDone) {
+      final mergeEventPage = await cursor.readMergeEventPage();
+      batch.addAll([
+        for (final row in _apply.pushable(mergeEventPage, (e) => e.id, (e) => e.localRev))
+          SyncPushItem(SyncTable.dayEntryMergeEvents, row.id, row.localRev,
+              encodeDayEntryMergeEvent(row), profileId: row.profileId),
+      ]);
+    }
+    // Issue #257: the tag registry rides the same chaining rule, once
+    // merge events are exhausted.
+    if (cursor.mergeEventsDone && !cursor.tagRegistryDone) {
+      final tagRegistryPage = await cursor.readTagRegistryPage();
+      batch.addAll([
+        for (final row in _apply.pushable(tagRegistryPage, (e) => e.id, (e) => e.localRev))
+          SyncPushItem(SyncTable.profileTagRegistry, row.id, row.localRev,
+              encodeProfileTagRegistryEntry(row), profileId: row.profileId),
+      ]);
+    }
   }
 
   /// One push batch's request/response handling, split out of [_push]
-  /// verbatim — same sequencing, same conditions. `offset == null` means
-  /// the batch hit [SyncTransportRejectedError] (no server clock reading
-  /// to take).
-  Future<({bool resolvedSeen, Duration? offset})> _pushBatch(
+  /// verbatim — same sequencing, same conditions. Issue #525: no longer
+  /// returns whether the batch saw resolved rows (see [_push]'s doc); the
+  /// clock offset computed below is applied internally and was never read
+  /// by the caller either, so this method's return value is dropped
+  /// entirely rather than kept as unused plumbing.
+  ///
+  /// Issue #566: `sentAt` is read immediately before [_transport.push] —
+  /// not after it returns — so the offset measures `serverNow - sentAt`
+  /// rather than `serverNow - (a clock reading taken after the full round
+  /// trip and after [SupabaseSyncApply.applyPushResult] has written up to
+  /// [PushBatch.maxRows] rows locally)`. The old, later reading was biased
+  /// on a slow link: a 2s-RTT / 500-row batch used to stamp every
+  /// subsequent local write a couple of seconds into the past, which loses
+  /// LWW races that device should win. The raw sample is then smoothed via
+  /// [_smoothOffset] before it is applied or persisted.
+  Future<void> _pushBatch(
     String uid,
     List<SyncPushItem> batch,
   ) async {
     _checkpoint(uid);
+    final sentAt = _clock();
     final PushResult result;
     try {
       result = await _transport.push(PushBatch(
@@ -913,21 +1232,32 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         cycleOverrides: [for (final i in batch) if (i.table == SyncTable.cycleOverrides) i.json],
         careNotes: [for (final i in batch) if (i.table == SyncTable.careNotes) i.json],
         visitPrepItems: [for (final i in batch) if (i.table == SyncTable.visitPrepItems) i.json],
+        mergeEvents: [for (final i in batch) if (i.table == SyncTable.dayEntryMergeEvents) i.json],
+        tagRegistry: [for (final i in batch) if (i.table == SyncTable.profileTagRegistry) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
       // the rest of the batch stays dirty for the next cycle.
       _apply.markRejected(batch, error.ids);
-      return (resolvedSeen: false, offset: null);
+      return;
     }
     await _apply.applyPushResult(batch, result);
     // The in-memory offset takes effect immediately (it stamps the next
     // local writes) and is persisted to sync_state for this committed batch.
-    final offset = result.serverNow.toUtc().difference(_clock().toUtc());
+    final sample = result.serverNow.toUtc().difference(sentAt.toUtc());
+    final offset = _smoothOffset(sample);
     _storage.setClockOffset(offset);
+    // Issue #641 LLA-042: once we have learned the server clock (from this
+    // push's serverNow), rebase any dirty row that is still future-stamped
+    // (the reason at least one row in this batch was rejected) so it becomes
+    // pushable again instead of staying unsyncable until real time catches
+    // up. Only runs when this batch saw a rejection — the common case for a
+    // fast client clock — and matches only rows the server would reject.
+    if (result.rejectedIds.isNotEmpty) {
+      await _storage.rebaseFutureStampedRows(serverNow: result.serverNow);
+    }
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
-    return (resolvedSeen: result.resolved.isNotEmpty, offset: offset);
   }
 
   // ------------------------------------------------------------------- pull
@@ -935,45 +1265,99 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// Incremental pull per table, profiles first (KTD2). Returns whether a
   /// page hit a retryable apply failure (left for the next cycle).
   ///
+  /// Issue #521: fetches the commit-safe cursor watermark once for the
+  /// whole cycle (not once per table) before paging any table, and hands
+  /// it to every [_pullTable] call — a single call is enough since the
+  /// watermark only ever gets *less* stale as the cycle progresses, and one
+  /// fewer round trip per cycle is one fewer failure mode to handle. `null`
+  /// (the RPC is unavailable) makes every table fall back to
+  /// [kCursorLookback] independently.
+  ///
   /// Per-table paging and the profileGuardians-specific retry bookkeeping
   /// are split into [_pullTable]/[_onTablePullFailure]/
   /// [_onTablePullSettled] (finding #4 follow-up) so this stays a plain
   /// orchestrator: each extracted piece is small enough to score well
-  /// under the CRAP gate on its own, instead of one method carrying all of
-  /// it.
+  /// under the CRAP gate on its own, instead of one method carrying all
+  /// of it.
   Future<bool> _pullIncremental(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
+    final watermark = await _fetchWatermark();
+    await _primePullCycle(await _incrementalCycleCursors());
     var retry = false;
-    for (final table in const [
-      SyncTable.profiles,
-      SyncTable.profileGuardians,
-      SyncTable.dayEntries,
-      // Issue #240: pulled last — an observation references a day entry,
-      // which references a profile, so both must already be applied for
-      // applyRemoteObservation's referential check to succeed without a
-      // retry. Issue #188: the two mode tables follow for the same reason
-      // (both reference a profile), after every content table. Issue #128:
-      // care notes and visit-prep items follow last for the same reason
-      // (both reference only a profile).
-      SyncTable.observations,
-      SyncTable.profileModes,
-      SyncTable.cycleOverrides,
-      SyncTable.careNotes,
-      SyncTable.visitPrepItems,
-    ]) {
-      if (await _pullTable(table, uid)) retry = true;
+    for (final table in _pullTableOrder) {
+      if (await _pullTable(table, uid, watermark: watermark)) retry = true;
     }
     return retry;
+  }
+
+  /// [_pullIncremental]'s watermark fetch, wrapped so a transport that
+  /// forgets its own graceful-fallback contract (throws instead of
+  /// returning null) still degrades to [kCursorLookback] instead of failing
+  /// the whole cycle — the watermark is an optimization the pull cursor can
+  /// always do without, never a correctness requirement.
+  Future<int?> _fetchWatermark() async {
+    try {
+      return await _transport.fetchWatermark();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// [_incrementalCycleCursors]'s starting-cursor snapshot for every table
+  /// [SyncTransport.primePullCycle] can prime (issue #598) — every
+  /// [SyncTable] but [SyncTable.deletedProfiles], which `sync_pull` does
+  /// not cover and which [_pullIncremental] still pages from version 0
+  /// every cycle via [_startingCursor]'s own carve-out for it.
+  static const List<SyncTable> _pullRpcTables = [
+    SyncTable.profiles,
+    SyncTable.profileGuardians,
+    SyncTable.dayEntries,
+    SyncTable.observations,
+    SyncTable.profileModes,
+    SyncTable.cycleOverrides,
+    SyncTable.careNotes,
+    SyncTable.visitPrepItems,
+    // Issue #130: sync_pull carries this table's pages too (a missing key
+    // in its response would make _decodePullResponse drop the whole cache,
+    // so the server side grew with the client, atomically).
+    SyncTable.dayEntryMergeEvents,
+    // Issue #257: same — sync_pull's tenth per-profile key.
+    SyncTable.profileTagRegistry,
+    // Issue #170: same — sync_pull's eleventh per-profile key (and a
+    // table the RPC covers; the fallback select's own relation-not-found
+    // leniency covers a server predating this table's migration).
+    SyncTable.dayEntryHistory,
+  ];
+
+  /// One [_storage.readSyncState] read, turned into the persisted starting
+  /// cursor for every [_pullRpcTables] entry (issue #598) — the snapshot
+  /// [_primePullCycle] hands the transport before [_pullIncremental]'s own
+  /// per-table loop begins reading (and advancing) those same cursors.
+  Future<Map<SyncTable, int>> _incrementalCycleCursors() async {
+    final state = await _storage.readSyncState();
+    return {
+      for (final table in _pullRpcTables) table: _startingCursor(table, state),
+    };
+  }
+
+  /// Best-effort prime of this cycle's `sync_pull` cache (issue #598): never
+  /// lets a transport that forgets [SyncTransport.primePullCycle]'s own
+  /// never-throws contract fail the whole cycle — priming is purely an
+  /// optimization the per-table pull below still works correctly without,
+  /// just via `SupabaseSyncTransport`'s own select fallback.
+  Future<void> _primePullCycle(Map<SyncTable, int> cursors) async {
+    try {
+      await _transport.primePullCycle(cursors);
+    } catch (_) {
+      // Deliberately swallowed — see the doc comment above.
+    }
   }
 
   /// Pages [table] incrementally until exhausted or a page hits a
   /// retryable apply failure. Returns whether it failed (left for the next
   /// cycle by the caller's `retry` flag).
-  Future<bool> _pullTable(SyncTable table, String uid) async {
+  Future<bool> _pullTable(SyncTable table, String uid, {int? watermark}) async {
     final state = await _storage.readSyncState();
-    // profileGuardians has no persisted cursor yet (schema v3): it pages
-    // from 0 every cycle, but `after` still advances locally so a full
-    // first page terminates instead of looping on the same page.
     var after = _startingCursor(table, state);
     var failed = false;
     while (true) {
@@ -981,7 +1365,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       final page = await _transport.pullPage(
           table: table, afterVersion: after, limit: _pageSize);
       if (page.isEmpty) break;
-      final newCursor = _apply.maxVersion(page, after);
+      final newCursor = _clampedCursor(page, floor: after, watermark: watermark);
       try {
         await _storage.applyRemotePage(
             table: table, rows: page, newCursor: newCursor);
@@ -992,26 +1376,68 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       }
       final progressed = newCursor > after;
       after = newCursor;
+      // Issue #521: when the clamp below holds the cursor short of the
+      // page's own maximum version, a full-size page no longer proves the
+      // table is exhausted the way it used to — but if the clamp also
+      // stops the cursor from progressing at all, looping on an identical
+      // page forever would be wrong, so `!progressed` still ends this
+      // table's turn here; the rows above the clamp are left for a later
+      // cycle, once the watermark (or, on reconcile, a page-less scan from
+      // zero) has caught up.
       if (page.length < _pageSize || !progressed) break;
     }
     _onTablePullSettled(table, failed);
     return failed;
   }
 
-  /// [_pullTable]'s persisted-cursor lookup (profileGuardians pages from 0
-  /// every cycle — it has no cursor column, schema v3). Split out so
-  /// [_pullTable]'s branch count stays under the CRAP gate as tables are
-  /// added (Issue #188 added two cases; Issue #128 two more).
-  int _startingCursor(SyncTable table, SyncStateRow state) => switch (table) {
-        SyncTable.profiles => state.cursorProfiles,
-        SyncTable.dayEntries => state.cursorDayEntries,
-        SyncTable.observations => state.cursorObservations,
-        SyncTable.profileModes => state.cursorProfileModes,
-        SyncTable.cycleOverrides => state.cursorCycleOverrides,
-        SyncTable.careNotes => state.cursorCareNotes,
-        SyncTable.visitPrepItems => state.cursorVisitPrepItems,
-        SyncTable.profileGuardians => 0,
-      };
+  /// The new cursor for one page (issue #521): [maxVersion] of [page]
+  /// (floored at [floor], never regressing), clamped to at most
+  /// [watermark] when one was supplied by the server, or otherwise to at
+  /// most [kCursorLookback] below that maximum. Either way the result never
+  /// drops below [floor] — a stale or lagging watermark must never move the
+  /// cursor backward, only fail to advance it as far as the page allows.
+  int _clampedCursor(
+    List<RemoteRow> page, {
+    required int floor,
+    required int? watermark,
+  }) {
+    final maxVersion = _apply.maxVersion(page, floor);
+    final target = watermark ?? (maxVersion - kCursorLookback);
+    final clamped = target < maxVersion ? target : maxVersion;
+    return clamped > floor ? clamped : floor;
+  }
+
+  /// [_pullTable]'s persisted-cursor lookup. Split out so [_pullTable]'s
+  /// branch count stays under the CRAP gate as tables are added (Issue
+  /// #188 added two cases; Issue #128 two more). Issue #525:
+  /// `profileGuardians` reads a real persisted cursor too, instead of
+  /// always starting at 0 (schema v3's original, un-cursored shape) — every
+  /// cycle used to force a full sequential scan of the global
+  /// `profile_guardians` table. Issue #597 applies the identical fix to
+  /// `deletedProfiles`, the one table #525 deliberately left un-cursored.
+  int _startingCursor(SyncTable table, SyncStateRow state) =>
+      _startingCursors[table]!(state);
+
+  /// The per-table persisted-cursor getter for [_startingCursor] — a map
+  /// rather than an exhaustive switch since Issue #130's tenth SyncTable
+  /// (the switch sat permanently over the quality gate's per-method
+  /// complexity ceiling; row_codec.dart's `_syncTableNames` and
+  /// storage_remote_apply.dart's `_pageRowAppliers` grew the same way).
+  /// Issue #597: deletedProfiles has a persisted cursor too.
+  static final Map<SyncTable, int Function(SyncStateRow)> _startingCursors = {
+    SyncTable.profiles: (s) => s.cursorProfiles,
+    SyncTable.dayEntries: (s) => s.cursorDayEntries,
+    SyncTable.observations: (s) => s.cursorObservations,
+    SyncTable.profileModes: (s) => s.cursorProfileModes,
+    SyncTable.cycleOverrides: (s) => s.cursorCycleOverrides,
+    SyncTable.careNotes: (s) => s.cursorCareNotes,
+    SyncTable.visitPrepItems: (s) => s.cursorVisitPrepItems,
+    SyncTable.dayEntryMergeEvents: (s) => s.cursorDayEntryMergeEvents,
+    SyncTable.profileTagRegistry: (s) => s.cursorProfileTagRegistry,
+    SyncTable.dayEntryHistory: (s) => s.cursorDayEntryHistory,
+    SyncTable.profileGuardians: (s) => s.cursorProfileGuardians,
+    SyncTable.deletedProfiles: (s) => s.cursorDeletedProfiles,
+  };
 
   /// A page of [table] hit a [RetryableSyncApplyError]. Only profileGuardians
   /// carries follow-up bookkeeping (KTD2 predates a retry story for the
@@ -1053,20 +1479,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// a row hit a retryable apply failure.
   Future<bool> _reconcile(String uid) async {
     _emit(_snapshot.copyWith(phase: _phase(SyncPhase.pulling)));
+    // Issue #598: every table reconcile pages starts at version 0, so this
+    // cycle's prime is just that — no persisted-state read needed, unlike
+    // _pullIncremental's snapshot.
+    await _primePullCycle({for (final table in _pullRpcTables) table: 0});
     var retry = false;
-    for (final table in const [
-      SyncTable.profiles,
-      SyncTable.profileGuardians,
-      SyncTable.dayEntries,
-      // Issue #240: same ordering rationale as _pullIncremental; Issue
-      // #188's two mode tables follow (both reference only a profile);
-      // Issue #128's two care tables follow last (same reason).
-      SyncTable.observations,
-      SyncTable.profileModes,
-      SyncTable.cycleOverrides,
-      SyncTable.careNotes,
-      SyncTable.visitPrepItems,
-    ]) {
+    for (final table in _pullTableOrder) {
       var after = 0;
       while (true) {
         _checkpoint(uid);

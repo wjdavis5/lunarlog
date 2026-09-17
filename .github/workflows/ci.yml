@@ -31,7 +31,16 @@ jobs:
     # by pushing to main. No Flutter, Java, or Supabase toolchain and no
     # secrets, so this stays fast.
     name: Release guard scripts (unit tests + actionlint)
-    runs-on: self-hosted
+    # Issue #569: this job needs only bash, python3, and actionlint, and its
+    # whole purpose is to be the ubuntu/bash-5 counterpart to
+    # release-guards-macos below (which proves the same scripts survive
+    # macOS's frozen Bash 3.2). It briefly moved to `self-hosted` alongside
+    # `ios`/`ios-simulator` after #352 -- landing it on the same
+    # (non-ephemeral, macOS) runner as those jobs collapsed the matrix
+    # to one OS/bash version and serialized 15s of work behind a 60-minute
+    # release build. Back on a GitHub-hosted runner: fast, free, and an
+    # actual Linux/bash-5 arm again.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -53,9 +62,49 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
+
+      - name: Run check-ci-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-ci-gate.test.sh
+
+      - name: Run check-destructive-sql tests
+        if: always()
+        run: bash .github/scripts/tests/check-destructive-sql.test.sh
+
+      - name: Run edge-function-hash tests
+        if: always()
+        run: bash .github/scripts/tests/edge-function-hash.test.sh
+
+      - name: Run check-apple-secrets tests
+        if: always()
+        run: bash .github/scripts/tests/check-apple-secrets.test.sh
+
+      - name: Run classify-schema-diff tests
+        if: always()
+        run: bash .github/scripts/tests/classify-schema-diff.test.sh
+
+      - name: Run check-auth-config tests
+        if: always()
+        run: bash .github/scripts/tests/check-auth-config.test.sh
+
+      # Issue #266: unlike the scripts above (proven only via their own
+      # unit tests here, then invoked for real elsewhere -- e.g.
+      # check-destructive-sql.sh against real migration files in
+      # supabase-migrate.yml), check-auth-config.sh's real job is to catch
+      # drift in *this* repo's own supabase/config.toml on every PR, not
+      # only inside the production-gated deploy workflow. No toolchain
+      # needed beyond bash, so it runs here rather than waiting for the
+      # `check`/`db-tests` jobs below.
+      - name: Check supabase/config.toml auth posture
+        if: always()
+        run: bash .github/scripts/check-auth-config.sh
 
       - name: Run tool/coord tests
         if: always()
@@ -71,7 +120,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: actionlint
-          key: actionlint-${{ runner.os }}-1.7.7
+          key: actionlint-${{ runner.os }}-${{ runner.arch }}-1.7.7
 
       - name: Install actionlint
         if: always() && steps.actionlint-cache.outputs.cache-hit != 'true'
@@ -79,16 +128,36 @@ jobs:
           ACTIONLINT_VERSION: '1.7.7'
         run: |
           set -euo pipefail
-          # OS/arch-aware download (#352, #361): this job can land on the self-hosted macOS runner, where a linux binary fails with "cannot execute binary file" (exit 126).
+          # OS/arch-aware download (#352, #361; #569 moved this job back to
+          # ubuntu-latest, but the case below is kept -- it's harmless and
+          # keeps this step correct if the runner ever changes, e.g. an
+          # arm64 GitHub-hosted runner, or landing back on self-hosted
+          # macOS). Each asset is pinned to its published sha256 (issue
+          # #570) so a hijacked or corrupted release asset can never
+          # silently become `./actionlint` -- verified against
+          # actionlint_1.7.7_checksums.txt from the v1.7.7 GitHub release.
           case "${{ runner.os }}/${{ runner.arch }}" in
-            macOS/ARM64)  ASSET=darwin_arm64 ;;
-            macOS/*)      ASSET=darwin_amd64 ;;
-            Linux/ARM64|Linux/ARM) ASSET=linux_arm64 ;;
-            *)            ASSET=linux_amd64 ;;
+            macOS/ARM64)
+              ASSET=darwin_arm64
+              ACTIONLINT_SHA256=2693315b9093aeacb4ebd91a993fea54fc215057bf0da2659056b4bc033873db
+              ;;
+            macOS/*)
+              ASSET=darwin_amd64
+              ACTIONLINT_SHA256=28e5de5a05fc558474f638323d736d822fff183d2d492f0aecb2b73cc44584f5
+              ;;
+            Linux/ARM64|Linux/ARM)
+              ASSET=linux_arm64
+              ACTIONLINT_SHA256=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0
+              ;;
+            *)
+              ASSET=linux_amd64
+              ACTIONLINT_SHA256=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+              ;;
           esac
 
-          curl -sSL -o actionlint.tar.gz \
+          curl -sSL --fail -o actionlint.tar.gz \
             "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_${ASSET}.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | shasum -a 256 -c -
           tar -xzf actionlint.tar.gz actionlint
           chmod +x actionlint
           rm actionlint.tar.gz
@@ -108,9 +177,14 @@ jobs:
     # during this same branch's development and would have crashed the
     # TestFlight pipeline silently, since the ubuntu-only release-guards job
     # above cannot see a macOS-only shell incompatibility. Same three test
-    # scripts, no actionlint (that check is OS-independent).
+    # scripts, no actionlint (that check is OS-independent). This is the one
+    # macOS/bash-3.2 arm of the matrix (issue #569).
+    #
+    # GitHub-hosted (same image family as the release job): the lab's
+    # self-hosted Mac mini no longer serves CI, so there is no shared,
+    # non-ephemeral runner to serialise behind or to guard from fork PRs.
     name: Release guard scripts on macOS (bash 3.2 compatibility)
-    runs-on: self-hosted
+    runs-on: macos-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -129,14 +203,45 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-release-gate.test.sh
 
+      - name: Run check-qa-build-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-qa-build-gate.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
 
+      - name: Run check-ci-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-ci-gate.test.sh
+
+      - name: Run check-destructive-sql tests
+        if: always()
+        run: bash .github/scripts/tests/check-destructive-sql.test.sh
+
+      - name: Run edge-function-hash tests
+        if: always()
+        run: bash .github/scripts/tests/edge-function-hash.test.sh
+
+      - name: Run check-apple-secrets tests
+        if: always()
+        run: bash .github/scripts/tests/check-apple-secrets.test.sh
+
+      - name: Run classify-schema-diff tests
+        if: always()
+        run: bash .github/scripts/tests/classify-schema-diff.test.sh
+
   check:
-    name: Analyze, test, build web
+    # The former "Analyze, test, build web" job, minus the test suite: that
+    # now runs as the sharded `test` matrix below with the gate in
+    # `quality-gate`, so the three independent halves (codegen/analyze/web
+    # build here, tests there, gates after) run on separate runners at the
+    # same time instead of serially in one 14-minute job — and the suite
+    # runs once with coverage rather than once plain and once again for
+    # coverage.
+    name: Verify (codegen, analyze, web build)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -149,6 +254,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Cache build_runner outputs
+        # build_runner's incremental state lives in .dart_tool/build (git-
+        # ignored, so the freshness check below never sees it). Keyed on the
+        # dependency lockfile + build config, then on the source tree, with
+        # a prefix fallback so an unrelated source change still warm-starts
+        # from the last run instead of rebuilding every generator from cold.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .dart_tool/build
+          key: build-runner-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'build.yaml') }}-${{ hashFiles('lib/**/*.dart') }}
+          restore-keys: |
+            build-runner-${{ runner.os }}-${{ hashFiles('pubspec.lock', 'build.yaml') }}-
+
       - name: Codegen freshness (build_runner + drift schema dump)
         # Issue #200: lib/data/db/db.g.dart and drift_schemas/*.json are
         # committed but nothing previously proved either stayed in sync with
@@ -156,45 +274,159 @@ jobs:
         # failing on a dirty tree catches a table or schemaVersion change
         # whose codegen (or schema dump, which the schema-verification
         # harness in test/data/db/schema_migration_test.dart reads) was
-        # never regenerated. When bumping schemaVersion, update the file
-        # name in the second command below to
-        # drift_schema_v<new version>.json (see AGENTS.md's Codegen bullet
-        # for the full "bump -> dump -> generate -> test" procedure).
+        # never regenerated.
+        #
+        # Issue #576: the drift-dump filename is derived from
+        # lib/data/db/db.dart's `schemaVersion` getter instead of being
+        # hardcoded, so a schemaVersion bump whose author forgot to rename
+        # the dump target still produces the right file (or a missing-file
+        # failure below) instead of silently re-dumping the old version's
+        # file. The dirty-tree check uses `git status --porcelain
+        # --untracked-files=all` rather than `git diff --exit-code`: `git
+        # diff` only reports modifications to already-tracked files, so a
+        # brand new generated file (e.g. a new table's .g.dart, or a new
+        # schemaVersion's drift_schema_vN.json) that was never committed is
+        # invisible to it and the gate passes green.
         run: |
+          set -euo pipefail
           dart run build_runner build --delete-conflicting-outputs
-          dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v13.json
-          git diff --exit-code
+
+          version="$(grep -oE 'schemaVersion => [0-9]+' lib/data/db/db.dart | grep -oE '[0-9]+')"
+          if [ -z "$version" ]; then
+            echo "::error::Could not find 'schemaVersion => <N>' in lib/data/db/db.dart"
+            exit 1
+          fi
+          dart run drift_dev schema dump lib/data/db/db.dart "drift_schemas/drift_schema_v${version}.json"
+
+          dirty="$(git status --porcelain --untracked-files=all)"
+          if [ -n "$dirty" ]; then
+            echo "::error::Codegen or the drift schema dump is out of sync with the committed source (tracked changes and/or untracked generated files below). Run 'dart run build_runner build --delete-conflicting-outputs' and 'dart run drift_dev schema dump lib/data/db/db.dart drift_schemas/drift_schema_v${version}.json' locally and commit the results."
+            echo "$dirty"
+            git diff
+            exit 1
+          fi
 
       - name: Analyze
         run: flutter analyze
-
-      - name: Test
-        run: flutter test
-
-      - name: Quality gates (coverage floor + CRAP)
-        # Re-runs with --coverage (the plain Test step above stays a fast
-        # flutter-test-only signal per R11): 90% total line coverage floor
-        # and the per-method CRAP gate, both from one filtered lcov.info.
-        # See tool/quality_gate.dart and AGENTS.md "Quality gates".
-        run: dart run tool/quality_gate.dart
 
       - name: Build web (release)
         # The defines resolve to empty strings on forks and PRs without
         # secrets; the app treats empty as "unconfigured", so the build
         # must succeed either way. LUNARLOG_WEB_SYNC is never set in CI.
+        #
+        # Issue #572: secrets are passed through env: and referenced quoted
+        # rather than interpolated straight into the shell command. An
+        # unquoted `${{ secrets.* }}` splice is a word-splitting/glob hazard
+        # in general, and this is also where a version string containing a
+        # stray `#` (see extract-marketing-version.sh's hardening) would
+        # have silently commented out every flag after it in the release
+        # workflows that build `--build-name=`/`--build-number=` this way.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build web --release \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+
+  test:
+    # The unit/widget suite, sharded across runners. Each shard runs a
+    # disjoint third of the test files with --coverage and uploads its
+    # lcov.info; `quality-gate` below merges the three and evaluates the
+    # floor + CRAP gates over the union. This is the single run of the
+    # suite in CI: the old separate plain `flutter test` step duplicated
+    # the coverage run for no extra signal. TOTAL_SHARDS must match the
+    # matrix length and the download pattern in quality-gate.
+    name: Test (shard ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      TOTAL_SHARDS: '3'
+      SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Test (with coverage)
+        run: flutter test --coverage --total-shards "$TOTAL_SHARDS" --shard-index "$SHARD_INDEX"
+
+      - name: Upload shard coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: lcov-shard-${{ matrix.shard }}
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 1
+
+  quality-gate:
+    # 90% total line coverage floor and the per-method CRAP gate, evaluated
+    # over the merged coverage of every `test` shard (tool/quality/
+    # lcov_merge.dart sums per-line hits across shards). See
+    # tool/quality_gate.dart and AGENTS.md "Quality gates". Runs the gates
+    # only — the tests themselves already ran in the shards.
+    name: Quality gate (coverage floor + CRAP)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Download shard coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: lcov-shard-*
+          path: coverage/shards
+
+      - name: Merge shard coverage and evaluate the gates
+        run: |
+          set -euo pipefail
+          shards=(coverage/shards/lcov-shard-*/lcov.info)
+          if [ "${#shards[@]}" -ne 3 ]; then
+            echo "::error::Expected 3 shard coverage files, found ${#shards[@]}: ${shards[*]}"
+            exit 1
+          fi
+          args=()
+          for f in "${shards[@]}"; do args+=(--lcov "$f"); done
+          dart run tool/quality_gate.dart "${args[@]}"
 
   edge-functions:
     # Runs the Deno test suite for supabase/functions (Issue #6, issue #103
@@ -212,9 +444,23 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Run deno test
+      - name: Run deno check and deno test
+        # Issue #567: previously only `deno test` ran here - a type error in
+        # any Edge Function (in particular `feedback-reply`, which had zero
+        # automated coverage of any kind until this issue) could ship green.
+        # `deno check` type-checks every file `deno test` would otherwise
+        # only check indirectly through whichever files a test happens to
+        # import. `deno lint` is deliberately not added here: with the
+        # repo's default rule set it currently reports 68 pre-existing
+        # findings across nearly every file in this directory (a
+        # `no-import-prefix` hit on every `jsr:`-prefixed import, and a
+        # `require-await` hit on every fake's async interface method with no
+        # `await` in its body) - none introduced by this change, and not a
+        # same-PR-sized cleanup.
         working-directory: supabase/functions
-        run: deno test
+        run: |
+          deno check ./**/*.ts
+          deno test
 
   db-tests:
     name: Database tests (pgTAP)
@@ -231,6 +477,9 @@ jobs:
       - name: Start local Supabase (database-only services)
         # pgTAP only needs Postgres; skip the services that would otherwise
         # pull images and consume runner time. Migrations are applied on start.
+        # The same stack also serves the Dart round-trip test below (issue
+        # #102): the `-x` list keeps REST (PostgREST) and Auth (GoTrue)
+        # running, which is exactly what that test needs on top of Postgres.
         run: |
           supabase start \
             -x realtime,storage-api,imgproxy,mailpit,studio,edge-runtime,logflare,vector,supavisor
@@ -238,6 +487,59 @@ jobs:
       - name: Run pgTAP tests
         # Proves RLS isolation, privileges, constraints, and sync_push (R9).
         run: supabase test db --local
+
+      - name: Generated types snapshot freshness (supabase/database.types.ts)
+        # Issue #181: supabase/database.types.ts is a committed, reviewable
+        # schema snapshot -- the way a generated lockfile makes a dependency
+        # change visible in a PR diff, this makes a schema change visible
+        # without reading the migration SQL. Nothing consumes it (the
+        # Flutter app never imports it), so its only job is to fail here
+        # when a migration's schema change was committed without
+        # regenerating the snapshot. Regenerate locally with:
+        #   npx supabase@2.116.0 gen types typescript --local --schema public \
+        #     > supabase/database.types.ts
+        # (against the local stack after `supabase db reset --local`; the
+        # full migration chain is the source, so the snapshot equals
+        # production modulo drift -- which is exactly what catching drift
+        # in a PR diff is for). `--schema public` is pinned: the repo owns
+        # only the public schema, and Supabase-managed schemas
+        # (graphql_public & co.) would churn with platform versions rather
+        # than migrations. The DB is at the migration tip here: `start`
+        # above applied migrations and `test db` re-applied them.
+        run: |
+          set -euo pipefail
+          supabase gen types typescript --local --schema public > supabase/database.types.ts
+          dirty="$(git status --porcelain --untracked-files=all -- supabase/database.types.ts)"
+          if [ -n "$dirty" ]; then
+            echo "::error::supabase/database.types.ts is out of sync with the migrations. Run 'npx supabase@2.116.0 gen types typescript --local --schema public > supabase/database.types.ts' (after 'npx supabase@2.116.0 db reset --local') and commit the result."
+            echo "$dirty"
+            git diff -- supabase/database.types.ts
+            exit 1
+          fi
+
+      # Issue #102: the Dart sync round trip against the live local stack
+      # (real SupabaseSyncTransport + row codec through the real sync_push
+      # RPC and RLS select). Runs after pgTAP on purpose: this test is
+      # RLS-scoped to its own freshly created user, so it is robust to
+      # whatever rows pgTAP leaves behind, while pgTAP is not necessarily
+      # robust to rows this test creates.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Dart <-> local Supabase sync round trip (issue #102)
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env 2>/dev/null)"
+          export LUNARLOG_LOCAL_SUPABASE_URL="$API_URL"
+          export LUNARLOG_LOCAL_SUPABASE_PUBLISHABLE_KEY="$ANON_KEY"
+          export LUNARLOG_LOCAL_SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          flutter test test/data/sync/local_supabase_round_trip_test.dart
 
       - name: Stop local Supabase
         if: always()
@@ -266,24 +568,46 @@ jobs:
         run: flutter pub get
 
       - name: Build debug APK
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build apk --debug \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   ios:
     name: Build iOS (unsigned)
-    runs-on: self-hosted
+    # GitHub-hosted, like ios-release.yml's signing job: free on a public
+    # repo, a fresh VM per run, and no longer serialised on the lab's single
+    # Mac mini behind every other session's iOS jobs. Fork PRs can run this
+    # (it needs no secrets that matter -- see the build step's comment).
+    runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      # `pod install` (run by `flutter build ios`) needs a UTF-8 locale or
+      # CocoaPods aborts on non-ASCII pod metadata; same setting as
+      # ios-release.yml's CocoaPods step.
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -304,73 +628,232 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
+      - name: Cache Xcode build products
+        # Xcode's incremental build state for the release device build, plus
+        # Flutter's own kernel/snapshot outputs (.dart_tool/flutter_build).
+        # Hosted Macs start cold every run, so without this the whole app
+        # (plus every pod and Swift package) recompiles from scratch — most
+        # of this job's ~9 minutes. Keyed on the dependency locks, then the
+        # Dart sources; the prefix fallbacks let an unrelated change reuse
+        # everything that did not change (Xcode rebuilds what did).
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+            .dart_tool/flutter_build
+          key: ${{ runner.os }}-xcode-device-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-device-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-device-v2-
+
       - name: Get dependencies
         run: flutter pub get
 
       - name: Build iOS (unsigned)
         # Unsigned: a PR from a fork cannot read signing secrets, and this
         # only needs to prove the app still compiles for a device.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
         run: |
           flutter build ios --release --no-codesign \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }} \
-            --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }} \
-            --dart-define=GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }} \
-            --dart-define=GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }} \
-            --dart-define=FCM_PROJECT_ID=${{ secrets.FCM_PROJECT_ID }} \
-            --dart-define=FCM_SENDER_ID=${{ secrets.FCM_SENDER_ID }} \
-            --dart-define=FCM_ANDROID_API_KEY=${{ secrets.FCM_ANDROID_API_KEY }} \
-            --dart-define=FCM_ANDROID_APP_ID=${{ secrets.FCM_ANDROID_APP_ID }} \
-            --dart-define=FCM_IOS_API_KEY=${{ secrets.FCM_IOS_API_KEY }} \
-            --dart-define=FCM_IOS_APP_ID=${{ secrets.FCM_IOS_APP_ID }}
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
 
   ios-simulator:
-    # Runs on Williams-Mini (the lab's Mac mini, see AGENTS.md "iOS Local
-    # Device Builds"), a self-hosted runner -- the only machine in the lab
-    # with Xcode/a real iOS Simulator. This is a physical, non-ephemeral
-    # machine (not a fresh VM per job): each step must clean up after
-    # itself (shutting the simulator down in an `if: always()` step) rather
-    # than relying on the runner being thrown away afterward. Only one job
-    # runs on it at a time (a single self-hosted runner instance processes
-    # jobs serially), so simulator state cannot race between concurrent CI
-    # runs.
+    # GitHub-hosted macOS image (Xcode + iOS Simulator runtimes preinstalled),
+    # a fresh VM per run. It used to run on the lab's Mac mini as the only
+    # machine with a simulator; that made it (and Build iOS above) the
+    # long pole of every CI run -- serialised on one runner behind other
+    # sessions' jobs -- and a fork-PR security concern on public repo. The
+    # simulator is still shut down in an `if: always()` step out of habit;
+    # nothing depends on it now.
     #
-    # Security note: this repo is public. A workflow step here executes
-    # directly on lab hardware, so this job (and this runner) must only
-    # ever run trusted code -- see the repo's Settings -> Actions ->
-    # General -> "Fork pull request workflows from outside collaborators"
-    # (set to require approval for outside collaborators) before trusting
-    # this job's `pull_request` trigger.
+    # The device is chosen at run time from what the image ships (a bare
+    # `iPhone <N>`, else any available iPhone) rather than hard-coded, so an
+    # image upgrade that renames the simulators cannot break this job.
     name: iOS Simulator tests
-    runs-on: [self-hosted, macOS]
-    timeout-minutes: 20
+    runs-on: macos-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        # Issue #570: this job previously went straight to `flutter pub get`
+        # with whatever Flutter was ambient on williams-mini's PATH
+        # (Homebrew) -- a `brew upgrade` on that machine could silently move
+        # this job to a different Flutter version than every other job here
+        # (all pinned via this same action) and the shipped app. Pinned the
+        # same way as the rest of CI.
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache Xcode build products
+        # The simulator debug build of the whole app (Xcode products and
+        # Flutter's kernel/snapshot outputs in .dart_tool/flutter_build) is
+        # most of this job's ~12 minutes on a cold hosted Mac. Separate key family from the
+        # device build (different SDK/arch products); same fallback shape.
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+            build/ios
+            .dart_tool/flutter_build
+          key: ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
+            ${{ runner.os }}-xcode-simulator-v2-
 
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Boot simulator
+      - name: Pick and boot a simulator
+        id: sim
         run: |
-          xcrun simctl boot "iPhone 17" || true
-          xcrun simctl bootstatus "iPhone 17" -b
+          set -euo pipefail
+          devices="$(xcrun simctl list devices available -j)"
+          pick() {
+            jq -r --arg re "$1" '
+              [ .devices | to_entries[] | select(.key | test("iOS"))
+                | .value[] | select(.isAvailable) | select(.name | test($re)) ]
+              | sort_by(.name) | last | .udid // empty' <<<"$devices"
+          }
+          udid="$(pick '^iPhone [0-9]+$')"
+          [ -n "$udid" ] || udid="$(pick '^iPhone')"
+          if [ -z "$udid" ]; then
+            echo "::error::No available iPhone simulator on this image:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$devices")"
+          echo "Using simulator: $name ($udid)"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
       - name: Run integration tests on the simulator
-        # Scoped to the tests confirmed safe against a real device (issue
-        # #121): any test that manually drives the binding to
-        # AppLifecycleState.paused/hidden (transitionTo in this file)
-        # triggers genuine OS-level app suspension here, unlike host-mode
-        # where it is a pure Dart-level notification -- once suspended for
-        # real, the VM service connection this job's `flutter test`
-        # depends on hangs forever. The excluded tests ("backgrounding
-        # re-locks...", "inactivity timeout re-locks...") are still
-        # covered by test/ui/gate_test.dart's host-mode GateController
-        # tests, which exercise the same scenarios without a full
-        # on-device widget tree.
+        # Issue #121: this step used to be scoped with a --name filter to
+        # the four tests that never drive the binding into
+        # AppLifecycleState.paused/hidden. Driving the binding there was
+        # believed to trigger real OS-level app suspension, hanging the
+        # VM-service-driven run forever; in fact the manual binding call
+        # never reaches the OS at all — SchedulerBinding disables frame
+        # scheduling for exactly hidden/paused, and the live integration
+        # binding's pump() then waits for a real engine frame that
+        # scheduleFrame() can no longer request. gate_test.dart's
+        # transitionTo/disposeDb helpers now call scheduleForcedFrame()
+        # while frames are disabled (the framework's documented escape
+        # hatch for scheduling a frame regardless of lifecycle state), so
+        # the full file — lifecycle-driving tests included — runs here.
+        # The step timeout bounds a regression: a reintroduced hang fails
+        # in minutes instead of parking until the job-level timeout.
+        timeout-minutes: 15
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
-          flutter test integration_test/gate_test.dart -d "iPhone 17" \
-            --name "cold start requires the gate|retry loop: repeated declines stay locked|issue #65: the credential prompt|simulated launch payload routes through the gate"
+          flutter test integration_test/gate_test.dart -d "$SIM_UDID"
 
       - name: Shut down simulator
         if: always()
-        run: xcrun simctl shutdown "iPhone 17" || true
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          if [ -n "${SIM_UDID:-}" ]; then
+            xcrun simctl shutdown "$SIM_UDID" || true
+          fi
+
+  ci-required-checks:
+    # Issue #651: the "Main" ruleset's required_status_checks are pinned to
+    # the individual job `name:` strings above. Any rename or restructure of
+    # those jobs orphans every open PR until it's rebased -- the newly-named
+    # checks never satisfy the old required names, and the merge conflict a
+    # rebase produces suppresses the merge ref, so the new checks can't even
+    # run in the meantime. This exact mechanism produced the 2026-09-13
+    # backlog (#577, #644).
+    #
+    # This job aggregates every job the ruleset currently requires (every
+    # name in its required_status_checks list except "iOS Simulator tests",
+    # which the ruleset does not require) behind one name-stable check. Once
+    # the ruleset is switched to require only this job's name, a future job
+    # rename/split never needs a ruleset edit again -- only this job's own
+    # `needs:` list has to track it. See the PR that introduced this job for
+    # the exact ruleset change to make after merge.
+    #
+    # Deliberately not named `ci-gate`: that job id/name is already used by
+    # ios-release.yml and play-store-release.yml for a different thing (the
+    # release-time poll of check-ci-gate.sh against these same job names,
+    # issue #498). Keeping the names distinct avoids two unrelated check
+    # runs both reading "ci-gate" in the GitHub UI.
+    name: CI required checks
+    # Must run even when a needed job failed or was skipped -- otherwise a
+    # failed dependency would make this job (and the check it reports) never
+    # run at all, and a *missing* required check does not fail a PR the same
+    # way an explicitly failed one does.
+    if: always()
+    needs:
+      - release-guards
+      - release-guards-macos
+      - check
+      - test
+      - quality-gate
+      - edge-functions
+      - db-tests
+      - android
+      - ios
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report required job results
+        if: always()
+        run: |
+          echo "release-guards: ${{ needs.release-guards.result }}"
+          echo "release-guards-macos: ${{ needs.release-guards-macos.result }}"
+          echo "check: ${{ needs.check.result }}"
+          echo "test: ${{ needs.test.result }}"
+          echo "quality-gate: ${{ needs.quality-gate.result }}"
+          echo "edge-functions: ${{ needs.edge-functions.result }}"
+          echo "db-tests: ${{ needs.db-tests.result }}"
+          echo "android: ${{ needs.android.result }}"
+          echo "ios: ${{ needs.ios.result }}"
+
+      # No job here declares a job-level `if:` (no path filters or similar
+      # conditional skip in this workflow as of #651), so every needed job
+      # is expected to actually run and succeed -- a "skipped" result is
+      # therefore treated as a failure, not a pass, the same as "failure" or
+      # "cancelled". This condition is the whole gate: it fires (and this
+      # step fails) unless every needed job's result is exactly "success".
+      - name: Fail unless every required job succeeded
+        if: |
+          needs.release-guards.result != 'success' ||
+          needs.release-guards-macos.result != 'success' ||
+          needs.check.result != 'success' ||
+          needs.test.result != 'success' ||
+          needs.quality-gate.result != 'success' ||
+          needs.edge-functions.result != 'success' ||
+          needs.db-tests.result != 'success' ||
+          needs.android.result != 'success' ||
+          needs.ios.result != 'success'
+        run: |
+          echo "::error::One or more required jobs did not succeed (see the 'Report required job results' step above for each job's result). Failing the rollup check."
+          exit 1

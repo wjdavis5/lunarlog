@@ -24,4 +24,11 @@ class SupabaseReminderWindowRemote implements ReminderWindowRemote {
       'p_episode_open': episodeOpen,
     });
   }
+
+  @override
+  Future<void> retract({required String profileId}) async {
+    await _client.rpc<dynamic>('retract_reminder_window', params: {
+      'p_profile_id': profileId,
+    });
+  }
 }

@@ -64,7 +64,7 @@ void main() {
       expect(rig.transport.pullCount, 0);
       rig.gate.unlock();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, 8);
+      expect(rig.transport.pullCount, 12); // #522 adds deleted_profiles, #130 adds day_entry_merge_events, #257 adds profile_tag_registry, #170 adds day_entry_history
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
 
@@ -99,7 +99,7 @@ void main() {
       final pulls = rig.transport.pullCount;
       rig.timers.periodics.single.fire();
       await rig.engine.flush();
-      expect(rig.transport.pullCount, pulls + 8);
+      expect(rig.transport.pullCount, pulls + 12); // #522 adds deleted_profiles, #130 adds day_entry_merge_events, #257 adds profile_tag_registry, #170 adds day_entry_history
     });
   });
 }

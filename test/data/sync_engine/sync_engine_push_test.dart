@@ -3,11 +3,13 @@
 /// touches Supabase.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart';
+import 'package:lunarlog/data/sync/supabase_sync_engine.dart'
+    show kClockOffsetSmoothingAlpha;
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
@@ -306,6 +308,128 @@ void main() {
       }
     });
 
+    test('Issue #290: _hasPushableDirty reads at most one row per table with 5,000 dirty rows', () async {
+      final rig = Rig(
+        storageFactory: (db, clock) => CountingStorage(db, clock: clock),
+      );
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final counting = rig.storage as CountingStorage;
+
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+
+      // Seed 5,000 dirty day entries in a fast batch.
+      final start = DateTime.utc(2020, 1, 1);
+      final companions = <DayEntriesCompanion>[];
+      for (var i = 0; i < 5000; i++) {
+        final d = start.add(Duration(days: i));
+        final date = '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+            '${d.day.toString().padLeft(2, '0')}';
+        companions.add(DayEntriesCompanion.insert(
+          id: 'bulk_entry_$i',
+          profileId: p.id,
+          localDate: date,
+          tz: 'UTC',
+          flow: FlowLevel.light,
+          dirty: const Value(true),
+          localRev: const Value(1),
+          updatedAt: t0,
+        ));
+      }
+      await rig.db.batch((b) => b.insertAll(rig.db.dayEntries, companions));
+
+      counting.profilePageLengths.clear();
+      counting.dayEntryPageLengths.clear();
+
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isTrue);
+
+      expect(counting.profilePageLengths, everyElement(lessThanOrEqualTo(1)));
+      expect(counting.dayEntryPageLengths, everyElement(lessThanOrEqualTo(1)));
+      expect(counting.dayEntryPageLengths.single, 1,
+          reason: 'stopped after reading exactly one dirty row');
+    });
+
+    test('Issue #290: _hasPushableDirty returns false when all dirty rows are rejected', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      final e1 = await rig.storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+      final e2 = await rig.storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-02',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+
+      // Push and reject both entries.
+      rig.transport.scriptPushResult(rejectedIds: [e1.id, e2.id]);
+      await rig.start();
+
+      expect(rig.engine.snapshot.rejectedCount, 2);
+
+      // Both entries are dirty in DB but rejected at their current localRev.
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isFalse,
+          reason: 'all dirty rows are rejected, cycle must not be re-queued');
+
+      // Edit e1 locally to bump localRev.
+      await rig.storage.upsertDayEntry(
+        id: e1.id,
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+      );
+
+      final hasPushableAfterEdit = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushableAfterEdit, isTrue,
+          reason: 'e1 was edited locally and has a newer localRev');
+    });
+
+    test('Issue #257: a dirty registry row alone keeps a cycle queued', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+
+      // Everything except the registry row is clean: the profile is
+      // pushed, no entries exist — so _hasPushableDirty's walk reaches
+      // the registry read (the last one) and finds the row pushable.
+      final p = await rig.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await rig.storage.markPushed(
+        table: SyncTable.profiles,
+        id: p.id,
+        localRevAtPush: (await rig.storage.readDirtyProfiles()).single.localRev,
+      );
+      await rig.storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'only_dirty_row',
+        displayName: 'Only dirty row',
+      );
+
+      final hasPushable = await rig.engine.hasPushableDirtyForTest();
+      expect(hasPushable, isTrue,
+          reason: 'a dirty custom-tag registry row is pushable content');
+    });
+
     test('Issue #177: a _SyncPaused between batches (the device locks '
         'mid-import) leaves the not-yet-sent batches dirty; the next cycle '
         'resumes and pushes only what is left, never re-pushing an '
@@ -451,6 +575,60 @@ void main() {
       expect(e.updatedAt, t0.add(const Duration(minutes: 5, seconds: 1)));
     });
 
+    test('issue #566: the offset is measured from sentAt (captured before '
+        'the request), not from the clock after the round trip and after '
+        'applyPushResult\'s writes', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      // Simulate a slow round trip: the clock advances *during* the
+      // request, well after sentAt would already have been captured.
+      rig.transport.onPush = (_) async {
+        rig.clock.now = rig.clock.now.add(const Duration(seconds: 30));
+      };
+
+      await rig.start();
+
+      // Before the fix, offset = serverNow - clock() (read AFTER the RTT)
+      // would have measured only 4m30s. With sentAt captured before the
+      // call, the true 5-minute offset is measured regardless of how long
+      // the round trip took.
+      expect(rig.storage.clockOffset, const Duration(minutes: 5));
+    });
+
+    test('issue #566: the offset is smoothed across cycles (a simple EMA), '
+        'not replaced wholesale by each new sample', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: t0.add(const Duration(minutes: 5)));
+      await rig.start();
+      expect(rig.storage.clockOffset, const Duration(minutes: 5),
+          reason: 'the very first sample is taken as-is - nothing to '
+              'smooth against yet');
+
+      // A second, very different (noisy) sample: smoothing means the
+      // result moves toward it, not straight to it.
+      await rig.storage.upsertProfile(displayName: 'B', isMinor: false);
+      rig.transport.scriptPushResult(
+          serverNow: rig.clock.now.add(const Duration(minutes: 15)));
+      await rig.sync();
+
+      final firstSampleMs = const Duration(minutes: 5).inMilliseconds;
+      final secondSampleMs = const Duration(minutes: 15).inMilliseconds;
+      final expectedSmoothedMs = (firstSampleMs +
+              kClockOffsetSmoothingAlpha * (secondSampleMs - firstSampleMs))
+          .round();
+      expect(rig.storage.clockOffset,
+          Duration(milliseconds: expectedSmoothedMs));
+      expect((await rig.state()).serverClockOffsetMs, expectedSmoothedMs);
+    });
+
     test('a rejected row stays dirty, is not retried until edited again, and '
         'is counted in the snapshot', () async {
       final rig = Rig();
@@ -490,6 +668,47 @@ void main() {
       expect(rig.transport.pushes, hasLength(2));
       expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
       expect((await rig.entry(p.id, e.id)).dirty, isFalse);
+      expect(rig.engine.snapshot.rejectedCount, 0);
+    });
+
+    test('issue #568: retryRejected() bumps local_rev on every rejected row '
+        'so the next cycle pushes it again, without waiting for an '
+        'unrelated edit', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final p = await rig.storage.upsertProfile(
+          displayName: 'A', isMinor: false);
+      final e = await rig.storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-15',
+          tz: 'UTC',
+          flow: FlowLevel.light);
+      rig.transport.scriptPushResult(rejectedIds: [e.id]);
+
+      await rig.start();
+      expect(rig.transport.pushes, hasLength(1));
+      final rejectedRev = (await rig.entry(p.id, e.id)).localRev;
+      expect(rig.engine.snapshot.rejectedCount, 1);
+
+      // Without retryRejected, a plain requestSync never re-pushes it.
+      await rig.sync();
+      expect(rig.transport.pushes, hasLength(1));
+
+      await rig.engine.retryRejected();
+      await rig.engine.flush();
+
+      expect(rig.transport.pushes, hasLength(2),
+          reason: 'retryRejected must have made the row pushable again');
+      expect(ids(rig.transport.pushes[1].dayEntries), [e.id]);
+      final retried = await rig.entry(p.id, e.id);
+      expect(retried.localRev, greaterThan(rejectedRev),
+          reason: 'retryRejected bumps local_rev, never touching content');
+      expect(retried.flow, FlowLevel.light,
+          reason: 'the row\'s content is untouched by the retry');
+      expect((await rig.entry(p.id, e.id)).dirty, isFalse,
+          reason: 'the retried push was accepted this time (no scripted '
+              'rejection left)');
       expect(rig.engine.snapshot.rejectedCount, 0);
     });
 
@@ -621,11 +840,12 @@ void main() {
 
       final hooked = rig.storage as HookedStorage;
       var markPushedCalls = 0;
-      hooked.beforeMarkPushed = (table, id) async {
+      hooked.beforeMarkPushedBatch = () async {
         markPushedCalls++;
-        // The first write of batch 2, after batch 1 fully committed. A plain
-        // Exception (not a SyncTransportError) lands in `_cycle`'s general
-        // catch, so the kind is `other`.
+        // The batched write of batch 2, after batch 1 fully committed (each
+        // batch carries one profile at batchSize 1). A plain Exception (not
+        // a SyncTransportError) lands in `_cycle`'s general catch, so the
+        // kind is `other`.
         if (markPushedCalls == 2) throw Exception('storage apply failed');
       };
 
@@ -656,7 +876,7 @@ void main() {
           const Duration(minutes: 5).inMilliseconds,
           reason: 'the persist happens immediately per committed batch');
 
-      hooked.beforeMarkPushed = null;
+      hooked.beforeMarkPushedBatch = null;
       await rig.sync();
 
       expect(rig.transport.pushes, hasLength(3));
@@ -664,6 +884,119 @@ void main() {
       expect(ids(rig.transport.pushes[2].profiles), [failedId],
           reason: 'only the row left over is re-pushed');
       expect(await rig.storage.dirtyCount(), 0);
+      expect(rig.engine.snapshot.phase, SyncPhase.idle);
+    });
+
+    // Issue #102, reconciled to the post-#742 batched path: the per-row
+    // `markPushed` loop this issue was written against is gone — one push
+    // batch's accepted rows now clear through `markPushedBatch` (one
+    // OR-folded `(key = ? AND local_rev = ?)` UPDATE per 400-row chunk)
+    // inside `applyPushResult`'s single `db.transaction()` (issue #523).
+    // So the intra-batch guarantee at production size is now *stronger*
+    // than "rows before the failure stay clean": a failure anywhere in one
+    // batch's apply — after the first chunk, between chunks, or in the
+    // resolved-row half — rolls back EVERY row of that batch, never a mix
+    // of clean and dirty. This test pins that with a production-size
+    // batch (500 day entries = two markPushed chunks) and a failure that
+    // lands after both chunks committed, via the doc-comment's own failure
+    // mode: a resolved row whose referenced parent is not held locally.
+    //
+    // Fails-if-regressed against three distinct mutations:
+    // 1. `applyPushResult` loses its `db.transaction()` — chunk 1's 400
+    //    rows stay clean after the failure, `dirtyCount` reads 101, not 501.
+    // 2. `markPushedBatch` drops a chunk (or the chunk fold loses a row) —
+    //    the clean cycle never reaches `dirtyCount == 0`.
+    // 3. The OR-folded predicate loses its `local_rev` half (AE11) — the
+    //    concurrently-edited row clears with its batch and the third push
+    //    never happens.
+    test('issue #102: a 500-row batch (two markPushed chunks) whose apply '
+        'fails after the chunks rolls the whole batch back; a row edited '
+        'mid-flight stays dirty in a clean batch and is re-pushed alone',
+        () async {
+      final rig = Rig(); // default batchSize = PushBatch.maxRows = 500
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      final s = rig.storage;
+      final p = await s.upsertProfile(displayName: 'P', isMinor: false);
+      final entries = <DayEntry>[];
+      final base = DateTime.utc(2026, 1, 1);
+      for (var d = 0; d < 500; d++) {
+        entries.add(await s.upsertDayEntry(
+            profileId: p.id,
+            localDate:
+                base.add(Duration(days: d)).toIso8601String().substring(0, 10),
+            tz: 'UTC',
+            flow: FlowLevel.light));
+      }
+      // entries[0] rides the first chunk (rows 0..399), entries[499] the
+      // second (400..499); entries[250] is the concurrently-edited row.
+      final entryIds = entries.map((e) => e.id).toList();
+      final edited = entries[250];
+
+      // Cycle 1: the transport accepts the whole batch, but its resolved
+      // copy of entries[0] references a profile this device does not hold
+      // (the id IS held locally, so `onlyExisting` proceeds past the skip
+      // check) — `applyResolved` throws *after* `markPushedBatch`'s two
+      // chunks committed, so only applyPushResult's transaction can undo
+      // them.
+      rig.transport.scriptPushResult(
+        resolved: [
+          remoteEntry(entryIds[0],
+              profileId: '01J00000000000000000000GHO',
+              localDate: entries[0].localDate,
+              updatedAt: t0.add(const Duration(seconds: 1))),
+        ],
+      );
+
+      await rig.start();
+
+      expect(rig.transport.pushes, hasLength(1),
+          reason: 'one round carries the profile page plus a full 500-row '
+              'entry page');
+      expect(rig.transport.pushes[0].profiles, hasLength(1));
+      expect(rig.transport.pushes[0].dayEntries, hasLength(500));
+      expect(rig.engine.snapshot.phase, SyncPhase.error);
+      expect(rig.engine.snapshot.lastError, SyncErrorKind.other);
+      expect(await s.dirtyCount(), 501,
+          reason: 'the ENTIRE failed batch stayed dirty — both markPushed '
+              'chunks rolled back with the resolved-row failure, never a '
+              'mix of clean and dirty rows');
+      expect((await rig.profile(p.id)).dirty, isTrue);
+      expect((await rig.entry(p.id, entryIds[0])).dirty, isTrue,
+          reason: 'first row of chunk 1');
+      expect((await rig.entry(p.id, entryIds[399])).dirty, isTrue,
+          reason: 'last row of chunk 1');
+      expect((await rig.entry(p.id, entryIds[400])).dirty, isTrue,
+          reason: 'first row of chunk 2');
+      expect((await rig.entry(p.id, entryIds[499])).dirty, isTrue,
+          reason: 'last row of chunk 2');
+
+      // Cycle 2 (clean result): while the 501-row batch is in flight, a
+      // local write bumps entries[250]'s local_rev — the rev guard must
+      // keep it dirty even as its 500 batch-mates clear.
+      rig.transport.onPush = (batch) async {
+        if (rig.transport.pushes.length == 2) {
+          await s.upsertDayEntry(
+              profileId: p.id,
+              localDate: edited.localDate,
+              tz: 'UTC',
+              flow: FlowLevel.heavy);
+        }
+      };
+      await rig.sync();
+
+      expect(rig.transport.pushes, hasLength(3),
+          reason: 'the failed batch was re-pushed whole (cycle 2), then the '
+              'rev-guarded row alone (cycle 3, queued by the mid-flight '
+              'write)');
+      expect(rig.transport.pushes[1].profiles, hasLength(1));
+      expect(rig.transport.pushes[1].dayEntries, hasLength(500),
+          reason: 'every row of the rolled-back batch was re-pushed');
+      expect(ids(rig.transport.pushes[2].dayEntries), [edited.id],
+          reason: 'only the concurrently-edited row needs a third push — '
+              'the local_rev guard kept it out of cycle 2\'s marking');
+      expect(await s.dirtyCount(), 0);
+      expect((await rig.entry(p.id, edited.id)).flow, FlowLevel.heavy);
       expect(rig.engine.snapshot.phase, SyncPhase.idle);
     });
   });

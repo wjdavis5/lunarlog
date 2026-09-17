@@ -18,6 +18,10 @@ migrate_working_dir/
 # Local --dart-define file (client-safe values only; see dart_defines.example.json)
 dart_defines.json
 
+# Local state of the operator test-account seeder (issue #710; fabricated
+# test accounts only — never real data). See docs/ops/seed-test-account.md.
+.seed-state.json
+
 # IntelliJ related
 *.iml
 *.ipr

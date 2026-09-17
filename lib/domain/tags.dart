@@ -1,13 +1,17 @@
-/// Symptom tag taxonomy (KTD6): 86 codes in 28 categories, grown from the
-/// original 17-code cycle/flow-only set by Issue #249 (the physical
+/// Symptom tag taxonomy (KTD6): 113 codes in 31 categories, grown from
+/// the original 17-code cycle/flow-only set by Issue #249 (the physical
 /// categories of Clue's attested taxonomy — pain, energy, sleep, skin,
 /// hair, digestion, stool, cravings, plus the option-set-unverified
 /// categories), Issue #251 (the feelings/mind/lifestyle categories —
 /// `feelings`, `mind`, `motivation`, `social_life`, `partying`, plus the
-/// option-set-unverified `pms`, `meditation`, `leisure`), and Issue #252
+/// option-set-unverified `pms`, `meditation`, `leisure`), Issue #252
 /// (the events-and-care categories — `collection_method`, `exercise`,
 /// `medication`, `ailments`, plus the option-set-unverified
-/// `appointments` and `supplements`).
+/// `appointments` and `supplements`), Issue #253 (the sensitive and
+/// fertility categories — `sex_life`, `discharge`, `tests`), and Issue
+/// #456 (the five attested `hot_flashes`/Clue-Perimenopause options —
+/// see [kTagTaxonomy]'s own `hot_flashes` block for what remains
+/// unattested).
 ///
 /// Codes are stable identifiers (stored on day entries); [TagCode.display]
 /// is the default UI string. **The code-stability rule (Issues #249,
@@ -36,11 +40,10 @@
 /// display or a category heading ("Pain (medication)", the
 /// "Cravings (unspecified)" precedent).
 ///
-/// The taxonomy is still not a fertility-status model — see the
-/// vocabulary-guard test in test/domain/tags_test.dart. The one apparent
-/// exception, pain's `ovulation` option, is an attested *pain* symptom
-/// (mittelschmerz, Issue #249's pain row), not a fertility claim; the
-/// guard test exempts exactly that code and nothing else.
+/// Fertility scope was relaxed per Issues #123/#142 (the fertility-scope
+/// decision, 2026-09-07), and Issue #253 ships the first fertility-related
+/// categories (sex_life/discharge/tests). The R13 "no fertility-related
+/// vocabulary" constraint no longer applies to this taxonomy.
 library;
 
 enum TagCategory {
@@ -74,7 +77,77 @@ enum TagCategory {
   medication,
   ailments,
   supplements,
+  // Issue #253's sensitive and fertility categories, appended after
+  // #252's cluster. Each is its own category (individually toggleable /
+  // excludable from the day-sheet picker) — `sex_life`'s UI visibility on
+  // minor profiles is #259's per-profile tracking-preference mechanism
+  // (default hidden, guardian-revealed), exactly the `partying` precedent
+  // above.
+  sexLife,
+  discharge,
+  tests,
 }
+
+/// The stable snake_case wire name for each category (Issue #259): the key
+/// a synced `tracking_preferences` document uses for the category
+/// (`sleep_quality`, `breasts_chest`, `vulva_vagina`, ...). Codes are
+/// stable identifiers (see the library doc comment); category wire names
+/// follow the same rule — never renamed, so a stored preference document
+/// outlives client refactors. A table, not a switch: the mapping is data,
+/// and a table lookup keeps the getter trivially simple.
+const Map<TagCategory, String> _kCategoryWireNames = {
+  TagCategory.pain: 'pain',
+  TagCategory.energy: 'energy',
+  TagCategory.sleep: 'sleep',
+  TagCategory.sleepQuality: 'sleep_quality',
+  TagCategory.skin: 'skin',
+  TagCategory.hair: 'hair',
+  TagCategory.digestion: 'digestion',
+  TagCategory.stool: 'stool',
+  TagCategory.cravings: 'cravings',
+  TagCategory.breastsChest: 'breasts_chest',
+  TagCategory.hotFlashes: 'hot_flashes',
+  TagCategory.urine: 'urine',
+  TagCategory.vulvaVagina: 'vulva_vagina',
+  TagCategory.body: 'body',
+  TagCategory.feelings: 'feelings',
+  TagCategory.mind: 'mind',
+  TagCategory.motivation: 'motivation',
+  TagCategory.socialLife: 'social_life',
+  TagCategory.leisure: 'leisure',
+  TagCategory.meditation: 'meditation',
+  TagCategory.pms: 'pms',
+  TagCategory.partying: 'partying',
+  // #251's events-and-care / fertility categories (landed on main while
+  // #259 was in flight): same snake_case convention as `clue_option_map`
+  // and the taxonomy comments above.
+  TagCategory.collectionMethod: 'collection_method',
+  TagCategory.exercise: 'exercise',
+  TagCategory.appointments: 'appointments',
+  TagCategory.medication: 'medication',
+  TagCategory.ailments: 'ailments',
+  TagCategory.supplements: 'supplements',
+  TagCategory.sexLife: 'sex_life',
+  TagCategory.discharge: 'discharge',
+  TagCategory.tests: 'tests',
+};
+
+extension TagCategoryWireName on TagCategory {
+  String get wireName => _kCategoryWireNames[this]!;
+}
+
+final Map<String, TagCategory> _categoryByWireName = {
+  for (final entry in _kCategoryWireNames.entries) entry.value: entry.key,
+};
+
+/// Inverse of [TagCategoryWireName.wireName]: null for anything this build
+/// does not know (a document written by a newer client with a category
+/// this build has not adopted yet round-trips but never resolves — see
+/// `TrackingPreferences` in `lib/domain/logging/tracking_preferences.dart`).
+/// Its production consumer is #234's picker UI (today it is exercised by the
+/// tracking-preferences domain tests, which is deliberate: the round-trip
+/// guarantee is pinned before the picker lands).
+TagCategory? categoryFromWireName(String name) => _categoryByWireName[name];
 
 class TagCode {
   const TagCode(this.code, this.category, this.display);
@@ -160,6 +233,34 @@ const List<TagCode> kTagTaxonomy = [
   TagCode('salty', TagCategory.cravings, 'Salty'),
   TagCode('carbs', TagCategory.cravings, 'Carbs'),
   TagCode('chocolate', TagCategory.cravings, 'Chocolate'),
+  // hot_flashes — Issue #456: Clue's own category is named "Hot
+  // flashes/perimenopause" (`docs/import/clue-mapping.md`'s "no export
+  // type" list) and, per Clue's help center, gained "14 brand-new
+  // tracking options" when Clue Perimenopause launched
+  // (support.helloclue.com/hc/en-us/articles/13059487439261,
+  // helloclue.com/articles/menopause/introducing-clue-perimenopause).
+  // Only five of those fourteen are named in any source this pass could
+  // reach — `hot flashes, night sweats, brain fog, HRT and vaginal
+  // dryness` — so only those five ship as codes; the remaining ~9 are
+  // unattested and deliberately not invented, the same "no invented
+  // placeholder" discipline `kUnverifiedTagCategories` documents above.
+  // `hotFlashes` still leaves `kUnverifiedTagCategories` (it is no longer
+  // a zero-code category) so the day sheet renders these five as real
+  // chips rather than the "unverified" caption; `hot_flashes` itself was
+  // already surfaced in every mode's `categoriesInOrder`
+  // (`care_modes.dart`) before this issue, per #196's requirement. The
+  // code's display is qualified to the singular "Hot flash" (an episode
+  // logged that day) — the bare plural "Hot flashes" is already the
+  // category heading (`care_modes.dart`'s `categoryLabels`), and this flat
+  // day-entry tag namespace already qualifies exactly this kind of
+  // code/heading collision elsewhere (the library doc comment's
+  // `great_digestion`/`great_stool` precedent; medication's `pain` code
+  // reads "Pain (medication)" for the same reason).
+  TagCode('hot_flashes', TagCategory.hotFlashes, 'Hot flash'),
+  TagCode('night_sweats', TagCategory.hotFlashes, 'Night sweats'),
+  TagCode('brain_fog', TagCategory.hotFlashes, 'Brain fog'),
+  TagCode('hrt', TagCategory.hotFlashes, 'HRT'),
+  TagCode('vaginal_dryness', TagCategory.hotFlashes, 'Vaginal dryness'),
   // body — dizziness is the one pre-existing physical code Issue #249
   // does not re-parent; it keeps its category and code.
   TagCode('dizziness', TagCategory.body, 'Dizziness'),
@@ -252,6 +353,52 @@ const List<TagCode> kTagTaxonomy = [
   TagCode('allergy', TagCategory.ailments, 'Allergy'),
   TagCode('injury', TagCategory.ailments, 'Injury'),
   TagCode('fever', TagCategory.ailments, 'Fever'),
+  // sex_life — Issue #253: multi-select, mixing libido and activity. The
+  // export-attested real-data subset (`no_sex_today`, `withdrawal`,
+  // `masturbation`, `high_sex_drive`, `low_sex_drive` — note Clue's real
+  // export string for the legacy "withdrawal sex" option is `withdrawal`,
+  // so that is the stable code) plus the single-parser-only
+  // `protected_sex`/`unprotected_sex` and the redesign additions
+  // (`sex_toys`, `orgasm`, `no_orgasm`, `fantasies`,
+  // `painful_intercourse`). `no_sex_today` is a **positive "did not have
+  // sex" assertion**, never an absence of data — see
+  // [kPositiveAssertionCodes]. The category exists in the taxonomy and
+  // import path for every profile (lossless adult import); its UI
+  // visibility on minor profiles is #259's per-profile tracking-preference
+  // mechanism (default hidden, guardian-revealed).
+  TagCode('no_sex_today', TagCategory.sexLife, 'No sex today'),
+  TagCode('low_sex_drive', TagCategory.sexLife, 'Low sex drive'),
+  TagCode('high_sex_drive', TagCategory.sexLife, 'High sex drive'),
+  TagCode('masturbation', TagCategory.sexLife, 'Masturbation'),
+  TagCode('withdrawal', TagCategory.sexLife, 'Withdrawal'),
+  TagCode('protected_sex', TagCategory.sexLife, 'Protected sex'),
+  TagCode('unprotected_sex', TagCategory.sexLife, 'Unprotected sex'),
+  TagCode('sex_toys', TagCategory.sexLife, 'Sex toys'),
+  TagCode('orgasm', TagCategory.sexLife, 'Orgasm'),
+  TagCode('no_orgasm', TagCategory.sexLife, 'No orgasm'),
+  TagCode('fantasies', TagCategory.sexLife, 'Fantasies'),
+  TagCode('painful_intercourse', TagCategory.sexLife, 'Painful intercourse'),
+  // discharge — Issue #253: Clue's legacy "Fluid" category (a fertility
+  // indicator in Clue Conceive), single-select with the five attested
+  // export options. `none` is a positive "no discharge today" assertion,
+  // never an absence of data — see [kPositiveAssertionCodes].
+  // display "No discharge" rather than "None" so it never reads as (or
+  // collides with) the flow chip's own "None" value on the day sheet.
+  TagCode('none', TagCategory.discharge, 'No discharge'),
+  TagCode('sticky', TagCategory.discharge, 'Sticky'),
+  TagCode('creamy', TagCategory.discharge, 'Creamy'),
+  TagCode('egg_white', TagCategory.discharge, 'Egg white'),
+  TagCode('atypical', TagCategory.discharge, 'Atypical'),
+  // tests — Issue #253: single-event test results with distinct sub-values
+  // within the category — ovulation (negative/positive/peak) and pregnancy
+  // (negative/positive). Exact Clue option strings are unattested (A1-24),
+  // so codes are category-qualified prefixes carrying the sub-value and the
+  // result; unknown import strings pass through verbatim (unknown-never-drop).
+  TagCode('ovulation_negative', TagCategory.tests, 'Ovulation · negative'),
+  TagCode('ovulation_positive', TagCategory.tests, 'Ovulation · positive'),
+  TagCode('ovulation_peak', TagCategory.tests, 'Ovulation · peak'),
+  TagCode('pregnancy_negative', TagCategory.tests, 'Pregnancy · negative'),
+  TagCode('pregnancy_positive', TagCategory.tests, 'Pregnancy · positive'),
 ];
 
 /// Issue #249/#251/#252 categories whose Clue option set is not publicly
@@ -265,11 +412,14 @@ const List<TagCode> kTagTaxonomy = [
 /// shipping" instead of inventing options, until a real Clue export pins
 /// each set. `pms` the *presence* marker is deliberately separate: it
 /// rides `day_entries.pms` (issue #220) outside this taxonomy, exactly as
-/// Clue separates the PMS phase from the PMS option set.
+/// Clue separates the PMS phase from the PMS option set. `hotFlashes`
+/// left this list under Issue #456, once five of its fourteen attested
+/// Clue Perimenopause options (`hot_flashes`, `night_sweats`, `brain_fog`,
+/// `hrt`, `vaginal_dryness`) had real, named sources — see the taxonomy
+/// entries' own doc comment for what remains unattested.
 const List<TagCategory> kUnverifiedTagCategories = [
   TagCategory.sleepQuality,
   TagCategory.breastsChest,
-  TagCategory.hotFlashes,
   TagCategory.urine,
   TagCategory.vulvaVagina,
   TagCategory.pms,
@@ -301,12 +451,45 @@ const Set<TagCategory> kSingleEventTagCategories = {
 /// symptom in its own right.
 const String kPainFreeCode = 'pain_free';
 
-/// Codes that are positive "none today" assertions rather than symptoms.
-/// Counting or rendering any of these as a symptom (calendar symptom dot,
-/// symptom-layer ranking, semantic labels) misstates the day; use
-/// [hasSymptomTags] at every site that asks "does this entry carry
+/// Codes that are positive "none today"-style assertions rather than
+/// symptoms. Counting or rendering any of these as a symptom (calendar
+/// symptom dot, symptom-layer ranking, semantic labels) misstates the day;
+/// use [hasSymptomTags] at every site that asks "does this entry carry
 /// symptoms?".
-const Set<String> kPositiveAssertionCodes = {kPainFreeCode};
+///
+/// Issue #253 extends the set with the two new categories' affirmative
+/// absence assertions: `no_sex_today` is a positive "did not have sex"
+/// statement (never absence of data), and discharge's `none` is a positive
+/// "no discharge today" statement — both marked `negative: true` in the
+/// Clue importer's option spec, matching `pain_free`.
+const Set<String> kPositiveAssertionCodes = {
+  kPainFreeCode,
+  kNoSexTodayCode,
+  kDischargeNoneCode,
+};
+
+/// The `no_sex_today` code (Issue #253): a positive "did not have sex"
+/// assertion — an affirmative statement about the day, never an absence of
+/// data. Rides [kPositiveAssertionCodes] so it is never rendered or
+/// counted as "no data"/a missing log.
+const String kNoSexTodayCode = 'no_sex_today';
+
+/// The discharge `none` code (Issue #253): a positive "no discharge today"
+/// assertion, matching `pain_free`/`no_sex_today`'s semantics. Rides
+/// [kPositiveAssertionCodes] so it is never rendered or counted as a
+/// symptom.
+const String kDischargeNoneCode = 'none';
+
+/// Categories the day-sheet picker treats as single-select (Issue #253):
+/// selecting one option deselects the day's other options of the same
+/// category. Today only `discharge` (Clue's single-select "Fluid"
+/// category) — a day has exactly one discharge type. `sex_life` is
+/// multi-select (libido + activity mix) and `tests` is multi-select across
+/// its distinct sub-values (a day can carry both an ovulation and a
+/// pregnancy result).
+const Set<TagCategory> kSingleSelectTagCategories = {
+  TagCategory.discharge,
+};
 
 /// Whether [tags] carries at least one actual symptom — i.e. any code that
 /// is not one of [kPositiveAssertionCodes]' positive "none today"
@@ -325,9 +508,21 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
 /// Throws [ArgumentError] naming the first tag not in the taxonomy.
-void validateTagCodes(Iterable<String> tags) {
+///
+/// Issue #257: [registryCodes] -- the profile's custom-tag registry codes
+/// (live entries, retired included: a retired tag stays a valid stored
+/// value) -- are accepted alongside the taxonomy. The static 17-item list
+/// this once gated against is now a taxonomy-plus-registry union: a code
+/// the running profile's registry owns is as valid as a curated one. A
+/// code in neither (a manual entry, a future peer's newer vocabulary not
+/// yet synced) still throws -- this function gates *newly chosen* codes
+/// on manual entry, never the round-tripping stored set (#237's
+/// unknown-never-drop rule lives at the callers: the day sheet validates
+/// only its session-selected subset).
+void validateTagCodes(Iterable<String> tags, {Set<String>? registryCodes}) {
   for (final tag in tags) {
-    if (!_tagsByCode.containsKey(tag)) {
+    if (!_tagsByCode.containsKey(tag) &&
+        !(registryCodes?.contains(tag) ?? false)) {
       throw ArgumentError.value(tag, 'tags', 'not a known tag code');
     }
   }

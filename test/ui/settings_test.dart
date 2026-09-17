@@ -51,6 +51,12 @@ class _FakeDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => const [];
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async => false;
+
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) => Stream.value(false);
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -77,6 +83,11 @@ class FakeSettingsStore implements SettingsStore {
 
   @override
   Stream<String?> watch(String key) {
+    // Issue #548: a per-test fake with no close() call — the test process
+    // is short-lived, so there is no real leak to guard against (mirrors
+    // `test/support/fake_settings_store.dart`'s own pre-existing shape,
+    // which this file predates).
+    // ignore: close_sinks
     final c = _controllers.putIfAbsent(
       key,
       () => StreamController<String?>.broadcast(),
@@ -94,9 +105,23 @@ extension on Stream<String?> {
   }
 }
 
+
+/// Issue #226 made Settings a much taller sectioned list: the privacy,
+/// feedback, and support-history tiles now sit below the fold of the
+/// default 800x600 test surface (a `ListView` only builds children near
+/// the viewport), so every screen-mounting test here uses a tall
+/// viewport instead of scrolling tile by tile.
+void useTallSettingsViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
-  testWidgets('SettingsScreen displays Privacy policy tile and opens dialog',
+  testWidgets('SettingsScreen displays Privacy policy tile and opens screen',
       (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore();
 
     await tester.pumpWidget(
@@ -133,7 +158,7 @@ void main() {
     await tester.tap(privacyTile);
     await tester.pumpAndSettle();
 
-    // Verify dialog opened
+    // Verify PrivacyPolicyScreen opened
     expect(find.text('LunarLog Privacy Policy'), findsOneWidget);
     expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
     expect(find.textContaining('Protected at Rest'), findsOneWidget);
@@ -160,6 +185,7 @@ void main() {
 
   testWidgets('shows send-feedback-tile when signed in with a FeedbackService, and hides it '
       'when no FeedbackService is provided', (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore();
 
     await tester.pumpWidget(
@@ -184,6 +210,7 @@ void main() {
 
   testWidgets('shows contact-support-tile when no FeedbackService is provided, and the dialog '
       'contains the support address', (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore();
 
     await tester.pumpWidget(
@@ -211,6 +238,7 @@ void main() {
   testWidgets('R23: a signed-out session with a configured FeedbackService still shows '
       'contact-support-tile, not the form — a signed-out tap must not hit the '
       'permission error a form submission would throw', (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore();
     final auth = FakeAuthService(); // defaults to signedOut
     addTearDown(auth.dispose);
@@ -256,6 +284,7 @@ void main() {
 
   testWidgets('support-history-tile shows the unread badge when a reply is newer than the '
       'stored feedbackLastSeenAt', (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore()
       .._values[SettingsKeys.feedbackLastSeenAt] = DateTime.utc(2026, 1, 1).toIso8601String();
     final service = FakeFeedbackService()..ticketsToReturn = [repliedTicket(DateTime.utc(2026, 9, 5))];
@@ -281,6 +310,7 @@ void main() {
 
   testWidgets('support-history-tile has no unread badge when feedbackLastSeenAt is already '
       'as new as the newest reply', (tester) async {
+    useTallSettingsViewport(tester);
     final newest = DateTime.utc(2026, 9, 5);
     final settingsStore = FakeSettingsStore().._values[SettingsKeys.feedbackLastSeenAt] = newest.toIso8601String();
     final service = FakeFeedbackService()..ticketsToReturn = [repliedTicket(newest)];
@@ -305,6 +335,7 @@ void main() {
   });
 
   testWidgets('support-history-tile swallows a listTickets failure and shows no badge', (tester) async {
+    useTallSettingsViewport(tester);
     final settingsStore = FakeSettingsStore();
     final service = FakeFeedbackService()..failWithOnListTickets = const FeedbackFailure.network();
 
@@ -331,6 +362,7 @@ void main() {
   group('U2 route naming', () {
     testWidgets('pushing Send feedback names the route FeedbackScreen',
         (tester) async {
+    useTallSettingsViewport(tester);
       final settingsStore = FakeSettingsStore();
       await tester.pumpWidget(
         MultiProvider(
@@ -369,6 +401,7 @@ void main() {
     testWidgets(
         'pushing Support history names the route SupportHistoryScreen',
         (tester) async {
+    useTallSettingsViewport(tester);
       final settingsStore = FakeSettingsStore();
       await tester.pumpWidget(
         MultiProvider(
@@ -450,6 +483,7 @@ void main() {
         'renders above the Account section when both are present, and '
         "AccountSection no longer renders its own export tile",
         (tester) async {
+    useTallSettingsViewport(tester);
       await pumpWithProfiles(
         tester,
         profiles: [_profile('p1')],
@@ -471,6 +505,7 @@ void main() {
         'no profiles: the section still renders for "Import from file" '
         '(Issue #140 — restoring a device with none yet is the point), but '
         '"Export my data" is absent (nothing to export)', (tester) async {
+    useTallSettingsViewport(tester);
       await pumpWithProfiles(tester, profiles: const []);
       expect(find.text('Your data'), findsOneWidget);
       expect(find.byKey(const ValueKey('your-data-import')), findsOneWidget);
@@ -481,6 +516,7 @@ void main() {
         'signed out, no AuthController at all: the section still renders '
         'with a profile present (Account section is absent instead)',
         (tester) async {
+    useTallSettingsViewport(tester);
       await pumpWithProfiles(tester, profiles: [_profile('p1')]);
       expect(find.text('Your data'), findsOneWidget);
       expect(find.byKey(const ValueKey('your-data-export')), findsOneWidget);

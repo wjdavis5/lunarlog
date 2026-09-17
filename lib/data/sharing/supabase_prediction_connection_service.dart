@@ -124,6 +124,18 @@ class SupabasePredictionConnectionService
   }
 
   @override
+  Future<void> leaveConnection({required String connectionId}) async {
+    try {
+      await client.rpc<dynamic>(
+        'leave_prediction_connection',
+        params: {'p_connection_id': connectionId},
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
   Future<ActivePredictionConnection?> getActiveConnection({
     required String profileId,
   }) async {
@@ -234,12 +246,32 @@ class SupabasePredictionConnectionService
     required PredictionProjection projection,
   }) async {
     try {
+      // Issue #593: `prediction_projections_payload_keys_check` and
+      // `enforce_prediction_projection_payload()`
+      // (20260909200000_prediction_connections.sql, widened by
+      // 20260915140000_prediction_projection_confidence_tier.sql) now
+      // allowlist [PredictionProjection.confidenceTierKey] too (an
+      // optional, nullable, enum-checked key), so [PredictionProjection
+      // .toJson]'s full wire form ships unmodified — no strip needed.
+      final payload = projection.toJson();
       await client.rpc<dynamic>(
         'upsert_prediction_projection',
         params: {
           'p_profile_id': profileId,
-          'p_projection': projection.toJson(),
+          'p_projection': payload,
         },
+      );
+    } catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  @override
+  Future<void> retractProjection({required String profileId}) async {
+    try {
+      await client.rpc<dynamic>(
+        'retract_prediction_projection',
+        params: {'p_profile_id': profileId},
       );
     } catch (e) {
       throw _mapError(e);

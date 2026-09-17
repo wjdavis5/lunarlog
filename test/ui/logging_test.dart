@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -29,7 +30,11 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
+import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart'
@@ -55,6 +60,8 @@ import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
 
@@ -189,9 +196,12 @@ List<SingleChildWidget> loggingProviders({
   Provider<ObservationsRepository>.value(value: observations),
   Provider<SettingsStore>.value(value: settings),
   ChangeNotifierProvider(
-    create: (_) =>
-        ProfileController(profilesRepository: profiles, settingsStore: settings)
-          ..load(),
+    create: (_) {
+      final controller =
+          ProfileController(profilesRepository: profiles, settingsStore: settings);
+      unawaited(controller.load());
+      return controller;
+    },
   ),
   if (authController != null)
     ChangeNotifierProvider<AuthController>.value(value: authController),
@@ -228,6 +238,11 @@ Future<Harness> pumpLogging(
   // Issue #90: forwarded to [loggingProviders] so the R6 profile-switch
   // rebuild can reuse the same gated instance.
   ProfileGuardiansRepository? guardiansRepositoryOverride,
+  // Issue #457: the profile's BBT/weight display-unit preferences,
+  // forwarded through `ProfileDetailScreen` -> `MonthCalendar` -> `DaySheet`
+  // exactly like `mode` above.
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -241,6 +256,8 @@ Future<Harness> pumpLogging(
     displayName: 'Alice',
     isMinor: false,
     mode: mode,
+    bbtUnit: bbtUnit,
+    weightUnit: weightUnit,
   );
   if (seed != null) {
     await seed(db, profile.id);
@@ -366,6 +383,13 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<List<DayEntry>> listForProfile(String profileId) async => seeded;
 
   @override
+  Future<bool> hasAnyEntries(String profileId) async => seeded.isNotEmpty;
+
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) =>
+      Stream.value(seeded.isNotEmpty);
+
+  @override
   Stream<List<DayEntry>> watchForProfile(
     String profileId, {
     LocalDate? from,
@@ -377,6 +401,21 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
     deleteCalls++;
     if (failDelete) throw Exception('simulated delete failure');
   }
+
+  // Issue #130: no merge-notice surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForDay(
+          String profileId, LocalDate date) async =>
+      const [];
+
+  @override
+  Future<void> dismissMergeEvent(String profileId, String eventId) async {}
+
+  // Issue #130: no per-profile export surface in this fake.
+  @override
+  Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
+          String profileId) async =>
+      const [];
 }
 
 /// Guardians repository whose per-profile streams only emit when a test says
@@ -780,7 +819,7 @@ void main() {
       await disposeLogging(tester, h);
     });
 
-    testWidgets('tag chips render exactly the curated 86 in 28 categories; '
+    testWidgets('tag chips render exactly the curated taxonomy; '
         'unverified categories ship the pin-first caption; toggling two tags '
         'persists both codes', (tester) async {
       final h = await pumpLogging(tester);
@@ -791,7 +830,7 @@ void main() {
       // Issue #247: the curated tag chips plus the standalone spotting
       // toggle, which is also a FilterChip (see `_editableBody`).
       // Issue #220: plus the standalone first-class PMS toggle.
-      expect(find.byType(FilterChip), findsNWidgets(86 + 2));
+      expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2));
       const headers = [
         'Pain',
         'Energy',
@@ -837,11 +876,12 @@ void main() {
       for (final tag in kTagTaxonomy) {
         expect(find.text(tag.display), findsOneWidget);
       }
-      // The ten option-set-unverified categories (five from issue #249,
-      // three from issue #251: pms, meditation, leisure; two from issue
-      // #252: appointments, supplements) render the pin-first caption
-      // where their chips would go, and ship no chips.
-      expect(find.text('Unverified — pin before shipping'), findsNWidgets(10));
+      // The nine option-set-unverified categories (four from issue #249 —
+      // hotFlashes left this set under issue #456; three from issue #251:
+      // pms, meditation, leisure; two from issue #252: appointments,
+      // supplements) render the pin-first caption where their chips would
+      // go, and ship no chips.
+      expect(find.text('Unverified — pin before shipping'), findsNWidgets(9));
 
       await tester.tap(find.text('Headache'));
       await tester.pump();
@@ -850,6 +890,43 @@ void main() {
 
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved!.tags, unorderedEquals(['cramps', 'headache']));
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('issue #253: discharge is single-select — picking a second '
+        'discharge option deselects the first, while sex_life stays '
+        'multi-select', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // The sensitive/fertility categories sit at the bottom of the sheet's
+      // scroll view, so scroll each chip into view before tapping.
+      // Two discharge options; selecting the second replaces the first.
+      await tester.ensureVisible(find.text('Creamy'));
+      await tester.tap(find.text('Creamy'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Egg white'));
+      await tester.tap(find.text('Egg white'));
+      await pumpAutosave(tester);
+
+      final savedTags = (await h.entries.find(h.profile.id, kToday))!.tags;
+      expect(savedTags, ['egg_white']);
+      expect(savedTags, isNot(contains('creamy')));
+
+      // sex_life stays multi-select: two options coexist on the same day.
+      await tester.ensureVisible(find.text('Masturbation'));
+      await tester.tap(find.text('Masturbation'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('High sex drive'));
+      await tester.tap(find.text('High sex drive'));
+      await pumpAutosave(tester);
+      final again = await h.entries.find(h.profile.id, kToday);
+      expect(
+        again!.tags,
+        unorderedEquals(['egg_white', 'masturbation', 'high_sex_drive']),
+      );
       await disposeLogging(tester, h);
     });
 
@@ -1370,8 +1447,10 @@ void main() {
         // The mapper reads a legacy `spotting` row as notBleeding
         // (`mappers.dart`'s `flowToDomain`) -- the chip row reflects that --
         // but the review fix means the Spotting toggle picks up the alias
-        // observation `DriftObservationsRepository.listForProfile`
-        // synthesises for it, even though no real observation row exists yet.
+        // observation `DriftObservationsRepository
+        // .listForDayEntryWithLegacyAlias` synthesises for it (issue #549:
+        // scoped to this one day entry, not a full-profile scan), even
+        // though no real observation row exists yet.
         expect(
           tester
               .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
@@ -1379,8 +1458,9 @@ void main() {
           isTrue,
           reason:
               'review fix (blocking): a legacy spotting day seeds the '
-              'Spotting toggle on via listForProfile\'s synthesised alias, '
-              'not listForDayEntry (which never sees it)',
+              'Spotting toggle on via listForDayEntryWithLegacyAlias\'s '
+              'synthesised alias, not plain listForDayEntry (which never '
+              'sees it)',
         );
 
         await tester.enterText(
@@ -1573,6 +1653,318 @@ void main() {
         reason:
             'an autosave the operator directed at something else never '
             'touches a graded row they did not',
+      );
+      await disposeLogging(tester, h);
+    });
+  });
+
+  group('BBT and weight measurement entry (Issue #457)', () {
+    testWidgets('entering a BBT and weight value writes manual observation '
+        'rows in the canonical (profile display) unit', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.7');
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        '61.2',
+      );
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final rows = await h.observations.listForDayEntry(saved!.id);
+      final bbtRow = rows.singleWhere((o) => o.category == 'bbt');
+      final weightRow = rows.singleWhere((o) => o.category == 'weight');
+      expect(bbtRow.valueNum, 36.7);
+      expect(bbtRow.unit, 'celsius');
+      expect(bbtRow.source, ObservationSource.manual);
+      expect(bbtRow.excluded, isFalse);
+      expect(weightRow.valueNum, 61.2);
+      expect(weightRow.unit, 'kg');
+      expect(weightRow.source, ObservationSource.manual);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('editing an existing value updates the same row rather than '
+        'creating a second one', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final firstId = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt')
+          .id;
+
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.9');
+      await pumpAutosave(tester);
+      final rows = await h.observations.listForDayEntry(saved.id);
+      final bbtRows = [for (final o in rows) if (o.category == 'bbt') o];
+      expect(bbtRows, hasLength(1));
+      expect(bbtRows.single.id, firstId);
+      expect(bbtRows.single.valueNum, 36.9);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('clearing the field deletes the observation row', (
+      tester,
+    ) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'bbt'),
+        isNotEmpty,
+      );
+
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '');
+      await pumpAutosave(tester);
+      expect(
+        (await h.observations.listForDayEntry(saved.id))
+            .where((o) => o.category == 'bbt'),
+        isEmpty,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a value outside the sanity range shows an inline error and '
+        'writes nothing', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('bbt-field')),
+        '99.9', // way outside the 34.0-42.0C sanity range
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('bbt-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'bbt'),
+        isEmpty,
+        reason: 'an invalid entry must never reach a write',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('unparsable text shows an inline error and writes nothing', (
+      tester,
+    ) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        'abc',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('weight-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      expect(
+        (await h.observations.listForDayEntry(saved!.id))
+            .where((o) => o.category == 'weight'),
+        isEmpty,
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('an invalid keystroke never corrupts an already-valid, '
+        'already-saved value', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+      final saved = await h.entries.find(h.profile.id, kToday);
+
+      // Now type something invalid without clearing first.
+      await tester.enterText(
+        find.byKey(const ValueKey('bbt-field')),
+        '36.5x',
+      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('bbt-error')), findsOneWidget);
+      await pumpAutosave(tester);
+
+      final row = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(
+        row.valueNum,
+        36.5,
+        reason: 'the invalid keystroke must not have reached a write',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('the exclude toggle marks the reading excluded without '
+        'deleting it, and Include reverses it', (tester) async {
+      final h = await pumpLogging(tester);
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.5');
+      await pumpAutosave(tester);
+
+      expect(find.byKey(const ValueKey('bbt-exclude-toggle')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('bbt-exclude-toggle')));
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      var row = (await h.observations.listForDayEntry(saved!.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(row.excluded, isTrue);
+      expect(row.valueNum, 36.5, reason: 'excluding never deletes the value');
+
+      await tester.tap(find.byKey(const ValueKey('bbt-exclude-toggle')));
+      await pumpAutosave(tester);
+      row = (await h.observations.listForDayEntry(saved.id))
+          .singleWhere((o) => o.category == 'bbt');
+      expect(row.excluded, isFalse);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('unit conversion round trip: a value entered while the '
+        'profile displays Fahrenheit/lb is stored in that unit, and '
+        'reopening the sheet displays it converted back correctly', (
+      tester,
+    ) async {
+      final h = await pumpLogging(
+        tester,
+        bbtUnit: BbtUnit.fahrenheit,
+        weightUnit: WeightUnit.lb,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('bbt-field')), '98.1');
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-field')),
+        '135',
+      );
+      await pumpAutosave(tester);
+
+      final saved = await h.entries.find(h.profile.id, kToday);
+      final rows = await h.observations.listForDayEntry(saved!.id);
+      expect(rows.singleWhere((o) => o.category == 'bbt').unit, 'fahrenheit');
+      expect(rows.singleWhere((o) => o.category == 'weight').unit, 'lb');
+
+      await dismissDaySheet(tester);
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('bbt-field')))
+            .controller!
+            .text,
+        '98.1',
+        reason: 'round-trips through Celsius storage and back to display',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('weight-field')))
+            .controller!
+            .text,
+        '135',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a Celsius-stored value displays converted when the profile '
+        'later switches to Fahrenheit display', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        bbtUnit: BbtUnit.fahrenheit,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday, flow: FlowLevel.none));
+          final entry =
+              await DriftDayEntriesRepository(db.storage).find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'bbt',
+              valueNum: 36.72,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('bbt-field')))
+            .controller!
+            .text,
+        '98.1',
+        reason: 'the stored Celsius value converts to the display unit',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a viewer/archived (read-only) profile shows the logged '
+        'values as plain text, with no field to edit them through', (
+      tester,
+    ) async {
+      final h = await pumpLogging(
+        tester,
+        readOnly: true,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage)
+              .save(entryFor(profileId, kToday, flow: FlowLevel.none));
+          final entry =
+              await DriftDayEntriesRepository(db.storage).find(profileId, kToday);
+          await DriftObservationsRepository(db.storage).save(
+            Observation(
+              id: '',
+              dayEntryId: entry!.id,
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              category: 'bbt',
+              valueNum: 36.5,
+              unit: 'celsius',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('bbt-field')),
+        findsNothing,
+        reason: 'read-only sheets render no editable field at all',
+      );
+      expect(find.text('36.5'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('bbt-exclude-toggle')),
+        findsNothing,
+        reason: 'no edit affordance in a read-only sheet',
       );
       await disposeLogging(tester, h);
     });
@@ -2536,7 +2928,10 @@ void main() {
         expect(find.byType(FilterChip), findsNothing);
         expect(find.byKey(const ValueKey('note-field')), findsNothing);
         expect(find.byKey(const ValueKey('autosave-status')), findsNothing);
-        expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+        expect(
+          find.text(guardianRoleReadOnlyReason(AppLocalizationsEn(), GuardianRole.viewer)!),
+          findsOneWidget,
+        );
         await disposeLogging(tester, h);
       },
     );
@@ -2630,7 +3025,10 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(DaySheet), findsOneWidget);
-        expect(find.text(GuardianRole.viewer.readOnlyReason!), findsOneWidget);
+        expect(
+          find.text(guardianRoleReadOnlyReason(AppLocalizationsEn(), GuardianRole.viewer)!),
+          findsOneWidget,
+        );
         await disposeLogging(tester, h);
       },
     );
@@ -2724,16 +3122,17 @@ void main() {
     );
 
     test('the read-only copy for the viewer case is asserted from '
-        'GuardianRole, not from a literal in the widget', () {
+        'guardianRoleReadOnlyReason, not from a literal in the widget', () {
+      final l10n = AppLocalizationsEn();
       expect(
-        GuardianRole.viewer.readOnlyReason,
+        guardianRoleReadOnlyReason(l10n, GuardianRole.viewer),
         'You have view-only access to this profile.',
       );
       for (final role in GuardianRole.values.where(
         (r) => r != GuardianRole.viewer,
       )) {
         expect(
-          role.readOnlyReason,
+          guardianRoleReadOnlyReason(l10n, role),
           isNull,
           reason: '$role can log, so it has no read-only reason to show',
         );
@@ -2749,10 +3148,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
       await tester.pumpAndSettle();
 
-      // All 86 curated chips render — nothing is removed by the mode —
-      // plus the standalone spotting toggle (Issue #247) and the
-      // standalone PMS toggle (Issue #220), also FilterChips.
-      expect(find.byType(FilterChip), findsNWidgets(86 + 2));
+      // All curated chips render — nothing is removed by the mode — plus
+      // the standalone spotting toggle (Issue #247) and the standalone PMS
+      // toggle (Issue #220), also FilterChips.
+      expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2));
       for (final tag in kTagTaxonomy) {
         expect(
           find.text(tag.display),
@@ -3370,6 +3769,25 @@ void main() {
       );
     });
 
+    test(
+        'daySheetDateLabel forwards the Issue #226 date-format preference '
+        '(the sheet resolves it from SettingsKeys.dateFormat)', () {
+      final today = LocalDate(2026, 8, 30);
+      expect(
+        daySheetDateLabel(today, today,
+            preference: DateFormatPreference.monthDay),
+        'Today · Sun Aug 30',
+      );
+      expect(
+        daySheetDateLabel(LocalDate(2026, 3, 5), today,
+            preference: DateFormatPreference.monthDay),
+        'Thu Mar 5 2026',
+      );
+      // The default is the system order — the exact pre-#226 rendering.
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
+          'Thu 5 Mar 2026');
+    });
+
     testWidgets('keyboard inset: the note field and the pinned autosave area '
         'stay above the keyboard (B-12)', (tester) async {
       final h = await pumpLogging(tester);
@@ -3559,4 +3977,266 @@ void main() {
       await disposeLogging(tester, h);
     });
   });
+
+group('CategoryPicker integration (Issue #234)', () {
+  testWidgets('the search field filters the taxonomy grid in the real '
+      'day sheet', (tester) async {
+    final h = await pumpLogging(tester);
+
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('category-picker-search')),
+      'headache',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Headache'), findsOneWidget);
+    expect(find.text('Cramps'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('category-picker-search-clear')));
+    await tester.pumpAndSettle();
+    expect(find.text('Cramps'), findsOneWidget);
+    await dismissDaySheet(tester);
+    await disposeLogging(tester, h);
+  });
+
+  testWidgets('picking a tag seeds the Recent row, and it survives '
+      'reopening the sheet (device-local, per profile)', (tester) async {
+    final h = await pumpLogging(tester);
+
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+    await tester.pumpAndSettle();
+    expect(find.text('Recent'), findsNothing,
+        reason: 'nothing recorded yet for this profile');
+
+    // Acne (skin category): no other widget on the sheet ever renders its
+    // display string as a side effect of selection, unlike a pain code
+    // (which also grows an intensity-selector row labelled with its own
+    // display name once selected).
+    await tester.tap(find.text('Acne'));
+    await pumpAutosave(tester);
+    // Acne is now selected, so it does not also show in the Recent row on
+    // this same open (it already renders, selected, in Skin).
+    expect(find.text('Recent'), findsNothing);
+
+    await tester.tap(find.text('Acne'));
+    await pumpAutosave(tester);
+    await dismissDaySheet(tester);
+
+    // Reopen a different day: Acne is no longer selected there, so its
+    // Recent-row shortcut becomes visible.
+    await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-29')));
+    await tester.pumpAndSettle();
+    expect(find.text('Recent'), findsOneWidget);
+    expect(find.text('Acne'), findsNWidgets(2));
+
+    await tester.tap(find.text('Acne').first);
+    await pumpAutosave(tester);
+    final saved = await h.entries.find(h.profile.id, LocalDate(2026, 8, 29));
+    expect(saved!.tags, contains('acne'));
+
+    await dismissDaySheet(tester);
+    await disposeLogging(tester, h);
+  });
+});
+
+group('tracking preferences read path (Issue #259)', () {
+  final curatedDoc = TrackingPreferences({
+    'feelings': TrackingCategoryPreference(enabled: false, sortOrder: 0),
+    'pain': TrackingCategoryPreference(enabled: true, sortOrder: 1),
+  });
+
+  testWidgets('a disabled category is hidden from the picker and curated '
+      'order leads (AC2/AC3)', (tester) async {
+    final db = await pumpSheetWithPrefs(tester, trackingPreferences: curatedDoc);
+    addTearDown(db.close);
+
+    // Feelings is disabled: neither its heading nor any of its chips
+    // render.
+    expect(find.text('Feelings'), findsNothing);
+    expect(find.text('Irritable'), findsNothing);
+    expect(find.text('Anxious'), findsNothing);
+
+    // Everything else still renders, pain first (sort_order 1) ahead of
+    // the uncurated remainder.
+    final headers = sheetCategoryHeaders(tester);
+    expect(headers, isNot(contains('Mood')));
+    final taxonomyOrder = [
+      for (final category in TagCategory.values)
+        if (category != TagCategory.feelings)
+          careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+      // Issue #457: the standalone "Measurements" (BBT/weight) heading
+      // always renders last, after every curated/taxonomy category.
+      'Measurements',
+    ];
+    expect(headers.skip(2).toList(), taxonomyOrder,
+        reason: 'headers are [date, Flow, then the resolved categories]; '
+            'pain leads because the document curates it');
+    expect(headers[2], 'Pain');
+  });
+
+  testWidgets('an absent document renders the default order and every '
+      'category (the null case stays exactly the pre-#259 sheet)',
+      (tester) async {
+    final db = await pumpSheetWithPrefs(tester);
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final expected = [
+      for (final category in TagCategory.values)
+        careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+      // Issue #457: the standalone "Measurements" heading always renders
+      // last.
+      'Measurements',
+    ];
+    expect(headers.skip(2).toList(), expected);
+    // Derived, not hardcoded: the taxonomy grows as categories land
+    // (#251 added nine while this branch was in flight) — the sheet must
+    // render exactly one chip per curated option plus the two toggles.
+    expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2),
+        reason: 'every curated taxonomy option plus the spotting and PMS toggles');
+  });
+
+  testWidgets('a minor profile with an absent document never renders the '
+      'minor-hidden categories (AC4 client half, widget level)', (tester) async {
+    final db = await pumpSheetWithPrefs(tester, isMinor: true);
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final partyingLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+    final sexLifeLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.sexLife);
+    expect(headers, isNot(contains(partyingLabel)),
+        reason: 'partying defaults hidden on a minor profile');
+    expect(headers, isNot(contains(sexLifeLabel)),
+        reason: 'sex_life defaults hidden on a minor profile');
+    expect(
+        headers.skip(2).length,
+        TagCategory.values
+                .where((c) =>
+                    !kMinorDefaultHiddenTrackingCategories.contains(c.wireName))
+                .length +
+            // Issue #457: the standalone "Measurements" heading always
+            // renders, regardless of tracking-preference curation.
+            1,
+        reason: 'exactly the minor-hidden set is removed, plus the '
+            'standalone Measurements heading');
+  });
+
+  testWidgets('a minor profile with an explicit enable renders the '
+      'category (AC4 override end-to-end at the widget level)',
+      (tester) async {
+    final db = await pumpSheetWithPrefs(
+      tester,
+      isMinor: true,
+      trackingPreferences: TrackingPreferences.fromJsonText(
+          '{"partying": {"enabled": true, "sort_order": 0}}'),
+    );
+    addTearDown(db.close);
+
+    final headers = sheetCategoryHeaders(tester);
+    final partyingLabel =
+        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+    expect(headers, contains(partyingLabel),
+        reason: 'the stored explicit enable wins over the minor default');
+  });
+
+  testWidgets('already-logged tags in a disabled category are never '
+      'deleted: they round-trip through autosave untouched (AC3)',
+      (tester) async {
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final profilesRepo = DriftProfilesRepository(db.storage);
+    final entries = DriftDayEntriesRepository(db.storage);
+    final profile = await profilesRepo.create(displayName: 'A', isMinor: true);
+    final seeded = await entries.save(
+      entryFor(profile.id, kToday, flow: FlowLevel.none, tags: ['irritable']),
+    );
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          // The sheet's spotting toggle reads the observations repository
+          // whenever an existing entry is loaded (issue #247).
+          Provider<ObservationsRepository>.value(
+              value: DriftObservationsRepository(db.storage)),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: DaySheet(
+              repository: entries,
+              profileId: profile.id,
+              date: kToday,
+              today: kToday,
+              existing: seeded,
+              trackingPreferences: curatedDoc,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The hidden category's chip is not rendered ...
+    expect(find.text('Irritable'), findsNothing);
+    // ... but a visible edit still preserves the hidden tag.
+    await tester.tap(find.text('Headache'));
+    await pumpAutosave(tester);
+
+    final saved = await entries.find(profile.id, kToday);
+    expect(saved!.tags, unorderedEquals(['irritable', 'headache']),
+        reason: 'hiding a category never deletes or rewrites its data');
+  });
+});
 }
+
+/// Pumps the day sheet directly (no calendar shell) with an explicit
+/// preference document, the way AppShell would forward it from the
+/// profile (Issue #259 read path).
+Future<LunarLogDatabase> pumpSheetWithPrefs(
+  WidgetTester tester, {
+  TrackingPreferences? trackingPreferences,
+  bool isMinor = false,
+  DayEntry? existing,
+}) async {
+  final db = LunarLogDatabase(NativeDatabase.memory());
+  final entries = DriftDayEntriesRepository(db.storage);
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: DaySheet(
+          repository: entries,
+          profileId: 'p',
+          date: kToday,
+          today: kToday,
+          existing: existing,
+          trackingPreferences: trackingPreferences,
+          isMinor: isMinor,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return db;
+}
+
+/// The taxonomy category headings the sheet renders, in render order (the
+/// date title and the Flow heading come first; see `_editableBody`).
+List<String> sheetCategoryHeaders(WidgetTester tester) => tester
+    .widgetList<Semantics>(find.byWidgetPredicate(
+        (w) => w is Semantics && w.properties.header == true))
+    .map((s) {
+      final child = s.child;
+      return child is Text ? child.data ?? '' : '';
+    })
+    .where((label) => label.isNotEmpty)
+    .toList();
+
+

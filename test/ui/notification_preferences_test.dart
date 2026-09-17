@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/notification_preferences_failure_copy.dart';
 import 'package:lunarlog/ui/sharing/notification_preferences_screen.dart';
 
 import '../support/fake_notification_preferences_service.dart';
@@ -52,6 +55,30 @@ class _FailingOnceService implements NotificationPreferencesService {
   }
 }
 
+/// LLA-083 (issue #624): the *initial* watch fails once, then subsequent
+/// watches (a retry, or a reopened screen) delegate normally -- lets a test
+/// assert both the error state and that retrying actually recovers.
+class _WatchFailingOnceService implements NotificationPreferencesService {
+  _WatchFailingOnceService(this._delegate);
+  final FakeNotificationPreferencesService _delegate;
+  bool _failed = false;
+
+  @override
+  Stream<CaregiverAlertPreferences> watchFor(String profileId) {
+    if (!_failed) {
+      _failed = true;
+      return Stream<CaregiverAlertPreferences>.error(
+        const NotificationPreferencesFailure.network(),
+      );
+    }
+    return _delegate.watchFor(profileId);
+  }
+
+  @override
+  Future<void> save(String profileId, CaregiverAlertPreferences prefs) =>
+      _delegate.save(profileId, prefs);
+}
+
 class _TimeZoneFailingService implements NotificationPreferencesService {
   _TimeZoneFailingService(this._delegate, {this.failCount = 1});
   final FakeNotificationPreferencesService _delegate;
@@ -82,6 +109,8 @@ void main() {
       );
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -103,6 +132,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -128,6 +159,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -166,6 +199,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -192,6 +227,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -242,6 +279,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -262,10 +301,36 @@ void main() {
     expect(service.stored['profile-1']?.digestTimeMinutes, 8 * 60);
   });
 
+  testWidgets(
+      'issue #554: the digest time tile honours the device clock '
+      'convention instead of always rendering 12h', (tester) async {
+    final service = FakeNotificationPreferencesService();
+
+    await tester.pumpWidget(MaterialApp(
+      // Explicitly 24h -- proves the rendered text now actually depends
+      // on the ambient MediaQuery instead of the screen's old hand-rolled,
+      // always-12h formatter.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('digest-time-tile')));
+    expect(find.text('08:00'), findsOneWidget);
+  });
+
   testWidgets('setting a quiet-hours range persists both times; clearing persists nulls', (tester) async {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -300,6 +365,8 @@ void main() {
     final service = _FailingOnceService(FakeNotificationPreferencesService());
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -311,7 +378,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text(const NotificationPreferencesFailure.other().userFacingMessage),
+      find.text(notificationPreferencesFailureCopy(
+          AppLocalizationsEn(), const NotificationPreferencesFailure.other())),
       findsOneWidget,
     );
     // The screen is still interactive: toggling again succeeds (delegate).
@@ -321,6 +389,8 @@ void main() {
 
   testWidgets('the discretion copy is present on screen', (tester) async {
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: FakeNotificationPreferencesService(),
@@ -338,6 +408,8 @@ void main() {
     final service = _TimeZoneFailingService(delegate, failCount: 1);
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -382,6 +454,8 @@ void main() {
     final service = _TimeZoneFailingService(delegate, failCount: 99);
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: NotificationPreferencesScreen(
         profile: _profile(),
         preferencesService: service,
@@ -423,5 +497,36 @@ void main() {
     expect(find.byKey(const ValueKey('timezone-inline-error')), findsNothing);
     expect(delegate.stored['profile-1']?.timeZone, isNull);
     expect(delegate.stored['profile-1']?.quietHours, isNotNull);
+  });
+
+  testWidgets(
+      'an initial load failure shows a retryable error instead of spinning '
+      'forever (LLA-083, issue #624)', (tester) async {
+    final delegate = FakeNotificationPreferencesService()
+      ..seed('profile-1', const CaregiverAlertPreferences(alertOnLog: true));
+    final service = _WatchFailingOnceService(delegate);
+
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('load-error')), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const ValueKey('alert-on-log-toggle')), findsNothing);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('load-error')), findsNothing);
+    final alertOnLog = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('alert-on-log-toggle')),
+    );
+    expect(alertOnLog.value, isTrue);
   });
 }

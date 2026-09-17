@@ -1,7 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Issue #607 (LLA-027): both styles below used to parent off the framework
+  `@android:style/Theme.Light.NoTitleBar`. The pinned `local_auth` plugin's
+  own README ("Android theme" section) requires an AppCompat parent "to
+  prevent crashes on Android 8 and below" — minSdk is 26 (build.gradle.kts),
+  so API 26/27 devices are in scope. `NormalTheme` needs the same fix as
+  `LaunchTheme`, not just the one the README calls out by name: it is the
+  theme actually active on MainActivity once the splash frame has drawn, and
+  that is when the gate (lib/startup/gate/local_auth_gate.dart) calls
+  `authenticate()`. `Theme.AppCompat.Light.NoActionBar` keeps the light,
+  no-title-bar look the framework theme had; the night-mode file mirrors this
+  with the dark (non-`.Light`) variant. `androidx.appcompat:appcompat` is
+  declared in build.gradle.kts so these parents resolve at build time.
+-->
 <resources>
     <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <style name="LaunchTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
@@ -12,7 +26,7 @@
          running.
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <style name="NormalTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
 </resources>

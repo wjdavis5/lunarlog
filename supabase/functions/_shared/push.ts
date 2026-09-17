@@ -163,9 +163,22 @@ async function postToFcm(
   } catch {
     // Best-effort detail only.
   }
-  const isUnregistered = response.status === 404 ||
-    bodyText.includes("UNREGISTERED") ||
-    bodyText.includes("NOT_FOUND");
+  // Issue #526 (e): a bare `response.status === 404` used to be sufficient
+  // on its own to classify a send as `unregistered` -- but FCM HTTP v1
+  // returns 404 for *any* unresolvable request URL, including one built
+  // from a mistyped `FCM_PROJECT_ID` (an unvalidated env var interpolated
+  // straight into the endpoint, see push-dispatch/index.ts's buildDeps).
+  // That endpoint-level 404 carries no per-token detail at all -- it fails
+  // identically for every device on every send -- and classifying it as
+  // `unregistered` mass-disables every push_devices row the first time it
+  // fires. FCM's actual per-token "this token no longer exists" error
+  // always carries the literal `UNREGISTERED` errorCode string somewhere in
+  // its JSON body (either the shorthand `error.status` some responses use,
+  // or an `error.details[].errorCode` entry in the fuller FcmError shape);
+  // an endpoint-level 404 (bad project id, malformed URL) never does. Only
+  // that marker -- not the bare status code -- means the device's token
+  // itself is dead.
+  const isUnregistered = bodyText.includes("UNREGISTERED");
   if (isUnregistered) {
     return { ok: false, reason: "unregistered", detail: bodyText, status: response.status };
   }

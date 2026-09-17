@@ -9,19 +9,30 @@ select plan(54);
 select tests.create_supabase_user('user_a');
 select tests.create_supabase_user('user_b');
 
+-- Issue #201 revoked authenticated's direct insert/update grant on
+-- day_entries entirely (sync_push is the sole write path now); this file
+-- proves RLS/grant/CHECK boundaries on the table directly (not through
+-- sync_push), so each fixture write below runs as service_role for just
+-- that one statement (auth.uid() is untouched -- it reads
+-- request.jwt.claims, a separate session GUC from role -- so attribution
+-- and every RLS-visibility assertion around it are unaffected).
 select tests.authenticate_as('user_a');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
   values (tests.ulid(1), 'Alice', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, tags, note, updated_at)
   values (tests.ulid(2), tests.ulid(1), '2026-09-01', 'America/New_York', 'light', '["cramps"]', 'a-note', '2026-09-01T10:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (key, value) values ('theme', 'dark');
 select tests.clear_authentication();
 
 select tests.authenticate_as('user_b');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
   values (tests.ulid(11), 'Bob', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
   values (tests.ulid(12), tests.ulid(11), '2026-09-01', 'UTC', 'none', '2026-09-01T10:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (key, value) values ('lang', 'en');
 
 -- ---------------------------------------------------------------------------
@@ -47,8 +58,12 @@ select is((select count(*) from public.settings), 1::bigint, 'B sees only own se
 
 with u as (update public.profiles set display_name = 'pwned' where id = tests.ulid(1) returning 1)
   select is(count(*), 0::bigint, 'B updates zero of A''s profiles') from u;
-with u as (update public.day_entries set note = 'pwned' where id = tests.ulid(2) returning 1)
-  select is(count(*), 0::bigint, 'B updates zero of A''s day entries') from u;
+-- Issue #201: authenticated holds no UPDATE grant on day_entries at all any
+-- more, so this is now a hard 42501 at the grant layer rather than the
+-- previous "RLS silently filters the row to zero updated" shape.
+select throws_ok(
+  $$update public.day_entries set note = 'pwned' where id = tests.ulid(2)$$,
+  '42501', null, 'B updates zero of A''s day entries');
 with u as (update public.settings set value = 'pwned' where key = 'theme' returning 1)
   select is(count(*), 0::bigint, 'B updates zero of A''s settings') from u;
 
@@ -93,11 +108,17 @@ select throws_ok(
   $$insert into public.profiles (id, display_name, updated_at)
       values (tests.ulid(1), 'Bob two', now())$$,
   '23505', null, 'B cannot insert a profile whose id equals A''s profile ULID');
+-- Issue #201: authenticated has no INSERT grant on day_entries at all any
+-- more, so this proof of the day_entries_id_uq constraint needs to run as
+-- service_role to actually reach the unique index (otherwise it would hit
+-- the revoked grant first and get 42501, not 23505).
+select set_config('role', 'service_role', true);
 select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values (tests.ulid(2), tests.ulid(11), '2026-09-03', 'UTC', 'none', now())$$,
   '23505', null,
   'B cannot insert a day entry whose id equals A''s day-entry ULID (day_entries_id_uq, Issue #240)');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- Column-list UPDATE grant: user_id and server_version are not updatable
@@ -122,8 +143,13 @@ select throws_ok(
   '42501', 'permission denied for table settings', 'B cannot set settings.server_version');
 
 -- ---------------------------------------------------------------------------
--- CHECK constraints on direct writes
+-- CHECK constraints on direct writes. Issue #201: authenticated has no
+-- INSERT grant on day_entries at all any more, so the five day_entries
+-- CHECK proofs below run as service_role to actually reach their table
+-- CHECK constraints (otherwise they would hit the revoked grant first and
+-- get 42501, not 23514).
 -- ---------------------------------------------------------------------------
+select set_config('role', 'service_role', true);
 select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, note, updated_at)
       values (tests.ulid(31), tests.ulid(11), '2026-09-04', 'UTC', 'none', repeat('n', 2001), now())$$,
@@ -145,6 +171,7 @@ select throws_ok(
   $$insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
       values ('not-a-ulid', tests.ulid(11), '2026-09-04', 'UTC', 'none', now())$$,
   '23514', null, 'day entry id that is not a 26-char Crockford ULID is rejected');
+select set_config('role', 'authenticated', true);
 select throws_ok(
   $$insert into public.profiles (id, display_name, updated_at)
       values (tests.ulid(35), repeat('d', 81), now())$$,
@@ -259,6 +286,17 @@ select is((select count(*) from pg_policies
 -- same category (backs observations_tz_valid/day_entries_tz_valid; no table
 -- access, exception-safe, IMMUTABLE) and its migration deliberately does not
 -- revoke the default PUBLIC/anon grant either - see that migration's header.
+-- Issue #259 adds `is_valid_tracking_preferences(jsonb)` in the same
+-- category (backs profiles_tracking_preferences_check; no table access,
+-- IMMUTABLE, must stay executable by any writer for the CHECK to
+-- evaluate - revoking from PUBLIC would break every authenticated
+-- profile write). Issue #303 adds `is_valid_flow_level(text)` in the same
+-- category (backs the new flow_level domain's own CHECK, plus sync_push's
+-- and bulk_import_entries's validation; no table access, IMMUTABLE, must
+-- stay executable by any writer for the domain's CHECK to evaluate on an
+-- ordinary INSERT/UPDATE - revoking from PUBLIC would break every
+-- authenticated day_entries write, exactly like is_valid_tracking_preferences
+-- above).
 -- ---------------------------------------------------------------------------
 select is(
   (select count(*)
@@ -271,7 +309,8 @@ select is(
       -- each parameter's name and would never match a plain type-list literal.
       and p.oid::regprocedure::text
             not in ('is_valid_tags_array(jsonb)', 'merge_tag_arrays(jsonb,jsonb)',
-                    'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)')),
+                    'is_allowed_device_info(jsonb)', 'is_valid_timezone(text)',
+                    'is_valid_tracking_preferences(jsonb)', 'is_valid_flow_level(text)')),
   0::bigint,
   'anon holds no EXECUTE on any public function outside the documented pure-helper allow-list');
 

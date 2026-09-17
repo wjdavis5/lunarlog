@@ -11,6 +11,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:provider/provider.dart';
 
 /// True once a ticket has at least one reply (a reply is the only thing
@@ -91,10 +93,16 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
         await _settings?.set(SettingsKeys.feedbackLastSeenAt, newest.toUtc().toIso8601String());
       }
     } on FeedbackFailure catch (failure) {
-      if (mounted) setState(() => _error = failure.userFacingMessage);
+      if (mounted) {
+        setState(() =>
+            _error = feedbackFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog feedback: support history load failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = const FeedbackFailure.other().userFacingMessage);
+      if (mounted) {
+        setState(() => _error = feedbackFailureCopy(
+            AppLocalizations.of(context), const FeedbackFailure.other()));
+      }
     }
   }
 
@@ -220,6 +228,13 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
               key: ValueKey('support-history-reply-field-${ticket.id}'),
               controller: controller,
               enabled: !sending,
+              // #165: the ticket's only text field — "send" is the
+              // platform convention for a chat-style reply, and its
+              // handler is the Send button's own.
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) {
+                if (!sending) unawaited(_sendReply(ticket));
+              },
               decoration: const InputDecoration(labelText: 'Reply'),
             ),
             Align(

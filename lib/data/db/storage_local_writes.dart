@@ -43,6 +43,34 @@ DateTime _afterStored(DateTime next, DateTime stored) {
   return n.isAfter(s) ? n : s.add(const Duration(milliseconds: 1));
 }
 
+/// The `unitsUnconfirmed` write for a profile update (Issue #637,
+/// LLA-039 review round 2): [upsertProfile]'s update branch is a
+/// full-row write, so [bbtUnit]/[weightUnit] arrive on every call —
+/// including an edit to some unrelated field that merely carries
+/// [existing]'s own (possibly still-unconfirmed, still-default) value
+/// through unchanged. Clearing the marker unconditionally there would
+/// silently confirm a value nobody actually touched, letting that
+/// unrelated edit push the stale default over the server's real
+/// preference — the exact LLA-039 clobber, just reached through a
+/// different edit. Cleared only when the write actually changes
+/// [existing]'s stored value; otherwise left untouched
+/// (`Value.absent()`) so a genuinely unconfirmed row stays protected
+/// until something really sets it.
+Value<bool?> _unitsUnconfirmedWrite(
+  Profile existing,
+  String bbtUnit,
+  String weightUnit,
+) =>
+    (bbtUnit != existing.bbtUnit || weightUnit != existing.weightUnit)
+        ? const Value(false)
+        : const Value.absent();
+
+/// The `pmsUnconfirmed` write for a day-entry update ([_writeDayEntry]'s
+/// update branch) — the same reasoning as [_unitsUnconfirmedWrite], for
+/// [pms] against [live]'s own stored value.
+Value<bool?> _pmsUnconfirmedWrite(DayEntry live, bool pms) =>
+    pms != live.pms ? const Value(false) : const Value.absent();
+
 void _validateDisplayName(String displayName) {
   if (displayName.length > kMaxDisplayNameLength) {
     throw ArgumentError.value(displayName.length, 'displayName',
@@ -67,6 +95,90 @@ void _validateTags(List<String> tags) {
       throw ArgumentError.value(tag.length, 'tags',
           'must be at most $kMaxTagLength characters');
     }
+  }
+}
+
+/// Issue #649 (CRAP-gate split): the document-level half of
+/// [_validateTrackingPreferences] — the client-only entry-count bound that
+/// mirrors nothing server-side (`kMaxTrackingPreferencesEntries`).
+void _checkEntryCount(Map<String, dynamic> decoded) {
+  if (decoded.length > kMaxTrackingPreferencesEntries) {
+    throw ArgumentError.value(decoded.length, 'jsonText',
+        'tracking preferences must have at most $kMaxTrackingPreferencesEntries entries');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// key-length rule (`key = '' or length(key) > 64`).
+void _checkKey(String key) {
+  if (key.isEmpty || key.length > kMaxTrackingPreferencesKeyLength) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference keys must be 1-$kMaxTrackingPreferencesKeyLength characters');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `jsonb_typeof(value) <> 'object'` and unknown-key checks.
+void _checkEntryShape(String key, Object? value) {
+  if (value is! Map) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference "$key" must be an object');
+  }
+  for (final entryKey in value.keys) {
+    if (entryKey != 'enabled' && entryKey != 'sort_order') {
+      throw ArgumentError.value(key, 'jsonText',
+          'tracking preference "$key" carries an unknown key "$entryKey"');
+    }
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `jsonb_typeof(value -> 'enabled') is distinct from 'boolean'` check.
+/// [value] is already known to be a [Map] — [_checkEntryShape] ran first.
+void _checkEnabled(String key, Map value) {
+  if (value['enabled'] is! bool) {
+    throw ArgumentError.value(key, 'jsonText',
+        'tracking preference "$key" must have a boolean "enabled"');
+  }
+}
+
+/// Issue #649 (CRAP-gate split): mirrors `is_valid_tracking_preferences`'s
+/// `sort_order` regex/upper-bound checks (non-negative integer, <= 1000).
+/// [value] is already known to be a [Map] — [_checkEntryShape] ran first.
+void _checkSortOrder(String key, Map value) {
+  final sortOrder = value['sort_order'];
+  if (sortOrder is! int ||
+      sortOrder < kMinTrackingPreferencesSortOrder ||
+      sortOrder > kMaxTrackingPreferencesSortOrder) {
+    throw ArgumentError.value(
+        key,
+        'jsonText',
+        'tracking preference "$key" must have an integer "sort_order" in '
+        '[$kMinTrackingPreferencesSortOrder, $kMaxTrackingPreferencesSortOrder]');
+  }
+}
+
+/// Issue #649: mirrors `is_valid_tracking_preferences`
+/// (`profiles_tracking_preferences_check`,
+/// `supabase/migrations/20260915000000_profile_tracking_preferences.sql`)
+/// exactly, plus the client-only entry-count bound that CHECK does not
+/// (yet) enforce (`kMaxTrackingPreferencesEntries`). [decoded] is the
+/// already-JSON-decoded document (an object — the caller has already
+/// handled the null/empty-text "clear" case before this runs). A document
+/// that would fail the server's CHECK is rejected here first, so it never
+/// stores locally, goes dirty, and wedges the profile's sync row on every
+/// push thereafter. Pure orchestration (CRAP-gate split): each rule lives
+/// in its own small `_checkX` helper above.
+void _validateTrackingPreferences(Map<String, dynamic> decoded) {
+  _checkEntryCount(decoded);
+  for (final mapEntry in decoded.entries) {
+    final key = mapEntry.key;
+    _checkKey(key);
+    final value = mapEntry.value;
+    _checkEntryShape(key, value);
+    final entry = value as Map;
+    _checkEnabled(key, entry);
+    _checkSortOrder(key, entry);
   }
 }
 
@@ -145,6 +257,7 @@ _DayEntryProvenance _resolvedProvenanceForUpdate({
 void _validateObservation({
   required String category,
   String? code,
+  double? valueNum,
   String? valueText,
   String? unit,
   String? sourceId,
@@ -156,6 +269,16 @@ void _validateObservation({
         'must be 1-$kMaxObservationCategoryLength characters');
   }
   _boundedOrThrow(code, kMaxObservationCodeLength, 'code');
+  // Issue #140 review, LLA-092: a NaN/Infinity value_num persists cleanly
+  // here (sqlite has no numeric-range CHECK to catch it) and only fails
+  // much later and far away, when `row_codec.dart`'s `encodeObservation`
+  // tries to `jsonEncode` it for an unrelated sync push -- rejecting it at
+  // the write boundary means a bad value can never reach storage in the
+  // first place, from any writer (import, a future manual entry path, or
+  // this store's own bulk seam), not only the one caught at parse time.
+  if (valueNum != null && !valueNum.isFinite) {
+    throw ArgumentError.value(valueNum, 'valueNum', 'must be a finite number');
+  }
   _boundedOrThrow(valueText, kMaxObservationValueTextLength, 'valueText');
   _boundedOrThrow(unit, kMaxObservationUnitLength, 'unit');
   _boundedOrThrow(sourceId, kMaxObservationSourceIdLength, 'sourceId');
@@ -173,11 +296,13 @@ void _validateObservation({
 /// the same shape with a `^\d{4}-\d{2}-\d{2}$` check in `sync_push`).
 void _validateProfileModePayload({
   String? modeStartedOn,
+  String? estimatedDueDate,
   String? birthControlMethod,
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
 }) {
   if (modeStartedOn != null) _validateLocalDate(modeStartedOn);
+  if (estimatedDueDate != null) _validateLocalDate(estimatedDueDate);
   _boundedOrThrow(
       birthControlMethod, kMaxBirthControlMethodLength, 'birthControlMethod');
   if (birthControlStartedOn != null) _validateLocalDate(birthControlStartedOn);
@@ -201,6 +326,17 @@ void _validateCareNoteBody(String body) {
 /// max-only shape as [_validateCareNoteBody]).
 void _validateVisitPrepItemBody(String body) {
   _boundedOrThrow(body, kMaxVisitPrepItemLength, 'body');
+}
+
+/// Issue #257: mirrors `profile_tag_registry_code_length_check` — both the
+/// min (a code is required; unlike a note body, an empty identifier could
+/// never resolve) and the max (the same 64-char ceiling every tag-code
+/// element carries).
+void _validateRegistryCode(String code) {
+  if (code.isEmpty || code.length > kMaxTagLength) {
+    throw ArgumentError.value(code.length, 'code',
+        'must be 1..$kMaxTagLength characters');
+  }
 }
 
 /// Input payload for atomically upserting an observation alongside a day entry
@@ -277,11 +413,26 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// plain ints, stored as supplied and synced like any other profile
   /// column — the prediction domain's `CycleFacts.canSeed` is the gate on
   /// which values can seed an estimate, not this method.
+  /// [bbtUnit] and [weightUnit] (Issue #255) are the raw `toDb()` strings
+  /// of the per-profile display-unit preferences, same treatment as
+  /// [mode]: presentation-only, synced like any other profile column.
+  /// They are display preferences only — never a storage unit (each
+  /// `observations` row carries its own `unit`).
+  ///
+  /// [trackingPreferences] (Issue #259) is the raw JSON text of the
+  /// `{category: {enabled, sort_order}}` document
+  /// (`TrackingPreferences.toJsonText`); null means never customized.
+  /// Carried on every full-row write so an unrelated edit never clears
+  /// the shared copy (the same full-row-overwrite discipline as
+  /// [DriftProfilesRepository]'s update path documents).
   Future<Profile> upsertProfile({
     String? id,
     required String displayName,
     required bool isMinor,
     String mode = 'standard',
+    String bbtUnit = 'celsius',
+    String weightUnit = 'kg',
+    String? trackingPreferences,
     int sortOrder = 0,
     DateTime? archivedAt,
     DateTime? createdAt,
@@ -314,6 +465,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               dirty: const Value(true),
               localRev: const Value(1),
               mode: Value(mode),
+              bbtUnit: Value(bbtUnit),
+              weightUnit: Value(weightUnit),
+              // Issue #637, LLA-039: this call is the caller's real,
+              // explicit value for bbtUnit/weightUnit (never a stale
+              // upgrade-era default), so the row is confirmed from the
+              // moment it exists.
+              unitsUnconfirmed: const Value(false),
+              trackingPreferences: Value(trackingPreferences),
               birthYear: Value(birthYear),
               relationship: Value(relationship),
               lastPeriodStart: Value(lastPeriodStart),
@@ -334,6 +493,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
           mode: Value(mode),
+          bbtUnit: Value(bbtUnit),
+          weightUnit: Value(weightUnit),
+          unitsUnconfirmed:
+              _unitsUnconfirmedWrite(existing, bbtUnit, weightUnit),
+          trackingPreferences: Value(trackingPreferences),
           birthYear: Value(birthYear),
           relationship: Value(relationship),
           lastPeriodStart: Value(lastPeriodStart),
@@ -342,6 +506,62 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         ),
       );
       return _profileById(rowId);
+    });
+  }
+
+  /// Writes (or clears) the profile's tracking-preferences document
+  /// (Issue #259): [jsonText] is the raw JSON text [TrackingPreferences]
+  /// produces, or null to clear back to "never customized" (which resolves
+  /// identically to an empty document). This is the column's *only*
+  /// dedicated write path — everything else about the row is untouched —
+  /// so curating the day sheet never restamps or clobbers any other
+  /// profile metadata. Marks the row dirty and bumps `local_rev` (the
+  /// document syncs to co-guardians, AC1/AC6); stamps `updated_at`
+  /// strictly after the stored value like every local write. No-op when
+  /// the row is not held locally or is tombstoned (curating a deleted
+  /// profile is meaningless). Throws [ArgumentError] when [jsonText] is
+  /// not null and not a JSON object, or when it fails
+  /// [_validateTrackingPreferences] (Issue #649: mirrors the server's
+  /// `profiles_tracking_preferences_check`/`is_valid_tracking_preferences`
+  /// exactly — per-entry boolean `enabled`, integer `sort_order` in
+  /// [0, 1000], 1-64 char keys, no extra keys — plus a client-only
+  /// entry-count bound that CHECK does not enforce). A document that
+  /// would fail the server's CHECK is rejected here first, so it never
+  /// stores locally, goes dirty, and wedges the profile's entire sync row
+  /// on every push. A null [jsonText] is stored as the
+  /// explicitly empty document `'{}'`: a clear must be non-null to survive
+  /// the codec's emit-only-when-non-null rule and actually propagate.
+  Future<Profile?> setTrackingPreferences(
+    String profileId,
+    String? jsonText,
+  ) async {
+    jsonText ??= '{}';
+    final String stored = jsonText;
+    if (jsonText.isNotEmpty) {
+      final Object? decoded;
+      try {
+        decoded = jsonDecode(jsonText);
+      } on FormatException {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be valid JSON');
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw ArgumentError.value(jsonText, 'jsonText',
+            'tracking preferences must be a JSON object');
+      }
+      _validateTrackingPreferences(decoded);
+    }
+    return db.transaction(() async {
+      final existing = await _profileOrNull(profileId);
+      if (existing == null || existing.deletedAt != null) return null;
+      await (db.update(db.profiles)..where((t) => t.id.equals(profileId)))
+          .write(ProfilesCompanion(
+        trackingPreferences: Value(stored),
+        updatedAt: Value(_afterStored(_now(), existing.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileById(profileId);
     });
   }
 
@@ -489,6 +709,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       _validateObservation(
         category: obs.category,
         code: obs.code,
+        valueNum: obs.valueNum,
         valueText: obs.valueText,
         unit: obs.unit,
         sourceId: obs.sourceId,
@@ -581,6 +802,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               tags: Value(tags),
               note: Value(note),
               pms: Value(pms),
+              // Issue #637, LLA-039: this call is the caller's real,
+              // explicit value for pms (never a stale upgrade-era
+              // default), so the row is confirmed from the moment it
+              // exists.
+              pmsUnconfirmed: const Value(false),
               updatedAt: now,
               dirty: const Value(true),
               localRev: const Value(1),
@@ -613,6 +839,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           tags: Value(tags),
           note: Value(note),
           pms: Value(pms),
+          pmsUnconfirmed: _pmsUnconfirmedWrite(live, pms),
           updatedAt: Value(_afterStored(now, live.updatedAt)),
           deletedAt: const Value(null),
           dirty: const Value(true),
@@ -673,15 +900,34 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     if (entries.isEmpty && observations.isEmpty) return [];
     return db.transaction(() async {
       final written = <DayEntry>[];
+      // Issue #140 review, LLA-044: incoming entry id -> the id it was
+      // actually persisted under. Populated only when [_writeBulkDayEntry]'s
+      // own local-parent fallback fires (an incoming id matching no stored
+      // row, but a LIVE row already at (profileId, localDate) -- that live
+      // row's id is reused instead) -- an entry written under its own id
+      // never needs remapping.
+      final parentIdRemap = <String, String>{};
       for (final entry in entries) {
-        written.add(await _writeBulkDayEntry(entry));
+        final row = await _writeBulkDayEntry(entry);
+        if (row.id != entry.id) parentIdRemap[entry.id] = row.id;
+        written.add(row);
       }
       for (final observation in observations) {
+        // Issue #140 review, LLA-044: an observation's dayEntryId is
+        // whatever the CALLER'S batch called its parent by -- remap it onto
+        // the parent's actually-persisted id (above) before writing, or the
+        // FK below would point at a row that was never inserted (the
+        // fallback path wrote under a different, pre-existing row's id
+        // instead) and this write would fail. A dayEntryId this batch never
+        // remapped belongs to an entry outside it (already stored), so it
+        // is used as-is.
+        final dayEntryId =
+            parentIdRemap[observation.dayEntryId] ?? observation.dayEntryId;
         // [_validateBulkObservation] already rejected a null/empty
         // category above, so this `!` never fails here.
         await _writeObservation(
           id: observation.id,
-          dayEntryId: observation.dayEntryId,
+          dayEntryId: dayEntryId,
           profileId: observation.profileId,
           localDate: observation.localDate,
           observedAt: observation.observedAt,
@@ -722,6 +968,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateObservation(
       category: observation.category ?? '',
       code: observation.code,
+      valueNum: observation.valueNum,
       valueText: observation.valueText,
       unit: observation.unit,
       sourceId: observation.sourceId,
@@ -778,6 +1025,10 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           // tombstone carries no payload (the server's
           // day_entries_tombstone_pms_check is the structural backstop).
           pms: const Value(false),
+          // Issue #637, LLA-039: this write sets pms to a real,
+          // deliberate value (the tombstone rule), not a stale
+          // upgrade-era default.
+          pmsUnconfirmed: const Value(false),
           updatedAt: Value(at),
           deletedAt: Value(at),
           dirty: const Value(true),
@@ -858,6 +1109,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateObservation(
       category: category,
       code: code,
+      valueNum: valueNum,
       valueText: valueText,
       unit: unit,
       sourceId: sourceId,
@@ -1029,6 +1281,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String profileId,
     required String mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
     String? birthControlStartedOn,
     String? birthControlStoppedOn,
@@ -1038,6 +1291,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     // Async so validation failures surface as failed futures.
     _validateProfileModePayload(
       modeStartedOn: modeStartedOn,
+      estimatedDueDate: estimatedDueDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: birthControlStartedOn,
       birthControlStoppedOn: birthControlStoppedOn,
@@ -1050,6 +1304,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               profileId: profileId,
               mode: Value(mode),
               modeStartedOn: Value(modeStartedOn),
+              estimatedDueDate: Value(estimatedDueDate),
               birthControlMethod: Value(birthControlMethod),
               birthControlStartedOn: Value(birthControlStartedOn),
               birthControlStoppedOn: Value(birthControlStoppedOn),
@@ -1065,6 +1320,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           .write(ProfileModesCompanion(
         mode: Value(mode),
         modeStartedOn: Value(modeStartedOn),
+        estimatedDueDate: Value(estimatedDueDate),
         birthControlMethod: Value(birthControlMethod),
         birthControlStartedOn: Value(birthControlStartedOn),
         birthControlStoppedOn: Value(birthControlStoppedOn),
@@ -1371,6 +1627,104 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  // ------------------------------------------------- profile tag registry
+
+  /// Issue #257: creates or updates a registry row keyed by [id] (a fresh
+  /// ULID is generated when omitted). [code] is immutable on update — a
+  /// rename rewrites [displayName] only, so stored day-entry references
+  /// keep resolving. Throws [ArgumentError] for a [code] outside
+  /// 1..[kMaxTagLength] or a [displayName] over
+  /// [kMaxCustomTagLabelLength] (the server CHECKs' mirrors). [hiddenAt]
+  /// is the retirement write: setting it removes the code from the
+  /// day-sheet picker while stored rows keep rendering; passing null on a
+  /// retired row un-retires it. Marks the row dirty and bumps `local_rev`.
+  Future<ProfileTagRegistryEntry> upsertProfileTagRegistryEntry({
+    String? id,
+    required String profileId,
+    required String code,
+    required String displayName,
+    String category = kCustomTagCategory,
+    bool intensityEnabled = false,
+    DateTime? hiddenAt,
+    int? sortOrder,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateRegistryCode(code);
+    _boundedOrThrow(displayName, kMaxCustomTagLabelLength, 'displayName');
+    _boundedOrThrow(category, kMaxTagLength, 'category');
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      ProfileTagRegistryEntry? existing;
+      if (id != null) existing = await _profileTagRegistryOrNull(id);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.profileTagRegistry)
+            .insert(ProfileTagRegistryCompanion.insert(
+          id: rowId,
+          profileId: profileId,
+          code: code,
+          displayName: displayName,
+          category: category,
+          intensityEnabled: Value(intensityEnabled),
+          hiddenAt: Value(hiddenAt),
+          sortOrder: Value(sortOrder),
+          createdAt: now,
+          updatedAt: now,
+          dirty: const Value(true),
+          localRev: const Value(1),
+        ));
+        return _profileTagRegistryById(rowId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.profileTagRegistry)
+            ..where((t) => t.id.equals(rowId)))
+          .write(ProfileTagRegistryCompanion(
+        displayName: Value(displayName),
+        category: Value(category),
+        intensityEnabled: Value(intensityEnabled),
+        hiddenAt: Value(hiddenAt),
+        sortOrder: Value(sortOrder),
+        updatedAt: Value(_afterStored(now, existing.updatedAt)),
+        deletedAt: const Value(null),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return _profileTagRegistryById(rowId);
+    });
+  }
+
+  /// Issue #257: RETIRES a registry row — sets `hidden_at` and nothing
+  /// else. Retirement removes the code from the day-sheet picker while
+  /// every stored row referencing it keeps rendering; it never deletes
+  /// anything. Returns false when [id] is unknown or already tombstoned.
+  Future<bool> retireProfileTagRegistryEntry(String id) async {
+    return db.transaction(() async {
+      final existing = await _profileTagRegistryOrNull(id);
+      if (existing == null || existing.deletedAt != null) return false;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.profileTagRegistry)
+            ..where((t) => t.id.equals(id)))
+          .write(ProfileTagRegistryCompanion(
+        hiddenAt: Value(at),
+        updatedAt: Value(at),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ));
+      return true;
+    });
+  }
+
+  /// Registry row by id (Issue #257), tombstones included — the local
+  /// write path's own read-back.
+  Future<ProfileTagRegistryEntry> _profileTagRegistryById(String id) async {
+    final row = await _profileTagRegistryOrNull(id);
+    if (row == null) {
+      throw StateError('profile_tag_registry row $id missing after write');
+    }
+    return row;
+  }
+
   // ------------------------------------------------------------- app settings
 
   /// Device-local key-value state. Not part of the sync model (open design
@@ -1396,6 +1750,22 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  /// Issue #130: dismisses one merge notice on THIS device only — the
+  /// event id joins the profile's device-local dismissal list and the day
+  /// sheet stops showing it. Never synced and never a tombstone: the
+  /// server row stays until its 30-day retention purge, so another
+  /// guardian (or this guardian's other device) keeps their notice.
+  Future<void> dismissDayEntryMergeEvent({
+    required String profileId,
+    required String eventId,
+  }) async {
+    final key = mergeNoticeDismissalsKey(profileId);
+    final stored = await getSetting(key);
+    final dismissed = appendMergeNoticeDismissal(
+        decodeMergeNoticeDismissals(stored), eventId);
+    await setSetting(key: key, value: encodeMergeNoticeDismissals(dismissed));
+  }
+
   /// Clears `dirty` on the row [id] of [table] only when its `local_rev`
   /// still equals [localRevAtPush] (the value read when the push was
   /// assembled). Returns whether the flag was cleared; `false` means a
@@ -1406,51 +1776,197 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String id,
     required int localRevAtPush,
   }) async {
-    final int changed;
-    switch (table) {
-      case SyncTable.profiles:
-        changed = await (db.update(db.profiles)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ProfilesCompanion(dirty: Value(false)));
-      case SyncTable.dayEntries:
-        changed = await (db.update(db.dayEntries)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const DayEntriesCompanion(dirty: Value(false)));
-      case SyncTable.observations:
-        changed = await (db.update(db.observations)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ObservationsCompanion(dirty: Value(false)));
-      case SyncTable.profileModes:
-        changed = await (db.update(db.profileModes)
-              ..where((t) =>
-                  t.profileId.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const ProfileModesCompanion(dirty: Value(false)));
-      case SyncTable.cycleOverrides:
-        // The table's key is composite (id, profile_id), but ids are
-        // client-generated ULIDs — globally unique in practice — so the id
-        // alone identifies at most one row; matching on it keeps
-        // [markPushed]'s table-agnostic signature.
-        changed = await (db.update(db.cycleOverrides)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const CycleOverridesCompanion(dirty: Value(false)));
-      case SyncTable.careNotes:
-        changed = await (db.update(db.careNotes)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const CareNotesCompanion(dirty: Value(false)));
-      case SyncTable.visitPrepItems:
-        changed = await (db.update(db.visitPrepItems)
-              ..where((t) =>
-                  t.id.equals(id) & t.localRev.equals(localRevAtPush)))
-            .write(const VisitPrepItemsCompanion(dirty: Value(false)));
-      case SyncTable.profileGuardians:
-        changed = 0;
-    }
+    // Issue #257: the eleventh SyncTable pushed this switch past the CRAP
+    // gate's complexity ceiling (eleven arms — and like the batched path
+    // before it at the tenth table, the two pull-only arms were unreachable
+    // behind [_neverPushed] by construction), so the single-row path now
+    // delegates to the same [_pushWriteTarget] map [markPushedBatch] uses:
+    // one shared table/key/rev lookup, one shared chunk writer, the same
+    // AE11 (id, local_rev-at-push) predicate either way. cycleOverrides'
+    // composite-key note carried forward: ids are client-generated ULIDs —
+    // globally unique in practice — so the id alone identifies at most one
+    // row on every table here.
+    final target = _pushWriteTarget(table);
+    if (target == null) return false;
+    final changed = await _markPushedChunk(target, [
+      (id: id, localRevAtPush: localRevAtPush),
+    ]);
     return changed > 0;
+  }
+
+  /// Issue #42: [markPushed] for a whole push batch's accepted rows in
+  /// batched UPDATE statements — one statement per [kSyncBatchChunkSize]
+  /// rows per table, instead of one statement per row (up to
+  /// [PushBatch.maxRows] autocommit-by-autocommit UPDATEs per push batch
+  /// before this; the single `db.transaction()` around them is issue #523's
+  /// `applyPushResult`, which is also this method's only caller). The
+  /// `local_rev` guard is preserved exactly: every chunked statement OR-folds
+  /// the same per-row `key = ? AND local_rev = ?` predicate [markPushed]
+  /// uses, so a row whose local revision changed while the push was in
+  /// flight still matches no predicate and stays dirty (AE11) — its next
+  /// push re-sends it. Returns how many rows were cleared.
+  Future<int> markPushedBatch(
+    List<({SyncTable table, String id, int localRevAtPush})> items,
+  ) async {
+    final byTable = <SyncTable, List<({String id, int localRevAtPush})>>{};
+    for (final item in items) {
+      byTable.putIfAbsent(item.table, () => []).add((
+        id: item.id,
+        localRevAtPush: item.localRevAtPush,
+      ));
+    }
+    var cleared = 0;
+    for (final entry in byTable.entries) {
+      final target = _pushWriteTarget(entry.key);
+      // profileGuardians / deletedProfiles never push: nothing to clear,
+      // matching [markPushed]'s own no-op cases.
+      if (target == null) continue;
+      for (final chunk in chunkedBy(entry.value, kSyncBatchChunkSize)) {
+        cleared += await _markPushedChunk(target, chunk);
+      }
+    }
+    return cleared;
+  }
+
+  /// The drift table (and its key/revision column names, read off the typed
+  /// schema so a rename cannot drift) one batched markPushed chunk writes
+  /// for [table], or `null` for the two pull-only tables that never push.
+  ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})?
+  _pushWriteTarget(SyncTable table) {
+    if (_neverPushed(table)) return null;
+    return _pushedTableTargets[table]!();
+  }
+
+  /// The pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles], and Issue #170's
+  /// [SyncTable.dayEntryHistory]): nothing is ever pushed for them, so
+  /// there is no `dirty` flag for [markPushedBatch] to clear — the same
+  /// no-op cases [markPushed] carries.
+  static bool _neverPushed(SyncTable table) => switch (table) {
+    SyncTable.profileGuardians ||
+    SyncTable.deletedProfiles ||
+    SyncTable.dayEntryHistory => true,
+    _ => false,
+  };
+
+  /// [_pushWriteTarget]'s per-table targets — a map rather than an
+  /// exhaustive switch since Issue #130's tenth SyncTable: the switch's
+  /// pull-only arm was unreachable behind [_neverPushed] by construction
+  /// (uncoverable, and with ten arms the method sat at the CRAP gate's
+  /// complexity ceiling with no coverage headroom at all), while a lookup
+  /// stays flat as tables are added — the same growth rationale as
+  /// storage_remote_apply.dart's `_pageRowAppliers` and the sync
+  /// engine's `_startingCursors`. The pull-only tables simply carry no
+  /// entry; the `!` on the lookup preserves the old unreachable arm's
+  /// fail-loud intent should the [_neverPushed] guard ever be bypassed.
+  late final Map<
+      SyncTable,
+      ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+          Function()> _pushedTableTargets = {
+    SyncTable.profiles: () => (
+      table: db.profiles,
+      keyColumn: db.profiles.id.$name,
+      revColumn: db.profiles.localRev.$name,
+    ),
+    SyncTable.dayEntries: () => (
+      table: db.dayEntries,
+      keyColumn: db.dayEntries.id.$name,
+      revColumn: db.dayEntries.localRev.$name,
+    ),
+    SyncTable.observations: () => (
+      table: db.observations,
+      keyColumn: db.observations.id.$name,
+      revColumn: db.observations.localRev.$name,
+    ),
+    SyncTable.profileModes: () => (
+      table: db.profileModes,
+      keyColumn: db.profileModes.profileId.$name,
+      revColumn: db.profileModes.localRev.$name,
+    ),
+    SyncTable.cycleOverrides: () => (
+      table: db.cycleOverrides,
+      keyColumn: db.cycleOverrides.id.$name,
+      revColumn: db.cycleOverrides.localRev.$name,
+    ),
+    SyncTable.careNotes: () => (
+      table: db.careNotes,
+      keyColumn: db.careNotes.id.$name,
+      revColumn: db.careNotes.localRev.$name,
+    ),
+    SyncTable.visitPrepItems: () => (
+      table: db.visitPrepItems,
+      keyColumn: db.visitPrepItems.id.$name,
+      revColumn: db.visitPrepItems.localRev.$name,
+    ),
+    // Issue #130: merge events push like every other synced table
+    // (dirty rows ride the batch; [markPushed]'s own switch above clears
+    // them the same way).
+    SyncTable.dayEntryMergeEvents: () => (
+      table: db.dayEntryMergeEvents,
+      keyColumn: db.dayEntryMergeEvents.id.$name,
+      revColumn: db.dayEntryMergeEvents.localRev.$name,
+    ),
+    // Issue #257: registry rows push like every other synced table
+    // (dirty rows ride the batch; [markPushed]'s own switch above clears
+    // them the same way).
+    SyncTable.profileTagRegistry: () => (
+      table: db.profileTagRegistry,
+      keyColumn: db.profileTagRegistry.id.$name,
+      revColumn: db.profileTagRegistry.localRev.$name,
+    ),
+  };
+
+  /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
+  /// OR ...` statement covering [chunk] rows of [target] — semantically the
+  /// per-row [markPushed] UPDATEs it replaces, folded into one statement.
+  Future<int> _markPushedChunk(
+    ({TableInfo<Table, dynamic> table, String keyColumn, String revColumn})
+    target,
+    List<({String id, int localRevAtPush})> chunk,
+  ) {
+    final predicates = [
+      for (final _ in chunk)
+        '(${target.keyColumn} = ? AND ${target.revColumn} = ?)',
+    ].join(' OR ');
+    return db.customUpdate(
+      'UPDATE ${target.table.actualTableName} SET dirty = 0 WHERE '
+      '$predicates',
+      variables: [
+        for (final item in chunk) ...[
+          Variable(item.id),
+          Variable(item.localRevAtPush),
+        ],
+      ],
+      updates: {target.table},
+    );
+  }
+
+  /// Issue #568: bumps `local_rev` on the row [id] of [table] and marks it
+  /// dirty again — the retry affordance for a row the server rejected. A
+  /// pure no-op write as far as content goes: no payload column changes,
+  /// only the row's push eligibility (a rejected row is otherwise held out
+  /// of every push until `local_rev` changes for an unrelated reason — see
+  /// `SupabaseSyncApply.pushable`). Issue #257: the eleventh SyncTable
+  /// pushed the per-table switch past the CRAP gate's complexity ceiling,
+  /// so this writes through the same [_pushWriteTarget] map
+  /// [markPushed]/[markPushedBatch] use — one raw UPDATE over the map's
+  /// table and key column (the identical statement every arm wrote), with
+  /// the pull-only tables ([SyncTable.profileGuardians],
+  /// [SyncTable.deletedProfiles]) still a no-op ([_pushWriteTarget]
+  /// answers null for them; nothing ever rejects a pull-only row anyway).
+  Future<void> bumpLocalRevForRetry({
+    required SyncTable table,
+    required String id,
+  }) async {
+    final target = _pushWriteTarget(table);
+    if (target == null) return;
+    await db.customUpdate(
+      'UPDATE ${target.table.actualTableName} '
+      'SET dirty = 1, local_rev = local_rev + 1 '
+      'WHERE ${target.keyColumn} = ?',
+      variables: [Variable.withString(id)],
+      updates: {target.table},
+    );
   }
 
   /// Flags every row, live and tombstoned, in every synced table for push
@@ -1485,7 +2001,102 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             dirty: const Constant(true),
             localRev: db.visitPrepItems.localRev + const Constant(1),
           ));
+      await db.update(db.dayEntryMergeEvents)
+          .write(DayEntryMergeEventsCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
+          ));
+      await db.update(db.profileTagRegistry)
+          .write(ProfileTagRegistryCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.profileTagRegistry.localRev + const Constant(1),
+          ));
     });
+  }
+
+  /// Issue #641 LLA-042: a dirty row whose `updated_at` is in the future (a
+  /// client clock far ahead) is rejected by the server (`updated_at > now() +
+  /// 5 minutes`), and because [_afterStored] refuses to move a timestamp
+  /// backward, it stays permanently unsyncable until wall-clock time catches
+  /// up — even after the client learns its clock is fast and corrects it
+  /// (editing the row still picks the stored future time + 1ms). Rebase every
+  /// dirty row whose `updated_at` exceeds [serverNow] + 5 minutes (the
+  /// server's own rejection ceiling) to [serverNow] and bump `local_rev`, so
+  /// the row becomes pushable again (the bump also clears any in-memory
+  /// rejection keyed on the old rev) and, once accepted, wins LWW against
+  /// anything genuinely older. Returns how many rows were rebased. Idempotent
+  /// and cheap when nothing is future-stamped — the predicate matches only
+  /// rows the server would reject.
+  Future<int> rebaseFutureStampedRows({required DateTime serverNow}) async {
+    final threshold = serverNow.toUtc().add(const Duration(minutes: 5));
+    var rebased = 0;
+    await db.transaction(() async {
+      rebased += await (db.update(db.profiles)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfilesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profiles.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.dayEntries)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(DayEntriesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.dayEntries.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.observations)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ObservationsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.observations.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.profileModes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfileModesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profileModes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.cycleOverrides)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(CycleOverridesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.cycleOverrides.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.careNotes)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(CareNotesCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.careNotes.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.visitPrepItems)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(VisitPrepItemsCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.visitPrepItems.localRev + const Constant(1),
+          ));
+      rebased += await (db.update(db.profileTagRegistry)
+            ..where((t) =>
+                t.dirty.equals(true) &
+                t.updatedAt.isBiggerThanValue(threshold)))
+          .write(ProfileTagRegistryCompanion.custom(
+            updatedAt: Constant(serverNow.toUtc()),
+            localRev: db.profileTagRegistry.localRev + const Constant(1),
+          ));
+    });
+    return rebased;
   }
 
   /// Replaces the `sync_state` singleton (the id is forced to 1).
@@ -1495,4 +2106,125 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         .insertOnConflictUpdate(state.copyWith(id: 1).toCompanion(false));
   }
 
+  /// Upserts the device-local `health_sync_state` anchor for its platform
+  /// (Issue #186 — never synced to the server; keyed by `platform`).
+  Future<void> writeHealthSyncAnchor(HealthSyncStateRow anchor) async {
+    await db
+        .into(db.healthSyncState)
+        .insertOnConflictUpdate(anchor.toCompanion(false));
+  }
+
+  /// Sweeps tombstoned rows older than [retentionHorizon] (or [olderThan] if
+  /// specified) whose `dirty` flag is false (Issue #203).
+  ///
+  /// Deletes are performed in referential integrity order (child tables before
+  /// parents). Only clean (already synced or never dirty) tombstones are removed;
+  /// rows pending upload are never swept.
+  /// Returns the total number of swept rows.
+  Future<int> sweepTombstones({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) async {
+    final cutoff = olderThan ?? _now().subtract(retentionHorizon);
+    return await db.transaction(() async {
+      var swept = 0;
+
+      // 1. Observations (references day_entries and profiles)
+      swept += await (db.delete(db.observations)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 2. Visit prep items (references profiles)
+      swept += await (db.delete(db.visitPrepItems)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 3. Care notes (references profiles)
+      swept += await (db.delete(db.careNotes)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 4. Cycle overrides (references profiles)
+      swept += await (db.delete(db.cycleOverrides)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 4b. Profile tag registry (references profiles) — Issue #257.
+      swept += await (db.delete(db.profileTagRegistry)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff)))
+          .go();
+
+      // 5. Day entries (references profiles, referenced by observations)
+      // Only delete day entries that are no longer referenced by any remaining observations.
+      final referencedDayEntryIds = db.selectOnly(db.observations)
+        ..addColumns([db.observations.dayEntryId])
+        ..where(db.observations.dayEntryId.isNotNull());
+
+      swept += await (db.delete(db.dayEntries)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff) &
+                t.id.isNotInQuery(referencedDayEntryIds)))
+          .go();
+
+      // 6. Profiles (root table)
+      // Only delete profiles if no child records remain referencing them.
+      final refObs = db.selectOnly(db.observations)..addColumns([db.observations.profileId]);
+      final refDays = db.selectOnly(db.dayEntries)..addColumns([db.dayEntries.profileId]);
+      final refGuardians = db.selectOnly(db.profileGuardians)..addColumns([db.profileGuardians.profileId]);
+      final refModes = db.selectOnly(db.profileModes)..addColumns([db.profileModes.profileId]);
+      final refOverrides = db.selectOnly(db.cycleOverrides)..addColumns([db.cycleOverrides.profileId]);
+      final refNotes = db.selectOnly(db.careNotes)..addColumns([db.careNotes.profileId]);
+      final refPrep = db.selectOnly(db.visitPrepItems)..addColumns([db.visitPrepItems.profileId]);
+      final refRegistry = db.selectOnly(db.profileTagRegistry)
+        ..addColumns([db.profileTagRegistry.profileId]);
+
+      swept += await (db.delete(db.profiles)
+            ..where((t) =>
+                t.deletedAt.isNotNull() &
+                t.dirty.equals(false) &
+                t.deletedAt.isSmallerOrEqualValue(cutoff) &
+                t.id.isNotInQuery(refObs) &
+                t.id.isNotInQuery(refDays) &
+                t.id.isNotInQuery(refGuardians) &
+                t.id.isNotInQuery(refModes) &
+                t.id.isNotInQuery(refOverrides) &
+                t.id.isNotInQuery(refNotes) &
+                t.id.isNotInQuery(refPrep) &
+                t.id.isNotInQuery(refRegistry)))
+          .go();
+
+      return swept;
+    });
+  }
+
+  /// Runs periodic maintenance: sweeps tombstones and reclaims unused storage
+  /// space via VACUUM (Issue #203).
+  Future<int> runMaintenance({
+    Duration retentionHorizon = kTombstoneRetentionHorizon,
+    DateTime? olderThan,
+  }) async {
+    final swept = await sweepTombstones(
+      retentionHorizon: retentionHorizon,
+      olderThan: olderThan,
+    );
+    await db.vacuum();
+    return swept;
+  }
 }

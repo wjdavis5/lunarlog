@@ -12,11 +12,15 @@
 -- transaction; a guardian revocation kills the connection too; Realtime
 -- publication revert), and the recipient's total isolation from raw data
 -- (no profile_guardians row, no day_entries/profiles visibility, no
--- direct write on either new table, token_hash unreadable).
+-- direct write on either new table, token_hash unreadable), and (Issue
+-- #462, section 11) the recipient's own `leave_prediction_connection` path
+-- -- only the accepted recipient may call it, a non-party (sharer
+-- included) is refused, an unknown id raises not found, and it reaches the
+-- identical terminal state and projection GC as a sharer revoke.
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(102);
+select plan(147);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -56,6 +60,26 @@ create function pg_temp.proj_count() returns bigint
 language sql security definer set search_path = ''
 as $$ select count(*) from public.prediction_projections $$;
 
+-- Issue #518 coverage (section 6c below) needs a PER-PROFILE count -
+-- prediction_projections carries no client SELECT grant at all (the only
+-- read path is get_prediction_projection()), so a raw `select count(*)`
+-- as an authenticated test user fails with permission denied.
+create function pg_temp.proj_count_for(p_profile_id text) returns bigint
+language sql security definer set search_path = ''
+as $$ select count(*) from public.prediction_projections where profile_id = p_profile_id $$;
+create function pg_temp.insert_stale_projection(p_profile_id text, p_by uuid) returns void
+language sql security definer set search_path = ''
+as $$
+  insert into public.prediction_projections (profile_id, projection, published_by)
+  values (p_profile_id, '{"generated_at":"2026-09-07"}'::jsonb, p_by)
+$$;
+create function pg_temp.conn_revoked_for(p_profile_id text, p_recipient uuid) returns timestamptz
+language sql security definer set search_path = ''
+as $$
+  select revoked_at from public.prediction_connections
+   where profile_id = p_profile_id and recipient_user_id = p_recipient
+$$;
+
 
 -- ---------------------------------------------------------------------------
 -- Setup: Profile P1 = Mom's, with accepted co_parent (dad), caregiver
@@ -89,6 +113,11 @@ insert into public.profiles (id, display_name, is_minor, sort_order, created_at,
 values (tests.ulid(902), 'Other Adult', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select tests.authenticate_as('mom');
+-- Issue #201: authenticated no longer holds insert/update on day_entries at
+-- all - this fixture insert runs as service_role instead (auth.uid() is
+-- unaffected, since that reads request.jwt.claims, a separate session GUC
+-- from role).
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, user_id, profile_id, local_date, tz, flow, tags, note, updated_at)
 values (
@@ -96,6 +125,7 @@ values (
   tests.get_supabase_uid('mom'), tests.ulid(901), '2026-09-01', 'America/New_York',
   'medium', '["cramps"]'::jsonb, 'a private note',
   '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- 1. Schema shape: RLS, policies, grants, indexes, triggers.
@@ -416,6 +446,45 @@ select is(
   '{"generated_at":"2026-09-07","period_days":["2026-09-09","2026-09-10"],"fertile_days":["2026-09-21","2026-09-22"],"ovulation_days":["2026-09-22"],"pms_days":["2026-09-02","2026-09-03"]}'::jsonb,
   'the recipient reads back exactly the derived phases (the RPC return shape is the AC''s inspection surface)');
 
+-- Issue #593: confidence_tier joined the allowlist as an optional,
+-- nullable, enum-checked key
+-- (20260915140000_prediction_projection_confidence_tier.sql).
+select throws_ok(
+  format($$select public.upsert_prediction_projection(%L,
+    '{"generated_at":"2026-09-07","confidence_tier":"guessing"}'::jsonb)$$,
+    tests.ulid(901)),
+  '22023', null,
+  'confidence_tier must be one of the known confidence tiers');
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  jsonb_build_object(
+    'generated_at', '2026-09-07',
+    'period_days', jsonb_build_array('2026-09-09', '2026-09-10'),
+    'fertile_days', jsonb_build_array('2026-09-21', '2026-09-22'),
+    'ovulation_days', jsonb_build_array('2026-09-22'),
+    'pms_days', jsonb_build_array('2026-09-02', '2026-09-03'),
+    'confidence_tier', 'learning'));
+select is(
+  public.get_prediction_projection(tests.ulid(901)) ->> 'confidence_tier',
+  'learning',
+  'confidence_tier round-trips through the recipient read path once published');
+
+-- An older snapshot -- the exact 5-key payload published before #593 --
+-- still validates and reads back, with confidence_tier simply absent
+-- (never null, never rejected).
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  jsonb_build_object(
+    'generated_at', '2026-09-07',
+    'period_days', jsonb_build_array('2026-09-09', '2026-09-10'),
+    'fertile_days', jsonb_build_array('2026-09-21', '2026-09-22'),
+    'ovulation_days', jsonb_build_array('2026-09-22'),
+    'pms_days', jsonb_build_array('2026-09-02', '2026-09-03')));
+select is(
+  public.get_prediction_projection(tests.ulid(901)) ? 'confidence_tier',
+  false,
+  'an older, pre-#593-shaped snapshot still validates, with confidence_tier simply absent from the read-back');
+
 select tests.authenticate_as('dad');
 select is(
   public.get_prediction_projection(tests.ulid(901)) ->> 'generated_at',
@@ -543,22 +612,29 @@ select ok(
   'clearing the minor flag re-opens creation');
 
 -- The flag can change between arming and redemption: accept re-checks.
+-- Issue #518: setting is_minor=true directly would now ALSO trip the
+-- profiles_minor_prediction_revocation_guard trigger and immediately
+-- revoke this connection - which would make accept fail with "revoked"
+-- rather than exercising accept's OWN minor-gate re-check at all. Using
+-- birth_year here instead isolates that re-check: a birth_year-implied
+-- minority does not touch is_minor, so the trigger does not fire, and the
+-- connection survives untouched for the "cleared" case below to redeem.
 select tests.clear_authentication();
-update public.profiles set is_minor = true where id = tests.ulid(901);
+update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(901);
 select tests.authenticate_as('stranger');
 select throws_ok(
   format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(291)),
   '55000', 'prediction-only sharing is unavailable for a minor''s profile',
-  'accepting is refused once the profile is marked a minor');
+  'Issue #518: accepting is refused once the profile is a minor by birth_year, without touching is_minor');
 
 select tests.clear_authentication();
-update public.profiles set is_minor = false where id = tests.ulid(901);
+update public.profiles set birth_year = null where id = tests.ulid(901);
 select tests.authenticate_as('stranger');
 insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(291));
 select is(
   (select v ->> 'profile_id' from r where name = 'accept_minor_lifted'),
   tests.ulid(901),
-  'the same, not-yet-consumed code redeems once the minor flag is cleared');
+  'the same, not-yet-consumed code redeems once the birth_year-implied minority is cleared (connection was never revoked)');
 
 -- Reset: leave P1 with no live connection, as section 7 expects.
 select tests.authenticate_as('mom');
@@ -569,6 +645,181 @@ select is(
         and recipient_user_id = tests.get_supabase_uid('stranger')
         and revoked_at is null)),
   true, 'the section-6b connection is revoked to reset the fixture');
+
+-- ---------------------------------------------------------------------------
+-- 6c. Issue #518: the minor gate is durable (upsert/get re-check it, and
+--     a birth_year-implied age counts even with is_minor unchecked), and
+--     revocation is immediate (a BEFORE UPDATE trigger fires the instant
+--     is_minor flips true, not on the next publish/read). A fresh profile
+--     (P5) isolates this section from P1/P2's own state.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(905), 'Riley P5', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(tests.ulid(905), pg_temp.token(590), 'Partner', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(590));
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-07"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  1::bigint,
+  'fixture: a normal publish stores a projection while the profile is not a minor'
+);
+
+select tests.authenticate_as('nanny');
+select isnt(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'fixture: the recipient can read the published projection before the profile becomes a minor'
+);
+
+-- The moment is_minor flips true, the trigger revokes the live connection
+-- and clears the stored projection - zero window.
+select tests.authenticate_as('mom');
+update public.profiles set is_minor = true where id = tests.ulid(905);
+select isnt(
+  pg_temp.conn_revoked_for(tests.ulid(905), tests.get_supabase_uid('nanny')),
+  null,
+  'Issue #518: is_minor flipping true immediately revokes the live connection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: is_minor flipping true immediately clears the stored projection'
+);
+
+-- The read gate independently refuses even if a stale projection somehow
+-- still exists (defense in depth, not relying solely on the trigger above).
+select pg_temp.insert_stale_projection(tests.ulid(905), tests.get_supabase_uid('mom'));
+select is(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'Issue #518: get_prediction_projection refuses a minor''s profile even if a stale row exists (guardian read)'
+);
+
+-- The publish gate independently clears a stale row and refuses to store
+-- a new one for a minor's profile.
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-08"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: upsert_prediction_projection clears any stale row and stores nothing for a minor''s profile'
+);
+
+-- Un-mark the minor flag and re-arm for the birth_year case (a fresh
+-- connection: the previous one was revoked above and cannot be reused).
+update public.profiles set is_minor = false where id = tests.ulid(905);
+select public.create_prediction_connection(tests.ulid(905), pg_temp.token(591), 'Partner2', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(591));
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-09"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  1::bigint,
+  'fixture: a fresh publish succeeds again once is_minor is cleared'
+);
+
+-- Issue #518: birth_year-derived age <= 18 counts as minor too, even with
+-- is_minor unchecked - matching health_sync_binding.dart's own formula.
+update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(905);
+select tests.authenticate_as('nanny');
+select is(
+  public.get_prediction_projection(tests.ulid(905)),
+  null,
+  'Issue #518: a birth_year-implied age <= 18 refuses a read even with is_minor unchecked'
+);
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(905), '{"generated_at":"2026-09-10"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(905)),
+  0::bigint,
+  'Issue #518: a birth_year-implied age <= 18 clears any stored projection on publish too'
+);
+select throws_ok(
+  format($$select public.create_prediction_connection(%L, %L, null, 72)$$,
+    tests.ulid(905), pg_temp.token(592)),
+  '55000', 'prediction-only sharing is unavailable for a minor''s profile',
+  'Issue #518: create_prediction_connection also refuses a birth_year-implied minor'
+);
+
+-- ---------------------------------------------------------------------------
+-- 6d. Issue LLA-061: retract_prediction_projection lets a client
+--     explicitly clear a stored snapshot the moment its local prediction
+--     moves to a suppressed state (Pregnancy/Postpartum/Perimenopause, a
+--     continuous birth-control method, or predictions turned off) --
+--     none of which the server can detect on its own, since the
+--     prediction algorithm is never recomputed server-side. A fresh
+--     profile (P6) isolates this section from P1/P2/P5's own state.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(906), 'Riley P6', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(tests.ulid(906), pg_temp.token(593), 'Partner', 72);
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(593));
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(906), '{"generated_at":"2026-09-11"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  1::bigint,
+  'fixture: a normal publish stores a projection for the retraction section'
+);
+
+-- An outsider with no guardian relationship on this profile is refused
+-- outright by the guardian-role check (SECURITY DEFINER raises rather
+-- than a plain RLS-filtered delete silently affecting zero rows).
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  '42501', 'only an accepted guardian of this profile can retract its prediction projection',
+  'Issue LLA-061: a non-guardian cannot retract another profile''s projection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  1::bigint,
+  'Issue LLA-061: the refused retraction leaves the stored projection intact'
+);
+
+-- The recipient itself -- not a guardian -- is refused the same way.
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  '42501', 'only an accepted guardian of this profile can retract its prediction projection',
+  'Issue LLA-061: the recipient cannot retract the projection it reads'
+);
+
+-- The sharer (an accepted guardian) can retract it.
+select tests.authenticate_as('mom');
+select lives_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  'Issue LLA-061: an accepted guardian can retract the profile''s stored projection'
+);
+select is(
+  pg_temp.proj_count_for(tests.ulid(906)),
+  0::bigint,
+  'Issue LLA-061: retract_prediction_projection deletes the stored row'
+);
+
+-- Idempotent: retracting an already-absent projection is a no-op.
+select lives_ok(
+  format($$select public.retract_prediction_projection(%L)$$, tests.ulid(906)),
+  'Issue LLA-061: retracting an already-absent projection does not raise'
+);
+
+-- The recipient's read confirms the retraction took effect -- the same
+-- enumeration-safe null the minor/no-connection gates already return.
+select tests.authenticate_as('nanny');
+select is(
+  public.get_prediction_projection(tests.ulid(906)),
+  null,
+  'Issue LLA-061: the recipient reads null once the projection is retracted, exactly like an unpublished profile'
+);
 
 -- ---------------------------------------------------------------------------
 -- 7. Pregnancy mode: refused at create AND at accept (life-stage mode,
@@ -678,6 +929,76 @@ select is(
   null, 'the guardian-revoked recipient has no residual access');
 
 -- ---------------------------------------------------------------------------
+-- 8b. Residual access: an ownership transfer revokes active prediction
+--     connections and pending invites (Issue #496).
+-- ---------------------------------------------------------------------------
+-- 1. Active connection revocation upon transfer:
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(403), 'Partner', 72)
+    is not null,
+  'a fresh prediction connection arms for the ownership-transfer test');
+select tests.authenticate_as('stranger');
+insert into r select 'accept_403', public.accept_prediction_connection(pg_temp.token(403));
+select is(
+  (select v ->> 'profile_id' from r where name = 'accept_403'),
+  tests.ulid(901),
+  'the connection activates');
+
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(
+  tests.ulid(901),
+  '{"generated_at":"2026-09-08","period_days":["2026-09-10"]}'::jsonb);
+select is(
+  pg_temp.proj_count(),
+  1::bigint, 'the snapshot is published for the active connection');
+
+select ok(
+  public.create_ownership_transfer(tests.ulid(901), 'co_parent', pg_temp.token(410)) is not null,
+  'Mom arms ownership transfer to Dad');
+
+select tests.authenticate_as('dad');
+select ok(
+  public.accept_ownership_transfer(pg_temp.token(410)) is not null,
+  'Dad accepts ownership transfer');
+
+select is(
+  pg_temp.conn_revoked(pg_temp.token(403)),
+  true, 'Issue #496: ownership transfer revoked active prediction connection');
+select is(
+  pg_temp.proj_count(),
+  0::bigint, 'Issue #496: and deleted the snapshot in the same transaction');
+select tests.authenticate_as('stranger');
+select is(
+  public.get_prediction_projection(tests.ulid(901)),
+  null, 'Issue #496: recipient has no residual projection access');
+
+-- 2. Pending unaccepted invite revocation upon transfer:
+select tests.authenticate_as('dad');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(404), 'Nanny', 72) is not null,
+  'Dad arms pending prediction connection');
+
+select ok(
+  public.create_ownership_transfer(tests.ulid(901), 'co_parent', pg_temp.token(411)) is not null,
+  'Dad arms ownership transfer back to Mom');
+
+select tests.authenticate_as('mom');
+select ok(
+  public.accept_ownership_transfer(pg_temp.token(411)) is not null,
+  'Mom accepts ownership transfer back');
+
+select is(
+  pg_temp.conn_revoked(pg_temp.token(404)),
+  true, 'Issue #496: pending prediction invite was revoked by ownership transfer');
+
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(404)),
+  '55000', null,
+  'Issue #496: accepting revoked pending prediction connection is refused');
+
+-- ---------------------------------------------------------------------------
 -- 9. Realtime: reconcile_realtime_publication reverts a Studio toggle on
 --    the new tables (they must never cross the websocket).
 -- ---------------------------------------------------------------------------
@@ -719,6 +1040,10 @@ select throws_ok(
   '42501', 'authentication required',
   'revoke requires a session');
 select throws_ok(
+  format($$select public.leave_prediction_connection('00000000-0000-0000-0000-000000000000'::uuid)$$),
+  '42501', 'authentication required',
+  'leave requires a session');
+select throws_ok(
   format($$select public.upsert_prediction_projection(%L, '{"generated_at":"2026-09-07"}'::jsonb)$$,
     tests.ulid(901)),
   '42501', 'authentication required',
@@ -727,6 +1052,93 @@ select throws_ok(
   format($$select public.get_prediction_projection(%L)$$, tests.ulid(901)),
   '42501', 'authentication required',
   'read requires a session');
+
+-- ---------------------------------------------------------------------------
+-- 11. Issue #462: leave_prediction_connection -- the recipient's own end.
+--     A fresh profile (P903, dad's) isolates this section from P1/P2/P5/
+--     P6's own state; 'nanny' is a fixture user already created above, free
+--     by this point since section 8's revoked-connection scenario for her
+--     is long since settled.
+-- ---------------------------------------------------------------------------
+select tests.clear_authentication();
+select tests.authenticate_as('dad');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(903), 'Leave Fixture', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select public.create_prediction_connection(
+  tests.ulid(903), pg_temp.token(601), 'Nanny', 72);
+
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(601));
+
+insert into r select 'conn_601_id',
+  jsonb_build_object('id',
+    (select id::text from public.prediction_connections
+      where profile_id = tests.ulid(903)
+        and recipient_user_id = tests.get_supabase_uid('nanny')));
+
+-- A real published snapshot, so the GC assertion below actually proves
+-- something got deleted rather than observing an already-empty table.
+select tests.authenticate_as('dad');
+select public.upsert_prediction_projection(
+  tests.ulid(903), '{"generated_at":"2026-09-07","period_days":["2026-09-07"]}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(903)),
+  1::bigint, 'fixture: a projection is published before leave');
+
+select tests.authenticate_as('stranger');
+select throws_ok(
+  format($$select public.leave_prediction_connection(%L::uuid)$$,
+    (select v ->> 'id' from r where name = 'conn_601_id')),
+  '42501', 'only the connection''s recipient can leave it',
+  'a non-party cannot leave the connection');
+
+select tests.authenticate_as('dad');
+select throws_ok(
+  format($$select public.leave_prediction_connection(%L::uuid)$$,
+    (select v ->> 'id' from r where name = 'conn_601_id')),
+  '42501', 'only the connection''s recipient can leave it',
+  'the sharer cannot end the connection via leave_prediction_connection');
+
+select tests.authenticate_as('nanny');
+select throws_ok(
+  format($$select public.leave_prediction_connection('00000000-0000-0000-0000-000000000000'::uuid)$$),
+  'P0002', 'prediction connection not found',
+  'an unknown connection id raises not found');
+
+-- From here on, every leave_prediction_connection call reuses the id
+-- captured in r BEFORE revocation, rather than re-querying
+-- prediction_connections by (profile_id, recipient_user_id): the SELECT
+-- policy's recipient branch requires `revoked_at is null`, so once the
+-- connection is revoked, nanny's own RLS-scoped view of it disappears --
+-- exactly like the row vanishing from her Shared-with-me list client-side
+-- (`listIncomingConnections`'s own `recipient_user_id = uid` filter
+-- reflects the identical policy). Re-querying that way past this point
+-- would silently resolve to null and mask what's actually being proven.
+select is(
+  public.leave_prediction_connection(
+    (select v ->> 'id' from r where name = 'conn_601_id')::uuid),
+  true, 'the recipient can leave the connection');
+select is(
+  pg_temp.conn_revoked(pg_temp.token(601)),
+  true, 'leaving stamps revoked_at');
+select is(
+  pg_temp.proj_count_for(tests.ulid(903)),
+  0::bigint, 'leaving deleted the profile''s published snapshot (same GC trigger as revoke)');
+select is(
+  public.get_prediction_projection(tests.ulid(903)),
+  null, 'the ex-recipient''s own next fetch already returns null');
+
+select tests.authenticate_as('dad');
+select is(
+  public.get_prediction_projection(tests.ulid(903)),
+  null, 'the sharer sees no live projection either -- nothing survives the leave');
+
+select tests.authenticate_as('nanny');
+select is(
+  public.leave_prediction_connection(
+    (select v ->> 'id' from r where name = 'conn_601_id')::uuid),
+  true, 'leaving is idempotent on an already-revoked connection');
 
 rollback;
 

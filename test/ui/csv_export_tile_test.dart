@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/export/csv_export_writer.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -21,12 +22,20 @@ import 'package:provider/provider.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
 
-Profile _profile(String id, {String displayName = 'Riley', DateTime? archivedAt}) =>
+Profile _profile(
+  String id, {
+  String displayName = 'Riley',
+  DateTime? archivedAt,
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
+}) =>
     Profile(
       id: id,
       displayName: displayName,
       isMinor: false,
       archivedAt: archivedAt,
+      bbtUnit: bbtUnit,
+      weightUnit: weightUnit,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 1),
     );
@@ -68,10 +77,41 @@ class FakeProfilesRepository implements ProfilesRepository {
 
 class FakeDayEntriesRepository implements DayEntriesRepository {
   Map<String, List<DayEntry>> entriesByProfile = const {};
+  final Map<String, StreamController<bool>> _hasEntriesControllers = {};
 
   @override
   Future<List<DayEntry>> listForProfile(String profileId) async =>
       entriesByProfile[profileId] ?? const [];
+
+  @override
+  Future<bool> hasAnyEntries(String profileId) async =>
+      (entriesByProfile[profileId] ?? const []).isNotEmpty;
+
+  /// Reactive counterpart of [hasAnyEntries] (issue #642, LLA-010),
+  /// independently controllable via [setHasEntries] so a test can push a
+  /// change without a real write path — the same bounded, per-profile
+  /// existence stream `EntryExistenceWatchMixin` observes.
+  @override
+  Stream<bool> watchHasAnyEntries(String profileId) async* {
+    yield (entriesByProfile[profileId] ?? const []).isNotEmpty;
+    yield* _controllerFor(profileId).stream;
+  }
+
+  /// Pushes a new existence value for [profileId] — LLA-010's own seam:
+  /// changes entry existence with no corresponding `profiles` stream tick,
+  /// the exact case the pre-#642 tile derived `hasEntries` from and so
+  /// missed.
+  void setHasEntries(String profileId, bool value) {
+    entriesByProfile = {
+      ...entriesByProfile,
+      profileId: value ? [_entry('e-$profileId', profileId)] : const [],
+    };
+    _controllerFor(profileId).add(value);
+  }
+
+  StreamController<bool> _controllerFor(String profileId) =>
+      _hasEntriesControllers.putIfAbsent(
+          profileId, () => StreamController<bool>.broadcast());
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -230,6 +270,67 @@ void main() {
       await tester.pumpAndSettle();
       expect(key('csv-export-tile'), findsOneWidget);
     });
+
+    testWidgets(
+        'entry existence is its own bounded stream, independent of the '
+        'profiles stream ticking, and the tile stays reactive across an '
+        'IndexedStack tab switch (issue #642, LLA-010)', (tester) async {
+      final profiles = FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final dayEntries = FakeDayEntriesRepository();
+      final activeIndex = ValueNotifier<int>(0);
+      addTearDown(profiles.dispose);
+      addTearDown(activeIndex.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MultiProvider(
+            providers: [
+              Provider<ProfilesRepository>.value(value: profiles),
+              Provider<DayEntriesRepository>.value(value: dayEntries),
+              Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
+              Provider<SettingsStore>.value(value: FakeSettingsStore()),
+            ],
+            child: Scaffold(
+              // A real IndexedStack, mirroring the app shell's own retained
+              // tabs (`lib/ui/components/app_shell.dart`): every child stays
+              // mounted regardless of which index is showing.
+              body: ValueListenableBuilder<int>(
+                valueListenable: activeIndex,
+                builder: (context, index, _) => IndexedStack(
+                  index: index,
+                  children: const [
+                    CsvExportTile(),
+                    SizedBox.shrink(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isFalse);
+
+      // Switch away and back through the IndexedStack — CsvExportTile's
+      // State stays mounted the whole time (never rebuilt from scratch).
+      activeIndex.value = 1;
+      await tester.pump();
+      activeIndex.value = 0;
+      await tester.pump();
+
+      // Zero -> one, with no `profiles` stream re-emission at all — only
+      // the bounded per-profile existence stream. The pre-#642 tile
+      // derived `hasEntries` solely from a `profiles` tick and would have
+      // stayed disabled here.
+      dayEntries.setHasEntries('p1', true);
+      await tester.pump();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isTrue);
+
+      // One -> zero, the same way.
+      dayEntries.setHasEntries('p1', false);
+      await tester.pump();
+      expect(tester.widget<ListTile>(key('csv-export-tile')).enabled, isFalse);
+    });
   });
 
   group('export flow', () {
@@ -258,8 +359,59 @@ void main() {
 
       expect(capturedCycles, contains('cycle_number,start_date,end_date'));
       expect(capturedCycles, contains('1,2026-04-01'));
-      expect(capturedDailyLog, contains('date,flow,pms,tags,pain_intensity,spotting,notes,bbt,weight'));
-      expect(capturedDailyLog, contains('2026-04-01,medium,false,,,false,,,'));
+      expect(capturedDailyLog,
+          contains('date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit'));
+      expect(capturedDailyLog, contains('2026-04-01,medium,false,,,false,,,,,'));
+    });
+
+    testWidgets(
+        "the profile's own display-unit preference reaches the CSV builder "
+        '(Issue #612, LLA-093): a pound-display profile normalizes a '
+        'kilogram-logged weight row into pounds', (tester) async {
+      String? capturedDailyLog;
+
+      final profiles = FakeProfilesRepository([
+        _profile('p1', displayName: 'Riley', weightUnit: WeightUnit.lb),
+      ]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {
+          'p1': [_entry('e1', 'p1', date: LocalDate(2026, 4, 1))],
+        };
+      final observations = FakeObservationsRepository()
+        ..observationsByProfile = {
+          'p1': [
+            Observation(
+              id: 'o1',
+              dayEntryId: 'e1',
+              profileId: 'p1',
+              localDate: LocalDate(2026, 4, 1),
+              tz: 'UTC',
+              category: 'weight',
+              valueNum: 61.0, // ~134.5 lb
+              unit: 'kg',
+              updatedAt: DateTime.utc(2026, 4, 1),
+            ),
+          ],
+        };
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          capturedDailyLog = dailyLogCsv;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      final lines = capturedDailyLog!.split('\r\n');
+      final fields = lines[1].split(',');
+      // bbt, bbt_unit, weight, weight_unit are the last four columns.
+      expect(double.parse(fields[9]), closeTo(134.5, 0.1));
+      expect(fields[10], 'lb');
     });
 
     testWidgets('single profile: uses CsvExportWriter when no collaborator injected', (tester) async {

@@ -78,7 +78,11 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
         // Issue #362: live invitations keep the current count badge; when
         // only expired invitations remain, render a visually distinct
         // error-colored badge so an aged-out invite reads as expired.
-        final live = invites.where((i) => !i.isExpired).toList();
+        // Issue #304: one wall-clock read per build, passed into
+        // `isExpiredAt` -- `lib/domain` no longer reads `DateTime.now()`
+        // itself.
+        final now = DateTime.now().toUtc();
+        final live = invites.where((i) => !i.isExpiredAt(now)).toList();
         if (live.isNotEmpty) {
           return Tooltip(
             message: live.length == 1
@@ -90,7 +94,7 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
             ),
           );
         }
-        final expired = invites.where((i) => i.isExpired).toList();
+        final expired = invites.where((i) => i.isExpiredAt(now)).toList();
         return Tooltip(
           message: expired.length == 1
               ? '1 invitation expired'

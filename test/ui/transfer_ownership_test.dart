@@ -6,11 +6,16 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/transfer_ownership_screen.dart';
+import 'package:provider/provider.dart';
 
+import '../support/fake_auth_service.dart';
 import 'sharing_flow_test.dart' show FakeSharingService;
 
 class FakeOwnershipTransferService implements OwnershipTransferService {
@@ -124,6 +129,8 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ManageGuardiansScreen(
           profile: testProfile,
           guardiansRepository: DriftProfileGuardiansRepository(storage),
@@ -236,6 +243,8 @@ void main() {
     }) async {
       await tester.pumpWidget(
         MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
           home: TransferOwnershipScreen(
             profile: testProfile,
             service: service ?? transferService,
@@ -284,7 +293,10 @@ void main() {
       expect(linkFinder, findsOneWidget);
       expect(
         find.textContaining(
-          formatTransferExpiry(DateTime.utc(2026, 9, 9, 12, 30)),
+          formatTransferExpiry(
+            tester.element(find.byType(TransferOwnershipScreen)),
+            DateTime.utc(2026, 9, 9, 12, 30),
+          ),
         ),
         findsOneWidget,
       );
@@ -427,7 +439,10 @@ void main() {
       expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
       expect(find.text('What changes'), findsNothing);
       expect(
-        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 10, 8, 0))),
+        find.textContaining(formatTransferExpiry(
+          tester.element(find.byType(TransferOwnershipScreen)),
+          DateTime.utc(2026, 9, 10, 8, 0),
+        )),
         findsOneWidget,
       );
 
@@ -472,7 +487,10 @@ void main() {
 
       expect(find.text('A Transfer Is Already Pending'), findsOneWidget);
       expect(
-        find.textContaining(formatTransferExpiry(DateTime.utc(2026, 9, 11, 9, 0))),
+        find.textContaining(formatTransferExpiry(
+          tester.element(find.byType(TransferOwnershipScreen)),
+          DateTime.utc(2026, 9, 11, 9, 0),
+        )),
         findsOneWidget,
       );
 
@@ -640,6 +658,138 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    group('AAL2 step-up before arming (issue #268 D-6)', () {
+      Future<void> pumpWithAuth(
+        WidgetTester tester,
+        AuthController controller,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: ChangeNotifierProvider<AuthController?>.value(
+              value: controller,
+              child: TransferOwnershipScreen(
+                profile: testProfile,
+                service: transferService,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> confirmTransfer(WidgetTester tester) async {
+        await tester.tap(find.text(ParentPostTransferRole.coManager.label));
+        await tester.pumpAndSettle();
+        await tester
+            .tap(find.widgetWithText(FilledButton, 'Transfer Ownership'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, 'Transfer'));
+        await tester.pumpAndSettle();
+      }
+
+      // Issue #738: this group runs the flag-on build (`mfaEnabled: true`,
+      // what `--dart-define=LUNARLOG_ENABLE_MFA=true` compiles to) — #714's
+      // behavior exactly.
+      testWidgets(
+          'no verified MFA factor: arms immediately with no step-up dialog '
+          '(unaffected pre-#268 path)', (tester) async {
+        final auth = FakeAuthService(initialState: AuthSessionState.signedIn);
+        addTearDown(auth.dispose);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
+        addTearDown(controller.dispose);
+        await pumpWithAuth(tester, controller);
+
+        await confirmTransfer(tester);
+
+        expect(find.text("Confirm it's you"), findsNothing);
+        expect(transferService.lastCreatedProfileId, testProfile.id);
+      });
+
+      testWidgets(
+          'a verified MFA factor requires a correct step-up code before '
+          'arming', (tester) async {
+        final auth = FakeAuthService(initialState: AuthSessionState.signedIn)
+          ..mfaStepUpRequired = true
+          ..mfaFactors = [
+            MfaFactor(
+              id: 'factor-1',
+              status: MfaFactorStatus.verified,
+              createdAt: DateTime.utc(2026),
+            ),
+          ];
+        addTearDown(auth.dispose);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
+        addTearDown(controller.dispose);
+        await pumpWithAuth(tester, controller);
+
+        await confirmTransfer(tester);
+
+        expect(find.text("Confirm it's you"), findsOneWidget);
+        expect(transferService.lastCreatedProfileId, isNull,
+            reason: 'arming must wait for the step-up to succeed');
+
+        await tester.enterText(
+            find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+        await tester
+            .tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(auth.verifyTotpCodeCalls.single,
+            (factorId: 'factor-1', code: '123456'));
+        expect(transferService.lastCreatedProfileId, testProfile.id);
+      });
+
+      testWidgets('cancelling the step-up dialog never arms the transfer',
+          (tester) async {
+        final auth = FakeAuthService(initialState: AuthSessionState.signedIn)
+          ..mfaStepUpRequired = true
+          ..mfaFactors = [
+            MfaFactor(
+              id: 'factor-1',
+              status: MfaFactorStatus.verified,
+              createdAt: DateTime.utc(2026),
+            ),
+          ];
+        addTearDown(auth.dispose);
+        final controller = AuthController(authService: auth, mfaEnabled: true);
+        addTearDown(controller.dispose);
+        await pumpWithAuth(tester, controller);
+
+        await confirmTransfer(tester);
+        await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(transferService.lastCreatedProfileId, isNull);
+      });
+
+      testWidgets(
+          'feature flag off (issue #738, the default build): a '
+          'step-up-required account arms immediately — ensureAal2 '
+          'auto-passes', (tester) async {
+        final auth = FakeAuthService(initialState: AuthSessionState.signedIn)
+          ..mfaStepUpRequired = true
+          ..mfaFactors = [
+            MfaFactor(
+              id: 'factor-1',
+              status: MfaFactorStatus.verified,
+              createdAt: DateTime.utc(2026),
+            ),
+          ];
+        addTearDown(auth.dispose);
+        final controller = AuthController(authService: auth);
+        addTearDown(controller.dispose);
+        await pumpWithAuth(tester, controller);
+
+        await confirmTransfer(tester);
+
+        expect(find.text("Confirm it's you"), findsNothing);
+        expect(auth.requiresMfaStepUpCalls, 0);
+        expect(transferService.lastCreatedProfileId, testProfile.id);
+      });
     });
   });
 }

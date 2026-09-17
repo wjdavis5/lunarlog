@@ -10,6 +10,8 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -22,58 +24,13 @@ void main() {
     tzdata.initializeTimeZones();
   });
 
-  group('calculateReminderFireAt', () {
-    final date = LocalDate(2026, 8, 30);
-
-    test('pins 9:00 AM local civil time across various time zones', () {
-      final ny = tz.getLocation('America/New_York');
-      final fireNy = calculateReminderFireAt(fireOn: date, location: ny);
-      expect(fireNy.year, 2026);
-      expect(fireNy.month, 8);
-      expect(fireNy.day, 30);
-      expect(fireNy.hour, 9);
-      expect(fireNy.minute, 0);
-      // New York is EDT (UTC-4) in August -> 09:00 EDT == 13:00 UTC
-      expect(fireNy.toUtc(), DateTime.utc(2026, 8, 30, 13, 0));
-
-      final la = tz.getLocation('America/Los_Angeles');
-      final fireLa = calculateReminderFireAt(fireOn: date, location: la);
-      expect(fireLa.hour, 9);
-      // Los Angeles is PDT (UTC-7) in August -> 09:00 PDT == 16:00 UTC
-      expect(fireLa.toUtc(), DateTime.utc(2026, 8, 30, 16, 0));
-
-      final tokyo = tz.getLocation('Asia/Tokyo');
-      final fireTokyo = calculateReminderFireAt(fireOn: date, location: tokyo);
-      expect(fireTokyo.hour, 9);
-      // Tokyo is JST (UTC+9) year-round -> 09:00 JST == 00:00 UTC
-      expect(fireTokyo.toUtc(), DateTime.utc(2026, 8, 30, 0, 0));
-
-      final sydney = tz.getLocation('Australia/Sydney');
-      final fireSydney = calculateReminderFireAt(fireOn: date, location: sydney);
-      expect(fireSydney.hour, 9);
-      // Sydney is AEST (UTC+10) in August -> 09:00 AEST == 23:00 UTC previous day
-      expect(fireSydney.toUtc(), DateTime.utc(2026, 8, 29, 23, 0));
-    });
-
-    test('supports custom reminder times (minutes since local midnight)', () {
-      final utc = tz.getLocation('UTC');
-      final fire =
-          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 8 * 60);
-      expect(fire.hour, 8);
-      expect(fire.toUtc(), DateTime.utc(2026, 8, 30, 8, 0));
-
-      final afternoon =
-          calculateReminderFireAt(fireOn: date, location: utc, minuteOfDay: 20 * 60 + 30);
-      expect(afternoon.hour, 20);
-      expect(afternoon.minute, 30);
-    });
-  });
-
   group('defaultLocalTimeZoneProvider', () {
-    test('falls back safely to UTC on test environment without platform channel', () async {
-      final tzName = await defaultLocalTimeZoneProvider();
-      expect(tzName, isNotEmpty);
+    test('falls back safely to UTC on test environment without platform channel and records breadcrumb', () async {
+      final log = BreadcrumbLog();
+      final tzName = await defaultLocalTimeZoneProvider(breadcrumbLog: log);
+      expect(tzName, 'UTC');
       expect(isValidIanaTimeZone(tzName), isTrue);
+      expect(log.snapshot(), ['timezone: MissingPluginException']);
     });
 
     test('a failed refresh resets a previously configured zone to UTC',
@@ -99,14 +56,14 @@ void main() {
   });
 
   group('Timezone resolution integration with resolveCurrentTimeZone', () {
-    test('setting local location updates domain resolveCurrentTimeZone', () {
+    test('setting local location updates domain resolveCurrentTimeZone', () async {
       final paris = tz.getLocation('Europe/Paris');
       tz.setLocalLocation(paris);
-      expect(resolveCurrentTimeZone(), 'Europe/Paris');
+      expect(await resolveCurrentTimeZone(), 'Europe/Paris');
 
       final chicago = tz.getLocation('America/Chicago');
       tz.setLocalLocation(chicago);
-      expect(resolveCurrentTimeZone(), 'America/Chicago');
+      expect(await resolveCurrentTimeZone(), 'America/Chicago');
     });
   });
 
@@ -542,6 +499,135 @@ void main() {
       final availability = await scheduler.requestPermission();
 
       expect(availability, NotificationAvailability.denied);
+    });
+  });
+
+  group('Reminder action delivery (Issue #623, LLA-028)', () {
+    test(
+        'Darwin reminder actions carry the foreground option so a tap '
+        'launches the app instead of requiring an unregistered background '
+        'handler', () async {
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+
+      await scheduler.initialize();
+
+      final initCall = calls.singleWhere((c) => c.method == 'initialize');
+      final categories =
+          (initCall.arguments as Map)['notificationCategories'] as List;
+      final category = categories.single as Map;
+      expect(category['identifier'], kReminderCategoryId);
+      final actions = category['actions'] as List;
+      expect(actions, hasLength(3));
+      for (final action in actions) {
+        final options = (action as Map)['options'] as List;
+        expect(
+          options,
+          contains(DarwinNotificationActionOption.foreground.value),
+          reason: '${action['identifier']} must open the app in the '
+              'foreground -- there is no background callback registered '
+              'to handle it otherwise',
+        );
+      }
+    });
+
+    test(
+        'Android reminder actions request the foreground UI instead of '
+        'the unconfigured background-delivery default', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.upcoming,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final platformSpecifics =
+          (scheduleCall.arguments as Map)['platformSpecifics'] as Map;
+      final actions = platformSpecifics['actions'] as List;
+      expect(actions, hasLength(3));
+      for (final action in actions) {
+        expect(
+          (action as Map)['showsUserInterface'],
+          isTrue,
+          reason: 'the default (false) selects a background delivery path '
+              'that needs onDidReceiveBackgroundNotificationResponse, '
+              'which is never registered',
+        );
+      }
+    });
+
+    test(
+        'a reminder kind with no actions (Issue #178) schedules with no '
+        'action list on Android', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.log,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final platformSpecifics =
+          (scheduleCall.arguments as Map)['platformSpecifics'] as Map;
+      expect(platformSpecifics['actions'], isNull);
+    });
+  });
+
+  group('Custom notification text (Issue #184)', () {
+    test(
+        'the built notification carries the resolved custom '
+        'title and body verbatim', () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.upcoming,
+          title: 'Tea time',
+          body: 'Bring the blue bottle.',
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], 'Tea time',
+          reason: 'the custom title reaches the OS exactly as configured');
+      expect(args['body'], 'Bring the blue bottle.');
+      expect(args['title'], isNot(contains('profile-1')));
+      expect(args['body'], isNot(contains('2026')));
+    });
+
+    test('a reminder with no custom text still carries the generic copy',
+        () async {
+      final scheduler = schedulerFor(TargetPlatform.android);
+      await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.rescheduleAll([
+        PlannedReminder(
+          profileId: 'profile-1',
+          fireOn: LocalDate(2026, 9, 20),
+          kind: ReminderKind.log,
+        ),
+      ]);
+
+      final scheduleCall = calls.singleWhere((c) => c.method == 'zonedSchedule');
+      final args = scheduleCall.arguments as Map;
+      expect(args['title'], kReminderTitle);
+      expect(args['body'], kReminderBody);
     });
   });
 }

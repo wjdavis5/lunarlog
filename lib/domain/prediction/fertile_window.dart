@@ -137,6 +137,11 @@ FertileWindowEstimate? estimateFertileWindow(
   int lutealPhaseDays = kDefaultLutealPhaseDays,
 }) {
   if (prediction == null) return null;
+  // Issue LLA-064: a regimen-schedule estimate (a withdrawal-bleed pack
+  // cadence) carries no ovulatory signal — see [PredictionBasis]'s own
+  // doc comment for why deriving a fertile window from it would be
+  // physiologically meaningless, not merely low-confidence.
+  if (prediction.basis == PredictionBasis.regimenSchedule) return null;
   return fertileWindowFor(
     start: prediction.estimatedNextStart,
     tier: prediction.tier,
@@ -165,6 +170,8 @@ FertileWindowEstimate? currentFertileWindow(
   int lutealPhaseDays = kDefaultLutealPhaseDays,
 }) {
   if (prediction == null) return null;
+  // Issue LLA-064: see [estimateFertileWindow]'s own comment.
+  if (prediction.basis == PredictionBasis.regimenSchedule) return null;
   for (final cycle in prediction.forecast) {
     final window = fertileWindowFor(
       start: cycle.start,

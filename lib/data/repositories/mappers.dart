@@ -5,15 +5,20 @@ library;
 
 import 'package:lunarlog/data/db/db.dart' as db;
 import 'package:lunarlog/data/db/tables.dart' as db;
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart' as domain;
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as domain;
 import 'package:lunarlog/domain/models/care_note.dart' as domain;
+import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
+import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
 import 'package:lunarlog/domain/models/profile_relationship.dart' as domain;
+import 'package:lunarlog/domain/logging/tracking_preferences.dart' as domain;
 import 'package:lunarlog/domain/models/visit_prep_item.dart' as domain;
 
 domain.Profile profileToDomain(db.Profile row) => domain.Profile(
@@ -37,6 +42,16 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
           : domain.LocalDate.fromIso(row.lastPeriodStart!),
       typicalCycleLengthDays: row.typicalCycleLengthDays,
       typicalPeriodLengthDays: row.typicalPeriodLengthDays,
+      // Issue #259: parsed here (not in the codec) so every UI read of
+      // domain.Profile sees the resolved-tolerant document; a malformed
+      // stored text degrades to null (all defaults), never a throwing read.
+      trackingPreferences: domain.TrackingPreferences.fromJsonText(
+          row.trackingPreferences),
+      // Issue #255: display-unit preferences. `fromDb` degrades an
+      // unrecognised stored value to the column default — presentation
+      // only, so a value this build doesn't recognise never crashes a read.
+      bbtUnit: domain.BbtUnit.fromDb(row.bbtUnit),
+      weightUnit: domain.WeightUnit.fromDb(row.weightUnit),
     );
 
 /// Storage `FlowLevel` -> domain `FlowLevel`. Issue #247 spotting-alias
@@ -115,13 +130,25 @@ domain.Observation observationToDomain(db.Observation row) =>
       lastModifiedByUserId: row.lastModifiedByUserId,
     );
 
+/// Issue #540: fails *closed* on an unrecognised `role`/`status` rather than
+/// propagating [domain.GuardianRole.fromDb]/[domain.GuardianStatus.fromDb]'s
+/// null through to a `ProfileGuardian` this codebase has no null-role/
+/// null-status representation for — an unknown role maps to
+/// [domain.GuardianRole.viewer] (least privilege: read-only, cannot log,
+/// cannot manage guardians, cannot delete the profile — see that enum's
+/// `can*` getters) and an unknown status maps to
+/// [domain.GuardianStatus.revoked] (never treated as an accepted
+/// membership). Cross-references [domain.GuardianRole.fromDb] and
+/// [domain.GuardianStatus.fromDb], whose own doc comments explain why they
+/// return null instead of throwing.
 domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
     domain.ProfileGuardian(
       id: row.id,
       profileId: row.profileId,
       userId: row.userId,
-      role: domain.GuardianRole.fromDb(row.role),
-      status: domain.GuardianStatus.fromDb(row.status),
+      role: domain.GuardianRole.fromDb(row.role) ?? domain.GuardianRole.viewer,
+      status:
+          domain.GuardianStatus.fromDb(row.status) ?? domain.GuardianStatus.revoked,
       displayName: row.displayName,
       invitedBy: row.invitedBy,
       createdAt: row.createdAt,
@@ -142,6 +169,22 @@ domain.CareNote careNoteToDomain(db.CareNoteData row) => domain.CareNote(
       lastModifiedByUserId: row.lastModifiedByUserId,
     );
 
+/// Issue #188: drift-row -> domain [domain.CycleOverride]. Issue #140
+/// review, LLA-084: used by `DriftCycleOverridesRepository.listForProfile`
+/// so account export can carry the full-fidelity row (id, manualStart,
+/// noteId included), not just the excluded-from-average boolean.
+domain.CycleOverride cycleOverrideToDomain(db.CycleOverrideData row) =>
+    domain.CycleOverride(
+      id: row.id,
+      profileId: row.profileId,
+      cycleStartDate: row.cycleStartDate,
+      excludedFromAverage: row.excludedFromAverage,
+      manualStart: row.manualStart,
+      noteId: row.noteId,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+    );
+
 /// Issue #128: drift-row -> domain [domain.VisitPrepItem]. Mirrors
 /// [careNoteToDomain]'s shape, plus the check state.
 domain.VisitPrepItem visitPrepItemToDomain(db.VisitPrepItemData row) =>
@@ -156,4 +199,42 @@ domain.VisitPrepItem visitPrepItemToDomain(db.VisitPrepItemData row) =>
       deletedAt: row.deletedAt,
       loggedByUserId: row.loggedByUserId,
       lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #130: storage row -> domain merge-disclosure event (the day
+/// sheet's notice model). The `field` normalisation mirrors the codec's:
+/// an unrecognised value can only come from a broken writer and degrades
+/// to `note`.
+domain.DayEntryMergeEvent dayEntryMergeEventToDomain(
+        db.DayEntryMergeEventData row) =>
+    domain.DayEntryMergeEvent(
+      id: row.id,
+      profileId: row.profileId,
+      localDateIso: row.localDate,
+      winningRowId: row.winningRowId,
+      losingRowId: row.losingRowId,
+      field: domain.DayEntryMergeEventField.fromDb(row.field),
+      losingValueText: row.losingValueText,
+      losingAuthorUserId: row.losingAuthorUserId,
+      winningAuthorUserId: row.winningAuthorUserId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+
+/// Issue #257: storage row -> domain [domain.CustomTag]. The repository
+/// read is already scoped to live rows (tombstones filtered in storage),
+/// so the mapper carries `deletedAt` through for completeness only.
+domain.CustomTag customTagToDomain(db.ProfileTagRegistryEntry row) =>
+    domain.CustomTag(
+      id: row.id,
+      profileId: row.profileId,
+      code: row.code,
+      displayName: row.displayName,
+      category: row.category,
+      intensityEnabled: row.intensityEnabled,
+      hiddenAt: row.hiddenAt,
+      sortOrder: row.sortOrder,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
     );

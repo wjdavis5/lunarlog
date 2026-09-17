@@ -26,14 +26,23 @@ select tests.create_supabase_user('other_parent');
 select tests.authenticate_as('mom');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(901), 'Riley', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+-- Issue #201 (20260915160000_sync_push_sole_write_path.sql): `authenticated`
+-- no longer holds insert/update on day_entries at all, so these fixture
+-- inserts run as service_role. auth.uid() is unaffected -- it reads
+-- request.jwt.claims, a different session GUC from role -- so every
+-- ownership assertion below still sees the intended caller.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(902), tests.ulid(901), '2026-09-05', 'UTC', 'medium', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('other_parent');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(951), 'Casey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(952), tests.ulid(951), '2026-09-05', 'UTC', 'none', '2026-09-05T09:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- raw round-trips through sync_push, and updates through it.

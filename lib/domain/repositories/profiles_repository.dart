@@ -3,7 +3,9 @@
 /// drift-backed implementations live in `lib/data/repositories/`.
 library;
 
+import '../logging/tracking_preferences.dart';
 import '../models/local_date.dart';
+import '../models/measurement_unit.dart';
 import '../models/profile.dart';
 import '../models/profile_mode.dart';
 import '../models/profile_relationship.dart';
@@ -19,7 +21,11 @@ abstract interface class ProfilesRepository {
   /// through [update]; all individually optional (skipped questions are
   /// null), and never validated here — `CycleFacts.canSeed` in the
   /// prediction domain is the gate that decides which values can seed a
-  /// provisional estimate.
+  /// provisional estimate. [bbtUnit]/[weightUnit] (Issue #255) are the
+  /// per-profile display-unit preferences for numeric measurements,
+  /// defaulting to metric (`BbtUnit.celsius`/`WeightUnit.kg`) — editable
+  /// later through [update], and always a rendering preference only (each
+  /// stored `observations` value keeps the unit it was entered in).
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
@@ -30,6 +36,8 @@ abstract interface class ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit,
+    WeightUnit weightUnit,
   });
 
   /// Persists edits to an existing profile (matched by id). Throws
@@ -52,4 +60,38 @@ abstract interface class ProfilesRepository {
 
   /// Tombstones the profile (soft delete; never row removal).
   Future<void> delete(String id);
+
+  /// Applies the LOCAL side effect of a server-side hard purge (Issue #472,
+  /// `delete_profile_data()`'s full-purge branch): tombstones the profile
+  /// and every dependent child row on this device, reusing exactly the
+  /// same wipe an ordinary sync pull applies for a `deleted_profiles` row
+  /// (Issue #522) or a guardian-revocation cascade (R5) — never a separate,
+  /// parallel local-cleanup path. Call this only after the corresponding
+  /// server RPC has already succeeded; it never itself talks to the
+  /// network, and it must never run on a failed or offline RPC call. Safe
+  /// to call more than once (idempotent, matching the reused wipe) — a
+  /// later delivery of the real `deleted_profiles` row re-applies the same
+  /// wipe harmlessly.
+  Future<void> applyServerPurge(String id);
+
+  /// Writes (or clears) the profile's tracking-preferences document
+  /// (Issue #259): [preferences] is the curated set the day sheet reads,
+  /// or null to clear back to "never customized". Touches only that
+  /// column (plus the usual sync bookkeeping) — an ordinary metadata edit
+  /// must never restamp or clobber a co-guardian's curated document, and
+  /// this write marks the row dirty so the document syncs (AC1/AC6).
+  /// Returns the updated profile, or null when [id] is unknown or
+  /// tombstoned. A null [preferences] and an empty document are the same
+  /// "clear" instruction; both propagate to co-guardians as an explicitly
+  /// empty document (`{}`), which resolves to defaults on every device.
+  /// (A local null is never emitted as a wire null — the codec's
+  /// emit-only-when-non-null rule — so the empty document is the only
+  /// shape a clear can take on the wire.)
+  /// Throws [ArgumentError] when the document does not serialize to a
+  /// JSON object (it always does from a well-formed
+  /// [TrackingPreferences]; the check guards programmatic misuse).
+  Future<Profile?> setTrackingPreferences(
+    String id,
+    TrackingPreferences? preferences,
+  );
 }

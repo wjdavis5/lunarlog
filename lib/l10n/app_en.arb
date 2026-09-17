@@ -195,6 +195,113 @@
   "@calendarCellNoPrediction": {
     "description": "Screen-reader fragment for a future day whose forecast cell carries no marker."
   },
+  "cyclePredictionLoadError": "Could not load the cycle estimate.",
+  "@cyclePredictionLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602."
+  },
+  "cycleHistoryLoadError": "Could not load cycle history.",
+  "@cycleHistoryLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602."
+  },
+  "cycleComparisonToggleButton": "Compare cycles",
+  "@cycleComparisonToggleButton": {
+    "description": "Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side."
+  },
+  "cycleComparisonCancelButton": "Cancel",
+  "@cycleComparisonCancelButton": {
+    "description": "Issue #235: replaces cycleComparisonToggleButton while cycle-comparison selection mode is active, exiting it and clearing the current selection."
+  },
+  "cycleComparisonSelectedCount": "{count} of 2 selected",
+  "@cycleComparisonSelectedCount": {
+    "description": "Issue #235: selection-mode progress hint in the cycle-history list (\"0 of 2 selected\", \"1 of 2 selected\", \"2 of 2 selected\") -- always exactly two are required, so this is a bare count, not a pluralized noun.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleComparisonOpenButton": "Compare",
+  "@cycleComparisonOpenButton": {
+    "description": "Issue #235: the button that opens the comparison screen once exactly two cycles are selected; disabled otherwise."
+  },
+  "cycleComparisonSelectCycleSemantic": "Select cycle starting {date} for comparison",
+  "@cycleComparisonSelectCycleSemantic": {
+    "description": "Issue #235: accessibility label on a completed cycle's selection checkbox in the cycle-history list, naming what the checkbox is for (a bare Checkbox otherwise announces only checked/unchecked state).",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonSelectCurrentCycleSemantic": "Select current cycle for comparison",
+  "@cycleComparisonSelectCurrentCycleSemantic": {
+    "description": "Issue #235: same as cycleComparisonSelectCycleSemantic, for the still-open cycle's own selection checkbox."
+  },
+  "cycleComparisonScreenTitle": "Compare cycles",
+  "@cycleComparisonScreenTitle": {
+    "description": "Issue #235: app-bar title of the side-by-side cycle comparison screen."
+  },
+  "cycleComparisonNotEnoughTitle": "Nothing to compare yet",
+  "@cycleComparisonNotEnoughTitle": {
+    "description": "Issue #235: honest empty-state title when the comparison screen has no valid pair of cycles to show (e.g. reached with a stale selection)."
+  },
+  "cycleComparisonNotEnoughBody": "Select two cycles from your cycle history to compare them side by side.",
+  "@cycleComparisonNotEnoughBody": {
+    "description": "Issue #235: body copy paired with cycleComparisonNotEnoughTitle."
+  },
+  "cycleComparisonSideHeading": "Cycle starting {date}",
+  "@cycleComparisonSideHeading": {
+    "description": "Issue #235: header above a completed cycle's column in the comparison screen.",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonCurrentCycleHeading": "Current cycle (started {date})",
+  "@cycleComparisonCurrentCycleHeading": {
+    "description": "Issue #235: header above the still-open cycle's column in the comparison screen, when one side of the comparison is the open cycle.",
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "cycleComparisonExcludedBadge": "Excluded from averages",
+  "@cycleComparisonExcludedBadge": {
+    "description": "Issue #235 AC4: marks a compared cycle that is in the operator's cycle_overrides exclusion set, so an excluded cycle reads as excluded within the comparison rather than being silently included as if it were a normal one."
+  },
+  "cycleComparisonLengthLabel": "Length",
+  "@cycleComparisonLengthLabel": {
+    "description": "Issue #235: row label above a compared cycle's length (rendered as a day count, or cycleComparisonOngoingLabel for the open cycle)."
+  },
+  "cycleComparisonOngoingLabel": "Ongoing",
+  "@cycleComparisonOngoingLabel": {
+    "description": "Issue #235: the still-open cycle's length value, replacing a day count it does not have yet."
+  },
+  "cycleComparisonBleedDaysLabel": "Bleed days",
+  "@cycleComparisonBleedDaysLabel": {
+    "description": "Issue #235: row label above a compared cycle's logged bleed-day count (so far, for the open cycle)."
+  },
+  "cycleComparisonLengthDifferenceLabel": "Length difference",
+  "@cycleComparisonLengthDifferenceLabel": {
+    "description": "Issue #235: label for the compared statistic showing how many days the two cycle lengths differ by (an unsigned day count -- this view names both cycles by their own start date above it rather than by \"longer\"/\"shorter\" wording)."
+  },
+  "cycleComparisonBleedDaysDifferenceLabel": "Bleed days difference",
+  "@cycleComparisonBleedDaysDifferenceLabel": {
+    "description": "Issue #235: same as cycleComparisonLengthDifferenceLabel, for the bleed-day count difference."
+  },
+  "cycleComparisonLengthDifferenceUnknown": "Not yet known",
+  "@cycleComparisonLengthDifferenceUnknown": {
+    "description": "Issue #235: replaces the length-difference value whenever either compared cycle is still open (its final length isn't known yet, so no difference can be stated)."
+  },
+  "cycleComparisonDayHeading": "Day {day}",
+  "@cycleComparisonDayHeading": {
+    "description": "Issue #235: the shared cycle-day label each aligned row starts with (\"Day 1\", \"Day 2\", ...), and the leading fragment of that row's accessibility label for each side.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleComparisonNoEntryLabel": "Not logged",
+  "@cycleComparisonNoEntryLabel": {
+    "description": "Issue #235: a compared day within a cycle's own length that has no day entry logged at all (distinct from an explicit \"not bleeding\" assertion, and distinct from cycleComparisonCycleEndedLabel)."
+  },
+  "cycleComparisonCycleEndedLabel": "Cycle ended",
+  "@cycleComparisonCycleEndedLabel": {
+    "description": "Issue #235: fills a side's cell past that cycle's own last day, when the two compared cycles differ in length -- text, not a blank cell or a bare dash, so the shorter cycle's end reads as a fact rather than missing data (R9/no information by colour alone)."
+  },
   "monthPickerPreviousYear": "Previous year",
   "@monthPickerPreviousYear": {
     "description": "Tooltip on the month/year picker's back-year chevron."
@@ -341,9 +448,125 @@
   "@daySheetUnrecognised": {
     "description": "Heading above inert chips for tags this build does not recognise."
   },
+  "daySheetUnmappedFallback": "Unrecognised data",
+  "@daySheetUnmappedFallback": {
+    "description": "Chip label for an imported datapoint whose stored raw payload could not be described (not JSON, or an empty object)."
+  },
+  "daySheetUnmappedImported": "Imported, not recognised",
+  "@daySheetUnmappedImported": {
+    "description": "Heading above inert chips for datapoints an import kept as-is because they mapped to no field in this app."
+  },
   "daySheetUnverifiedPin": "Unverified — pin before shipping",
   "@daySheetUnverifiedPin": {
     "description": "Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them."
+  },
+  "daySheetTagSearchHint": "Search",
+  "@daySheetTagSearchHint": {
+    "description": "Issue #234: visible hint text in CategoryPicker's search field above the tag chip grid."
+  },
+  "daySheetTagSearchSemanticsLabel": "Search tags",
+  "@daySheetTagSearchSemanticsLabel": {
+    "description": "Issue #234: screen-reader label for CategoryPicker's search field (distinct from the shorter visible hint)."
+  },
+  "daySheetTagSearchClearTooltip": "Clear search",
+  "@daySheetTagSearchClearTooltip": {
+    "description": "Issue #234: tooltip/semantics for the button that clears CategoryPicker's search text."
+  },
+  "daySheetTagRecentLabel": "Recent",
+  "@daySheetTagRecentLabel": {
+    "description": "Issue #234: heading above CategoryPicker's Recent row, seeded from the profile's most-used tags."
+  },
+  "daySheetCustomTagsLabel": "Custom tags",
+  "@daySheetCustomTagsLabel": {
+    "description": "Issue #257: heading above the profile's custom-tag registry section in the tag picker."
+  },
+  "daySheetCustomTagsManageTooltip": "Manage custom tags",
+  "@daySheetCustomTagsManageTooltip": {
+    "description": "Issue #257: tooltip for the tag picker's custom-tags manage affordance (create, rename, retire)."
+  },
+  "daySheetCustomTagsNone": "None yet — tap manage to add one",
+  "@daySheetCustomTagsNone": {
+    "description": "Issue #257: empty-state note under the custom-tags heading when the profile has no live, non-retired custom tags."
+  },
+  "customTagsSheetTitle": "Custom tags",
+  "@customTagsSheetTitle": {
+    "description": "Issue #257: title of the custom-tag manager sheet."
+  },
+  "customTagsEmptyList": "No custom tags yet — add one below.",
+  "@customTagsEmptyList": {
+    "description": "Issue #257: body copy in the manager sheet when the registry is empty."
+  },
+  "customTagsAddHint": "New tag name",
+  "@customTagsAddHint": {
+    "description": "Issue #257: visible hint in the manager sheet's create field."
+  },
+  "customTagsAddTooltip": "Add tag",
+  "@customTagsAddTooltip": {
+    "description": "Issue #257: tooltip/semantics for the manager sheet's add button."
+  },
+  "customTagsErrorEmpty": "Enter a name.",
+  "@customTagsErrorEmpty": {
+    "description": "Issue #257: create-field error for an empty custom-tag label."
+  },
+  "customTagsErrorTooLong": "Names are at most 40 characters.",
+  "@customTagsErrorTooLong": {
+    "description": "Issue #257: create-field error for a label past the 40-character CHECK."
+  },
+  "customTagsErrorNoLetters": "Include a letter or digit.",
+  "@customTagsErrorNoLetters": {
+    "description": "Issue #257: create-field error for a label no code can be derived from (e.g. only punctuation)."
+  },
+  "customTagsErrorDuplicate": "You already have a tag like this.",
+  "@customTagsErrorDuplicate": {
+    "description": "Issue #257: create-field error for a label deriving a code another live registry entry already owns (case-insensitive)."
+  },
+  "customTagsErrorTaxonomy": "That name is already a built-in tag.",
+  "@customTagsErrorTaxonomy": {
+    "description": "Issue #257: create-field error for a label deriving a code the static taxonomy owns (shadowing it would make one chip mean two things)."
+  },
+  "customTagsErrorCap": "This profile already has {max} custom tags — retire one first.",
+  "@customTagsErrorCap": {
+    "description": "Issue #257: create-field error at the per-profile registry cap (100 live rows).",
+    "placeholders": {
+      "max": {
+        "type": "int",
+        "example": "100"
+      }
+    }
+  },
+  "customTagsRenameTooltip": "Rename",
+  "@customTagsRenameTooltip": {
+    "description": "Issue #257: tooltip for a registry row's rename affordance."
+  },
+  "customTagsRenameTitle": "Rename tag",
+  "@customTagsRenameTitle": {
+    "description": "Issue #257: title of the rename dialog."
+  },
+  "customTagsRetireTooltip": "Retire",
+  "@customTagsRetireTooltip": {
+    "description": "Issue #257: tooltip for a registry row's retire affordance (hidden_at — removed from the picker, never deleted)."
+  },
+  "customTagsRetiredLabel": "Retired",
+  "@customTagsRetiredLabel": {
+    "description": "Issue #257: status label on a retired registry row in the manager sheet."
+  },
+  "customTagsRetireTitle": "Retire “{label}”?",
+  "@customTagsRetireTitle": {
+    "description": "Issue #257: title of the retire confirmation dialog.",
+    "placeholders": {
+      "label": {
+        "type": "String",
+        "example": "Back cracking"
+      }
+    }
+  },
+  "customTagsRetireBody": "It leaves the tag picker. Days that already use it keep showing it.",
+  "@customTagsRetireBody": {
+    "description": "Issue #257: body of the retire confirmation dialog — retirement never deletes stored entries."
+  },
+  "customTagsRetireConfirm": "Retire",
+  "@customTagsRetireConfirm": {
+    "description": "Issue #257: confirm button of the retire dialog."
   },
   "daySheetNoEntry": "No entry for this day.",
   "@daySheetNoEntry": {
@@ -356,6 +579,18 @@
   "daySheetTagsLabel": "Tags",
   "@daySheetTagsLabel": {
     "description": "Heading above the tag chips in the read-only day sheet."
+  },
+  "daySheetSpottingGroup": "Spotting",
+  "@daySheetSpottingGroup": {
+    "description": "Issue #642, LLA-011: heading above the spotting marker in the read-only day sheet, mirroring daySheetPmsGroup's own label+value shape (the value line reuses flowLevelSpotting, the same 'Spotting' string the editable chip already shows)."
+  },
+  "daySheetChildObservationsLoading": "Loading additional details…",
+  "@daySheetChildObservationsLoading": {
+    "description": "Issue #642, LLA-011: shown in the read-only day sheet while spotting/pain-intensity (child `observations` rows, not on the day entry itself) are still loading."
+  },
+  "daySheetChildObservationsError": "Could not load additional details.",
+  "@daySheetChildObservationsError": {
+    "description": "Issue #642, LLA-011: shown in the read-only day sheet when loading spotting/pain-intensity (child `observations` rows) fails. No exception detail, matching this file's other failure copy."
   },
   "daySheetNoNote": "No note",
   "@daySheetNoNote": {
@@ -397,6 +632,10 @@
   "@overviewSeeHistory": {
     "description": "Link from the overview panel to the Insights cycle history."
   },
+  "overviewEstimateLoadError": "Could not load your cycle estimate.",
+  "@overviewEstimateLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when OverviewPanel's prediction stream errors. Issue #602."
+  },
   "overviewLoggedSnackbar": "Recorded a medium-flow period start for today.",
   "@overviewLoggedSnackbar": {
     "description": "Snackbar confirming the today card's quick-log action."
@@ -421,9 +660,9 @@
   "@overviewLongCycleExclude": {
     "description": "Action excluding the open cycle from future averages."
   },
-  "overviewLongCyclePredictionsOff": "Turn off predictions (coming soon)",
+  "overviewLongCyclePredictionsOff": "Turn off predictions",
   "@overviewLongCyclePredictionsOff": {
-    "description": "Disabled placeholder action for turning predictions off (issue #225)."
+    "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
   "overviewReminderHint": "Reminders unavailable — notifications are off",
   "@overviewReminderHint": {
@@ -503,6 +742,26 @@
   "@settingsRelockSubtitle": {
     "description": "Subtitle of the inactivity auto-relock switch."
   },
+  "settingsAppearanceTitle": "Appearance",
+  "@settingsAppearanceTitle": {
+    "description": "Settings tile and picker-dialog title for the appearance override (issue #137)."
+  },
+  "settingsAppearanceSubtitle": "Follow your device's setting, or choose light or dark",
+  "@settingsAppearanceSubtitle": {
+    "description": "Subtitle of the appearance tile, naming the three override options."
+  },
+  "appearanceOptionSystem": "Follow system",
+  "@appearanceOptionSystem": {
+    "description": "Picker option: use the OS light/dark setting (the default)."
+  },
+  "appearanceOptionLight": "Light",
+  "@appearanceOptionLight": {
+    "description": "Picker option: always use the light theme."
+  },
+  "appearanceOptionDark": "Dark",
+  "@appearanceOptionDark": {
+    "description": "Picker option: always use the dark theme."
+  },
   "settingsHealthHeader": "Health",
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
@@ -527,13 +786,127 @@
   "@settingsPrivacyDialogTitle": {
     "description": "Title of the in-app privacy policy dialog."
   },
-  "settingsPrivacyDialogBody": "LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
+  "settingsPrivacyDialogBody": "LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
   "@settingsPrivacyDialogBody": {
     "description": "Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary."
   },
   "settingsClose": "Close",
   "@settingsClose": {
     "description": "Close action of the settings dialogs."
+  },
+  "settingsSectionYourData": "Your data",
+  "@settingsSectionYourData": {
+    "description": "Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge."
+  },
+  "settingsSectionAppearance": "Appearance",
+  "@settingsSectionAppearance": {
+    "description": "Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker."
+  },
+  "settingsThemeTitle": "Theme",
+  "@settingsThemeTitle": {
+    "description": "Tile title inside the Appearance section (Issue #226 retitled from 'Appearance' once the section header carried that word): opens the system/light/dark picker; the subtitle names the current mode."
+  },
+  "settingsSectionReminders": "Reminders",
+  "@settingsSectionReminders": {
+    "description": "Header of the Settings 'Reminders' section (Issue #226): reminder scheduling and caregiver alert preferences."
+  },
+  "settingsSectionCalendar": "Calendar",
+  "@settingsSectionCalendar": {
+    "description": "Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units."
+  },
+  "settingsSectionFamilySharing": "Family & sharing",
+  "@settingsSectionFamilySharing": {
+    "description": "Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians."
+  },
+  "settingsSectionPrivacySecurity": "Privacy & security",
+  "@settingsSectionPrivacySecurity": {
+    "description": "Header of the Settings 'Privacy & security' section (Issue #226): relock, app PIN, privacy policy."
+  },
+  "settingsSectionHelp": "Help",
+  "@settingsSectionHelp": {
+    "description": "Header of the Settings 'Help' section (Issue #226): help library, feedback/support, support history."
+  },
+  "settingsSectionAbout": "About",
+  "@settingsSectionAbout": {
+    "description": "Header of the Settings 'About' section (Issue #226): version, build number, licences."
+  },
+  "settingsReminderSettingsTitle": "Reminder settings",
+  "@settingsReminderSettingsTitle": {
+    "description": "Tile (inside the Reminders section) opening the per-profile reminder configuration screen (Issue #136)."
+  },
+  "settingsReminderSettingsSubtitle": "Choose which reminders fire, when, and for whom",
+  "@settingsReminderSettingsSubtitle": {
+    "description": "Subtitle of the reminder-settings tile."
+  },
+  "settingsCaregiverAlertsTitle": "Caregiver alerts",
+  "@settingsCaregiverAlertsTitle": {
+    "description": "Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name."
+  },
+  "settingsFirstDayTitle": "First day of week",
+  "@settingsFirstDayTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing which day the month grid's weeks start on."
+  },
+  "settingsFirstDaySunday": "Sunday",
+  "@settingsFirstDaySunday": {
+    "description": "Week-start option: weeks start on Sunday (the historical default)."
+  },
+  "settingsFirstDayMonday": "Monday",
+  "@settingsFirstDayMonday": {
+    "description": "Week-start option: weeks start on Monday (ISO 8601)."
+  },
+  "settingsDateFormatTitle": "Date format",
+  "@settingsDateFormatTitle": {
+    "description": "Calendar-section tile (Issue #226) choosing the month/day order of compact dates."
+  },
+  "settingsDateFormatSystemOption": "System default (5 Sep)",
+  "@settingsDateFormatSystemOption": {
+    "description": "Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering."
+  },
+  "settingsDateFormatDayMonthOption": "Day first (5 Sep)",
+  "@settingsDateFormatDayMonthOption": {
+    "description": "Date-format option: day before month, e.g. '5 Sep'."
+  },
+  "settingsDateFormatMonthDayOption": "Month first (Sep 5)",
+  "@settingsDateFormatMonthDayOption": {
+    "description": "Date-format option: month before day, e.g. 'Sep 5'."
+  },
+  "settingsHelpTitle": "Help & explanations",
+  "@settingsHelpTitle": {
+    "description": "Tile (inside the Help section) opening the offline help library (Issue #139)."
+  },
+  "settingsHelpSubtitle": "Plain-language answers about estimates, logging, sync, and sharing — works offline",
+  "@settingsHelpSubtitle": {
+    "description": "Subtitle of the help library tile."
+  },
+  "settingsAboutVersionTitle": "Version",
+  "@settingsAboutVersionTitle": {
+    "description": "About-section tile title (Issue #226); the subtitle carries the actual version and build number."
+  },
+  "settingsAboutVersion": "Version {version} (build {build})",
+  "@settingsAboutVersion": {
+    "description": "The version line shown in Settings → About and on the licence page (Issue #226).",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "1.2.3"
+      },
+      "build": {
+        "type": "String",
+        "example": "42"
+      }
+    }
+  },
+  "settingsAboutVersionUnavailable": "Not available",
+  "@settingsAboutVersionUnavailable": {
+    "description": "Shown in place of the version line when the platform package-info read failed (Issue #226)."
+  },
+  "settingsAboutLicensesTitle": "Open-source licences",
+  "@settingsAboutLicensesTitle": {
+    "description": "About-section tile opening Flutter's licence page (Issue #226)."
+  },
+  "settingsAboutLicensesSubtitle": "The packages and terms this app builds on",
+  "@settingsAboutLicensesSubtitle": {
+    "description": "Subtitle of the licences tile."
   },
   "firstRunValueHeadline": "A private cycle log for your family",
   "@firstRunValueHeadline": {
@@ -591,6 +964,18 @@
   "@firstRunMinorHint": {
     "description": "One-line hint under the minor checkbox in the first-run form."
   },
+  "firstRunAgeAcknowledgementLabel": "I am 13 or older, or a guardian managing a family profile",
+  "@firstRunAgeAcknowledgementLabel": {
+    "description": "Checkbox label acknowledging the 13+ minimum-age statement on first-run profile creation."
+  },
+  "firstRunAgeAcknowledgementHint": "LunarLog requires users to be at least 13 years old, or managed by a parent or legal guardian.",
+  "@firstRunAgeAcknowledgementHint": {
+    "description": "One-line hint under the minimum-age acknowledgement checkbox in the first-run form."
+  },
+  "firstRunAgeAcknowledgementRequired": "Please acknowledge the minimum-age policy to continue.",
+  "@firstRunAgeAcknowledgementRequired": {
+    "description": "Validation error shown when the minimum-age acknowledgement is not checked."
+  },
   "firstRunCareModeLabel": "Care mode",
   "@firstRunCareModeLabel": {
     "description": "Label above the care-mode dropdown in the first-run form (kept)."
@@ -639,7 +1024,7 @@
   "@firstRunCycleTypicalPeriodHint": {
     "description": "Hint inside the typical-period-length field."
   },
-  "firstRunCycleLengthRangeError": "Enter a number between 10 and 90",
+  "firstRunCycleLengthRangeError": "Enter a number between 15 and 60",
   "@firstRunCycleLengthRangeError": {
     "description": "Validation error for an out-of-range typical cycle length."
   },
@@ -749,6 +1134,67 @@
       "days": {"type": "int"},
       "length": {"type": "int"}
     }
+  },
+  "predictionsSuppressedTitle": "Predictions are suppressed",
+  "@predictionsSuppressedTitle": {
+    "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233)."
+  },
+  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.",
+  "@predictionsSuppressedBody": {
+    "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
+    "placeholders": {
+      "method": {"type": "String"}
+    }
+  },
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.",
+  "@predictionsSuppressedByModeBody": {
+    "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
+    "placeholders": {
+      "mode": {"type": "String"}
+    }
+  },
+  "predictionsDisabledTitle": "Predictions turned off",
+  "@predictionsDisabledTitle": {
+    "description": "Title of the card displayed when predictions are disabled for the profile (issue #225)."
+  },
+  "predictionsDisabledBody": "Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
+  "@predictionsDisabledBody": {
+    "description": "Body of the card explaining that predictions are disabled while tracking remains active (issue #225)."
+  },
+  "predictionsDisabledAction": "Manage in Settings",
+  "@predictionsDisabledAction": {
+    "description": "Button on predictions-disabled card opening Settings (issue #225)."
+  },
+  "settingsPredictionsTitle": "Show predictions",
+  "@settingsPredictionsTitle": {
+    "description": "Title of the prediction toggle in Settings when only one profile exists (issue #225)."
+  },
+  "settingsPredictionsProfileTitle": "Show predictions ({profileName})",
+  "@settingsPredictionsProfileTitle": {
+    "description": "Title of the prediction toggle in Settings for a specific profile (issue #225).",
+    "placeholders": {
+      "profileName": {"type": "String"}
+    }
+  },
+  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and prediction reminders",
+  "@settingsPredictionsSubtitle": {
+    "description": "Subtitle describing the predictions toggle in Settings (issue #225)."
+  },
+  "overviewIrregularSuggestionTitle": "Cycles vary a lot",
+  "@overviewIrregularSuggestionTitle": {
+    "description": "Title of the suggestion banner offered when cycle variation is irregular (issue #225)."
+  },
+  "overviewIrregularSuggestionBody": "Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
+  "@overviewIrregularSuggestionBody": {
+    "description": "Body of the dismissible suggestion banner for irregular cycles (issue #225)."
+  },
+  "overviewIrregularSuggestionSettings": "Manage in Settings",
+  "@overviewIrregularSuggestionSettings": {
+    "description": "Action on the irregular suggestion banner opening Settings (issue #225)."
+  },
+  "overviewIrregularSuggestionDismiss": "Dismiss",
+  "@overviewIrregularSuggestionDismiss": {
+    "description": "Action dismissing the irregular suggestion banner (issue #225)."
   },
   "reminderSectionCycle": "Your cycle",
   "@reminderSectionCycle": {
@@ -873,5 +1319,723 @@
   "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method in profile settings to set one",
   "@reminderBirthControlNeedsStartDate": {
     "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183)."
+  },
+
+  "commonNetworkError": "Network error. Please check your connection.",
+  "@commonNetworkError": {
+    "description": "Issue #545: shared failure copy reused by every …FailureCopy mapper under lib/ui/l10n/ whose domain sealed failure has a plain network-error case (sharing, ownership transfer, prediction connections, notification preferences)."
+  },
+  "commonServerUnreachable": "Could not reach the server. Check your connection and try again.",
+  "@commonServerUnreachable": {
+    "description": "Issue #545: shared failure copy reused by the auth and feedback failure mappers, whose network case names the server rather than the connection generically."
+  },
+  "commonUnauthorized": "You do not have permission for this action.",
+  "@commonUnauthorized": {
+    "description": "Issue #545: shared failure copy reused by every …FailureCopy mapper for an unauthorized/forbidden case."
+  },
+  "commonSomethingWentWrong": "Something went wrong. Please try again.",
+  "@commonSomethingWentWrong": {
+    "description": "Issue #545: shared catch-all failure copy reused by every …FailureCopy mapper's 'other'/unknown case."
+  },
+
+  "sharingFailureNotFound": "Invitation not found or invalid link.",
+  "@sharingFailureNotFound": {
+    "description": "SharingFailure.notFound copy, rendered by sharingFailureCopy (lib/ui/l10n/sharing_failure_copy.dart)."
+  },
+  "sharingFailureExpired": "This invitation has expired.",
+  "@sharingFailureExpired": {
+    "description": "SharingFailure.expired copy."
+  },
+  "sharingFailureAlreadyAccepted": "This invitation was already accepted.",
+  "@sharingFailureAlreadyAccepted": {
+    "description": "SharingFailure.alreadyAccepted copy."
+  },
+  "sharingFailureAlreadyGuardian": "You are already an active guardian for this child.",
+  "@sharingFailureAlreadyGuardian": {
+    "description": "SharingFailure.alreadyGuardian copy."
+  },
+  "sharingFailureInvalidToken": "Invalid invitation link.",
+  "@sharingFailureInvalidToken": {
+    "description": "SharingFailure.invalidToken copy."
+  },
+  "sharingFailureOther": "Failed to accept invitation. Please try again.",
+  "@sharingFailureOther": {
+    "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."
+  },
+
+  "inviteCancellationRevoked": "Invitation cancelled",
+  "@inviteCancellationRevoked": {
+    "description": "InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart)."
+  },
+  "inviteCancellationAlreadyAccepted": "That invitation was already accepted",
+  "@inviteCancellationAlreadyAccepted": {
+    "description": "InviteCancellation.alreadyAccepted copy."
+  },
+  "inviteCancellationAlreadyRevoked": "That invitation was already cancelled",
+  "@inviteCancellationAlreadyRevoked": {
+    "description": "InviteCancellation.alreadyRevoked copy."
+  },
+  "inviteCancellationExpired": "That invitation had already expired",
+  "@inviteCancellationExpired": {
+    "description": "InviteCancellation.expired copy."
+  },
+
+  "transferFailureNotFound": "Transfer not found or invalid link.",
+  "@transferFailureNotFound": {
+    "description": "TransferFailure.notFound copy, rendered by transferFailureCopy (lib/ui/l10n/transfer_failure_copy.dart)."
+  },
+  "transferFailureExpired": "This transfer link has expired.",
+  "@transferFailureExpired": {
+    "description": "TransferFailure.expired copy."
+  },
+  "transferFailureCancelled": "This transfer was cancelled.",
+  "@transferFailureCancelled": {
+    "description": "TransferFailure.cancelled copy."
+  },
+  "transferFailureAlreadyAccepted": "This transfer was already accepted.",
+  "@transferFailureAlreadyAccepted": {
+    "description": "TransferFailure.alreadyAccepted copy."
+  },
+  "transferFailureSelfTransfer": "You can't claim a transfer you created yourself.",
+  "@transferFailureSelfTransfer": {
+    "description": "TransferFailure.selfTransfer copy."
+  },
+  "transferFailureStaleOwner": "Your role on this profile has changed, so this transfer is no longer valid.",
+  "@transferFailureStaleOwner": {
+    "description": "TransferFailure.staleOwner copy."
+  },
+  "transferFailureAlreadyArmed": "A transfer is already pending for this profile. Cancel it before starting a new one.",
+  "@transferFailureAlreadyArmed": {
+    "description": "TransferFailure.alreadyArmed copy."
+  },
+  "transferFailureInvalidToken": "Invalid transfer link.",
+  "@transferFailureInvalidToken": {
+    "description": "TransferFailure.invalidToken copy."
+  },
+
+  "predictionConnectionFailureNotFound": "That code is not valid.",
+  "@predictionConnectionFailureNotFound": {
+    "description": "PredictionConnectionFailure.notFound copy, rendered by predictionConnectionFailureCopy (lib/ui/l10n/prediction_connection_failure_copy.dart)."
+  },
+  "predictionConnectionFailureExpired": "That code has expired.",
+  "@predictionConnectionFailureExpired": {
+    "description": "PredictionConnectionFailure.expired copy."
+  },
+  "predictionConnectionFailureAlreadyAccepted": "That code was already used.",
+  "@predictionConnectionFailureAlreadyAccepted": {
+    "description": "PredictionConnectionFailure.alreadyAccepted copy."
+  },
+  "predictionConnectionFailureAlreadyGuardian": "You already have full guardian access to this profile.",
+  "@predictionConnectionFailureAlreadyGuardian": {
+    "description": "PredictionConnectionFailure.alreadyGuardian copy."
+  },
+  "predictionConnectionFailureInvalidToken": "Invalid connection code.",
+  "@predictionConnectionFailureInvalidToken": {
+    "description": "PredictionConnectionFailure.invalidToken copy."
+  },
+  "predictionConnectionFailurePregnancyMode": "Prediction sharing is unavailable while this profile is in Pregnancy mode.",
+  "@predictionConnectionFailurePregnancyMode": {
+    "description": "PredictionConnectionFailure.pregnancyMode copy."
+  },
+  "predictionConnectionFailureAlreadyConnected": "This profile already has a prediction connection. Revoke it before sharing with someone else.",
+  "@predictionConnectionFailureAlreadyConnected": {
+    "description": "PredictionConnectionFailure.alreadyConnected copy."
+  },
+  "predictionConnectionFailureOneDirectional": "You cannot share and view predictions with the same person at the same time.",
+  "@predictionConnectionFailureOneDirectional": {
+    "description": "PredictionConnectionFailure.oneDirectional copy."
+  },
+  "predictionConnectionFailureMinorProfile": "Prediction sharing is not available for a minor's profile.",
+  "@predictionConnectionFailureMinorProfile": {
+    "description": "PredictionConnectionFailure.minorProfile copy."
+  },
+
+  "feedbackFailureRateLimited": "You've sent a few reports already — please try again in a bit.",
+  "@feedbackFailureRateLimited": {
+    "description": "FeedbackFailure.rateLimited copy, rendered by feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart)."
+  },
+  "feedbackFailureInvalidInput": "Check your message and try again.",
+  "@feedbackFailureInvalidInput": {
+    "description": "FeedbackFailure.invalidInput copy."
+  },
+  "feedbackFailureAttachmentTooLarge": "That image is too large. Choose one under 5 MB.",
+  "@feedbackFailureAttachmentTooLarge": {
+    "description": "FeedbackFailure.attachmentTooLarge copy."
+  },
+  "feedbackFailureAttachmentRejected": "That file type is not supported. Choose a PNG, JPEG, or WebP image.",
+  "@feedbackFailureAttachmentRejected": {
+    "description": "FeedbackFailure.attachmentRejected copy."
+  },
+  "feedbackFailureNotFound": "That ticket could not be found.",
+  "@feedbackFailureNotFound": {
+    "description": "FeedbackFailure.notFound copy."
+  },
+  "feedbackFailureAttachmentUploadFailed": "Your message was sent — no need to resend it. The attachment did not upload ({attachmentReason}) You can find your ticket in Support history.",
+  "@feedbackFailureAttachmentUploadFailed": {
+    "description": "FeedbackAttachmentUploadFailedFailure copy; {attachmentReason} is the nested attachment failure's own copy.",
+    "placeholders": {
+      "attachmentReason": {
+        "type": "String"
+      }
+    }
+  },
+
+  "notificationPreferencesFailureInvalidTimeZone": "Your device's time zone isn't recognised by the server yet — quiet hours will use UTC until it is",
+  "@notificationPreferencesFailureInvalidTimeZone": {
+    "description": "NotificationPreferencesFailure.invalidTimeZone copy, rendered by notificationPreferencesFailureCopy (lib/ui/l10n/notification_preferences_failure_copy.dart)."
+  },
+  "notificationPreferencesFailureOther": "Failed to save notification preferences. Please try again.",
+  "@notificationPreferencesFailureOther": {
+    "description": "NotificationPreferencesFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always a preferences-save attempt."
+  },
+
+  "guardianRoleLabelPrimaryGuardian": "Primary Guardian",
+  "@guardianRoleLabelPrimaryGuardian": {
+    "description": "GuardianRole.primaryGuardian's display label, rendered by guardianRoleLabel (lib/ui/l10n/guardian_role_copy.dart)."
+  },
+  "guardianRoleLabelCoParent": "Co-Parent",
+  "@guardianRoleLabelCoParent": {
+    "description": "GuardianRole.coParent's display label."
+  },
+  "guardianRoleLabelCaregiver": "Caregiver",
+  "@guardianRoleLabelCaregiver": {
+    "description": "GuardianRole.caregiver's display label."
+  },
+  "guardianRoleLabelViewer": "Viewer",
+  "@guardianRoleLabelViewer": {
+    "description": "GuardianRole.viewer's display label."
+  },
+  "guardianRoleReadOnlyReasonViewer": "You have view-only access to this profile.",
+  "@guardianRoleReadOnlyReasonViewer": {
+    "description": "Why a viewer's day sheet (and other write surfaces) is read-only, rendered by guardianRoleReadOnlyReason."
+  },
+  "activityActorYou": "you",
+  "@activityActorYou": {
+    "description": "Issue #545: moved from lib/domain/activity/activity_feed.dart's activityActorLabel (now lib/ui/l10n/activity_actor_copy.dart) — the current operator's own name in an activity feed row."
+  },
+  "activityActorGuardianFallback": "a guardian",
+  "@activityActorGuardianFallback": {
+    "description": "Issue #545: moved from activityActorLabel — fallback name for an actor whose guardian row is not (or no longer) known."
+  },
+  "profilePickerSharedRoleSubtitle": "Shared with me · {role}",
+  "@profilePickerSharedRoleSubtitle": {
+    "description": "Issue #545: moved from SharingProfileInfo.roleSubtitle (lib/domain/sharing/sharing_overview.dart) — a profile row's subtitle for a profile shared with the operator, naming their role. Rendered by sharingProfileRoleSubtitle (lib/ui/l10n/guardian_role_copy.dart).",
+    "placeholders": {
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+
+  "authFailureWrongPassword": "That email and password combination was not accepted.",
+  "@authFailureWrongPassword": {
+    "description": "AuthWrongPasswordFailure copy, rendered by authFailureCopy (lib/ui/l10n/auth_failure_copy.dart)."
+  },
+  "authFailureWeakPassword": "Choose a stronger password of at least {minLength} characters.",
+  "@authFailureWeakPassword": {
+    "description": "AuthWeakPasswordFailure copy.",
+    "placeholders": {
+      "minLength": {
+        "type": "int"
+      }
+    }
+  },
+  "authFailureProviderUnavailable": "That sign-in method isn't available on this device. Use email instead.",
+  "@authFailureProviderUnavailable": {
+    "description": "AuthProviderUnavailableFailure copy — deliberately generic (also covers a passkey ceremony that could not run), so it must never name Google, Apple, or \"passkey\" specifically."
+  },
+  "authFailureRateLimited": "Too many attempts. Wait a little while, then try again.",
+  "@authFailureRateLimited": {
+    "description": "AuthRateLimitedFailure copy."
+  },
+  "authFailureMisconfigured": "That sign-in method is not set up for this app right now. Try another way to sign in.",
+  "@authFailureMisconfigured": {
+    "description": "AuthMisconfiguredFailure copy."
+  },
+  "authFailureExpiredLink": "That sign-in link is no longer valid. Request a new one.",
+  "@authFailureExpiredLink": {
+    "description": "AuthExpiredLinkFailure copy."
+  },
+  "authFailureInvalidCode": "That code was not accepted. Check it or request a new email.",
+  "@authFailureInvalidCode": {
+    "description": "AuthInvalidCodeFailure copy."
+  },
+  "authFailureIdentityTaken": "That sign-in method already belongs to another account.",
+  "@authFailureIdentityTaken": {
+    "description": "AuthIdentityTakenFailure copy."
+  },
+  "authFailureSignUpClosed": "New accounts for this app are set up by the account owner.",
+  "@authFailureSignUpClosed": {
+    "description": "AuthSignUpClosedFailure copy."
+  },
+  "authFailureLastSignInMethod": "That is the only way left to sign in to this account. Add another method first.",
+  "@authFailureLastSignInMethod": {
+    "description": "AuthLastSignInMethodFailure copy."
+  },
+
+  "careNotesRemoveNoteTooltip": "Remove note",
+  "@careNotesRemoveNoteTooltip": {
+    "description": "Tooltip on a care note's delete icon button."
+  },
+  "careNotesRemoveItemTooltip": "Remove item",
+  "@careNotesRemoveItemTooltip": {
+    "description": "Tooltip on a visit-prep item's delete icon button."
+  },
+  "careNotesButtonTooltip": "Care notes & visit prep",
+  "@careNotesButtonTooltip": {
+    "description": "Tooltip on the profile app bar's care notes entry point."
+  },
+  "activityFeedTooltip": "Activity",
+  "@activityFeedTooltip": {
+    "description": "Tooltip on the activity feed app bar action."
+  },
+  "activityFeedLoadError": "Could not load the activity feed.",
+  "@activityFeedLoadError": {
+    "description": "InlineError message (announced as a screen-reader live region) when ActivityFeedScreen's feed stream errors. Issue #602."
+  },
+  "manageGuardiansCancelInviteTooltip": "Cancel invitation",
+  "@manageGuardiansCancelInviteTooltip": {
+    "description": "Tooltip on a pending invitation's cancel icon button."
+  },
+  "manageGuardiansAboutRolesTooltip": "About roles",
+  "@manageGuardiansAboutRolesTooltip": {
+    "description": "Tooltip on Manage Guardians' guardian-roles help action."
+  },
+  "manageGuardiansTransferOwnershipTooltip": "Transfer ownership",
+  "@manageGuardiansTransferOwnershipTooltip": {
+    "description": "Tooltip on Manage Guardians' transfer-ownership app bar action."
+  },
+  "manageGuardiansNotificationsTooltip": "Notifications",
+  "@manageGuardiansNotificationsTooltip": {
+    "description": "Tooltip on Manage Guardians' notification-preferences app bar action."
+  },
+  "manageGuardiansEndSharingTooltip": "End prediction sharing",
+  "@manageGuardiansEndSharingTooltip": {
+    "description": "Tooltip on the prediction-connection tile's revoke icon button."
+  },
+  "manageGuardiansChangeRoleTooltip": "Change role",
+  "@manageGuardiansChangeRoleTooltip": {
+    "description": "Tooltip on a guardian row's role-change menu button."
+  },
+  "manageGuardiansLeaveProfileTooltip": "Leave profile",
+  "@manageGuardiansLeaveProfileTooltip": {
+    "description": "Tooltip on a guardian row's revoke button when the row is the caller's own."
+  },
+  "manageGuardiansRemoveCaregiverTooltip": "Remove caregiver",
+  "@manageGuardiansRemoveCaregiverTooltip": {
+    "description": "Tooltip on a guardian row's revoke button when the row belongs to someone else."
+  },
+  "feedbackRemoveAttachmentTooltip": "Remove attachment",
+  "@feedbackRemoveAttachmentTooltip": {
+    "description": "Tooltip on the feedback form's attachment-remove icon button."
+  },
+  "predictionCalendarRefreshTooltip": "Refresh",
+  "@predictionCalendarRefreshTooltip": {
+    "description": "Tooltip on the prediction connection calendar's refresh action."
+  },
+  "settingsTooltip": "Settings",
+  "@settingsTooltip": {
+    "description": "Tooltip on a Settings icon button, shared by the app shell's bottom nav and the profile picker's app bar action."
+  },
+  "profilePickerAddProfileTooltip": "Add profile",
+  "@profilePickerAddProfileTooltip": {
+    "description": "Tooltip on the profile picker's add-profile action."
+  },
+  "profilePickerUnarchiveTooltip": "Unarchive",
+  "@profilePickerUnarchiveTooltip": {
+    "description": "Tooltip on an archived profile row's unarchive icon button."
+  },
+  "profilePickerActionsTooltip": "Profile actions",
+  "@profilePickerActionsTooltip": {
+    "description": "Tooltip on a profile row's overflow-actions icon button."
+  },
+  "profilePickerSharedWithMeTooltip": "Shared with me",
+  "@profilePickerSharedWithMeTooltip": {
+    "description": "Tooltip on the profile picker's shared-predictions entry point."
+  },
+  "profileDetailSwitchProfileTooltip": "Switch profile",
+  "@profileDetailSwitchProfileTooltip": {
+    "description": "Tooltip on the profile detail screen's switch-profile action."
+  },
+  "appShellProfileSwitcherTooltip": "Switch profile",
+  "@appShellProfileSwitcherTooltip": {
+    "description": "Issue #241: tooltip on the app shell's quick profile switcher (the app-bar profile title, a popup listing active profiles)."
+  },
+  "quickSwitcherManageProfiles": "Manage profiles…",
+  "@quickSwitcherManageProfiles": {
+    "description": "Issue #241: the quick profile switcher menu's entry that opens the full profile picker."
+  },
+  "profileStatusNoHistory": "No history yet",
+  "@profileStatusNoHistory": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state)."
+  },
+  "profileStatusPredictionsSuppressed": "Period predictions off",
+  "@profileStatusPredictionsSuppressed": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode)."
+  },
+  "profileStatusPredictionsOff": "Period predictions off",
+  "@profileStatusPredictionsOff": {
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
+  },
+
+  "daysCount": "{count} {count, plural, =1{day} other{days}}",
+  "@daysCount": {
+    "description": "Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "daysValue": "{count, plural, =1{{value} day} other{{value} days}}",
+  "@daysValue": {
+    "description": "Issue #545: a possibly-fractional day value (e.g. '3.5 days') with its plural word chosen from the underlying numeric count. {value} is the already-formatted display string; {count} is only used to select 'day' vs 'days'.",
+    "placeholders": {
+      "count": {
+        "type": "num"
+      },
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "daySheetMeasurementsHeading": "Measurements",
+  "@daySheetMeasurementsHeading": {
+    "description": "Day-sheet section heading above the BBT and weight numeric-entry fields (Issue #457)."
+  },
+  "daySheetBbtFieldLabel": "BBT ({unit})",
+  "@daySheetBbtFieldLabel": {
+    "description": "Label (and accessibility label) for the day sheet's BBT text field (Issue #457); {unit} is the profile's current display-unit symbol ('°C'/'°F', from measurement_unit.dart's bbtUnitSymbol — a universal symbol, not itself translated).",
+    "placeholders": {
+      "unit": {"type": "String"}
+    }
+  },
+  "daySheetWeightFieldLabel": "Weight ({unit})",
+  "@daySheetWeightFieldLabel": {
+    "description": "Label (and accessibility label) for the day sheet's weight text field (Issue #457); {unit} is the profile's current display-unit symbol ('kg'/'lb').",
+    "placeholders": {
+      "unit": {"type": "String"}
+    }
+  },
+  "daySheetBbtRangeError": "Enter a BBT between {min} and {max}",
+  "@daySheetBbtRangeError": {
+    "description": "Inline validation error under the BBT field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
+    "placeholders": {
+      "min": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "daySheetWeightRangeError": "Enter a weight between {min} and {max}",
+  "@daySheetWeightRangeError": {
+    "description": "Inline validation error under the weight field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
+    "placeholders": {
+      "min": {"type": "String"},
+      "max": {"type": "String"}
+    }
+  },
+  "daySheetMeasurementInvalidNumber": "Enter a number",
+  "@daySheetMeasurementInvalidNumber": {
+    "description": "Inline validation error under a measurement field when the entered text does not parse as a number at all (Issue #457)."
+  },
+  "daySheetMeasurementExcludeLabel": "Exclude from charts",
+  "@daySheetMeasurementExcludeLabel": {
+    "description": "Label for the per-measurement exclusion toggle (Issue #457, the BBT per-point 'excluded' flag, A1-44) — used for both the BBT and weight fields, distinguished by the group name each toggle's own accessibility wrapper supplies."
+  },
+  "daySheetMeasurementIncludeLabel": "Include in charts",
+  "@daySheetMeasurementIncludeLabel": {
+    "description": "The exclusion toggle's label once a measurement is already excluded (Issue #457) — tapping it un-excludes, mirroring the cycle-history list's own Omit/Include button pair."
+  },
+  "daySheetBbtGroup": "BBT",
+  "@daySheetBbtGroup": {
+    "description": "Accessibility group name for the BBT field and its exclude toggle (Issue #457), read by groupedChipSemantics-style wrappers alongside the control's own label."
+  },
+  "daySheetWeightGroup": "Weight",
+  "@daySheetWeightGroup": {
+    "description": "Accessibility group name for the weight field and its exclude toggle (Issue #457)."
+  },
+  "settingsMeasurementUnitsTitle": "Measurement units",
+  "@settingsMeasurementUnitsTitle": {
+    "description": "Heading of the per-profile BBT/weight display-unit section in Settings when only one profile exists (Issue #457)."
+  },
+  "settingsMeasurementUnitsProfileTitle": "Measurement units ({profileName})",
+  "@settingsMeasurementUnitsProfileTitle": {
+    "description": "Heading of the measurement-units section in Settings for a specific profile, when more than one profile exists (Issue #457).",
+    "placeholders": {
+      "profileName": {"type": "String"}
+    }
+  },
+  "settingsMeasurementUnitsBbtLabel": "BBT unit",
+  "@settingsMeasurementUnitsBbtLabel": {
+    "description": "Row label for the BBT display-unit selector in Settings (Issue #457)."
+  },
+  "settingsMeasurementUnitsWeightLabel": "Weight unit",
+  "@settingsMeasurementUnitsWeightLabel": {
+    "description": "Row label for the weight display-unit selector in Settings (Issue #457)."
+  },
+  "mfaSectionTitle": "Two-factor authentication",
+  "@mfaSectionTitle": {
+    "description": "Heading of the Account section's TOTP MFA tile group (issue #268)."
+  },
+  "mfaEnrollTileTitle": "Set up two-factor authentication",
+  "@mfaEnrollTileTitle": {
+    "description": "Tile offering to start TOTP enrolment when the account has no factor yet (issue #268)."
+  },
+  "mfaEnrollTileSubtitle": "Add an authenticator app as a second sign-in factor.",
+  "@mfaEnrollTileSubtitle": {
+    "description": "Subtitle under mfaEnrollTileTitle (issue #268)."
+  },
+  "mfaFactorTileTitle": "Authenticator app",
+  "@mfaFactorTileTitle": {
+    "description": "Title of the row for an enrolled TOTP factor (issue #268)."
+  },
+  "mfaFactorTileSubtitleVerified": "Enabled",
+  "@mfaFactorTileSubtitleVerified": {
+    "description": "Subtitle for a verified TOTP factor row (issue #268)."
+  },
+  "mfaFactorTileSubtitlePending": "Setup not finished — remove and try again",
+  "@mfaFactorTileSubtitlePending": {
+    "description": "Subtitle for a still-unverified TOTP factor row, e.g. after an interrupted enrolment (issue #268)."
+  },
+  "mfaRemoveFactorTitle": "Remove two-factor authentication?",
+  "@mfaRemoveFactorTitle": {
+    "description": "Confirmation dialog title for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorBody": "You will only need your password to sign in and to confirm account actions.",
+  "@mfaRemoveFactorBody": {
+    "description": "Confirmation dialog body for removing the account's TOTP factor (issue #268)."
+  },
+  "mfaRemoveFactorConfirm": "Remove",
+  "@mfaRemoveFactorConfirm": {
+    "description": "Confirm button for removing a TOTP factor (issue #268)."
+  },
+  "mfaErrorGeneric": "Something went wrong. Please try again.",
+  "@mfaErrorGeneric": {
+    "description": "Generic inline error for an MFA action (enroll/verify/remove) that failed (issue #268)."
+  },
+  "mfaEnrollScreenTitle": "Set up two-factor authentication",
+  "@mfaEnrollScreenTitle": {
+    "description": "Title of the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollInstructions": "Add this setup key to your authenticator app (Google Authenticator, 1Password, Authy, and similar apps all accept manual entry).",
+  "@mfaEnrollInstructions": {
+    "description": "Instructions above the manual-entry setup key on the TOTP enrolment screen (issue #268). No in-app QR code today — flutter_svg is not a project dependency, and gotrue's enrolment response encodes it only as an SVG data URI, which Image.network/Image.memory cannot rasterize; see mfa_enroll_screen.dart's doc comment."
+  },
+  "mfaEnrollSecretLabel": "Setup key",
+  "@mfaEnrollSecretLabel": {
+    "description": "Label above the manual-entry TOTP secret (issue #268)."
+  },
+  "mfaEnrollCodeLabel": "Enter the 6-digit code from your app",
+  "@mfaEnrollCodeLabel": {
+    "description": "Label for the verification-code field on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaCodeHint": "6-digit code",
+  "@mfaCodeHint": {
+    "description": "Hint text for a TOTP code entry field, shared by enrolment and step-up (issue #268)."
+  },
+  "mfaEnrollConfirmButton": "Confirm",
+  "@mfaEnrollConfirmButton": {
+    "description": "Confirm button on the TOTP enrolment screen (issue #268)."
+  },
+  "mfaEnrollSuccessMessage": "Two-factor authentication is on.",
+  "@mfaEnrollSuccessMessage": {
+    "description": "Snackbar shown after a TOTP enrolment completes (issue #268)."
+  },
+  "mfaStepUpTitle": "Confirm it's you",
+  "@mfaStepUpTitle": {
+    "description": "Title of the AAL2 step-up dialog shown before a destructive account action (issue #268 D-6)."
+  },
+  "mfaStepUpBody": "Enter the 6-digit code from your authenticator app to continue.",
+  "@mfaStepUpBody": {
+    "description": "Body of the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "mfaStepUpConfirmButton": "Verify",
+  "@mfaStepUpConfirmButton": {
+    "description": "Confirm button on the AAL2 step-up dialog (issue #268 D-6)."
+  },
+  "pinSettingsSectionTitle": "App PIN",
+  "@pinSettingsSectionTitle": {
+    "description": "Heading of the optional in-app PIN settings row (issue #271)."
+  },
+  "pinSettingsToggleTitle": "Require a PIN to open lunarlog",
+  "@pinSettingsToggleTitle": {
+    "description": "Title of the in-app PIN settings tile (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOn": "On — an additional lock layer on top of your device credential.",
+  "@pinSettingsToggleSubtitleOn": {
+    "description": "Subtitle of the PIN settings tile when a PIN is set (issue #271)."
+  },
+  "pinSettingsToggleSubtitleOff": "Off",
+  "@pinSettingsToggleSubtitleOff": {
+    "description": "Subtitle of the PIN settings tile when no PIN is set (issue #271)."
+  },
+  "pinSetScreenTitle": "Set a PIN",
+  "@pinSetScreenTitle": {
+    "description": "Title of the screen for setting a brand-new in-app PIN (issue #271)."
+  },
+  "pinChangeScreenTitle": "Change PIN",
+  "@pinChangeScreenTitle": {
+    "description": "Title of the screen for changing an existing in-app PIN (issue #271)."
+  },
+  "pinCurrentPinLabel": "Current PIN",
+  "@pinCurrentPinLabel": {
+    "description": "Field label for the current PIN, required to change or remove one (issue #271)."
+  },
+  "pinNewPinLabel": "New PIN (4-8 digits)",
+  "@pinNewPinLabel": {
+    "description": "Field label for the new PIN (issue #271)."
+  },
+  "pinConfirmPinLabel": "Confirm PIN",
+  "@pinConfirmPinLabel": {
+    "description": "Field label for re-entering the new PIN (issue #271)."
+  },
+  "pinMismatchError": "PINs don't match.",
+  "@pinMismatchError": {
+    "description": "Inline error when the new-PIN and confirm-PIN fields differ (issue #271)."
+  },
+  "pinTooShortError": "Enter at least 4 digits.",
+  "@pinTooShortError": {
+    "description": "Inline error when the new PIN is shorter than 4 digits (issue #271)."
+  },
+  "pinWrongCurrentError": "That PIN is incorrect.",
+  "@pinWrongCurrentError": {
+    "description": "Inline error when the current-PIN field does not match the stored PIN, while changing or removing it (issue #271)."
+  },
+  "pinSaveButton": "Save",
+  "@pinSaveButton": {
+    "description": "Save button on the set/change-PIN screen (issue #271)."
+  },
+  "pinRemoveConfirmTitle": "Turn off PIN?",
+  "@pinRemoveConfirmTitle": {
+    "description": "Confirmation dialog title for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmBody": "You can still use your device credential to unlock lunarlog.",
+  "@pinRemoveConfirmBody": {
+    "description": "Confirmation dialog body for removing the in-app PIN (issue #271)."
+  },
+  "pinRemoveConfirmButton": "Turn off",
+  "@pinRemoveConfirmButton": {
+    "description": "Confirm button for removing the in-app PIN (issue #271)."
+  },
+  "pinLockScreenPrompt": "Enter your PIN",
+  "@pinLockScreenPrompt": {
+    "description": "Prompt shown above the PIN field on the lock screen (issue #271)."
+  },
+  "pinLockScreenUnlockButton": "Unlock",
+  "@pinLockScreenUnlockButton": {
+    "description": "Submit button on the lock screen's PIN entry (issue #271)."
+  },
+  "pinLockScreenIncorrect": "Wrong PIN. {count} attempt(s) remaining before a short lockout.",
+  "@pinLockScreenIncorrect": {
+    "description": "Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "pinLockScreenLockedOut": "Too many attempts. Try again after {time}.",
+  "@pinLockScreenLockedOut": {
+    "description": "Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).",
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "reminderTextTileTitle": "Notification text",
+  "@reminderTextTileTitle": {
+    "description": "Row title for a reminder type's custom notification text editor entry (Issue #184)."
+  },
+  "reminderTextTileDefaultSubtitle": "Using the default text",
+  "@reminderTextTileDefaultSubtitle": {
+    "description": "Row subtitle shown when a reminder type has no custom notification text and falls back to the generic default (Issue #184)."
+  },
+  "reminderTextEditorAppBarTitle": "Notification text",
+  "@reminderTextEditorAppBarTitle": {
+    "description": "App bar title of the per-type notification text editor (Issue #184)."
+  },
+  "reminderTextPreviewSection": "Preview",
+  "@reminderTextPreviewSection": {
+    "description": "Section header above the live notification preview in the text editor (Issue #184)."
+  },
+  "reminderTextPreviewAppName": "Lunarlog",
+  "@reminderTextPreviewAppName": {
+    "description": "The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184)."
+  },
+  "reminderTextPreviewNow": "now",
+  "@reminderTextPreviewNow": {
+    "description": "The timestamp label in the OS-notification-styled preview, imitating the OS banner's relative time (Issue #184)."
+  },
+  "reminderTextTitleLabel": "Title",
+  "@reminderTextTitleLabel": {
+    "description": "Label above the notification title field in the text editor (Issue #184)."
+  },
+  "reminderTextBodyLabel": "Body",
+  "@reminderTextBodyLabel": {
+    "description": "Label above the notification body field in the text editor (Issue #184)."
+  },
+  "reminderTextSaveButton": "Save",
+  "@reminderTextSaveButton": {
+    "description": "Save action in the notification text editor (Issue #184)."
+  },
+  "reminderTextResetButton": "Reset to default",
+  "@reminderTextResetButton": {
+    "description": "Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184)."
+  },
+  "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.",
+  "@reminderTextDiscretionNote": {
+    "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
+  },
+
+  "pregnancyWeekTitle": "Week {week} of pregnancy",
+  "@pregnancyWeekTitle": {
+    "description": "Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.",
+    "placeholders": {
+      "week": {
+        "type": "int"
+      }
+    }
+  },
+  "pregnancyDueOn": "Estimated due date: {date}",
+  "@pregnancyDueOn": {
+    "description": "Pregnancy card line naming the estimated due date (Issue #192); date is the localized month-day-year.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "pregnancyDueDateMissing": "No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.",
+  "@pregnancyDueDateMissing": {
+    "description": "Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192)."
+  },
+  "pregnancyDueDateLabel": "Estimated due date",
+  "@pregnancyDueDateLabel": {
+    "description": "Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192)."
+  },
+  "pregnancyDueDateDerivedHint": "Derived from the last recorded period start (280 days). Tap the date to change it.",
+  "@pregnancyDueDateDerivedHint": {
+    "description": "Hint under the due-date field when the shown value was derived rather than manually picked (Issue #192)."
+  },
+  "pregnancyDueDateManualHint": "Pick the estimated due date — the last period start is unknown.",
+  "@pregnancyDueDateManualHint": {
+    "description": "Hint under the due-date field when no last period start could be derived from, so only a manual pick can set it (Issue #192)."
+  },
+  "pregnancyExitExclusionTitle": "Exclude this pregnancy from cycle averages?",
+  "@pregnancyExitExclusionTitle": {
+    "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
+  },
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "@pregnancyExitExclusionBody": {
+    "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
+  },
+  "pregnancyExitExclusionAccept": "Exclude pregnancy",
+  "@pregnancyExitExclusionAccept": {
+    "description": "Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192)."
+  },
+  "pregnancyExitExclusionDecline": "Keep in averages",
+  "@pregnancyExitExclusionDecline": {
+    "description": "Decline action of the pregnancy-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #192 AC5)."
+  },
+  "pregnancyExitExclusionDone": "Pregnancy excluded from cycle averages",
+  "@pregnancyExitExclusionDone": {
+    "description": "Snackbar confirming the exclusion rows were written (Issue #192)."
   }
+
 }

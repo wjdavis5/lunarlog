@@ -55,6 +55,12 @@
 /// [CareModeCopy.showsFertileWindow], hidden in the same not-enough-history
 /// state the rest of the card already is, and available on every profile
 /// including `isMinor` ones (#142) with no separate check here.
+///
+/// Issue #235: [CycleHistorySection] is mounted here with
+/// `onCompareSelected` wired to push [CycleComparisonScreen] -- the
+/// side-by-side comparison this tab is the primary entry point for (the
+/// archived-profile mount in `profile_detail_screen.dart` wires the same
+/// callback for its own, separate [CycleHistorySection] instance).
 library;
 
 import 'dart:async';
@@ -62,6 +68,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../domain/episodes/episodes.dart';
+import '../../domain/insights/bbt_chart.dart' as bbt;
+import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/models/day_entry.dart';
+import '../../domain/models/measurement_unit.dart';
+import '../../domain/models/observation.dart';
+import '../../domain/repositories/day_entries_repository.dart';
+import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
@@ -71,12 +85,25 @@ import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
 import '../account/auth_controller.dart';
+import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
+import '../components/predictions_disabled_card.dart';
+import '../components/predictions_suppressed_card.dart';
 import '../help/help_card_view.dart';
+import 'bbt_chart.dart';
+
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
+
 import '../overview/cycle_history_section.dart';
 import '../overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
+import '../sharing/guardian_watch_mixin.dart';
+import '../theme/tokens.dart';
+import 'cycle_comparison_screen.dart';
+import 'phase_insights_card.dart';
+import 'symptom_trends_section.dart';
 
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
@@ -86,9 +113,24 @@ class AnalysisTab extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
+    this.dayEntriesRepository,
+    this.observationsRepository,
+    this.bbtUnit = BbtUnit.celsius,
   });
 
   final String profileId;
+  final DayEntriesRepository? dayEntriesRepository;
+
+  /// Source of this profile's BBT readings for the chart (Issue #245);
+  /// falls back to `context.read<ObservationsRepository?>()` like
+  /// [dayEntriesRepository] does for entries — null in a tree with no
+  /// observations repository wired renders the chart's empty state rather
+  /// than throwing.
+  final ObservationsRepository? observationsRepository;
+
+  /// Per-profile BBT display unit (Issue #457/#245): governs only the
+  /// chart's caption text — every plotted value is already Celsius.
+  final BbtUnit bbtUnit;
 
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
@@ -113,18 +155,37 @@ class AnalysisTab extends StatefulWidget {
   State<AnalysisTab> createState() => _AnalysisTabState();
 }
 
-class _AnalysisTabState extends State<AnalysisTab> {
-  late final CyclePredictionService _service =
-      context.read<CyclePredictionService>();
+class _AnalysisTabState extends State<AnalysisTab>
+    with GuardianWatchMixin<AnalysisTab> {
+  late final CyclePredictionService _service = context
+      .read<CyclePredictionService>();
   late Stream<CyclePrediction> _predictions = _service.watch(
     widget.profileId,
     today: widget.todayProvider,
   );
 
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryPredictions() {
+    setState(() {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
+    });
+  }
+
+  StreamSubscription<List<DayEntry>>? _entriesSub;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
+  List<DayEntry> _entries = const [];
+
+  /// Issue #245: this profile's live observations, refetched on every
+  /// entries-stream tick — see [_watchEntries]'s doc for why that keeps
+  /// this current without [ObservationsRepository] needing a `watch()` of
+  /// its own.
+  List<Observation> _observations = const [];
 
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
@@ -138,6 +199,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
       _auth = auth;
     }
     _watchGuardians();
+    _watchEntries();
   }
 
   // The listener is only ever registered while [_auth] is non-null and is
@@ -149,21 +211,42 @@ class _AnalysisTabState extends State<AnalysisTab> {
     setState(() => _currentUserId = _auth?.currentUserId);
   }
 
-  /// Same shape as [OverviewPanel._watchGuardians]: resubscribes on every
-  /// call (profile switch included) and resets to an empty list first so
-  /// a still-arriving subscription for the old profile can never be
-  /// mistaken for the new one's guardians.
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
+    watchGuardiansForProfile(
+      widget.guardiansRepository,
+      widget.profileId,
+      (guardians) => setState(() => _guardians = guardians),
+    );
+  }
+
+  void _watchEntries() {
+    unawaited(_entriesSub?.cancel());
+    _entries = const [];
+    final repository =
+        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
     if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
+    _entriesSub = repository.watchForProfile(widget.profileId).listen((
+      entries,
     ) {
       if (!mounted) return;
-      setState(() => _guardians = guardians);
+      setState(() => _entries = entries);
+      // Issue #245: [ObservationsRepository] has no `watch()` of its own
+      // (Issue #240's read surface is one-shot reads only), but every
+      // BBT/weight autosave also writes this same day's `DayEntry` in the
+      // same atomic call (`saveDayEntryWithObservations`), so refetching
+      // here on every entries tick keeps the BBT chart's data live without
+      // adding a new repository method for this one chart.
+      unawaited(_refetchObservations());
     });
+  }
+
+  Future<void> _refetchObservations() async {
+    final repository = widget.observationsRepository ??
+        context.read<ObservationsRepository?>();
+    if (repository == null) return;
+    final observations = await repository.listForProfile(widget.profileId);
+    if (!mounted) return;
+    setState(() => _observations = observations);
   }
 
   @override
@@ -175,13 +258,31 @@ class _AnalysisTabState extends State<AnalysisTab> {
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchEntries();
+      return;
+    }
+    // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
+    // changed underneath it — re-run just the watch that reads the changed
+    // collaborator.
+    if (oldWidget.guardiansRepository != widget.guardiansRepository) {
+      _watchGuardians();
+    }
+    if (oldWidget.observationsRepository != widget.observationsRepository) {
+      unawaited(_refetchObservations());
+    }
+    if (oldWidget.todayProvider != widget.todayProvider) {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     }
   }
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
+    unawaited(_entriesSub?.cancel());
+    _entriesSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -200,49 +301,124 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {
-        final prediction = snapshot.data;
-        if (prediction == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: _sections(context, prediction),
+        return AsyncSnapshotView<CyclePrediction>(
+          snapshot: snapshot,
+          errorMessage: 'Could not load your cycle analysis.',
+          onRetry: _retryPredictions,
+          builder: (context, prediction) => ListView(
+            padding: const EdgeInsets.all(LLSpace.space4),
+            children: _sections(context, prediction),
+          ),
         );
       },
     );
   }
 
-  /// Section list — the seam #135 (statistics/trends) mounts an additional
-  /// entry into once that issue lands. #135 mounts here.
+  /// Section list — mounts headline statistics, phase insights (#236),
+  /// symptom trends & cramp forecasts (#135/#229), and the cycle history list.
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
+    final episodes = deriveEpisodes(bleedDatesOf(_entries));
+    final report = CycleInsightsCalculator.compute(
+      entries: _entries,
+      episodes: episodes,
+      prediction: prediction is ActivePrediction ? prediction : null,
+    );
+
     return [
       Text(
         'Analysis',
         key: const ValueKey('analysis-heading'),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: LLSpace.space3),
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context),
+        // Issue #233/#528: an in-effect continuous method, or a life-stage
+        // mode the averaging model doesn't apply to, suppresses period
+        // prediction with an explicit named state — the stats card has no
+        // mean/spread to show, so this renders the shared suppressed card.
+        PredictionsSuppressed() => PredictionsSuppressedCard(
+          method: prediction.method,
+          lifecycleMode: prediction.lifecycleMode,
+        ),
+        // Issue #225: per-profile toggle turning off predictions.
+        PredictionsDisabled() => const PredictionsDisabledCard(),
       },
-      const SizedBox(height: 16),
+      const SizedBox(height: LLSpace.space4),
       CycleHistorySection(
         profileId: widget.profileId,
         todayProvider: widget.todayProvider,
         readOnly: _effectiveReadOnly,
         showStatistics: false,
         showDisclaimer: false,
+        onCompareSelected: (cycleAStart, cycleBStart) =>
+            Navigator.of(context).push(
+              CycleComparisonScreen.route(
+                profileId: widget.profileId,
+                cycleAStart: cycleAStart,
+                cycleBStart: cycleBStart,
+                todayProvider: widget.todayProvider,
+              ),
+            ),
       ),
+      if (prediction is ActivePrediction) ...[
+        const SizedBox(height: 16),
+        PhaseInsightsCard(
+          prediction: prediction,
+          today: widget.todayProvider(),
+        ),
+      ],
+      const SizedBox(height: 16),
+      SymptomTrendsSection(report: report),
+      const SizedBox(height: 16),
+      _bbtChartCard(context, episodes),
     ];
+  }
+
+  /// Issue #245: the BBT chart card — data shaping is
+  /// [bbt.deriveBbtChartData] (pure, `lib/domain/insights/bbt_chart.dart`),
+  /// reusing the exact same [episodes] this method already derived for
+  /// [CycleInsightsCalculator] above, so the chart's cycle-day axis is the
+  /// same cycle boundaries the rest of this tab shows. Renders in every
+  /// care mode and regardless of [prediction]'s state (unlike the headline
+  /// stats card) — a profile can have logged BBT with too little cycle
+  /// history for a prediction yet, and the chart's own honest empty state
+  /// (issue #245 AC3) already covers "no data" without needing the
+  /// prediction gate above to also cover it.
+  Widget _bbtChartCard(BuildContext context, List<Episode> episodes) {
+    final theme = Theme.of(context);
+    final data = bbt.deriveBbtChartData(
+      episodes: episodes,
+      observations: _observations,
+    );
+    return Card(
+      key: const ValueKey('analysis-bbt-chart-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(LLSpace.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'BBT by cycle day',
+              key: const ValueKey('analysis-bbt-chart-title'),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            BbtChart(data: data, displayUnit: widget.bbtUnit),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _statsCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Card(
       key: const ValueKey('analysis-stats'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -251,10 +427,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
               key: const ValueKey('analysis-stats-title'),
               style: theme.textTheme.titleMedium,
             ),
-            const SizedBox(height: 8),
-            ..._headlineStats(theme, prediction),
-            ..._fertileWindowSection(theme, prediction),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space2),
+            ..._headlineStats(theme, l10n, prediction),
+            ..._fertileWindowSection(theme, l10n, prediction),
+            const SizedBox(height: LLSpace.space3),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('analysis-disclaimer'),
@@ -274,33 +450,37 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// prefix is gated on it; the spread itself always renders, mirroring
   /// how [OverviewPanel]'s separate tier caption is the only thing
   /// `irregular` mode silences, never the estimate date next to it.
-  List<Widget> _headlineStats(ThemeData theme, ActivePrediction prediction) {
+  List<Widget> _headlineStats(
+    ThemeData theme,
+    AppLocalizations l10n,
+    ActivePrediction prediction,
+  ) {
     return [
       _statRow(
         theme,
         'analysis-mean-cycle-length',
         'Average cycle length',
-        formatDays(prediction.meanCycleLengthDays),
+        formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
         theme,
         'analysis-mean-period-length',
         'Average period length',
-        formatDays(prediction.meanPeriodLengthDays),
+        formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
         theme,
         'analysis-variability',
         'Variability',
-        _variabilityText(prediction),
+        _variabilityText(l10n, prediction),
       ),
     ];
   }
 
-  String _variabilityText(ActivePrediction prediction) {
+  String _variabilityText(AppLocalizations l10n, ActivePrediction prediction) {
     final spread = '±${prediction.spreadDays.round()} days';
     if (!_copy.showsTierCaption) return spread;
-    return '${prediction.tier.label} ($spread)';
+    return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
 
   /// Issue #143: the fertile-window row and its contraception-specific
@@ -318,6 +498,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// function's own doc comment).
   List<Widget> _fertileWindowSection(
     ThemeData theme,
+    AppLocalizations l10n,
     ActivePrediction prediction,
   ) {
     if (!_copy.showsFertileWindow) return const [];
@@ -328,9 +509,9 @@ class _AnalysisTabState extends State<AnalysisTab> {
         theme,
         'analysis-fertile-window',
         _copy.fertileWindowLabel,
-        _fertileWindowText(fertile),
+        _fertileWindowText(l10n, fertile),
       ),
-      const SizedBox(height: 4),
+      const SizedBox(height: LLSpace.space1),
       Text(
         kFertileWindowDisclaimer,
         key: const ValueKey('analysis-fertile-disclaimer'),
@@ -343,11 +524,14 @@ class _AnalysisTabState extends State<AnalysisTab> {
   /// renders, and [CareModeCopy.showsTierCaption] only adds the tier-name
   /// prefix — this estimate is never hidden behind a caption gate of its
   /// own, only the whole-row [CareModeCopy.showsFertileWindow] gate above.
-  String _fertileWindowText(FertileWindowEstimate fertile) {
+  String _fertileWindowText(
+    AppLocalizations l10n,
+    FertileWindowEstimate fertile,
+  ) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
     if (!_copy.showsTierCaption) return range;
-    return '${fertile.tier.label} ($range)';
+    return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
   // Issue #160: locale-derived long date (the `en` fallback renders
@@ -363,13 +547,13 @@ class _AnalysisTabState extends State<AnalysisTab> {
   // than overflowing the card horizontally.
   Widget _statRow(ThemeData theme, String key, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: LLSpace.space1),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: theme.textTheme.bodyMedium),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               value,
@@ -391,7 +575,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return Card(
       key: const ValueKey('analysis-not-enough'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -401,7 +585,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('analysis-not-enough-disclaimer'),

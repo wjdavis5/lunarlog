@@ -19,13 +19,16 @@
          ever written (issue #254's written rule; see
          docs/ops/play-health-declaration.md for the Play Console Health apps
          declaration these permissions require before any production-track
-         ship). Extend this list (never widen it silently) as later HS issues
-         add data types — adding one re-triggers Play's Health apps
-         declaration review; do NOT add history, background, sexual-activity,
-         or BBT permissions here; those belong to #186/#210/#228. -->
-    <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
+         ship). Write-only by design (issue #515): HealthConnectAdapter.kt's
+         `writePermissions` set never requests `getReadPermission` for either
+         record type, so this app never reads Health Connect — do not add a
+         READ_* permission here without a matching read call site and a
+         PRIVACY.md update describing what is read and why. Extend this list
+         (never widen it silently) as later HS issues add data types —
+         adding one re-triggers Play's Health apps declaration review; do NOT
+         add history, background, sexual-activity, or BBT permissions here;
+         those belong to #186/#210/#228. -->
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
-    <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
     <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <application
         android:label="lunarlog"
@@ -130,6 +133,23 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Issue #174: FCM's own tray presentations (a backgrounded
+             caregiver alert's notification payload) land on the same
+             "Reminders" channel and the same launcher icon the locally
+             scheduled reminders use (kReminderChannelId in
+             lib/data/notifications/notification_scheduler.dart, which the
+             scheduler creates at initialize; AndroidInitializationSettings
+             uses the same @mipmap/ic_launcher), so a caregiver alert is
+             visually identical to a local reminder instead of landing in
+             the system default channel with a generic icon. The two values
+             are pinned against the Dart constants by
+             test/release/fcm_presentation_manifest_test.dart. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="lunarlog_reminders" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -147,5 +167,16 @@
              built into the OS (Android 14+) or a separate installable app
              (Android 9-13). -->
         <package android:name="com.google.android.apps.healthdata"/>
+        <!-- Issue #534: the lock screen's "Open device settings" action
+             (no credential enrolled) launches these via `url_launcher`'s
+             `intent://` support. Security settings first; this app's own
+             "App info" page as the fallback when an OEM skin doesn't
+             expose ACTION_SECURITY_SETTINGS. -->
+        <intent>
+            <action android:name="android.settings.SECURITY_SETTINGS"/>
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS"/>
+        </intent>
     </queries>
 </manifest>

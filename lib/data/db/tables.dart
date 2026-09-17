@@ -2,10 +2,11 @@
 ///
 /// Every domain row carries the hand-modeled sync metadata settled in the
 /// data model: client-generated ULID id, `updated_at` (UTC, never regresses
-/// on-device), and `deleted_at` (tombstone soft-delete; rows are never
-/// removed). Schema v2 (KTD4) adds device-local sync bookkeeping to the two
-/// synced tables — `dirty` (needs pushing) and `local_rev` (bumped on every
-/// local write, never synced) — plus the `sync_state` singleton.
+/// on-device), and `deleted_at` (tombstone soft-delete; rows are retained
+/// for sync until swept by the bounded tombstone sweep — Issue #203). Schema
+/// v2 (KTD4) adds device-local sync bookkeeping to the two synced tables —
+/// `dirty` (needs pushing) and `local_rev` (bumped on every local write,
+/// never synced) — plus the `sync_state` singleton.
 /// `app_settings` is device-local key-value state and intentionally
 /// carries only `updated_at` (flagged as an open design question).
 library;
@@ -162,6 +163,85 @@ class Profiles extends Table {
   IntColumn get typicalPeriodLengthDays =>
       integer().named('typical_period_length_days').nullable()();
 
+  /// The profile's curated tracking categories (Issue #259), as the JSON
+  /// text `TrackingPreferences.toJsonText` produces — the same partial
+  /// `{category: {enabled, sort_order}}` document the server's
+  /// `profiles.tracking_preferences` jsonb carries (mirroring
+  /// [Observations.raw]'s wire-JSON/local-text precedent). Null means
+  /// never customized: every category resolves to its default (enabled,
+  /// taxonomy order) except the minor-hidden set on an [isMinor] profile.
+  /// Presentation curation only — never consulted by any authorization
+  /// path, and hiding a category never touches already-logged entries.
+  /// Synced like any other profile column; `row_codec.dart` carries it on
+  /// the wire as a JSON object and only ever emits the key when locally
+  /// non-null, so this client never clears a co-guardian's document by
+  /// accident (the server's `?` containment guard is the backstop).
+  TextColumn get trackingPreferences =>
+      text().named('tracking_preferences').nullable()();
+
+  /// Per-profile BBT display unit (Issue #255), mirrored by
+  /// `domain.BbtUnit` and the server's `profiles_bbt_unit_check` CHECK
+  /// (`celsius|fahrenheit`). Non-null, defaulting to `celsius`; an
+  /// unrecognised value decodes to `celsius` rather than throwing (see
+  /// `row_codec.dart`). Presentation only — a stored `observations`
+  /// temperature always keeps the unit it was entered/imported in
+  /// (`observations.unit`); this decides only how it renders.
+  TextColumn get bbtUnit =>
+      text().named('bbt_unit').withDefault(const Constant('celsius'))();
+
+  /// Per-profile weight display unit (Issue #255), mirrored by
+  /// `domain.WeightUnit` and the server's `profiles_weight_unit_check`
+  /// CHECK (`kg|lb`). Same contract as [bbtUnit].
+  TextColumn get weightUnit =>
+      text().named('weight_unit').withDefault(const Constant('kg'))();
+
+  /// Device-local, never synced (LLA-041): the instant
+  /// `_tombstoneRevokedSharedProfile` last wiped this row for a guardian
+  /// revocation (or a server-side hard purge), or null if it has never
+  /// been evicted this way. Marks the local copy's `updated_at` as a
+  /// cache-eviction artifact rather than a genuine LWW competitor: the
+  /// wipe deliberately leaves `updated_at` untouched (so an unrevoked
+  /// re-share carrying the profile's original, never-bumped timestamp can
+  /// still tie/win normally), but that same choice means a row that was
+  /// *dirty* with an unpushed, clock-ahead edit at wipe time keeps an
+  /// `updated_at` no future authoritative delivery can ever beat under the
+  /// ordinary per-id rule. [_applyProfile] bypasses that rule entirely
+  /// while this is non-null — any remote delivery of the row wins
+  /// unconditionally — and clears it back to null the moment one lands, so
+  /// normal per-id LWW resumes from the restored value.
+  DateTimeColumn get accessRevokedAt =>
+      dateTime().named('access_revoked_at').nullable()();
+
+  /// Device-local, never synced (Issue #637, LLA-039). Nullable, like
+  /// [accessRevokedAt] just above, specifically so every existing direct
+  /// `Profile(...)` test fixture keeps compiling without passing this
+  /// field (a non-nullable-with-default `BoolColumn` still generates a
+  /// *required* Dart constructor parameter — nullable is the column shape
+  /// that does not). Null or `false` for a row this device has confirmed
+  /// against a real server value at least once — a fresh local row (never
+  /// set, so implicitly null) and every remote apply of this row
+  /// (`_applyProfile` always clears it back to null on write, win or
+  /// lose). `true` for every row the v20 migration found already on the
+  /// device: [bbtUnit]/[weightUnit] were added at v16 with a local
+  /// default (`celsius`/`kg`), so an old client upgrading through that
+  /// version backfills every existing profile with that default whether
+  /// or not the server already held a real, different preference — and
+  /// since a migration never marks a row `dirty`, the row's own
+  /// `updated_at` is untouched, so the two values silently diverge with
+  /// nothing to say so. If the row later becomes dirty for an unrelated
+  /// edit before the next pull ever delivers the server's real value, an
+  /// ordinary push would carry the still-default `bbt_unit`/`weight_unit`
+  /// as if it were real data and clobber the server's stored preference.
+  /// `row_codec.dart`'s `encodeProfile` omits both keys while this is
+  /// `true` — safe, since `sync_push`'s update path already applies a
+  /// `? 'bbt_unit'`/`? 'weight_unit'` containment guard for an absent key
+  /// (the same guard [trackingPreferences] already relies on) — so an
+  /// otherwise-legitimate push of the rest of the row never touches
+  /// either preference until this device has actually seen the server's
+  /// value for them.
+  BoolColumn get unitsUnconfirmed =>
+      boolean().named('units_unconfirmed').nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -197,6 +277,24 @@ class DayEntries extends Table {
   /// already-stored marker. Logged PMS days feed the 6-cycle PMS averages
   /// and the predicted PMS band (`lib/domain/prediction/pms.dart`).
   BoolColumn get pms => boolean().withDefault(const Constant(false))();
+
+  /// Device-local, never synced (Issue #637, LLA-039) — the same
+  /// unconfirmed-default guard as [Profiles.unitsUnconfirmed] (see its
+  /// doc comment for why this is nullable rather than
+  /// non-nullable-with-default), for [pms]: `pms` was added at v12 with a
+  /// local default (`false`), so an old client upgrading through that
+  /// version backfills every existing day entry with `false` whether or
+  /// not the server already held `true` for it, and a migration never
+  /// marks a row dirty, so nothing about the row's own `updated_at`
+  /// reveals the divergence. Null or `false` for a row this device has
+  /// confirmed against a real server value at least once (never set on a
+  /// fresh local row, and cleared back to null on every remote apply of
+  /// this row); `true` for every row the v20 migration found already on
+  /// the device. `row_codec.dart`'s `encodeDayEntry` omits the `pms` key
+  /// while this is `true` — safe, since `sync_push`'s update path already
+  /// applies a `? 'pms'` containment guard for an absent key.
+  BoolColumn get pmsUnconfirmed =>
+      boolean().named('pms_unconfirmed').nullable()();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
 
@@ -266,6 +364,19 @@ class ProfileGuardians extends Table {
   DateTimeColumn get createdAt => dateTime().named('created_at')();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  /// Server-owned, monotonic version stamped by the server's
+  /// `set_server_version` trigger on every insert/update (LLA-035): unlike
+  /// every other per-id table, this table's `updated_at` is directly
+  /// client-writable (`grant update (display_name, updated_at)` in
+  /// `20260904010000_multi_guardian_schema.sql`, needed so a guardian can
+  /// edit its own `display_name`), so an accepted guardian can stamp its
+  /// own membership row's `updated_at` arbitrarily far in the future and
+  /// permanently outrank a later, authoritative revocation under the
+  /// ordinary per-id rule. Membership convergence is ordered by this
+  /// column instead — see `conflict_rules.dart`'s `remoteWinsByVersion`.
+  IntColumn get serverVersion =>
+      integer().named('server_version').withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -342,6 +453,17 @@ class Observations extends Table {
   /// unconstrained server-side until #167 adds that table).
   TextColumn get importId => text().named('import_id').nullable()();
 
+  /// Issue #186 (sync mechanics): the UTC instant this row's content was
+  /// last written to a health platform (HealthKit/Health Connect), so a
+  /// round-trip write is detectable when the same row comes back through a
+  /// future import (#217/#228). Client-stamped at export time and synced
+  /// like any other observations column (the migration applies the
+  /// established `v_row ? 'key'` containment guard so an old client's
+  /// payload never clears an already-stored value). Null until the export
+  /// flow writes it — inert until #217/#228 own that flow.
+  DateTimeColumn get exportedToPlatformAt =>
+      dateTime().named('exported_to_platform_at').nullable()();
+
   /// Escape hatch for an unrecognised type/value shape (A1-45); the entire
   /// original datapoint as JSON text.
   TextColumn get raw => text().nullable()();
@@ -397,6 +519,17 @@ class ProfileModes extends Table {
   /// ISO calendar date `yyyy-MM-dd` the current mode took effect, or null.
   TextColumn get modeStartedOn =>
       text().named('mode_started_on').nullable()();
+
+  /// Estimated due date (Issue #192), as an ISO calendar date
+  /// `yyyy-MM-dd` — derived on entry from the last recorded period start
+  /// + 280 days (Naegele's rule) or manually supplied when that start is
+  /// unknown/imported, stored here (NOT client-local: it must sync) and
+  /// consumed by the Pregnancy-mode week counter. Kept on exit rather
+  /// than cleared — the mode column says whether a pregnancy is current;
+  /// this stays as the record of the one that was (and is overwritten on
+  /// any later re-entry).
+  TextColumn get estimatedDueDate =>
+      text().named('estimated_due_date').nullable()();
 
   /// Current birth-control method (free text, #260 owns the vocabulary) or
   /// null when none is recorded.
@@ -564,9 +697,179 @@ class VisitPrepItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One recorded same-date merge discard (Issue #130), mirroring
+/// `public.day_entry_merge_events` column-for-column: the disclosure record
+/// `LunarLogStorage._resolveSameDateConflicts` writes when a same-date
+/// resolution actually discarded a `flow` or `note` value (never for a
+/// tags-only merge — a set union loses nothing). Machine-written rows, never
+/// user-composed content. NO `deleted_at`: nothing ever soft-deletes a merge
+/// event — dismissal is device-local (an `app_settings` key), and the only
+/// removals are the local profile wipe and display-window aging (the server
+/// hard-purges after 30 days; [createdAt] drives the same window locally).
+/// Deduplicated by the natural key (profileId, losingRowId, field), matching
+/// the server's `day_entry_merge_events_discard_uq` — a discard recorded by
+/// this device and the server's own emission of the same event collapse to
+/// one local row, so the day sheet never shows two notices for one merge.
+@DataClassName('DayEntryMergeEventData')
+class DayEntryMergeEvents extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// ISO calendar date `yyyy-MM-dd` the colliding entries were both for.
+  TextColumn get localDate => text().named('local_date')();
+
+  /// The surviving row's id at merge time.
+  TextColumn get winningRowId => text().named('winning_row_id')();
+
+  /// The tombstoned row's id at merge time (half of the natural key: a
+  /// losing row is tombstoned by the very merge being disclosed, so it can
+  /// lose at most one value per field).
+  TextColumn get losingRowId => text().named('losing_row_id')();
+
+  /// 'flow' | 'note' — which value kind was discarded.
+  TextColumn get field => text()();
+
+  /// The discarded value itself: the losing note's text, or the losing flow
+  /// level's wire string. Health content — bounded (the server CHECKs
+  /// 2000), never in a notification, kept out of crash reports.
+  TextColumn get losingValueText => text().named('losing_value_text')();
+
+  /// Display attribution only: whose value was discarded / survived.
+  TextColumn get losingAuthorUserId =>
+      text().named('losing_author_user_id').nullable()();
+
+  TextColumn get winningAuthorUserId =>
+      text().named('winning_author_user_id').nullable()();
+
+  /// The UTC instant the merge was recorded (the resolution stamp for a
+  /// locally-emitted row; the server's `created_at` for a pulled one).
+  /// Drives the 30-day display/recovery window, in lockstep with the
+  /// server-side retention purge.
+  DateTimeColumn get createdAt => dateTime().named('created_at')();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// One row of the per-profile custom-tag registry (Issue #257), mirroring
+/// `public.profile_tag_registry` column-for-column; see
+/// `supabase/migrations/20260917000000_profile_tag_registry.sql` for the
+/// server shape, its RLS/grants, and the retirement-not-deletion rule.
+/// `hiddenAt` is retirement (removed from the picker; stored rows keep
+/// rendering); `deletedAt` is the ordinary synced-table tombstone, payload
+/// cleared per the server's `profile_tag_registry_tombstone_payload_check`
+/// except `code`, which survives (the #159 provenance precedent).
+@DataClassName('ProfileTagRegistryEntry')
+class ProfileTagRegistry extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// The stable snake_case identifier persisted on day entries; immutable
+  /// once created (a rename rewrites displayName only). Bounded to
+  /// `kMaxTagLength` (64) by the storage layer, mirroring the server's
+  /// CHECK. Survives a tombstone.
+  TextColumn get code => text()();
+
+  /// The user's own label (bounded to `kMaxCustomTagLabelLength`, 40).
+  /// Empty on a tombstone.
+  TextColumn get displayName => text().named('display_name')();
+
+  /// Free text, client-owned ('custom' for in-app creations). Empty on a
+  /// tombstone.
+  TextColumn get category => text()();
+
+  /// Reserved for per-tag intensity affordances; false today.
+  BoolColumn get intensityEnabled =>
+      boolean().named('intensity_enabled').withDefault(const Constant(false))();
+
+  /// RETIREMENT, not deletion: non-null removes the code from the
+  /// day-sheet picker while stored rows referencing it keep rendering.
+  /// Null on a tombstone.
+  DateTimeColumn get hiddenAt => dateTime().named('hidden_at').nullable()();
+
+  IntColumn get sortOrder => integer().named('sort_order').nullable()();
+
+  /// Server-stamped from the caller on INSERT; never pushed.
+  TextColumn get createdBy => text().named('created_by').nullable()();
+
+  /// Server-stamped; never pushed (rides the row for display only).
+  DateTimeColumn get createdAt => dateTime().named('created_at')();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// One row of `public.day_entry_history` (Issue #170): a machine-written,
+/// content-free audit record of one day-entry change. Mirrors the server
+/// table column-for-column EXCEPT the local store deliberately carries no
+/// FK from [entryId] to day entries (the server does; locally, the
+/// tombstone sweep may remove an old day-entry row while its 90-day
+/// history is still inside the feed window — see the domain model's doc
+/// comment) and no `dirty`/`localRev` (PULL-ONLY: rows are never pushed,
+/// the [ProfileGuardians] precedent).
+@DataClassName('DayEntryHistoryData')
+class DayEntryHistory extends Table {
+  /// Server-generated ULID (random identity; rows are keyed by event, never
+  /// ordered by id).
+  TextColumn get id => text()();
+
+  /// The day_entries row the change happened to (a plain text reference
+  /// locally — see the class doc comment).
+  TextColumn get entryId => text().named('entry_id')();
+
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// Display attribution only: who made the change.
+  TextColumn get changedByUserId =>
+      text().named('changed_by_user_id')();
+
+  DateTimeColumn get changedAt => dateTime().named('changed_at')();
+
+  /// Raw `change_kind` wire string ('logged' | 'updated' | 'tombstoned' |
+  /// 'merged_discard'); `DayEntryChangeKind.fromDb` normalises on the way
+  /// to the domain model.
+  TextColumn get changeKind => text().named('change_kind')();
+
+  /// day_entries COLUMN NAMES only, never values — the table's whole
+  /// contract (content-free, enforced server-side by CHECK). Stored as a
+  /// JSON array via [TagsConverter] (the same List&lt;String&gt; mapping the
+  /// day-entry `tags` column uses).
+  TextColumn get changedFields =>
+      text().named('changed_fields').map(const TagsConverter())();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('AppSetting')
 class AppSettings extends Table {  TextColumn get key => text()();
-
   TextColumn get value => text()();
 
   DateTimeColumn get updatedAt => dateTime().named('updated_at')();
@@ -627,6 +930,45 @@ class SyncState extends Table {
   IntColumn get cursorVisitPrepItems =>
       integer().named('cursor_visit_prep_items').withDefault(const Constant(0))();
 
+  /// Issue #525: the `profile_guardians` pull cursor, same shape as
+  /// [cursorDayEntries]. Before this column existed, `profileGuardians`
+  /// paged from version 0 every cycle (see the sync engine's
+  /// `_startingCursor`, pre-#525) — every 15-minute tick forced a full
+  /// sequential scan of the global `profile_guardians` table plus one
+  /// `is_profile_guardian()` RLS check per scanned row.
+  IntColumn get cursorProfileGuardians =>
+      integer().named('cursor_profile_guardians').withDefault(const Constant(0))();
+
+  /// Issue #597: the `deleted_profiles` pull cursor, same shape as
+  /// [cursorProfileGuardians] — same fix, same table shape (pull-only, a
+  /// server-owned `server_version` already exists and is already indexed
+  /// server-side). Before this column existed, `deletedProfiles` paged
+  /// from version 0 every cycle (see the sync engine's `_startingCursor`,
+  /// pre-#597), same tradeoff #525 closed for `profileGuardians` — this
+  /// table stayed small enough for a full scan to be cheap at the time,
+  /// but the same per-cycle full-scan cost applies as it grows.
+  IntColumn get cursorDeletedProfiles =>
+      integer().named('cursor_deleted_profiles').withDefault(const Constant(0))();
+
+  /// Issue #130: the `day_entry_merge_events` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorDayEntryMergeEvents =>
+      integer().named('cursor_day_entry_merge_events')
+          .withDefault(const Constant(0))();
+
+  /// Issue #257: the `profile_tag_registry` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorProfileTagRegistry =>
+      integer().named('cursor_profile_tag_registry')
+          .withDefault(const Constant(0))();
+
+  /// Issue #170: the `day_entry_history` pull cursor, same shape as
+  /// [cursorDayEntries] (the table is pull-only, so this cursor plus the
+  /// apply path are its entire sync surface).
+  IntColumn get cursorDayEntryHistory =>
+      integer().named('cursor_day_entry_history')
+          .withDefault(const Constant(0))();
+
   DateTimeColumn get lastFullPullAt =>
       dateTime().named('last_full_pull_at').nullable()();
 
@@ -642,4 +984,35 @@ class SyncState extends Table {
 
   @override
   Set<Column> get primaryKey => {id};
+}
+
+/// Per-device, per-platform sync anchors for health-store reads (Issue
+/// #186, sync mechanics): one row per OS health platform (`healthkit` /
+/// `health_connect`), recording the change anchor and the last sync
+/// instant. **Deliberately never synced to the server** — anchors are
+/// device-specific and the platform stores are local (never server state),
+/// exactly the rationale `sync_state`'s cursor columns already document for
+/// lunarlog's own sync. Also deliberately not bound to a profile: like
+/// `sync_state`, the whole local database belongs to at most one account,
+/// and the platform anchor advances regardless of which bound profile (at
+/// most one at a time) is being synced.
+@DataClassName('HealthSyncStateRow')
+class HealthSyncState extends Table {
+  /// The OS health platform this anchor belongs to: `healthkit` |
+  /// `health_connect`.
+  TextColumn get platform => text()();
+
+  /// The platform's opaque change anchor: Health Connect's
+  /// `getChangesToken` token, or HealthKit's anchor UUID / last-read
+  /// instant as a string. Null before the first successful read; clearing
+  /// it signals "no anchor — do a full time-range read" (the
+  /// `ChangesTokenExpiredException` fallback of issue #186).
+  TextColumn get anchor => text().nullable()();
+
+  /// The UTC instant this anchor was last persisted at.
+  DateTimeColumn get lastSyncedAt =>
+      dateTime().named('last_synced_at').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {platform};
 }

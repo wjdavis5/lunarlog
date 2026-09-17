@@ -13,22 +13,36 @@
 /// | `bind` | guard args | result string |
 /// | `unbind` | none | `null` |
 /// | `requestWriteAuthorization` | guard args | result string |
-/// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` | result string |
-/// | `writeIntermenstrualBleeding` | guard + day | result string |
+/// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` + `recordId` + `recordVersionMs` | result string |
+/// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
+/// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
+/// | `deleteRecords` | guard + `recordIds` | result string |
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
-/// `minorBindingAllowed`. They are exactly
+/// `transferredToUserId?`, `minorBindingAllowed`. They are exactly
 /// `HealthSyncBinding._evaluate`'s inputs (#153's guard) — the native
 /// handler re-evaluates the mirrored predicate from them plus its own
 /// natively-stored binding before touching any health API; see
 /// `lib/domain/health/health_platform.dart`'s library doc.
+/// `transferredToUserId` (Issue #619, LLA-031) closes a native/Dart
+/// defense-in-depth gap: without it, a native guard could not verify the
+/// minor-transfer exception's target-account leg
+/// (`HealthSyncBinding._minorTransferExceptionHolds`'s `target ==
+/// signedInUserId` check) at all, only that *some* transfer had happened.
 ///
 /// *Day args*: `startMs`, `endMs` (inclusive, next local midnight − 1 s),
 /// `endExclusiveMs` (next local midnight), `instantMs` (local midnight),
 /// `zoneOffsetMs`, `endZoneOffsetMs` — all UTC epoch milliseconds /
 /// offset milliseconds computed here via `day_boundary.dart` (#180's
 /// timezone contract), so the native sides never do zone math.
+///
+/// *Period args* (the `writeMenstrualPeriod` interval record, #202):
+/// `startMs` (local midnight of the episode's first day) +
+/// `startZoneOffsetMs`, and `endMs` (the *exclusive* local midnight after
+/// the episode's last day) + `endZoneOffsetMs` — the two instant/offset
+/// pairs a `MenstruationPeriodRecord` needs, both computed here via
+/// `day_boundary.dart` from the entry's own `tz`.
 ///
 /// *Result strings*: `allowed`; the [HealthSyncCheck] deny names
 /// (`noBinding`, `profileNotBound`, `minorRequiresOwnershipTransfer`,
@@ -38,6 +52,16 @@
 /// cross as `FlutterError(code: "writeFailed", ...)` (a
 /// [PlatformException] on the Dart side) instead, carrying the
 /// diagnostic message.
+///
+/// **Deferred permissions (issue #186, AC9):** `READ_HEALTH_DATA_HISTORY`
+/// (full-history import) and `READ_HEALTH_DATA_IN_BACKGROUND` (background
+/// reads) are deliberately NOT declared for v1. Reads are limited to the
+/// last 30 days (Health Connect's change-token window) with a
+/// user-initiated sync plus a foreground-resume sync — the same
+/// background-delivery deferral rationale as #156 (HS-2) — so the Play
+/// form needs no extra permission justification. Both the Settings copy
+/// and this comment record that decision; the Settings screen states the
+/// 30-day limit explicitly rather than silently truncating.
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
@@ -53,12 +77,42 @@ abstract final class HealthChannelMethods {
   static const requestWriteAuthorization = 'requestWriteAuthorization';
   static const writeMenstrualFlow = 'writeMenstrualFlow';
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
+  static const writeMenstrualPeriod = 'writeMenstrualPeriod';
+  static const deleteRecords = 'deleteRecords';
 }
 
-/// The [HealthSyncCheck] name as it appears on the wire — the enum's own
-/// name, used verbatim by the native guard mirrors, so a mismatch shows
-/// up as an unknown result string rather than a silent misread.
-String healthSyncCheckToWire(HealthSyncCheck check) => check.name;
+/// The canonical Apple SDK raw integer for each [HealthFlowValue], per
+/// `HKCategoryValueVaginalBleeding` (iOS 18+) and the deprecated
+/// `HKCategoryValueMenstrualFlow` it replaced — identical raw values on
+/// both: `unspecified` = 1, `light` = 2, `medium` = 3, `heavy` = 4.
+/// `HKCategoryValue.notApplicable` = 0 is a *different*, shared
+/// "no intensity" value used by types like `intermenstrualBleeding` — this
+/// enum's `unspecified` is never that. Confusing the two (declaring
+/// `unspecified = 0`) is exactly the off-by-one Issue #619's LLA-021
+/// found and fixed in `ios/Runner/AppDelegate.swift`'s
+/// `MenstrualFlowRawValue`.
+///
+/// **This is the single source of truth `AppDelegate.swift`'s
+/// `MenstrualFlowRawValue` enum must match — Dart has no mechanism to
+/// assert Swift's actual raw values at test time.** `ios/RunnerTests/`
+/// exists as a Swift XCTest target, but nothing in
+/// `.github/workflows/ci.yml` runs `xcodebuild test` against it (the
+/// "iOS Simulator tests" job runs Flutter integration tests instead), so
+/// there is no automated cross-language check at all. Until that changes,
+/// `test/data/health/health_flow_value_apple_raw_test.dart` pins this
+/// table's own literals and completeness so a native reimplementation of
+/// the flow enum has an explicit, reviewed reference to diff against.
+/// Values verified against the Apple SDK via Microsoft Learn's
+/// `HKCategoryValueMenstrualFlow`/`HKCategoryValueVaginalBleeding`
+/// references (dotnet/macios bindings generated directly from Apple's own
+/// headers), not from memory — see the introducing PR's description for
+/// the exact sources.
+const Map<HealthFlowValue, int> kHealthFlowValueAppleRawValue = {
+  HealthFlowValue.unspecified: 1,
+  HealthFlowValue.light: 2,
+  HealthFlowValue.medium: 3,
+  HealthFlowValue.heavy: 4,
+};
 
 /// Parses a result string into the typed [HealthPlatformResult]. Total:
 /// never throws; an unrecognized string becomes
@@ -109,6 +163,7 @@ Map<String, Object?> encodeGuardArgs(
         'isMinor': facts.profile.isMinor,
         'birthYear': facts.profile.birthYear,
         'transferredAtMs': facts.profile.transferredAt?.millisecondsSinceEpoch,
+        'transferredToUserId': facts.profile.transferredToUserId,
         'minorBindingAllowed': minorBindingAllowed,
       };
 
@@ -128,5 +183,26 @@ Map<String, Object?> encodeDayArgs(LocalDate date, String tzName) {
         'instantMs': localDayInstant(date, tzName).millisecondsSinceEpoch,
         'zoneOffsetMs': zoneOffsetFor(date, tzName).inMilliseconds,
         'endZoneOffsetMs': endZoneOffsetFor(date, tzName).inMilliseconds,
+  };
+}
+
+/// The period-args half for one `writeMenstrualPeriod` (Issue #202): the
+/// instant/offset pair for the interval record's start (local midnight of
+/// [start]) and its end (the *exclusive* local midnight after [end], plus
+/// that instant's own offset — on a DST-transition day it differs from the
+/// start offset, which is exactly why they are computed together here).
+/// All from the entry's own `tzName` via `day_boundary.dart` (#180's
+/// timezone contract — never the device's current zone); the native side
+/// does no zone math.
+Map<String, Object?> encodePeriodDayArgs(
+  LocalDate start,
+  LocalDate end,
+  String tzName,
+) {
+  return {
+    'startMs': localDayInstant(start, tzName).millisecondsSinceEpoch,
+    'startZoneOffsetMs': zoneOffsetFor(start, tzName).inMilliseconds,
+    'endMs': localDayEndExclusive(end, tzName).millisecondsSinceEpoch,
+    'endZoneOffsetMs': endZoneOffsetFor(end, tzName).inMilliseconds,
   };
 }

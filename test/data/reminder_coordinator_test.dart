@@ -18,6 +18,8 @@ import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:timezone/data/latest_all.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 
 import '../support/fake_reminder_scheduler.dart';
 import '../support/fake_settings_store.dart';
@@ -88,6 +90,7 @@ void main() {
   // The coordinator registers with WidgetsBinding (lifecycle observer);
   // plain tests need the test binding initialized for that.
   TestWidgetsFlutterBinding.ensureInitialized();
+  tzdata.initializeTimeZones();
 
   test('profiles + predictions flow through to a reschedule call', () async {
     final scheduler = FakeReminderScheduler();
@@ -373,6 +376,39 @@ void main() {
     expect(scheduler.rescheduleCalls, isNotEmpty);
   });
 
+  test(
+      'resume re-resolves changed device timezone, updates tz.local, and replans (issue #169)',
+      () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final ny = tz.getLocation('America/New_York');
+    tz.setLocalLocation(ny);
+    expect(tz.local.name, 'America/New_York');
+
+    var currentTz = 'Europe/Paris';
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      localTimeZoneProvider: () async => currentTz,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    final initialReschedules = scheduler.rescheduleCalls.length;
+
+    // Simulate traveling to Tokyo and resuming
+    currentTz = 'Asia/Tokyo';
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    expect(tz.local.name, 'Asia/Tokyo');
+    expect(scheduler.rescheduleCalls.length, greaterThan(initialReschedules));
+  });
+
   test('resume notices revoked permission and cancels reminders', () async {
     final scheduler = FakeReminderScheduler()
       ..currentAvailability = NotificationAvailability.denied;
@@ -383,6 +419,15 @@ void main() {
       permissionState: permissionState,
       activeProfiles: const Stream.empty(),
       predictionFor: (_) => const Stream.empty(),
+      // No real zone change here — the case where a resolved zone change
+      // must itself trigger a correcting replan is covered separately
+      // below ("a timezone change discovered after the debounce still
+      // triggers a correcting replan"). Reading `tz.local.name` at call
+      // time (rather than the real platform-channel default, whose
+      // resolution the coordinator no longer waits on per #655) keeps
+      // this test's single `cancelAll` count from depending on whatever
+      // `tz.local` a prior test in this file happened to leave behind.
+      localTimeZoneProvider: () async => tz.local.name,
       replanDebounce: Duration.zero,
     );
     await coordinator.start();
@@ -392,7 +437,62 @@ void main() {
     await pumpEventQueue();
 
     expect(permissionState.value, NotificationAvailability.denied);
-    expect(scheduler.cancelCalls, 1);
+    expect(scheduler.cancelCalls, 1,
+        reason: 'denied means only cancelAll is ever called here, exactly '
+            'once — a resolved-but-unchanged zone must never trigger a '
+            'second (redundant) cancelAll');
+  });
+
+  test('a timezone change discovered after the debounce still triggers a '
+      'correcting replan (issue #169)', () async {
+    // The real-world shape this guards: a cold resume where the resume's
+    // own (debounced) replan fires using the stale zone before the
+    // platform-channel timezone lookup — genuinely slower here than
+    // `replanDebounce` — resolves with a *different* one. Fixing #655
+    // (never gating the replan on that lookup) must not regress #169
+    // (a real zone change going uncorrected).
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final ny = tz.getLocation('America/New_York');
+    tz.setLocalLocation(ny);
+    final tzGate = Completer<String>();
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: const Stream.empty(),
+      predictionFor: (_) => const Stream.empty(),
+      // Never resolves until the test completes it — guaranteed to
+      // outlast the (zero) debounce below, deterministically, with no
+      // reliance on real elapsed time.
+      localTimeZoneProvider: () => tzGate.future,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(coordinator.dispose);
+
+    coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await pumpEventQueue();
+
+    // The resume's own replan has already fired against the stale zone;
+    // the timezone lookup is still parked on the gate.
+    final callsBeforeTzResolves = scheduler.rescheduleCalls.length;
+    expect(callsBeforeTzResolves, greaterThan(0),
+        reason: 'the #655 fix: the permission-driven replan never waits '
+            'on the timezone lookup');
+    expect(tz.local.name, 'America/New_York',
+        reason: 'the zone has not changed yet');
+
+    // The platform channel now answers with a different zone.
+    tzGate.complete('Asia/Tokyo');
+    await pumpEventQueue();
+
+    expect(tz.local.name, 'Asia/Tokyo');
+    expect(scheduler.rescheduleCalls.length, greaterThan(callsBeforeTzResolves),
+        reason: 'a zone that turns out to have actually changed must '
+            'still trigger its own correcting replan, even though the '
+            'first pass already fired under the old zone');
   });
 
   test('requestPermission (issue #168, "Turn on reminders") re-requests '
@@ -606,6 +706,71 @@ void main() {
             .any((r) => r.kind == ReminderKind.log),
         isTrue,
       );
+    });
+
+    test('stored custom notification text reaches the scheduler payload '
+        '(Issue #184: the scheduling path reads the per-type text)', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'Tea time',
+            customBody: 'Bring the blue bottle.',
+          ),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_upcoming(today, today.addDays(10)));
+      await pumpEventQueue();
+
+      final plan = scheduler.rescheduleCalls.last;
+      final reminder = plan.singleWhere((r) => r.kind == ReminderKind.upcoming);
+      expect(reminder.title, 'Tea time');
+      expect(reminder.body, 'Bring the blue bottle.');
+
+      // Editing the stored text re-arms the plan with the new copy through
+      // the same changes-stream replan the schedule edits ride.
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'New title',
+            customBody: 'New body',
+          ),
+        ),
+      );
+      await pumpEventQueue();
+      final replanned = scheduler.rescheduleCalls.last
+          .singleWhere((r) => r.kind == ReminderKind.upcoming);
+      expect(replanned.title, 'New title');
+      expect(replanned.body, 'New body');
     });
 
     test('two profiles hold different schedules and both plan correctly',
@@ -1168,6 +1333,211 @@ void main() {
       expect(kinds, {ReminderKind.upcoming},
           reason: 'without a birth-control stream the plan is exactly what '
               'pre-#183 code produced');
+    });
+  });
+
+  group('lifecycle serialization and disposal draining (Issue #634, '
+      'LLA-097)', () {
+    test('a superseded replan() pass is invalidated once a fresher one '
+        'starts — only the latest plan reaches the scheduler', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+      final before = scheduler.rescheduleCalls.length;
+
+      // Two replan passes fired back-to-back with nothing awaited in
+      // between — the same shape a fast profile edit racing a debounced
+      // resume produces: the first is still reading stored config when
+      // the second starts and (synchronously) claims the generation.
+      final stale = coordinator.replan();
+      final fresh = coordinator.replan();
+      await Future.wait([stale, fresh]);
+
+      expect(scheduler.rescheduleCalls.length, before + 1,
+          reason: 'the superseded (first) pass never reaches the '
+              'scheduler once a fresher one has started — no '
+              'interleaved or duplicate rescheduleAll call');
+    });
+
+    test('dispose does not wait for an in-flight replan, and that replan '
+        'still never re-arms the scheduler once it does settle', () async {
+      // Issue #634, LLA-097, revised after PR #668's review round 2:
+      // dispose() used to `await` the in-flight replan (and the scheduler
+      // call it queued) so it could be observed as fully "drained" by the
+      // time dispose() returned. That `await` had no bound, and hung a
+      // real scenario: `LunarLogApp hands its coordinator teardown to
+      // onTeardown` (test/ui/app_auth_provider_test.dart) — a widget
+      // test's `State.dispose()` runs inside flutter_test's fake-async
+      // zone, where an in-principle-already-resolved Future can still sit
+      // unresolved until the zone is pumped again, which that test never
+      // did before handing the returned teardown Future off. So dispose()
+      // must return promptly regardless (asserted below via a bounded
+      // timeout) — invalidation, not draining, is what actually keeps
+      // LLA-097's guarantee.
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+      final beforeDispose = scheduler.rescheduleCalls.length;
+
+      // A replan is mid-flight (still reading stored config) when
+      // dispose() is called.
+      final inFlight = coordinator.replan();
+      await coordinator.dispose().timeout(const Duration(seconds: 2));
+
+      // Let the in-flight pass actually finish unwinding, then confirm it
+      // never reached the scheduler — whether or not anyone waited for
+      // it.
+      await inFlight;
+      expect(scheduler.rescheduleCalls.length, beforeDispose,
+          reason: 'a replan already in flight when dispose() starts must '
+              'never re-arm the scheduler once torn down — closed-store '
+              'failures and stale re-armed reminders (LLA-097) both come '
+              'from letting a pre-teardown pass keep writing');
+    });
+
+    test('a scheduler call that never completes cannot block dispose() — '
+        'a hung platform call must never block app teardown', () async {
+      final scheduler = FakeReminderScheduler()
+        ..rescheduleGate = Completer<void>(); // never completed
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+      // The replan is now genuinely stuck inside `rescheduleAll`, parked
+      // on a gate that this test never completes.
+      expect(scheduler.rescheduleCalls, isEmpty);
+
+      // dispose() must return promptly regardless of that hang.
+      await coordinator.dispose().timeout(const Duration(seconds: 2));
+
+      await profiles.close();
+      await p1.close();
+    });
+  });
+
+  group('archived/removed profiles cannot plan through stored config or '
+      'birth-control state (Issue #634, LLA-098)', () {
+    test('a removed profile\'s stored config cannot plan a reminder once '
+        'it leaves the active set', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      // p1's log nudge is enabled and persisted device-locally — nothing
+      // deletes this row just because p1 leaves the active-profiles
+      // stream (an archive or a remove).
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 20 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (_) => const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last.any((r) => r.profileId == 'p1'),
+        isTrue,
+        reason: 'baseline: the log nudge plans while p1 is active',
+      );
+
+      // p1 is archived/removed: the active-profiles stream stops naming
+      // it, but its stored config row is untouched in the settings
+      // store.
+      profiles.add([]);
+      await pumpEventQueue();
+      expect(
+        scheduler.rescheduleCalls.last.any((r) => r.profileId == 'p1'),
+        isFalse,
+        reason: 'a stored config for a profile no longer in the active '
+            'set must never plan a reminder',
+      );
     });
   });
 }

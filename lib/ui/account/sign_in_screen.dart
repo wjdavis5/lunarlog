@@ -16,16 +16,25 @@
 /// `signInWithPassword` returns. Only a signed-out → signed-in transition
 /// counts; a screen opened while already signed in does not auto-complete.
 ///
-/// [authFailureCopy] is the single, exhaustive copy table for every
+/// Failure copy routes through [authFailureCopy] (Issue #545: moved to
+/// `lib/ui/l10n/auth_failure_copy.dart` and consolidated with every other
+/// …FailureCopy mapper), the single, exhaustive copy table for every
 /// [AuthFailure], including the provider, identity, closed-sign-up,
 /// rate-limited, and misconfigured kinds (#2 U2; KTD4, R14; #32 AC2, AC4)
-/// and the last-remaining-method kind a removal can hit
-/// (#31 KTD5, R9).
+/// and the last-remaining-method kind a removal can hit (#31 KTD5, R9).
 ///
 /// Provider buttons (#2 U4; KTD6, KTD8): the providers render above the
 /// email form — Apple (the package's HIG widget, iOS only) first, then
 /// Google (the branded widget, only when [AppConfig.hasGoogle] or
 /// [showGoogle] says so) — and a dismissed picker is not a failure.
+///
+/// Issue #165 (form accessibility): the email + password pair sits in one
+/// [AutofillGroup] with honest hints (`email`; `password` in sign-in mode,
+/// `newPassword` in create mode so password managers offer to generate),
+/// every field declares its `textInputAction` ("next" advances focus into
+/// the next field, "done" submits), and the password field carries a
+/// local-only reveal toggle — the toggle flips nothing but this field's
+/// `obscureText`.
 library;
 
 import 'dart:async';
@@ -40,77 +49,10 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart'
     show SignInWithAppleButton, SignInWithAppleButtonStyle;
-
-/// Client-side minimum for a new password (the project's hosted rule).
-const int kMinPasswordLength = 12;
-
-/// Fallback copy shared by [AuthUnknownFailure] and the (unreachable)
-/// default arm of [_rareAuthFailureCopy] (#31: kept as a named constant so
-/// the two spellings can never drift).
-const String _kUnknownFailureCopy = 'Something went wrong. Please try again.';
-
-/// Generic, email-free copy per failure kind. Split into this dispatcher
-/// plus [_rareAuthFailureCopy] — same exhaustive switch over the sealed
-/// [AuthFailure] hierarchy, just spread across two methods so neither
-/// trips the CRAP gate's per-method complexity threshold (#31; no
-/// behavior change). This function's switch is still the one the compiler
-/// checks for exhaustiveness: a new [AuthFailure] kind fails to compile
-/// here (either as its own arm or added to the combined arm below) before
-/// [_rareAuthFailureCopy] is ever reached.
-String authFailureCopy(AuthFailure failure) => switch (failure) {
-      AuthWrongPasswordFailure() =>
-        'That email and password combination was not accepted.',
-      AuthWeakPasswordFailure() =>
-        'Choose a stronger password of at least $kMinPasswordLength characters.',
-      AuthNetworkFailure() =>
-        'Could not reach the server. Check your connection and try again.',
-      AuthUnknownFailure() => _kUnknownFailureCopy,
-      // Generic on purpose (#30 U4; R5): this same fieldless kind now also
-      // covers a passkey ceremony that could not run, so the copy must
-      // never name Google, Apple, or "passkey" specifically.
-      AuthProviderUnavailableFailure() =>
-        "That sign-in method isn't available on this device. Use email "
-            'instead.',
-      // Issue #32 AC2: throttled, not rejected — the copy names waiting,
-      // never a bad code.
-      AuthRateLimitedFailure() =>
-        'Too many attempts. Wait a little while, then try again.',
-      // Issue #32 AC4: the dashboard is not set up for this operation —
-      // a project-setup problem, not a bug in-app.
-      AuthMisconfiguredFailure() =>
-        'That sign-in method is not set up for this app right now. Try '
-            'another way to sign in.',
-      AuthExpiredLinkFailure() ||
-      AuthInvalidCodeFailure() ||
-      AuthIdentityTakenFailure() ||
-      AuthSignUpClosedFailure() ||
-      AuthLastSignInMethodFailure() =>
-        _rareAuthFailureCopy(failure),
-    };
-
-/// The less-common failure kinds (#2/#31), split out of [authFailureCopy]
-/// purely to keep its cyclomatic complexity under the CRAP gate's
-/// threshold. Only ever called with the five kinds [authFailureCopy]
-/// delegates; the wildcard arm is unreachable in practice and returns the
-/// same generic copy [AuthUnknownFailure] uses rather than throwing, so a
-/// future refactor mistake fails safe instead of crashing the UI.
-String _rareAuthFailureCopy(AuthFailure failure) => switch (failure) {
-      AuthExpiredLinkFailure() =>
-        'That sign-in link is no longer valid. Request a new one.',
-      AuthInvalidCodeFailure() =>
-        'That code was not accepted. Check it or request a new email.',
-      AuthIdentityTakenFailure() =>
-        'That sign-in method already belongs to another account.',
-      AuthSignUpClosedFailure() =>
-        'New accounts for this app are set up by the account owner.',
-      AuthLastSignInMethodFailure() =>
-        'That is the only way left to sign in to this account. Add '
-            'another method first.',
-      _ => _kUnknownFailureCopy,
-    };
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({
@@ -153,10 +95,27 @@ class SignInScreen extends StatefulWidget {
 class _SignInScreenState extends State<SignInScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _code = TextEditingController();
+
+  /// #165: the credential fields' explicit focus chain — the email field's
+  /// "next" advances here, so keyboard traversal never depends on tree
+  /// order around the provider buttons above.
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+
+  /// #165: the reveal toggle's state. Local-only by design: flipping it
+  /// changes this field's `obscureText` and nothing else.
+  bool _obscurePassword = true;
+
   bool _createMode = false;
   bool _busy = false;
   String? _error;
   String? _info;
+
+  /// LLA-006 (#2 U4): revealed once a magic-link send succeeds, or on
+  /// init when [SettingsKeys.awaitingMagicLinkEmail] is already set (a
+  /// code sent before an app restart) — see [_loadPendingMagicLink].
+  bool _showCodeField = false;
 
   /// The controller this state listens to for link-delivered sessions
   /// (#2 U3; KTD4).
@@ -176,6 +135,33 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get _showPasskeys => widget.showPasskeys ?? AppConfig.hasPasskeys;
 
+  /// #2 U4: the verify-code button stays disabled until the field holds a
+  /// plausible code, mirroring the password-length guard on this same
+  /// screen — Supabase OTPs are 6 digits, so a slightly wider 6-10 band
+  /// tolerates a copy-pasted code with surrounding whitespace trimmed.
+  bool get _codeLooksValid => RegExp(r'^\d{6,10}$').hasMatch(_code.text.trim());
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadPendingMagicLink(context.read<SettingsStore>()));
+  }
+
+  /// #2 U4: a magic-link/code request already sent before a restart (or
+  /// before this screen was last disposed) leaves its email latched in
+  /// [SettingsKeys.awaitingMagicLinkEmail] — same lifecycle as
+  /// [SettingsKeys.awaitingConfirmationEmail] (`_createAccount`). Reading
+  /// it back here pre-fills the email and reveals the code field so a
+  /// code already sitting in the inbox can be entered without resending.
+  Future<void> _loadPendingMagicLink(SettingsStore settings) async {
+    final pending = await settings.get(SettingsKeys.awaitingMagicLinkEmail);
+    if (!mounted || pending == null || pending.isEmpty) return;
+    setState(() {
+      _email.text = pending;
+      _showCodeField = true;
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -192,6 +178,9 @@ class _SignInScreenState extends State<SignInScreen> {
     _auth = null;
     _email.dispose();
     _password.dispose();
+    _code.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -214,11 +203,15 @@ class _SignInScreenState extends State<SignInScreen> {
     try {
       await action();
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _error = authFailureCopy(failure));
+      if (mounted) {
+        setState(() =>
+            _error = authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog auth: action failed (${error.runtimeType})');
       if (mounted) {
-        setState(() => _error = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _error = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -296,9 +289,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithAppleNative);
         switch (result) {
-          case AppleSignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case AppleSignInCancelled():
+          case NativeSignInCancelled():
             // Dismissed: back to the screen, no error (KTD9).
             break;
         }
@@ -310,9 +303,9 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithGoogleNative);
         switch (result) {
-          case GoogleSignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case GoogleSignInCancelled():
+          case NativeSignInCancelled():
             break;
         }
       });
@@ -326,11 +319,44 @@ class _SignInScreenState extends State<SignInScreen> {
         final auth = context.read<AuthController>();
         final result = await _duringProviderUi(auth.signInWithPasskey);
         switch (result) {
-          case PasskeySignInSession():
+          case NativeSignInSession():
             _signedIn();
-          case PasskeySignInCancelled():
+          case NativeSignInCancelled():
             break;
         }
+      });
+
+  /// LLA-006 (#2 U4): sends a passwordless link/code for the typed email
+  /// in the screen's current mode, latches [SettingsKeys.
+  /// awaitingMagicLinkEmail] the same way [_createAccount] latches
+  /// `awaitingConfirmationEmail`, and reveals the code field. No explicit
+  /// completion here — a link opened on this device arrives through
+  /// [_onAuthChanged] like any other link-delivered session (#2 U3); the
+  /// code field is the same-device alternative to that link.
+  Future<void> _sendMagicLink() => _run(() async {
+        final auth = context.read<AuthController>();
+        final settings = context.read<SettingsStore>();
+        final email = _email.text.trim();
+        await auth.sendMagicLink(email: email, createAccount: _createMode);
+        await settings.set(SettingsKeys.awaitingMagicLinkEmail, email);
+        if (mounted) {
+          setState(() {
+            _showCodeField = true;
+            _info = 'Check your email for a sign-in link or code.';
+          });
+        }
+      });
+
+  /// The same-device counterpart of [_sendMagicLink]: completes through
+  /// [_signedIn] directly, matching [_apple]/[_google]/[_passkey], since a
+  /// verified code produces a session on this device with no link to open.
+  Future<void> _verifyCode() => _run(() async {
+        final auth = context.read<AuthController>();
+        await auth.verifyEmailCode(
+          email: _email.text.trim(),
+          code: _code.text.trim(),
+        );
+        _signedIn();
       });
 
   /// The first-run explainer above everything else, embedded mode only
@@ -390,25 +416,52 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
+  /// #165: "next" from the email field moves focus to the password field
+  /// (an explicit [FocusNode] chain, not tree order).
   Widget _buildEmailField() => TextField(
         key: const ValueKey('auth-email'),
         controller: _email,
+        focusNode: _emailFocus,
         enabled: !_busy,
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
+        textInputAction: TextInputAction.next,
+        onSubmitted: (_) => _passwordFocus.requestFocus(),
+        autofillHints: const [AutofillHints.email],
         decoration: const InputDecoration(labelText: 'Email'),
       );
 
+  /// #165: "done" submits (whichever primary action the current mode
+  /// shows), the hint follows the mode (`password` for signing in,
+  /// `newPassword` so password managers can offer generation on create),
+  /// and the suffix toggle reveals what was typed — locally only.
   Widget _buildPasswordField() => TextField(
         key: const ValueKey('auth-password'),
         controller: _password,
+        focusNode: _passwordFocus,
         enabled: !_busy,
-        obscureText: true,
+        obscureText: _obscurePassword,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _createMode ? _createAccount() : _signIn(),
+        autofillHints: _createMode
+            ? const [AutofillHints.newPassword]
+            : const [AutofillHints.password],
         decoration: InputDecoration(
           labelText: 'Password',
           helperText: _createMode
               ? 'At least $kMinPasswordLength characters'
               : null,
+          suffixIcon: IconButton(
+            key: const ValueKey('auth-password-reveal'),
+            onPressed: () =>
+                setState(() => _obscurePassword = !_obscurePassword),
+            tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+            icon: Icon(
+              _obscurePassword
+                  ? Icons.visibility_outlined
+                  : Icons.visibility_off_outlined,
+            ),
+          ),
         ),
       );
 
@@ -482,6 +535,68 @@ class _SignInScreenState extends State<SignInScreen> {
           ),
       ];
 
+  /// LLA-006 (#2 U4): the passwordless entry point, reachable from the
+  /// same screen as the password form and providers rather than being a
+  /// service with no caller. `or`-divided like [_buildProviderButtons],
+  /// and always shown (unlike the providers, passwordless has no
+  /// build-config gate) — button copy follows [_createMode] the same way
+  /// [_buildPrimaryActionButton] does.
+  List<Widget> _buildMagicLinkSection() => [
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('or'),
+              ),
+              Expanded(child: Divider()),
+            ],
+          ),
+        ),
+        OutlinedButton(
+          key: const ValueKey('auth-magic-link'),
+          onPressed: _busy ? null : _sendMagicLink,
+          child: Text(_createMode
+              ? 'Email me a link to create my account'
+              : 'Email me a sign-in link'),
+        ),
+        ..._buildCodeField(),
+      ];
+
+  /// The revealed half of [_buildMagicLinkSection]: a numeric code field
+  /// plus its verify button, disabled until the field holds a plausible
+  /// code ([_codeLooksValid]). #165: `oneTimeCode` is the honest hint (an
+  /// emailed OTP), and "done" verifies when the code is plausible.
+  List<Widget> _buildCodeField() => [
+        if (_showCodeField) ...[
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('auth-code'),
+            controller: _code,
+            enabled: !_busy,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (_codeLooksValid) unawaited(_verifyCode());
+            },
+            autofillHints: const [AutofillHints.oneTimeCode],
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Code from the email',
+              hintText: '6-10 digits',
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            key: const ValueKey('auth-verify-code'),
+            onPressed: _busy || !_codeLooksValid ? null : _verifyCode,
+            child: const Text('Sign in with code'),
+          ),
+        ],
+      ];
+
   List<Widget> _buildEmbeddedFooter() {
     if (!widget.embedded) return const [];
     final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
@@ -518,15 +633,27 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           ..._buildEmbeddedIntro(),
           ..._buildProviderButtons(),
-          _buildEmailField(),
-          const SizedBox(height: 8),
-          _buildPasswordField(),
+          // #165: one AutofillGroup around the credential pair so iOS
+          // Keychain / Android Autofill see a single fillable (and
+          // saveable) form rather than two unannotated fields.
+          AutofillGroup(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildEmailField(),
+                const SizedBox(height: 8),
+                _buildPasswordField(),
+              ],
+            ),
+          ),
           ..._buildStatusMessages(context),
           const SizedBox(height: 16),
           ..._buildPendingIndicator(),
           ..._buildPrimaryActionButton(),
           const SizedBox(height: 8),
           ..._buildModeAndForgotSection(),
+          ..._buildMagicLinkSection(),
           ..._buildEmbeddedFooter(),
         ],
       ),

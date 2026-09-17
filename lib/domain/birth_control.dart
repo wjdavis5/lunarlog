@@ -47,6 +47,7 @@
 library;
 
 import 'models/local_date.dart';
+import 'repositories/profile_modes_repository.dart' show ProfileLifecycleMode;
 
 /// The `observations.category` prefix shared by the six per-day intake
 /// categories (the "birth_control category family", issue #260 AC1).
@@ -148,21 +149,39 @@ enum BirthControlMethod {
   /// Throws on [unknown]: an unrecognised value must fail loudly at the
   /// write site rather than overwrite someone's recorded method with a
   /// placeholder.
-  String toDb() => switch (this) {
-        BirthControlMethod.none => 'none',
-        BirthControlMethod.pill => 'pill',
-        BirthControlMethod.shot => 'shot',
-        BirthControlMethod.implant => 'implant',
-        BirthControlMethod.patch => 'patch',
-        BirthControlMethod.ring => 'ring',
-        BirthControlMethod.hormonalIud => 'hormonal_iud',
-        BirthControlMethod.copperIud => 'copper_iud',
-        BirthControlMethod.condom => 'condom',
-        BirthControlMethod.other => 'other',
-        BirthControlMethod.unknown =>
-          throw StateError('an unrecognised birth-control method cannot be '
-              'stored; leave the stored value untouched'),
-      };
+  ///
+  /// LLA-107: a map lookup rather than a `switch` -- the CRAP gate now
+  /// discovers enum methods (previously invisible to it entirely), and a
+  /// `switch` here scores one decision point per arm (11, one per member
+  /// including [unknown]), which alone exceeds the CRAP-10 threshold no
+  /// matter how well-tested it is (comp=11 means CRAP >= 11 even at 100%
+  /// coverage). [_dbIds] carries the exact same case-by-case mapping this
+  /// `switch` did with zero decision points of its own -- a map lookup is
+  /// one AST decision point (the `if`) regardless of how many entries it
+  /// holds.
+  String toDb() {
+    final id = _dbIds[this];
+    if (id != null) return id;
+    throw StateError('an unrecognised birth-control method cannot be '
+        'stored; leave the stored value untouched');
+  }
+
+  /// [toDb]'s lookup table -- every storable member. [unknown] is
+  /// deliberately absent: it is never written, only read (see [toDb]'s
+  /// throw above, which a missing map entry now reaches the same way the
+  /// old `switch`'s explicit `unknown` arm did).
+  static const Map<BirthControlMethod, String> _dbIds = {
+    BirthControlMethod.none: 'none',
+    BirthControlMethod.pill: 'pill',
+    BirthControlMethod.shot: 'shot',
+    BirthControlMethod.implant: 'implant',
+    BirthControlMethod.patch: 'patch',
+    BirthControlMethod.ring: 'ring',
+    BirthControlMethod.hormonalIud: 'hormonal_iud',
+    BirthControlMethod.copperIud: 'copper_iud',
+    BirthControlMethod.condom: 'condom',
+    BirthControlMethod.other: 'other',
+  };
 
   /// Total read of `profile_modes.birth_control_method`:
   ///
@@ -178,21 +197,29 @@ enum BirthControlMethod {
   ///   throwing — a stored answer a future build wrote must survive the
   ///   read intact on the wire and in storage even when this build cannot
   ///   interpret it.
+  // LLA-107: same map-lookup treatment as [toDb]'s [_dbIds] above -- the
+  // 11-arm `switch` this replaced (10 named ids + the `_` fallback) scored
+  // complexity 11 on its own, over the CRAP-10 threshold regardless of
+  // coverage. The exact reverse of [_dbIds] (a `const` map can't be
+  // computed from another at compile time, so it's spelled out again here
+  // the same way the original code had this pairing written out twice too
+  // -- once per `switch`).
+  static const Map<String, BirthControlMethod> _canonicalByDbId = {
+    'none': none,
+    'pill': pill,
+    'shot': shot,
+    'implant': implant,
+    'patch': patch,
+    'ring': ring,
+    'hormonal_iud': hormonalIud,
+    'copper_iud': copperIud,
+    'condom': condom,
+    'other': other,
+  };
+
   static BirthControlMethod? fromDb(String? raw) {
     if (raw == null || raw.isEmpty) return null;
-    final canonical = switch (raw) {
-      'none' => none,
-      'pill' => pill,
-      'shot' => shot,
-      'implant' => implant,
-      'patch' => patch,
-      'ring' => ring,
-      'hormonal_iud' => hormonalIud,
-      'copper_iud' => copperIud,
-      'condom' => condom,
-      'other' => other,
-      _ => null,
-    };
+    final canonical = _canonicalByDbId[raw];
     if (canonical != null) return canonical;
     return _legacyStoredValues[raw] ?? unknown;
   }
@@ -259,6 +286,20 @@ const Map<String, BirthControlMethod> _legacyStoredValues = {
 /// structural record, so any producer (the drift row watcher, a test) can
 /// build one without a factory.
 typedef BirthControlState = ({String? method, String? startedOn, String? stoppedOn});
+
+/// Derives a [BirthControlState] from a [ProfileModesRepository] row
+/// (issue #551): the one mapping both `lib/app.dart`'s reminder-coordinator
+/// wiring and `AppDependencies`' own prediction-service wiring used to
+/// hand-copy character-for-character from a raw `ProfileModesRepository
+/// .watch` stream. Null in, null out — no row means no recorded method.
+BirthControlState? birthControlStateFromProfileMode(ProfileLifecycleMode? row) =>
+    row == null
+        ? null
+        : (
+            method: row.birthControlMethod,
+            startedOn: row.birthControlStartedOn,
+            stoppedOn: row.birthControlStoppedOn,
+          );
 
 /// The birth-control method in effect on [date] — the consumption seam
 /// #233 (birth-control-aware predictions), #183 (method reminders), and

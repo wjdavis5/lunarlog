@@ -23,18 +23,15 @@ import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
+import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
-
-/// Resolves the guardian rows for one profile id (Issue #153's
-/// `GuardiansForProfile` shape, redeclared here rather than imported —
-/// `lib/ui/settings/health_sync_screen.dart` lives in `lib/ui`, and
-/// `lib/data` must never depend on it, R14/R16). Production wiring passes
-/// `ProfileGuardiansRepository.getForProfile`; tests pass a fake, no
-/// database required.
-typedef GuardiansForProfileFn = Future<List<ProfileGuardian>> Function(
-    String profileId);
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
@@ -68,6 +65,9 @@ class DriftAccountImporter implements AccountImporter {
     for (final observationPlan in plan.observations) {
       await _applyObservation(profileId, observationPlan, entriesByDate);
     }
+    for (final cycleOverridePlan in plan.cycleOverrides) {
+      await _applyCycleOverride(profileId, cycleOverridePlan);
+    }
   }
 
   /// Issue #140 review, item 2: a *created* profile reuses the file's own
@@ -95,15 +95,58 @@ class DriftAccountImporter implements AccountImporter {
       displayName: plan.displayName,
       isMinor: plan.isMinor,
       mode: plan.mode ?? 'standard',
+      // Issue #255: a v8 export always carries both keys; an older
+      // export's absent keys fall back to the column defaults, exactly
+      // like `mode` above.
+      bbtUnit: plan.bbtUnit ?? 'celsius',
+      weightUnit: plan.weightUnit ?? 'kg',
       sortOrder: plan.sortOrder,
+      // Issue #140 review, LLA-084: same create-only, absent-means-column-
+      // default treatment as mode/bbtUnit/weightUnit above (an older
+      // export simply never carried these keys).
+      birthYear: plan.birthYear,
+      relationship: plan.relationship?.toDb(),
+      lastPeriodStart: plan.lastPeriodStart?.iso,
+      typicalCycleLengthDays: plan.typicalCycleLengthDays,
+      typicalPeriodLengthDays: plan.typicalPeriodLengthDays,
+      // Issue #648: same create-only, absent-means-null treatment as
+      // birthYear/relationship/etc above — a matched profile keeps its own
+      // stored document untouched (`_resolveProfileId` never reaches here
+      // for a match).
+      trackingPreferences: plan.trackingPreferences?.toJsonText(),
     );
+    await _applyProfileMode(created.id, plan.profileMode);
     return created.id;
+  }
+
+  /// Issue #140 review, LLA-084: writes the file's #188 life-stage
+  /// mode/birth-control state onto a freshly CREATED profile only — a
+  /// no-op when the file carried none (an older export, or a profile that
+  /// never had a `profile_modes` row). Never called for a matched profile;
+  /// `_resolveProfileId` only reaches this from the create branch, mirroring
+  /// mode/bbtUnit/weightUnit's own create-only treatment (a matched
+  /// profile's own stored mode/birth-control state is never overwritten).
+  Future<void> _applyProfileMode(
+      String profileId, ProfileLifecycleMode? mode) async {
+    if (mode == null) return;
+    await _storage.upsertProfileMode(
+      profileId: profileId,
+      mode: mode.mode.toDb(),
+      modeStartedOn: mode.modeStartedOn,
+      estimatedDueDate: mode.estimatedDueDate,
+      birthControlMethod: mode.birthControlMethod,
+      birthControlStartedOn: mode.birthControlStartedOn,
+      birthControlStoppedOn: mode.birthControlStoppedOn,
+    );
   }
 
   Future<domain.DayEntry> _applyEntry(
     String profileId,
     DayEntryPlan plan,
   ) async {
+    if (plan.outcome == DayEntryImportOutcome.merge) {
+      await _assertEntryNotStale(profileId, plan);
+    }
     final row = await _storage.upsertDayEntry(
       id: await _revivalIdFor(profileId, plan),
       profileId: profileId,
@@ -118,6 +161,24 @@ class DriftAccountImporter implements AccountImporter {
       importId: plan.importId,
     );
     return dayEntryToDomain(row);
+  }
+
+  /// Issue #140 review, LLA-085: re-reads the live row this merge plan
+  /// targets — inside the same transaction [apply] already opened — and
+  /// throws [StaleImportPlanException] if it no longer matches the
+  /// snapshot `planImport` merged against (see
+  /// [DayEntryPlan.existingUpdatedAt]'s doc comment). Cheap: one indexed
+  /// lookup per merge target, and only a merge plan ever carries an
+  /// [DayEntryPlan.existingUpdatedAt] to compare — an `add` plan has
+  /// nothing existing to go stale against.
+  Future<void> _assertEntryNotStale(String profileId, DayEntryPlan plan) async {
+    final current = await _storage.getDayEntry(
+      profileId: profileId,
+      localDate: plan.localDate.iso,
+    );
+    if (current?.updatedAt != plan.existingUpdatedAt) {
+      throw const StaleImportPlanException();
+    }
   }
 
   /// The existing (live OR tombstoned) row's id to revive, or null to let
@@ -165,17 +226,13 @@ class DriftAccountImporter implements AccountImporter {
     if (plan.outcome != ObservationImportOutcome.add) return;
     final entry = entriesByDate[plan.imported.localDate.iso];
     if (entry == null) return;
-    final fileId = plan.imported.id;
     await _storage.upsertObservation(
-      // Issue #140 review round 2, item 3: reuse the file's own
-      // observation id when it is a syntactically valid ULID (already
-      // enforced at parse time) — an `add` outcome means `planImport`'s
-      // `_planObservations` found no existing row at this (profileId,
-      // localDate, category, code), so nothing already occupies the slot
-      // this id is about to claim. Mirrors `_revivalIdFor`'s day-entry
-      // treatment; see that method's doc comment for the convergence
-      // rationale.
-      id: isValidUlid(fileId) ? fileId : null,
+      // Issue #140 review round 2, item 3 (revised by LLA-086, Issue #140
+      // review): reuse the file's own observation id ONLY when nothing
+      // already exists under it — see `_addObservationId`'s doc comment
+      // for why an `add` outcome from `planImport`'s semantic dedup alone
+      // is not enough to make that reuse safe.
+      id: await _addObservationId(plan.imported.id),
       dayEntryId: entry.id,
       profileId: profileId,
       localDate: plan.imported.localDate.iso,
@@ -213,6 +270,60 @@ class DriftAccountImporter implements AccountImporter {
       raw: plan.imported.raw,
     );
   }
+
+  /// Issue #140 review, LLA-084: writes one `add`-outcome cycle override.
+  /// Additive like [_applyObservation] — a `skip` outcome (a live override
+  /// already occupies this `cycleStartDate`) writes nothing.
+  Future<void> _applyCycleOverride(
+      String profileId, CycleOverridePlan plan) async {
+    if (plan.outcome != CycleOverrideImportOutcome.add) return;
+    await _storage.upsertCycleOverride(
+      id: await _addCycleOverrideId(plan.imported.id, profileId),
+      profileId: profileId,
+      cycleStartDate: plan.imported.cycleStartDate.iso,
+      excludedFromAverage: plan.imported.excludedFromAverage,
+      manualStart: plan.imported.manualStart,
+      noteId: plan.imported.noteId,
+    );
+  }
+
+  /// [fileId] when it is a syntactically valid ULID AND nothing already
+  /// exists at the composite (id, profileId) key — otherwise null, so
+  /// [LunarLogStorage.upsertCycleOverride] mints a fresh id instead (the
+  /// LLA-086 pattern, applied to `cycle_overrides`' own `(id, profile_id)`
+  /// identity — see [LunarLogStorage.getCycleOverrideById]'s doc comment
+  /// for why that composite key, not a bare id collision, is what matters
+  /// here). `planImport`'s `_planCycleOverrides` decides `add` purely from
+  /// the `cycleStartDate` — reusing a colliding file id regardless would
+  /// have `upsertCycleOverride` resolve identity by the composite key and
+  /// silently move an unrelated existing override onto this date.
+  Future<String?> _addCycleOverrideId(String fileId, String profileId) async {
+    if (!isValidUlid(fileId)) return null;
+    final conflict = await _storage.getCycleOverrideById(fileId, profileId);
+    return conflict == null ? fileId : null;
+  }
+
+  /// [fileId] when it is a syntactically valid ULID AND nothing already
+  /// exists under it (any profile, live or tombstoned) — otherwise null,
+  /// so [LunarLogStorage.upsertObservation] mints a fresh id instead (Issue
+  /// #140 review, LLA-086). `planImport`'s `_planObservations` decides
+  /// `add` purely from the semantic (profileId, localDate, category, code)
+  /// key — it never checks whether the file's own raw id happens to
+  /// already be in use — so a stored observation whose category/code
+  /// changed since an earlier backup shares no semantic key with the
+  /// file's row despite sharing its id. Reusing that id here regardless
+  /// would have [LunarLogStorage.upsertObservation] resolve identity by id
+  /// ALONE and silently overwrite the unrelated existing row, even though
+  /// `planImport` called this an additive `add`. This check runs at apply
+  /// time, inside the same transaction as the write, so it also catches an
+  /// id a DIFFERENT profile's row already claims — the reachable case
+  /// `planImport`'s own per-profile view can never see (only a
+  /// storage-wide lookup can).
+  Future<String?> _addObservationId(String fileId) async {
+    if (!isValidUlid(fileId)) return null;
+    final conflict = await _storage.getObservationById(fileId);
+    return conflict == null ? fileId : null;
+  }
 }
 
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
@@ -225,6 +336,7 @@ class DriftAccountImportCoordinator
     required this.dayEntriesRepository,
     required this.observationsRepository,
     required this.storage,
+    this.cycleOverridesRepository,
     this.guardiansForProfile,
     this.currentUserId,
     this.currentUserIdProvider,
@@ -236,10 +348,19 @@ class DriftAccountImportCoordinator
   final ObservationsRepository observationsRepository;
   final LunarLogStorage storage;
 
+  /// Issue #140 review, LLA-084: feeds `planImport`'s
+  /// `existingCycleOverridesByProfileId` for a *matched* profile, so a
+  /// restore's cycle overrides plan additively against what the device
+  /// already has, not just what a brand-new profile starts empty with.
+  /// Null (a caller that skips it) reads as "no existing overrides for any
+  /// matched profile" — every file cycle override then plans `add`,
+  /// mirroring [guardiansForProfile]'s own null-means-no-info default.
+  final CycleOverridesRepository? cycleOverridesRepository;
+
   /// Null means "no guardian info available" — every matched profile
   /// fails open (writable) unless archived, the same fail-open precedent
   /// [writeBlockReasonFor] itself documents.
-  final GuardiansForProfileFn? guardiansForProfile;
+  final GuardiansForProfile? guardiansForProfile;
 
   final String? currentUserId;
 
@@ -297,11 +418,13 @@ class DriftAccountImportCoordinator
     }
     final entriesByProfileId = <String, List<domain.DayEntry>>{};
     final observationsByProfileId = <String, List<domain.Observation>>{};
+    final cycleOverridesByProfileId = <String, List<domain.CycleOverride>>{};
     final guardiansByProfileId = <String, List<ProfileGuardian>>{};
     for (final id in matchedIds) {
       entriesByProfileId[id] = await dayEntriesRepository.listForProfile(id);
       observationsByProfileId[id] =
           await observationsRepository.listForProfile(id);
+      cycleOverridesByProfileId[id] = await _cycleOverridesFor(id);
       guardiansByProfileId[id] = await _guardiansFor(id);
     }
     return planImport(
@@ -310,6 +433,7 @@ class DriftAccountImportCoordinator
       tombstonedProfilesById: tombstonedById,
       existingEntriesByProfileId: entriesByProfileId,
       existingObservationsByProfileId: observationsByProfileId,
+      existingCycleOverridesByProfileId: cycleOverridesByProfileId,
       writeBlockReason: (profile) => writeBlockReasonFor(
         profile: profile,
         guardians: guardiansByProfileId[profile.id] ?? const [],
@@ -331,6 +455,11 @@ class DriftAccountImportCoordinator
   Future<List<ProfileGuardian>> _guardiansFor(String profileId) {
     final fn = guardiansForProfile;
     return fn == null ? Future.value(const []) : fn(profileId);
+  }
+
+  Future<List<domain.CycleOverride>> _cycleOverridesFor(String profileId) {
+    final repo = cycleOverridesRepository;
+    return repo == null ? Future.value(const []) : repo.listForProfile(profileId);
   }
 
   /// Applies [plan] via the injected [importer] contract.

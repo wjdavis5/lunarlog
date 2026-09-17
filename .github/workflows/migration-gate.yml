@@ -1,0 +1,163 @@
+name: Migration gate
+
+# Reusable workflow (issue #539). Verifies every migration file under
+# supabase/migrations is applied to production before a release ships a
+# client built against a schema production does not have yet -- the exact
+# incident that motivated this gate in the first place: on 2026-09-05, two
+# TestFlight builds carrying the multi-guardian sharing feature shipped
+# roughly an hour before `profile_guardians` existed in production.
+#
+# Extracted out of ios-release.yml's original `migration-gate` job (issue
+# #47) so play-store-release.yml can `uses:` it too instead of shipping
+# Android releases with no equivalent protection (issue #539). Fails
+# closed on purpose: a blocked release is recoverable, a client shipped
+# against a missing schema is not.
+#
+# Call with:
+#   migration-gate:
+#     name: Verify Supabase migrations are applied
+#     uses: ./.github/workflows/migration-gate.yml
+#     secrets: inherit
+#
+# Needs only the SUPABASE_DB_PASSWORD and SUPABASE_PROJECT_REF repository
+# (or `production` environment) secrets -- `secrets: inherit` passes
+# whichever the caller has in scope. The optional SUPABASE_DB_POOLER_HOST
+# repository variable is read directly from the caller's repo, same as any
+# other same-repo reusable workflow.
+
+on:
+  workflow_call:
+
+permissions:
+  # A reusable workflow's own top-level permissions further restrict
+  # (never escalate beyond) whatever the calling job grants; the calling
+  # job also needs contents:read and deployments:read declared explicitly
+  # (see ios-release.yml / play-store-release.yml's `migration-gate:` job).
+  contents: read
+  deployments: read
+
+jobs:
+  migration-gate:
+    name: Verify Supabase migrations are applied
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # The direct host (db.<ref>.supabase.co) publishes AAAA records only, and
+      # GitHub-hosted runners have no IPv6 route -- it fails to resolve there.
+      # Connect through the IPv4 session pooler instead. Override with the
+      # repository variable if the project ever moves region.
+      POOLER_HOST: ${{ vars.SUPABASE_DB_POOLER_HOST || 'aws-0-us-west-2.pooler.supabase.com' }}
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PGSSLMODE: require
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Check gate credentials
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ -z "${PGPASSWORD:-}" ]; then
+            echo "::error::SUPABASE_DB_PASSWORD is not set. This gate cannot verify that production has the migrations this build expects, so the release is blocked. Add it under Settings -> Secrets and variables -> Actions."
+            missing=1
+          fi
+          if [ -z "${PROJECT_REF:-}" ]; then
+            echo "::error::SUPABASE_PROJECT_REF is not set. Add it under Settings -> Secrets and variables -> Actions."
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: Install psql
+        run: |
+          set -euo pipefail
+          command -v psql >/dev/null 2>&1 || {
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          }
+          psql --version
+
+      - name: Compare repo migrations against production
+        run: |
+          set -euo pipefail
+
+          repo=$(find supabase/migrations -maxdepth 1 -name '*.sql' -printf '%f\n' 2>/dev/null \
+                 | sed -E 's/^([0-9]+)_.*/\1/' | sort -u)
+          if [ -z "$repo" ]; then
+            echo "::error::No migrations found in supabase/migrations. Refusing to release without verifying schema state."
+            exit 1
+          fi
+
+          # Separate connection params rather than a URL: the password is not
+          # URL-encoded anywhere, so a '@' or ':' in it cannot corrupt parsing.
+          applied=$(psql -h "$POOLER_HOST" -p 5432 -U "postgres.${PROJECT_REF}" -d postgres \
+                      -t -A -c "select version from supabase_migrations.schema_migrations" \
+                    | tr -d '\r' | sed '/^$/d' | sort -u)
+
+          missing=$(comm -23 <(echo "$repo") <(echo "$applied") || true)
+          extra=$(comm -13 <(echo "$repo") <(echo "$applied") || true)
+
+          echo "Repo migrations:      $(echo "$repo" | wc -l)"
+          echo "Applied in production: $(echo "$applied" | sed '/^$/d' | wc -l)"
+
+          if [ -n "$extra" ]; then
+            # Not fatal: production having extra history does not mean this
+            # client is ahead of its schema. It does mean the repo is not the
+            # sole source of truth, which is worth surfacing.
+            echo "::warning::Production has migration versions absent from this repo (applied outside the repo path): $(echo "$extra" | tr '\n' ' ')"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Release blocked -- production is missing $(echo "$missing" | wc -l) migration(s) this build expects: $(echo "$missing" | tr '\n' ' '). Run the 'Supabase migrate' workflow (or apply them manually), then re-run this release. Shipping now would put a client on TestFlight/Play whose features fail against production."
+            exit 1
+          fi
+
+          echo "All $(echo "$repo" | wc -l) repo migrations are applied to production. Safe to release."
+
+      - name: Verify delete-account Edge Function deployment evidence
+        # LLA-110: migration *versions* matching production (the step
+        # above) says nothing about whether the delete-account Edge
+        # Function a client build actually depends on (issue #17 U2/U7,
+        # App Store guideline 5.1.1(v)) was itself deployed successfully
+        # and matches this commit's source -- a migration push can succeed
+        # while the very next step in supabase-migrate.yml's `migrate` job
+        # (Apple secrets missing, the function deploy itself failing)
+        # leaves delete-account absent or stale in production, and the old
+        # gate here would still pass. supabase-migrate.yml's "Record
+        # delete-account deployment evidence" step records a content hash
+        # of whatever it successfully deployed as a GitHub Deployment
+        # against the "edge-delete-account" environment; this step reads
+        # the most recent one back, requires its latest status to be
+        # `success`, and requires its recorded hash to match this commit's
+        # own supabase/functions/delete-account -- failing closed (blocking
+        # the release) exactly as the migration-version check above does
+        # when either is untrue.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          expected_hash="$(bash .github/scripts/edge-function-hash.sh supabase/functions/delete-account)"
+
+          deployment="$(gh api "repos/${{ github.repository }}/deployments?environment=edge-delete-account&per_page=100" \
+            --jq 'sort_by(.created_at) | last')"
+
+          if [ -z "$deployment" ] || [ "$deployment" = "null" ]; then
+            echo "::error::Release blocked -- no recorded delete-account Edge Function deployment was found (environment edge-delete-account). This release cannot prove production is running a compatible delete-account function (App Store guideline 5.1.1(v), issue #17). Run the 'Supabase migrate' workflow so it deploys and records evidence, then re-run this release."
+            exit 1
+          fi
+
+          deployment_id="$(echo "$deployment" | jq -r '.id')"
+          deployed_hash="$(echo "$deployment" | jq -r '.payload.source_sha256 // empty')"
+
+          status="$(gh api "repos/${{ github.repository }}/deployments/$deployment_id/statuses?per_page=1" --jq '.[0].state // empty')"
+
+          if [ "$status" != "success" ]; then
+            echo "::error::Release blocked -- the most recently recorded delete-account Edge Function deployment (id $deployment_id) did not succeed (status: ${status:-none recorded}). Run the 'Supabase migrate' workflow so it deploys successfully, then re-run this release."
+            exit 1
+          fi
+
+          if [ -z "$deployed_hash" ] || [ "$deployed_hash" != "$expected_hash" ]; then
+            echo "::error::Release blocked -- the delete-account Edge Function recorded as deployed to production (source sha256 ${deployed_hash:-unknown}) does not match this commit's supabase/functions/delete-account (source sha256 $expected_hash). Run the 'Supabase migrate' workflow to deploy the current source, then re-run this release."
+            exit 1
+          fi
+
+          echo "delete-account Edge Function deployment evidence verified: source sha256 $expected_hash matches the most recent successful deployment (id $deployment_id)."

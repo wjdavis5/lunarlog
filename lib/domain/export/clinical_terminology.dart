@@ -41,6 +41,39 @@
 /// This module is pure Dart (KTD6): no Flutter, no `dart:io`, nothing that
 /// reaches into `lib/data/`. It only describes codes; #157 is what will
 /// spend them building an actual FHIR Bundle.
+///
+/// ## Reserved shapes (A3-46/A3-47/A3-48) — decided now, emitted later
+///
+/// Three concept groups carry mapping decisions recorded here ahead of
+/// the FHIR builder (`lib/domain/export/fhir_bundle.dart`, #157) learning
+/// to emit them, per #152's instruction to reserve the shape now so the
+/// export design accounts for it. The underlying tracking features have
+/// all landed since #152 was written — BBT observation logging
+/// (`observations` rows with `category: 'bbt'`, consumed by
+/// `lib/domain/insights/bbt_chart.dart`), #188's pregnancy lifecycle
+/// mode, and #260's birth-control model — but the builder does not yet
+/// emit any of these shapes; those rows ride its generic local-coding
+/// fallback today, which is valid FHIR and carries no guessed code. No
+/// premature guessed code ships ahead of the builder work:
+/// - **Basal body temperature (A3-46):** [kBodyTemperatureLoinc] —
+///   LOINC `8310-5` "Body temperature" (the code US Core / IPS
+///   vital-signs profiles expect), emitted with a basal qualifier
+///   (`bodySite`/method, or an additional local coding marking the
+///   reading basal). Never an invented BBT-specific LOINC.
+/// - **Pregnancy + estimated due date (A3-47):** pregnancy status is
+///   conventionally a `Condition` (or an `Observation` of pregnancy
+///   status); the estimated delivery date is an `Observation` coded with
+///   the already-verified `11778-8` "Delivery date Estimated"
+///   ([estimatedDeliveryDateCode]; USCDI:
+///   https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
+///   No pregnancy-status/due-date data model exists yet — only the mode
+///   — so this is shape reservation, not an implemented mapping.
+/// - **Birth control (A3-48, #260):** [kBirthControlResourceShapes] —
+///   `MedicationStatement` / `Device` + `DeviceUseStatement` /
+///   `Procedure` by method shape. Never modeled as an `Observation`;
+///   doing so would make the export look machine-generated rather than
+///   clinically credible. No medication/device codes are reserved — none
+///   has been verified against an external system.
 library;
 
 import '../tags.dart' as tags show TagCode, kTagTaxonomy, isValidTagCode;
@@ -175,10 +208,32 @@ const List<String> kUnverifiedLoincCodes = [
   '3151-8',
 ];
 
-/// The clinical coding for every code in [tags.kTagTaxonomy] (all 86 —
+/// LOINC `8310-5` "Body temperature" — **reserved for basal body
+/// temperature** (A3-46), not part of [kLoincCodes]: that table is
+/// exactly the A3-44 verified *menstrual-health question* set, and a
+/// vital-sign code is not one of those seven (a test pins both facts).
+///
+/// `8310-5` is the standard body-temperature code US Core / IPS
+/// vital-signs profiles expect, but on its own it understates BBT as a
+/// distinct clinical concept (resting, first-waking). When the FHIR
+/// builder (#157) starts emitting BBT `Observation`s for
+/// `observations.category = 'bbt'` rows, it must emit this code **with a
+/// basal qualifier** — a `bodySite`/method qualifier, or an additional
+/// lunarlog-local coding marking the reading basal — rather than
+/// inventing a BBT-specific LOINC code. Revisit once a BBT-specific
+/// LOINC is confirmed. Until then, BBT rows ride the builder's generic
+/// local-coding fallback, which is valid FHIR and guesses nothing.
+const ClinicalCode kBodyTemperatureLoinc = ClinicalCode(
+  system: kSystemLoinc,
+  code: '8310-5',
+  display: 'Body temperature',
+  provenanceUrl: 'https://loinc.org/8310-5',
+);
+
+/// The clinical coding for every code in [tags.kTagTaxonomy] (all 113 —
 /// #152's A3-45 pass over the original 17, plus issue #249's 28, issue
-/// #251's 22, and issue #252's 19 new codes as explicit local decisions;
-/// see docs/clinical/terminology.md).
+/// #251's 22, issue #252's 19, issue #253's 22, and issue #456's 5 new
+/// codes as explicit local decisions; see docs/clinical/terminology.md).
 ///
 /// Rows are one of two kinds:
 /// - A verified SNOMED CT finding ([kSystemSnomed]): the concept id and
@@ -747,6 +802,178 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
     display: 'Fever',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
+
+  // Issue #253's sensitive and fertility categories. Same rule as #249's,
+  // #251's and #252's blocks above: every new code is an explicit local
+  // decision, no SNOMED CT concept fetch-verified in this pass, so each
+  // carries the lunarlog local coding only — `dualCodingFor` degrades each
+  // to it exactly as designed.
+  'no_sex_today': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'no_sex_today',
+    display: 'No sex today',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'low_sex_drive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'low_sex_drive',
+    display: 'Low sex drive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'high_sex_drive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'high_sex_drive',
+    display: 'High sex drive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'masturbation': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'masturbation',
+    display: 'Masturbation',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'withdrawal': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'withdrawal',
+    display: 'Withdrawal',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'protected_sex': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'protected_sex',
+    display: 'Protected sex',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'unprotected_sex': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'unprotected_sex',
+    display: 'Unprotected sex',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sex_toys': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sex_toys',
+    display: 'Sex toys',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'orgasm': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'orgasm',
+    display: 'Orgasm',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'no_orgasm': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'no_orgasm',
+    display: 'No orgasm',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'fantasies': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'fantasies',
+    display: 'Fantasies',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'painful_intercourse': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'painful_intercourse',
+    display: 'Painful intercourse',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'none': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'none',
+    display: 'No discharge',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'sticky': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'sticky',
+    display: 'Sticky',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'creamy': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'creamy',
+    display: 'Creamy',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'egg_white': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'egg_white',
+    display: 'Egg white',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'atypical': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'atypical',
+    display: 'Atypical',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_negative': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_negative',
+    display: 'Ovulation · negative',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_positive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_positive',
+    display: 'Ovulation · positive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'ovulation_peak': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'ovulation_peak',
+    display: 'Ovulation · peak',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pregnancy_negative': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pregnancy_negative',
+    display: 'Pregnancy · negative',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'pregnancy_positive': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'pregnancy_positive',
+    display: 'Pregnancy · positive',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+
+  // Issue #456's five attested hot_flashes/Clue-Perimenopause codes. Same
+  // rule as every block above: no SNOMED CT concept fetch-verified in
+  // this pass, so each carries the lunarlog local coding only.
+  'hot_flashes': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'hot_flashes',
+    display: 'Hot flash',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'night_sweats': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'night_sweats',
+    display: 'Night sweats',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'brain_fog': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'brain_fog',
+    display: 'Brain fog',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'hrt': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'hrt',
+    display: 'HRT',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
+  'vaginal_dryness': ClinicalCode(
+    system: kSystemLunarlogLocal,
+    code: 'vaginal_dryness',
+    display: 'Vaginal dryness',
+    provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
+  ),
 };
 
 /// The lunarlog-local coding for [tagCode]: `system` [kSystemLunarlogLocal],
@@ -828,3 +1055,40 @@ List<ClinicalCode> get menstrualStatusCodes => [
 /// The LOINC row #157's FHIR Bundle builder should use for typical cycle
 /// length: `64700-8`.
 List<ClinicalCode> get cycleLengthCodes => [loincByCode('64700-8')!];
+
+/// The LOINC row reserved for the estimated delivery date `Observation`
+/// of the pregnancy shape (A3-47): `11778-8` "Delivery date Estimated",
+/// one of the A3-44 verified seven, included in USCDI
+/// (https://www.healthit.gov/isa/uscdi-data/estimated-date-delivery).
+///
+/// **Shape reservation, not an implemented mapping.** Pregnancy status
+/// is conventionally a `Condition` (or an `Observation` of pregnancy
+/// status) — never an `Observation` with this code; the EDD specifically
+/// is the `Observation`. #188's lifecycle modes carry a pregnancy *mode*
+/// but no pregnancy-status or due-date data model exists yet, so nothing
+/// consumes this getter; it exists so the export design already accounts
+/// for the resource split the day that data lands (see the library doc's
+/// "Reserved shapes" section).
+ClinicalCode get estimatedDeliveryDateCode => loincByCode('11778-8')!;
+
+/// The A3-48 birth-control resource-shape reservation: which FHIR
+/// resource each method shape must be exported as, keyed by method
+/// shape. `#260`'s birth-control model has landed
+/// (`lib/domain/birth_control.dart`: profile-level method plus per-day
+/// `birth_control_*` intake observation rows), but the FHIR builder does
+/// not yet emit any of these shapes — its generic local-coding fallback
+/// covers the intake rows meanwhile.
+///
+/// The binding rule (a test pins it): **no birth-control method shape is
+/// ever modeled as an `Observation`** — exporting ongoing medication,
+/// an in-situ device, or an insertion event as an "observation" is
+/// exactly what makes an export look machine-generated rather than
+/// clinically credible. No medication/device codes are reserved here;
+/// none has been verified against an external system (the
+/// no-guessed-codes rule).
+const List<(String, String)> kBirthControlResourceShapes = [
+  // (method shape, FHIR resource)
+  ('oral_patch_ring_injection', 'MedicationStatement'),
+  ('iud_implant', 'Device / DeviceUseStatement'),
+  ('insertion_event', 'Procedure'),
+];

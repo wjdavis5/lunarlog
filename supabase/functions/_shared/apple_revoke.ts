@@ -11,11 +11,19 @@
 // either token - only a discriminated result kind. The caller (U2) logs that
 // kind, never this module's internals.
 
-/** Discriminated outcome. Never carries Apple's response body or a token. */
+/** Discriminated outcome. Never carries Apple's response body or a token.
+ * `identity_mismatch` (Issue #560) is returned when the exchanged
+ * `id_token`'s `sub` does not match the caller's own Apple identity id --
+ * Apple's `client_id` binding on the token endpoint only stops a code
+ * minted for a *different app* from being redeemed here; it does nothing to
+ * stop a code minted for a *different Apple user* of this same app from
+ * being redeemed by an attacker calling delete-account as themselves while
+ * supplying someone else's authorization code. */
 export type AppleRevokeResult =
   | { kind: "ok" }
   | { kind: "misconfigured" }
   | { kind: "apple_rejected" }
+  | { kind: "identity_mismatch" }
   | { kind: "network" };
 
 interface AppleRevokeConfig {
@@ -113,7 +121,9 @@ async function exchangeCodeForRefreshToken(
   config: AppleRevokeConfig,
   clientSecret: string,
   authorizationCode: string,
-): Promise<{ ok: true; refreshToken: string } | { ok: false; result: AppleRevokeResult }> {
+): Promise<
+  { ok: true; refreshToken: string; idToken: string } | { ok: false; result: AppleRevokeResult }
+> {
   let response: Response;
   try {
     response = await fetch(APPLE_TOKEN_URL, {
@@ -134,16 +144,70 @@ async function exchangeCodeForRefreshToken(
     return { ok: false, result: { kind: "apple_rejected" } };
   }
   let refreshToken: unknown;
+  let idToken: unknown;
   try {
     const body = await response.json();
     refreshToken = (body as Record<string, unknown>)?.refresh_token;
+    idToken = (body as Record<string, unknown>)?.id_token;
   } catch {
     return { ok: false, result: { kind: "apple_rejected" } };
   }
   if (typeof refreshToken !== "string" || refreshToken.length === 0) {
     return { ok: false, result: { kind: "apple_rejected" } };
   }
-  return { ok: true, refreshToken };
+  // Issue #560: the id_token is required, not merely optional metadata --
+  // its `sub` claim is the only thing that lets the caller below bind this
+  // exchange to a specific Apple user before revoking anything.
+  if (typeof idToken !== "string" || idToken.length === 0) {
+    return { ok: false, result: { kind: "apple_rejected" } };
+  }
+  return { ok: true, refreshToken, idToken };
+}
+
+/**
+ * Decodes (never verifies signature) a JWT's payload segment and returns its
+ * `sub` claim, or null on any malformed input. Signature verification is
+ * deliberately not performed here: this id_token is read directly out of a
+ * response this module itself just received over TLS from
+ * `appleid.apple.com` (never anything supplied by the client or read back
+ * from storage), so the trust boundary is the HTTPS connection to Apple
+ * itself, exactly like `refresh_token` from the same response is trusted
+ * without any signature of its own.
+ */
+function decodeIdTokenSub(idToken: string): string | null {
+  const parts = idToken.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4 !== 0) base64 += "=";
+    const payloadJson = new TextDecoder().decode(
+      Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)),
+    );
+    const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+    const sub = payload["sub"];
+    return typeof sub === "string" && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pure decision at the heart of Issue #560's fix, factored out so it can
+ * be unit-tested with no network and no `Deno.env` access (unlike
+ * `revokeAppleToken` as a whole, which reads Apple credentials from the
+ * environment via `readConfig()` and so needs `--allow-env` to exercise at
+ * all - not granted to this suite's plain `deno test` invocation, matching
+ * every other credential-reading path in this file). Never verifies the
+ * id_token's signature - see `decodeIdTokenSub`'s own comment for why that
+ * is an acceptable trust boundary here.
+ */
+export function verifyIdentityBinding(
+  idToken: string,
+  expectedAppleUserId: string,
+): "ok" | "apple_rejected" | "identity_mismatch" {
+  const sub = decodeIdTokenSub(idToken);
+  if (sub === null) return "apple_rejected";
+  return sub === expectedAppleUserId ? "ok" : "identity_mismatch";
 }
 
 async function revokeRefreshToken(
@@ -175,9 +239,24 @@ async function revokeRefreshToken(
  * it. Missing Apple secrets resolve to `misconfigured` rather than silently
  * skipping revocation (U3 step 5) - the Edge Function (U2) surfaces that as
  * a typed failure and stops before deleting the `auth.users` row (KTD4).
+ *
+ * Issue #560: [expectedAppleUserId] is the caller's own Apple identity id
+ * (GoTrue's `identities[provider=="apple"].id`, equal to Apple's `sub`
+ * claim), resolved by the caller from their own verified session - never
+ * from anything in the request body. Apple's `client_id` binding on the
+ * token endpoint only proves the authorization code was minted for *this
+ * app*; it says nothing about *which Apple user* minted it. Without this
+ * check, an attacker who obtained a valid Apple authorization code for
+ * victim B (e.g. via a compromised device, a leaked code, or a malicious
+ * client) could call delete-account authenticated as themselves while
+ * supplying B's code: Apple would revoke B's grant while the attacker's own
+ * grant is never touched. The exchanged `id_token`'s `sub` is decoded and
+ * compared against [expectedAppleUserId] before the revoke call is ever
+ * made - a mismatch resolves to `identity_mismatch` and nothing is revoked.
  */
 export async function revokeAppleToken(
   authorizationCode: string,
+  expectedAppleUserId: string,
 ): Promise<AppleRevokeResult> {
   const config = readConfig();
   if (!config) return { kind: "misconfigured" };
@@ -195,6 +274,12 @@ export async function revokeAppleToken(
     authorizationCode,
   );
   if (!exchanged.ok) return exchanged.result;
+
+  // A malformed/undecodable id_token from Apple's own token endpoint is
+  // treated the same as an outright rejection - fail closed rather than
+  // ever revoking without having been able to confirm whose grant it is.
+  const binding = verifyIdentityBinding(exchanged.idToken, expectedAppleUserId);
+  if (binding !== "ok") return { kind: binding };
 
   return revokeRefreshToken(config, clientSecret, exchanged.refreshToken);
 }

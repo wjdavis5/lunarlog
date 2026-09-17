@@ -30,6 +30,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform, visibleForTesting;
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/data/notifications/notification_permission_gate.dart';
 import 'package:lunarlog/domain/notifications/push_registration.dart';
 
 /// Pure branching, directly unit-testable despite living in this otherwise
@@ -55,9 +56,10 @@ FirebaseOptions buildFirebaseOptions({
 }
 
 class FirebasePushTokenSource implements PushTokenSource {
-  FirebasePushTokenSource()
+  FirebasePushTokenSource({NotificationPermissionGate? permissionGate})
       : openedAppMessages = null,
-        initialMessage = null;
+        initialMessage = null,
+        _permissionGate = permissionGate ?? defaultNotificationPermissionGate;
 
   /// Testing seams (#206 C-26): when both are supplied they stand in for
   /// the plugin-bound `FirebaseMessaging.onMessageOpenedApp` stream and
@@ -69,7 +71,16 @@ class FirebasePushTokenSource implements PushTokenSource {
   FirebasePushTokenSource.forTesting({
     required this.openedAppMessages,
     required this.initialMessage,
-  });
+    NotificationPermissionGate? permissionGate,
+  }) : _permissionGate = permissionGate ?? defaultNotificationPermissionGate;
+
+  /// Issue #287: serializes `FirebaseMessaging.instance.requestPermission()`
+  /// (below) against `FlutterLocalNotificationsScheduler`'s own Android/
+  /// Darwin permission requests — both fire at database open with no
+  /// ordering relationship between the two widgets that start them. See
+  /// `notification_permission_gate.dart`'s library doc for the full
+  /// decision record.
+  final NotificationPermissionGate _permissionGate;
 
   /// The [taps]-path stand-in for `FirebaseMessaging.onMessageOpenedApp`;
   /// null in production builds.
@@ -129,7 +140,26 @@ class FirebasePushTokenSource implements PushTokenSource {
     // permission, so APNs never issues a token and getToken() below stays
     // null forever on that platform. Android's runtime notification
     // permission (API 33+) is folded into the same call by the plugin.
-    await FirebaseMessaging.instance.requestPermission();
+    // Issue #287: routed through [_permissionGate] so this never runs
+    // concurrently with FlutterLocalNotificationsScheduler's own Android/
+    // Darwin permission request.
+    await _permissionGate
+        .guard(() => FirebaseMessaging.instance.requestPermission());
+    // Issue #174: without this, iOS silently drops the banner of a push
+    // arriving while the app is foregrounded (the pre-iOS-10 default is to
+    // present nothing) — a caregiver alert landing while the recipient has
+    // the app open just vanished. alert/badge/sound: the same presentation
+    // a backgrounded push gets. iOS-only: this API is Darwin-only, and
+    // Android's foreground presentation is the app's own job
+    // (`push_presentation.dart`).
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await FirebaseMessaging.instance
+          .setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
   }
 
   @override

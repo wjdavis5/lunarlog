@@ -6,13 +6,21 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
+import 'package:lunarlog/domain/import/account_import.dart' show kMaxImportFileBytes;
+import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 
 import '../../support/fake_account_export_remote_source.dart';
@@ -22,18 +30,34 @@ Profile _profile(
   String displayName = 'Riley',
   bool isMinor = true,
   ProfileMode mode = ProfileMode.standard,
+  BbtUnit bbtUnit = BbtUnit.celsius,
+  WeightUnit weightUnit = WeightUnit.kg,
   int sortOrder = 0,
   DateTime? archivedAt,
+  int? birthYear,
+  ProfileRelationship? relationship,
+  LocalDate? lastPeriodStart,
+  int? typicalCycleLengthDays,
+  int? typicalPeriodLengthDays,
+  TrackingPreferences? trackingPreferences,
 }) =>
     Profile(
       id: id,
       displayName: displayName,
       isMinor: isMinor,
       mode: mode,
+      bbtUnit: bbtUnit,
+      weightUnit: weightUnit,
       sortOrder: sortOrder,
       archivedAt: archivedAt,
       createdAt: DateTime.utc(2026, 1, 1),
       updatedAt: DateTime.utc(2026, 1, 2),
+      birthYear: birthYear,
+      relationship: relationship,
+      lastPeriodStart: lastPeriodStart,
+      typicalCycleLengthDays: typicalCycleLengthDays,
+      typicalPeriodLengthDays: typicalPeriodLengthDays,
+      trackingPreferences: trackingPreferences,
     );
 
 DayEntry _entry(
@@ -141,7 +165,11 @@ void main() {
 
       final totalEntries = profiles.fold<int>(
         0,
-        (sum, p) => sum + (p as Map)['dayEntries'].length as int,
+        // Issue #548 (strict-casts): `as` binds looser than `+`, so the
+        // original `sum + (p as Map)['dayEntries'].length as int` cast the
+        // *sum* of a num and a dynamic, not the dynamic length alone —
+        // parenthesized so the length is cast to int before adding.
+        (sum, p) => sum + ((p as Map)['dayEntries'] as List).length,
       );
       expect(totalEntries, 5);
     });
@@ -300,7 +328,7 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7);
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8));
       final profile = (doc['profiles'] as List).single as Map;
       final entries = (profile['dayEntries'] as List).map((e) => e as Map);
       final byId = {for (final e in entries) e['id'] as String: e};
@@ -360,16 +388,318 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7,
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
           reason: 'profiles[].mode was v2''s shape change; the constant has '
               'since moved to v6 for profiles[].observations (Issue #240), '
               'dayEntries[].source/sourceId/importId (Issue #159), the '
-              'super_heavy/not_bleeding flow wire values (Issue #247), and '
-              'profiles[].careNotes/visitPrepItems (Issue #128), and to v7 '
-              'for dayEntries[].pms (Issue #220)');
+              'super_heavy/not_bleeding flow wire values (Issue #247), '
+              'profiles[].careNotes/visitPrepItems (Issue #128), to v7 for '
+              'dayEntries[].pms (Issue #220), and to v8 for '
+              'profiles[].bbtUnit/weightUnit (Issue #255)');
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mode'], 'standard');
       expect((profiles[1] as Map)['mode'], 'teen');
+    });
+  });
+
+  group('display-unit preferences (Issue #255, export v8)', () {
+    test('each exported profile carries its bbtUnit/weightUnit, and the '
+        'schema version was bumped for the new keys', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-1'),
+          _profile('p-2', bbtUnit: BbtUnit.fahrenheit, weightUnit: WeightUnit.lb),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
+          reason: 'profiles[].bbtUnit/weightUnit is a v8 shape change; a '
+              'reader of an older export treats an absent key as the metric '
+              'default');
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['bbtUnit'], 'celsius');
+      expect((profiles[0] as Map)['weightUnit'], 'kg');
+      expect((profiles[1] as Map)['bbtUnit'], 'fahrenheit');
+      expect((profiles[1] as Map)['weightUnit'], 'lb');
+    });
+  });
+
+  group(
+      'portable state: subject metadata, profileMode, cycleOverrides '
+      '(Issue #140 review, LLA-084, export v9)', () {
+    test('schema version was bumped to 9 for the new keys (since moved to '
+        '10 for profiles[].trackingPreferences, Issue #648, and 11 for '
+        'profiles[].mergeEvents, Issue #130)', () {
+      expect(kAccountExportSchemaVersion, 11);
+    });
+
+    test('each exported profile carries its subject metadata and '
+        'onboarding cycle facts', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile(
+            'p-1',
+            birthYear: 2012,
+            relationship: ProfileRelationship.daughter,
+            lastPeriodStart: LocalDate.fromIso('2026-08-01'),
+            typicalCycleLengthDays: 28,
+            typicalPeriodLengthDays: 5,
+          ),
+          _profile('p-2'),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1 = profiles[0] as Map;
+      expect(p1['birthYear'], 2012);
+      expect(p1['relationship'], 'daughter');
+      expect(p1['lastPeriodStart'], '2026-08-01');
+      expect(p1['typicalCycleLengthDays'], 28);
+      expect(p1['typicalPeriodLengthDays'], 5);
+
+      final p2 = profiles[1] as Map;
+      expect(p2['birthYear'], isNull);
+      expect(p2['relationship'], isNull);
+      expect(p2['lastPeriodStart'], isNull);
+      expect(p2['typicalCycleLengthDays'], isNull);
+      expect(p2['typicalPeriodLengthDays'], isNull);
+    });
+
+    test('profileMode is null when no profile_modes row was ever written, '
+        'and never carries a health_sync_consent key even when a row '
+        'exists', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        profileModesByProfile: {
+          'p-1': (
+            mode: LifecycleMode.conceive,
+            modeStartedOn: null,
+            estimatedDueDate: null,
+            birthControlMethod: 'pill',
+            birthControlStartedOn: '2026-06-01',
+            birthControlStoppedOn: null,
+          ),
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1Mode = (profiles[0] as Map)['profileMode'] as Map;
+      expect(p1Mode['mode'], 'conceive');
+      expect(p1Mode['birthControlMethod'], 'pill');
+      expect(p1Mode['birthControlStartedOn'], '2026-06-01');
+      expect(p1Mode['birthControlStoppedOn'], isNull);
+      // Device-specific, safety-sensitive consent is deliberately never
+      // exported (this file's R9 boundary) -- there is no key for it at
+      // all, not even a false/null placeholder.
+      expect(p1Mode.containsKey('healthSyncConsent'), isFalse);
+      expect(p1Mode.containsKey('health_sync_consent'), isFalse);
+
+      expect((profiles[1] as Map)['profileMode'], isNull);
+    });
+
+    test('cycleOverrides round-trips full fidelity (id, manualStart, '
+        'noteId), not just the excluded flag, sorted by cycleStartDate',
+        () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        cycleOverridesByProfile: {
+          'p-1': [
+            CycleOverride(
+              id: 'co-2',
+              profileId: 'p-1',
+              cycleStartDate: '2026-08-01',
+              excludedFromAverage: false,
+              manualStart: true,
+              noteId: 'note-1',
+              updatedAt: DateTime.utc(2026, 8, 1),
+            ),
+            CycleOverride(
+              id: 'co-1',
+              profileId: 'p-1',
+              cycleStartDate: '2026-07-01',
+              excludedFromAverage: true,
+              updatedAt: DateTime.utc(2026, 7, 1),
+            ),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final overrides = (profiles[0] as Map)['cycleOverrides'] as List;
+      expect(overrides, hasLength(2));
+      // Sorted by cycleStartDate, not input order.
+      expect((overrides[0] as Map)['cycleStartDate'], '2026-07-01');
+      expect((overrides[0] as Map)['id'], 'co-1');
+      expect((overrides[0] as Map)['excludedFromAverage'], isTrue);
+      expect((overrides[0] as Map)['manualStart'], isFalse);
+      expect((overrides[0] as Map)['noteId'], isNull);
+      expect((overrides[1] as Map)['cycleStartDate'], '2026-08-01');
+      expect((overrides[1] as Map)['id'], 'co-2');
+      expect((overrides[1] as Map)['manualStart'], isTrue);
+      expect((overrides[1] as Map)['noteId'], 'note-1');
+    });
+
+    test('a profile with none of the new state exports empty/null '
+        'defaults, never throwing', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final p1 = (doc['profiles'] as List)[0] as Map;
+      expect(p1['profileMode'], isNull);
+      expect(p1['cycleOverrides'], isEmpty);
+    });
+  });
+
+  group('tracking preferences (Issue #648, export v10)', () {
+    test('a customized profile carries its trackingPreferences document, '
+        'decoded (not doubly-encoded text), and an uncustomized profile '
+        'exports null', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile(
+            'p-1',
+            trackingPreferences: TrackingPreferences({
+              'mood': const TrackingCategoryPreference(
+                  enabled: false, sortOrder: 2),
+              'sex_life': const TrackingCategoryPreference(
+                  enabled: true, sortOrder: 0),
+            }),
+          ),
+          _profile('p-2'),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profiles = doc['profiles'] as List;
+      final p1Prefs = (profiles[0] as Map)['trackingPreferences'] as Map;
+      expect(p1Prefs['mood'], {'enabled': false, 'sort_order': 2});
+      expect(p1Prefs['sex_life'], {'enabled': true, 'sort_order': 0});
+      expect((profiles[1] as Map)['trackingPreferences'], isNull);
+      expect(() => jsonEncode(doc), returnsNormally);
+    });
+
+    test('an explicitly empty (cleared-to-defaults) document exports as an '
+        'empty object, distinguishable from never-customized null', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-1', trackingPreferences: const TrackingPreferences.empty()),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final p1 = (doc['profiles'] as List)[0] as Map;
+      expect(p1['trackingPreferences'], isA<Map>());
+      expect((p1['trackingPreferences'] as Map).isEmpty, isTrue);
+    });
+  });
+
+  group('same-date merge disclosures (Issue #130, export v11)', () {
+    final eventA = DayEntryMergeEvent(
+      id: '01JMERGEEVENT000000000000A',
+      profileId: 'p-1',
+      localDateIso: '2026-01-15',
+      winningRowId: '01JMERGEWINNER00000000000W',
+      losingRowId: '01JMERGELOSER000000000000L',
+      field: DayEntryMergeEventField.note,
+      losingValueText: 'she stayed home from school',
+      losingAuthorUserId: 'user-loser',
+      winningAuthorUserId: 'user-winner',
+      createdAt: DateTime.utc(2026, 1, 16),
+      updatedAt: DateTime.utc(2026, 1, 16),
+    );
+    final eventB = DayEntryMergeEvent(
+      id: '01JMERGEEVENT000000000000B',
+      profileId: 'p-1',
+      localDateIso: '2026-01-15',
+      winningRowId: '01JMERGEWINNER00000000000W',
+      losingRowId: '01JMERGELOSER000000000000L',
+      field: DayEntryMergeEventField.flow,
+      losingValueText: 'heavy',
+      createdAt: DateTime.utc(2026, 1, 16),
+      updatedAt: DateTime.utc(2026, 1, 16),
+    );
+
+    test('the schema version was bumped to 11 and each profile carries a '
+        'mergeEvents array (empty for a profile with none, the v3/v6 '
+        'absence-reading precedent)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      expect(kAccountExportSchemaVersion, 11);
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['mergeEvents'], isEmpty);
+      expect((profiles[1] as Map)['mergeEvents'], isEmpty);
+    });
+
+    test('each event round-trips id/date/row-ids/field/losing text, sorted '
+        'by id, with attribution ids excluded (R9)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        mergeEventsByProfile: {
+          'p-1': [eventB, eventA],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final events = ((doc['profiles'] as List)[0] as Map)['mergeEvents']
+          as List;
+      expect(events, hasLength(2));
+      // Sorted by id regardless of input order.
+      expect((events[0] as Map)['id'], eventA.id);
+      expect((events[1] as Map)['id'], eventB.id);
+      final noteEvent = events[0] as Map;
+      expect(noteEvent['localDate'], '2026-01-15');
+      expect(noteEvent['winningRowId'], eventA.winningRowId);
+      expect(noteEvent['losingRowId'], eventA.losingRowId);
+      expect(noteEvent['field'], 'note');
+      expect(noteEvent['losingValueText'], 'she stayed home from school');
+      expect(noteEvent['recordedAt'], '2026-01-16T00:00:00.000Z');
+      // R9: guardian attribution ids never ride along.
+      final encoded = jsonEncode(doc);
+      expect(encoded, isNot(contains('user-loser')));
+      expect(encoded, isNot(contains('user-winner')));
+      expect(encoded, isNot(contains('losingAuthorUserId')));
+      expect(encoded, isNot(contains('winningAuthorUserId')));
+    });
+
+    test('a flow discard exports its wire string as the losing value', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        mergeEventsByProfile: {
+          'p-1': [eventB],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final flowEvent =
+          (((doc['profiles'] as List)[0] as Map)['mergeEvents'] as List)[0]
+              as Map;
+      expect(flowEvent['field'], 'flow');
+      expect(flowEvent['losingValueText'], 'heavy');
     });
   });
 
@@ -519,11 +849,12 @@ void main() {
         appVersion: '1.0.0+1',
       );
 
-      expect(kAccountExportSchemaVersion, 7,
+      expect(kAccountExportSchemaVersion, greaterThanOrEqualTo(8),
           reason: 'adding profiles[].observations is a shape change; the '
               'constant has since moved to v6 for profiles[].careNotes/'
-              'visitPrepItems (Issue #128), and to v7 for dayEntries[].pms '
-              '(Issue #220)');
+              'visitPrepItems (Issue #128), to v7 for dayEntries[].pms '
+              '(Issue #220), and to v8 for profiles[].bbtUnit/weightUnit '
+              '(Issue #255)');
       final profiles = doc['profiles'] as List;
       final p1 = profiles[0] as Map;
       final p2 = profiles[1] as Map;
@@ -725,6 +1056,43 @@ void main() {
       final profile = (doc['profiles'] as List).single as Map;
       expect(profile['careNotes'], isEmpty);
       expect(profile['visitPrepItems'], isEmpty);
+    });
+  });
+
+  group('import ceiling vs export size (Issue #626, LLA-095)', () {
+    test('kMaxImportFileBytes comfortably exceeds a legitimate worst-case '
+        'export — five profiles, ten years of daily maxed-out entries each '
+        '(the repro that exceeded the old 32 MiB ceiling: "28,28,28,56" is '
+        'a different #612 finding; this is LLA-095\'s own numbers)', () {
+      final maxNote = 'n' * kMaxNoteLength;
+      final maxTags = [for (var i = 0; i < kMaxTagCount; i++) 't$i'.padRight(kMaxTagLength, 'x')];
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [_entry('e1', 'p-1', '2026-01-01', note: maxNote, tags: maxTags)],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final entries = ((doc['profiles'] as List).single as Map)['dayEntries'] as List;
+      final maxEntryBytes = utf8.encode(jsonEncode(entries.single)).length;
+
+      // The issue's own repro: five profiles, ten years of daily entries
+      // (3650 days) each at every field's own maximum length.
+      const profileCount = 5;
+      const entriesPerProfile = 3650;
+      final worstCaseEntriesBytes = maxEntryBytes * profileCount * entriesPerProfile;
+
+      expect(worstCaseEntriesBytes, greaterThan(32 * 1024 * 1024),
+          reason: 'sanity check: this is exactly the scenario that used to '
+              'exceed the OLD 32 MiB ceiling — if this assertion ever '
+              'fails, the repro itself has stopped reproducing the defect');
+      expect(worstCaseEntriesBytes, lessThan(kMaxImportFileBytes),
+          reason: 'a household that respects every one of this app\'s own '
+              'row bounds must never produce a backup this app itself '
+              'cannot restore (LLA-095) — dayEntries alone must fit '
+              'comfortably under the import ceiling, leaving headroom for '
+              'observations/cycleOverrides/profile metadata on top');
     });
   });
 }

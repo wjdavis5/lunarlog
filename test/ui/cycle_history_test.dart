@@ -1,7 +1,7 @@
 /// Widget tests for issue #132: the cycle-history section (R4/R5) — the
 /// reverse-chronological list, omit-from-average with reversibility,
 /// confidence framing, statistics, read-only gating, and the disclaimer/
-/// device-local captions.
+/// sync captions.
 ///
 /// Issue #314: [CycleHistorySection] no longer mounts inside
 /// `OverviewPanel`/`ProfileDetailScreen` — its only production mount point
@@ -40,9 +40,10 @@ import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
+
 const String kDisclaimer = 'Estimates only — not medical advice.';
-const String kDeviceLocalNote =
-    'Omissions stay on this device — other devices are not affected.';
+const String kSyncNote = 'Omissions sync across your devices.';
 
 /// R13 vocabulary sweep over every rendered Text in the tree.
 const List<String> kForbiddenStems = [
@@ -381,7 +382,7 @@ void main() {
 
   group('AC4/AC5: confidence and statistics', () {
     testWidgets('steady 30-day history: high confidence, avg cycle 30, avg '
-        'period 4, variation 0, disclaimer, device-local note', (tester) async {
+        'period 4, variation 0, disclaimer, sync note', (tester) async {
       final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
 
       expect(
@@ -407,9 +408,9 @@ void main() {
         reason: 'the statistics carry the disclaimer (AC8)',
       );
       expect(
-        find.text(kDeviceLocalNote),
+        find.text(kSyncNote),
         findsOneWidget,
-        reason: 'multi-device divergence is stated, not hidden (KTD2)',
+        reason: 'omissions sync across devices (issue #568)',
       );
       await disposeHistory(tester, h);
     });
@@ -525,11 +526,11 @@ void main() {
       expect(find.byKey(const ValueKey('history-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('history-stats')), findsNothing);
       expect(find.byKey(const ValueKey('history-disclaimer')), findsNothing);
-      // The rest of the card (item list, device-local note) is unaffected.
+      // The rest of the card (item list, sync note) is unaffected.
       expect(find.text('Cycle history'), findsOneWidget);
       expect(
         find.text(
-          'Omissions stay on this device — other devices are not affected.',
+          'Omissions sync across your devices.',
         ),
         findsOneWidget,
       );
@@ -537,6 +538,130 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
+    });
+  });
+
+  group('issue #543: history stream error', () {
+    testWidgets(
+        'a thrown error on the history stream shows InlineError with retry '
+        'instead of silently rendering nothing', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final innerEntries = DriftDayEntriesRepository(db.storage);
+      final entries = ErroringDayEntriesRepository(innerEntries);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      for (final start in kSteadyStarts) {
+        for (var i = 0; i < 4; i++) {
+          await innerEntries.save(DayEntry(
+            id: '',
+            profileId: profile.id,
+            localDate: start.addDays(i),
+            tz: 'America/Chicago',
+            flow: FlowLevel.medium,
+            tags: const [],
+            note: null,
+            updatedAt: DateTime.utc(2026, 1, 1),
+            deletedAt: null,
+          ));
+        }
+      }
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<CycleHistoryService>.value(
+            value: CycleHistoryService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: CycleHistorySection(
+              profileId: profile.id,
+              todayProvider: () => aug30,
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      entries.broken = true;
+      await innerEntries.save((await innerEntries.find(
+          profile.id, kSteadyStarts.last))!);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cycle-history-error')), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+
+      entries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('history-card')), findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
+
+  group('clock seam (issue #304)', () {
+    // Proves the injected todayProvider actually drives what renders,
+    // rather than merely being accepted and ignored (the exact bug #299
+    // fixed for this widget before this issue existed to audit it).
+    // Deliberately compares two fixture "today"s against each other, not
+    // one fixture against the real wall clock: kSteadyStarts' open cycle
+    // (started Aug 5, 2026) reads `unusuallyLongCycle` only once "today"
+    // is more than kMaxOpenCycleDays (60) days past that start, and
+    // `computePrediction` forces the tier to `irregular` in that case
+    // (`lib/domain/prediction/prediction.dart`). If CycleHistorySection
+    // silently stopped forwarding `todayProvider` to
+    // `CycleHistoryService.watch` (falling back to the real wall clock for
+    // both pumps below), both would render the same confidence -- whatever
+    // the real wall clock happens to compute -- rather than differing the
+    // way this test expects.
+    testWidgets(
+        'the same history reads a different confidence tier for two '
+        'different injected "today"s', (tester) async {
+      final within = await pumpHistory(
+        tester,
+        today: aug30, // 25 days past the Aug 5 open-cycle start.
+        starts: kSteadyStarts,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('High confidence'),
+        ),
+        findsOneWidget,
+        reason: '25 days open is well under the 60-day unusually-long '
+            'threshold',
+      );
+      await disposeHistory(tester, within);
+
+      final beyond = await pumpHistory(
+        tester,
+        today: LocalDate(2026, 11, 1), // 88 days past the same start.
+        starts: kSteadyStarts,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('history-confidence')),
+          matching: find.text('Irregular'),
+        ),
+        findsOneWidget,
+        reason: '88 days open crosses the 60-day threshold -- this can '
+            'only differ from the pump above if todayProvider actually '
+            'reached CycleHistoryService.watch',
+      );
+      await disposeHistory(tester, beyond);
     });
   });
 }

@@ -341,8 +341,10 @@ void main() {
       expect(_json(out), isNot(contains('/var/mobile')));
     });
 
-    test('#97/U1/R4: an unrelated exception from lib/domain keeps its value '
-        '(the new markers do not over-reduce)', () {
+    test('#516 supersedes #97/U1/R4: an unrelated exception from '
+        'lib/domain is reduced too now — the default-reduce posture no '
+        'longer trusts a not-recognized-as-data-layer type/path to prove an '
+        'exception is safe to keep verbatim', () {
       final out = scrubEvent(SentryEvent(exceptions: [
         SentryException(
           type: 'FormatException',
@@ -354,7 +356,66 @@ void main() {
           ]),
         ),
       ]))!;
-      expect(out.exceptions!.single.value, 'Unexpected character at offset 3');
+      expect(out.exceptions!.single.value, 'FormatException');
+    });
+
+    test('#516: an obfuscated exception — mangled type name, pathless '
+        'frames — with a SqliteException-shaped message and bound '
+        'parameters is still reduced, even though neither of '
+        '_isDataLayerException\'s old discriminators can fire', () {
+      const mangledParams = "['$_note', '2026-09-02']";
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          // --obfuscate --split-debug-info (play-store-release.yml)
+          // mangles the real type name away entirely.
+          type: 'a1b',
+          value: 'a1b(19): constraint failed, $_sql, parameters: '
+              '$mangledParams',
+          stackTrace: SentryStackTrace(frames: [
+            // Obfuscated frames carry a bare renamed function, no
+            // path/absPath/module/package at all.
+            SentryStackFrame(function: 'a2c'),
+          ]),
+        ),
+      ]))!;
+      final ex = out.exceptions!.single;
+      expect(ex.type, 'a1b');
+      expect(ex.value, 'a1b');
+      final json = _json(out);
+      expect(json, isNot(contains(_note)));
+      expect(json, isNot(contains('parameters')));
+      expect(json, isNot(contains('INSERT INTO')));
+    });
+
+    test('#516: another mangled type with no stack trace at all is reduced '
+        'by default (no allowlist match, nothing to fall back on)', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(type: 'c3d', value: 'c3d: row note=$_note'),
+      ]))!;
+      expect(out.exceptions!.single.value, 'c3d');
+    });
+
+    test('#516/#520: an allowlisted safe type is still reduced when its '
+        'value itself mentions a deny-listed key', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FlutterError',
+          value: 'note: $_note overflowed the layout',
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'FlutterError');
+    });
+
+    test('#516: an allowlisted safe type raised from lib/data is still '
+        'reduced (defense-in-depth over the allowlist)', () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'FlutterError',
+          value: 'Bad state: $_note',
+          stackTrace: _dataLayerStack(),
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'FlutterError');
     });
 
     test('event tags lose deny-listed keys but keep the rest', () {
@@ -1069,6 +1130,248 @@ void main() {
         expect(out.spans, hasLength(2));
         expect(out.contexts.trace, isNotNull);
       });
+    });
+  });
+
+  group('Issue #520: deny-list drift', () {
+    test('every newly-added exact key is deny-listed in both spellings', () {
+      for (final key in [
+        'flow',
+        'pms',
+        'mode',
+        'is_minor',
+        'isMinor',
+        'birth_year',
+        'birthYear',
+        'birth_control_method',
+        'birthControlMethod',
+        'birth_control_started_on',
+        'birth_control_stopped_on',
+        'health_sync_consent',
+        'healthSyncConsent',
+        'mode_started_on',
+        'cycle_start_date',
+        'cycleStartDate',
+        'last_period_start',
+        'lastPeriodStart',
+        'typical_cycle_length_days',
+        'typical_period_length_days',
+        'observations',
+        'p_observations',
+        'profile_modes',
+        'p_profile_modes',
+        'cycle_overrides',
+        'p_cycle_overrides',
+        'projection',
+        'p_projection',
+        'p_rows',
+        'p_estimated_next_start',
+        'recipient_label',
+        'p_recipient_label',
+      ]) {
+        expect(isDenyListedKey(key), isTrue, reason: key);
+      }
+    });
+
+    test('the sensitive stems match a prefixed/suffixed variant that exact '
+        'match alone misses', () {
+      for (final key in [
+        'p_token_hash', // token, hash
+        'p_child_display_name', // displayname
+        'p_guardian_display_name', // displayname
+        'p_parent_display_name', // displayname
+        'reply_email', // email
+        'value_text', // value
+        'value_num', // value
+        'valueText',
+        'raw', // raw itself (bare, not exempted)
+        'note_id', // note
+        'noteId',
+      ]) {
+        expect(isDenyListedKey(key), isTrue, reason: key);
+      }
+    });
+
+    test('the whole-key exemption keeps the bare word "token" unlisted, '
+        'matching the pre-existing KTD7 bareword policy', () {
+      expect(isDenyListedKey('token'), isFalse);
+      expect(isDenyListedKey('Token'), isFalse);
+      // But a genuine compound built from it is still caught.
+      expect(isDenyListedKey('p_token'), isTrue);
+      expect(isDenyListedKey('access_token'), isTrue);
+    });
+
+    test('a message mentioning the new keys is scrubbed', () {
+      for (final text in [
+        'p_observations batch rejected',
+        'p_cycle_overrides payload invalid',
+        'flow value out of range',
+        'reply_email missing',
+        'p_token_hash lookup failed',
+      ]) {
+        final out = scrubEvent(SentryEvent(message: SentryMessage(text)))!;
+        expect(out.message?.formatted, '[scrubbed]', reason: text);
+      }
+    });
+
+    test('a PostgrestException naming p_observations or value_text is '
+        'reduced (SentryException.value now goes through the same gate)',
+        () {
+      final out = scrubEvent(SentryEvent(exceptions: [
+        SentryException(
+          type: 'PostgrestException',
+          value: 'column p_observations.value_text violates not-null',
+        ),
+      ]))!;
+      expect(out.exceptions!.single.value, 'PostgrestException');
+    });
+
+    test('a non-navigation breadcrumb whose data carries deny-listed '
+        'content under an innocuous key is dropped entirely, not passed '
+        'through verbatim', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'sync',
+        data: {
+          'error': 'UNIQUE constraint failed: day_entries.note ($_note)',
+        },
+      ));
+      expect(out, isNull);
+    });
+
+    test('a non-navigation breadcrumb data value naming p_rows or '
+        'p_cycle_overrides is dropped', () {
+      for (final key in ['p_rows', 'p_cycle_overrides']) {
+        final out = scrubBreadcrumb(Breadcrumb(
+          category: 'sync',
+          data: {'detail': 'RPC $key failed'},
+        ));
+        expect(out, isNull, reason: key);
+      }
+    });
+
+    test('an http breadcrumb whose non-url data value mentions a deny-listed '
+        'key is still dropped by the value gate', () {
+      final out = scrubBreadcrumb(Breadcrumb.http(
+        url: Uri.parse('https://x.supabase.co/rest/v1/rpc/sync_push'),
+        method: 'POST',
+        statusCode: 422,
+        reason: 'p_observations rejected: value_text too long',
+      ));
+      expect(out, isNull);
+    });
+
+    test('navigation breadcrumb data is exempt from the value-content gate '
+        '(it is already rebuilt under a route-name allowlist)', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'navigation',
+        data: {'state': 'didPush', 'to': 'SettingsScreen'},
+      ))!;
+      expect(out.data, {'state': 'didPush', 'to': 'SettingsScreen'});
+    });
+
+    test('an ordinary breadcrumb with a harmless value survives', () {
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'app.lifecycle',
+        data: {'state': 'resumed', 'reason': 'foreground'},
+      ))!;
+      expect(out.data, {'state': 'resumed', 'reason': 'foreground'});
+    });
+
+    test('category and code stay off the deny list deliberately: an '
+        'auth breadcrumb using them as ordinary field names still passes '
+        '(they are near-closed-vocabulary observation labels, not free '
+        'text, and colliding with them would false-positive-drop unrelated '
+        'breadcrumbs)', () {
+      expect(isDenyListedKey('category'), isFalse);
+      expect(isDenyListedKey('code'), isFalse);
+      final out = scrubBreadcrumb(Breadcrumb(
+        category: 'auth',
+        data: {'provider': 'google', 'code': 'canceled', 'category': 'x'},
+      ))!;
+      expect(out.data, {'provider': 'google', 'code': 'canceled', 'category': 'x'});
+    });
+  });
+
+  group('Issue #640/LLA-082: Storage URL path scrubbing', () {
+    // Fabricated ids shaped like SupabaseFeedbackService._attachAndUpdate's
+    // `<uid>/<ticketId>/<uuid>.<ext>` object path — a v4 uid, a v4 ticket
+    // id, and a v4 generated object-name uuid, none of them real.
+    const feedbackUid = '11111111-1111-4111-8111-111111111111';
+    const feedbackTicketId = '22222222-2222-4222-8222-222222222222';
+    const feedbackObjectId = '33333333-3333-4333-8333-333333333333';
+    const storagePath = 'storage/v1/object/feedback-attachments/'
+        '$feedbackUid/$feedbackTicketId/$feedbackObjectId.png';
+    const storageUrl = 'https://x.supabase.co/$storagePath?token=$_apikey';
+
+    test('scrubUrl redacts every UUID-shaped segment in a Storage object '
+        'path and still cuts the query string', () {
+      final out = scrubUrl(storageUrl);
+      expect(out, isNot(contains(feedbackUid)));
+      expect(out, isNot(contains(feedbackTicketId)));
+      expect(out, isNot(contains(feedbackObjectId)));
+      expect(out, isNot(contains('?')));
+      expect(out, isNot(contains(_apikey)));
+      expect(
+        out,
+        'https://x.supabase.co/storage/v1/object/feedback-attachments/'
+        '<id>/<id>/<id>.png',
+      );
+    });
+
+    test('scrubUrl leaves a UUID-free URL untouched apart from the query',
+        () {
+      expect(scrubUrl(_url), 'https://x.supabase.co/rest/v1/day_entries');
+    });
+
+    test('an event request URL pointing at a Storage object drops the '
+        'account and ticket uuids', () {
+      final out = scrubEvent(SentryEvent(
+        request: SentryRequest(url: storageUrl, method: 'POST'),
+      ))!;
+      expect(out.request!.url, isNot(contains(feedbackUid)));
+      expect(out.request!.url, isNot(contains(feedbackTicketId)));
+      final json = _json(out);
+      expect(json, isNot(contains(feedbackUid)));
+      expect(json, isNot(contains(feedbackTicketId)));
+      expect(json, isNot(contains(feedbackObjectId)));
+    });
+
+    test('an http breadcrumb for a Storage upload drops the account and '
+        'ticket uuids', () {
+      final out = scrubBreadcrumb(Breadcrumb.http(
+        url: Uri.parse(storageUrl),
+        method: 'POST',
+        statusCode: 200,
+      ))!;
+      expect(out.data!['url'], isNot(contains(feedbackUid)));
+      expect(out.data!['url'], isNot(contains(feedbackTicketId)));
+      expect(out.data!['url'], isNot(contains(feedbackObjectId)));
+      expect(jsonEncode(out.toJson()), isNot(contains(feedbackUid)));
+    });
+
+    test('a span data[url] for a Storage upload drops the account and '
+        'ticket uuids', () async {
+      final options = SentryOptions(dsn: 'https://public@o0.ingest.sentry.io/1')
+        ..tracesSampleRate = 1.0
+        ..transport = _NoopTransport();
+      SentryTransaction? captured;
+      options.beforeSendTransaction = (transaction, hint) {
+        captured = transaction;
+        return null;
+      };
+      final hub = Hub(options);
+      final tracer =
+          hub.startTransaction('SettingsScreen', 'navigation', bindToScope: false);
+      final span = tracer.startChild('http.client');
+      span.setData('url', storageUrl);
+      await span.finish();
+      await tracer.finish();
+      final out = scrubTransaction(captured!)!;
+      final url = out.spans.single.data['url'] as String;
+      expect(url, isNot(contains(feedbackUid)));
+      expect(url, isNot(contains(feedbackTicketId)));
+      expect(url, isNot(contains(feedbackObjectId)));
+      expect(url, isNot(contains('?')));
     });
   });
 }

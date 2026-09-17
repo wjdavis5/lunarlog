@@ -8,6 +8,30 @@ library;
 
 enum NotificationAvailability { available, denied }
 
+/// Maps a platform notification-permission probe's answer onto
+/// [NotificationAvailability] (issue #215).
+///
+/// Extracted verbatim out of
+/// `lib/data/notifications/notification_scheduler.dart`'s
+/// `checkAvailability()` (the flutter_local_notifications adapter, excluded
+/// from the coverage/CRAP gates) so the mapping is a directly unit-tested
+/// pure function in the domain layer, on the `buildFirebaseOptions()`
+/// precedent.
+///
+/// Only an explicit `false` reads as [NotificationAvailability.denied]:
+/// `true` means enabled, and `null` — no platform implementation resolved
+/// (the probe is Android/iOS/macOS-only), the probe coming back
+/// inconclusive, or no probe run at all — reads as
+/// [NotificationAvailability.available], because the OS remains the
+/// enforcement boundary and an unavailable probe must never brick reminder
+/// coordination.
+NotificationAvailability notificationAvailabilityFromPlatformProbe(
+  bool? enabled,
+) =>
+    enabled == false
+        ? NotificationAvailability.denied
+        : NotificationAvailability.available;
+
 /// Receives availability as the scheduler resolves it. The reminder
 /// coordinator only ever writes through this seam, which is what keeps the
 /// contract free of Flutter.

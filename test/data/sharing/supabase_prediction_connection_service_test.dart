@@ -12,9 +12,15 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show CycleConfidence;
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/prediction_connection_failure_copy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+final _l10n = AppLocalizationsEn();
 
 SupabaseClient makeClient(
     Future<http.Response> Function(http.Request) handler) {
@@ -116,7 +122,8 @@ void main() {
         throwsA(const PredictionConnectionFailure.minorProfile()),
       );
       expect(
-        const PredictionConnectionFailure.minorProfile().userFacingMessage,
+        predictionConnectionFailureCopy(
+            _l10n, const PredictionConnectionFailure.minorProfile()),
         contains("minor's profile"),
       );
       expect(const PredictionConnectionFailure.minorProfile().toString(),
@@ -203,6 +210,38 @@ void main() {
     });
   });
 
+  group('leaveConnection', () {
+    test('calls leave_prediction_connection (issue #462)', () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(req.url.path, '/rest/v1/rpc/leave_prediction_connection');
+        expect(body['p_connection_id'], 'conn-2');
+        return http.Response('true', 200);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.leaveConnection(connectionId: 'conn-2');
+    });
+
+    test('a non-recipient refusal maps to unauthorized', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': "only the connection's recipient can leave it",
+            'code': '42501',
+          }),
+          400,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.leaveConnection(connectionId: 'conn-2'),
+        throwsA(const PredictionConnectionFailure.unauthorized()),
+      );
+    });
+  });
+
   group('fetchProjection', () {
     test('parses the derived-only payload and never anything else',
         () async {
@@ -263,6 +302,74 @@ void main() {
           ovulationDays: const [],
           pmsDays: const [],
         ),
+      );
+    });
+
+    test('issue #593: sends confidence_tier unmodified when the projection '
+        'carries one, now that prediction_projections\' server-side '
+        'allowlist accepts it', () async {
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        final projection = body['p_projection'] as Map<String, dynamic>;
+        expect(
+          projection.keys.toSet(),
+          {
+            ...PredictionProjection.allowedKeys,
+            PredictionProjection.confidenceTierKey,
+          },
+          reason: 'confidence_tier joined the server allowlist in '
+              '20260915140000_prediction_projection_confidence_tier.sql '
+              '(issue #593) - no strip needed any more',
+        );
+        expect(projection[PredictionProjection.confidenceTierKey], 'high');
+        return http.Response('null', 204);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.publishProjection(
+        profileId: 'p1',
+        projection: PredictionProjection(
+          generatedAt: LocalDate(2026, 9, 7),
+          periodDays: [LocalDate(2026, 9, 10)],
+          fertileDays: const [],
+          ovulationDays: const [],
+          pmsDays: const [],
+          confidenceTier: CycleConfidence.high,
+        ),
+      );
+    });
+  });
+
+  group('retractProjection (issue LLA-061)', () {
+    test('calls retract_prediction_projection with the profile id', () async {
+      final client = makeClient((req) async {
+        expect(req.url.path, '/rest/v1/rpc/retract_prediction_projection');
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(body['p_profile_id'], 'p1');
+        return http.Response('null', 204);
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await service.retractProjection(profileId: 'p1');
+    });
+
+    test('maps a server rejection through the same error mapping as every '
+        'other RPC here', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'code': '42501',
+            'message':
+                'only an accepted guardian of this profile can retract its prediction projection',
+          }),
+          400,
+        );
+      });
+
+      final service = SupabasePredictionConnectionService(client: client);
+      await expectLater(
+        service.retractProjection(profileId: 'p1'),
+        throwsA(const PredictionConnectionFailure.unauthorized()),
       );
     });
   });

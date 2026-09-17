@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -148,6 +149,51 @@ void main() {
       final reread = await profiles.findById(created.id);
       expect(reread, created);
       expect(reread, isNot(equals(created.copyWith(displayName: 'Other'))));
+    });
+
+    test('tracking preferences round-trip through the domain model '
+        '(Issue #259)', () async {
+      final created = await profiles.create(displayName: 'A', isMinor: true);
+      expect(created.trackingPreferences, isNull,
+          reason: 'a new profile starts never-customized');
+
+      final doc = TrackingPreferences({
+        'mood': TrackingCategoryPreference(enabled: false, sortOrder: 0),
+        'pain': TrackingCategoryPreference(enabled: true, sortOrder: 1),
+      });
+      await profiles.update(created.copyWith(trackingPreferences: doc));
+      final reread = await profiles.findById(created.id);
+      expect(reread!.trackingPreferences, doc,
+          reason: 'update() must carry the document through the full-row '
+              'overwrite, never silently null it');
+    });
+
+    test('setTrackingPreferences writes and clears without touching any '
+        'other metadata (Issue #259)', () async {
+      final created = await profiles.create(
+          displayName: 'A', isMinor: true, sortOrder: 4);
+      final updated = await profiles.setTrackingPreferences(
+          created.id,
+          TrackingPreferences({
+            'sex_life': TrackingCategoryPreference(enabled: true, sortOrder: 0),
+          }));
+      expect(updated, isNotNull);
+      expect(updated!.trackingPreferences,
+          TrackingPreferences({
+            'sex_life': TrackingCategoryPreference(enabled: true, sortOrder: 0),
+          }));
+      expect(updated.displayName, 'A');
+      expect(updated.sortOrder, 4);
+      expect(updated.updatedAt.isAfter(created.updatedAt), isTrue);
+
+      expect((await profiles.setTrackingPreferences(created.id, null))!
+          .trackingPreferences, const TrackingPreferences.empty(),
+          reason: 'a null clear is expressed as the explicitly empty document '
+              '(non-null, so it actually propagates to co-guardians); it '
+              'resolves to defaults on every device');
+      expect(await profiles.setTrackingPreferences('01JPROFILEUNKNOWN000000000', null),
+          isNull,
+          reason: 'unknown id: nothing to curate');
     });
   });
 
@@ -351,6 +397,177 @@ void main() {
 
         final obs = await observations.listForProfile(profile.id);
         expect(obs.where((o) => o.category == 'spotting'), isEmpty);
+      });
+
+      test(
+          'listForDayEntryWithLegacyAlias synthesises the alias for a live '
+          'legacy flow = spotting day entry, scoped to just that entry '
+          '(issue #549)', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 24),
+            // ignore: deprecated_member_use_from_same_package
+            flow: FlowLevel.spotting));
+        // A second, unrelated legacy-spotting entry proves this reads only
+        // the one day entry it's asked about, not the whole profile.
+        final other = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 25),
+            // ignore: deprecated_member_use_from_same_package
+            flow: FlowLevel.spotting));
+
+        final obs = await observations.listForDayEntryWithLegacyAlias(saved.id);
+
+        expect(obs, hasLength(1));
+        expect(obs.single.category, 'spotting');
+        expect(obs.single.dayEntryId, saved.id);
+        expect(obs.single.id, spottingAliasId(saved.id));
+        expect(obs.single.id, isNot(spottingAliasId(other.id)));
+      });
+
+      test(
+          'listForDayEntryWithLegacyAlias does not duplicate once a real '
+          'spotting observation is persisted for the same day entry',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 26),
+            // ignore: deprecated_member_use_from_same_package
+            flow: FlowLevel.spotting));
+        await observations.save(Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: profile.id,
+          localDate: saved.localDate,
+          tz: saved.tz,
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 7, 26),
+        ));
+
+        final obs = await observations.listForDayEntryWithLegacyAlias(saved.id);
+
+        expect(obs, hasLength(1));
+      });
+
+      test(
+          'listForDayEntryWithLegacyAlias never synthesises an alias for a '
+          'day entry whose flow was never spotting', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved = await dayEntries.save(entryFor(
+            profile.id, LocalDate(2026, 7, 27),
+            flow: FlowLevel.notBleeding));
+
+        expect(
+            await observations.listForDayEntryWithLegacyAlias(saved.id), isEmpty);
+      });
+
+      test(
+          'listForDayEntryWithLegacyAlias reads plain observations '
+          'unaffected when there is nothing to alias', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final saved =
+            await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 28)));
+        await observations.save(Observation(
+          id: '',
+          dayEntryId: saved.id,
+          profileId: profile.id,
+          localDate: saved.localDate,
+          tz: saved.tz,
+          category: 'pain',
+          code: 'cramps',
+          intensity: 2,
+          updatedAt: DateTime.utc(2026, 7, 28),
+        ));
+
+        final obs = await observations.listForDayEntryWithLegacyAlias(saved.id);
+
+        expect(obs, hasLength(1));
+        expect(obs.single.category, 'pain');
+      });
+
+      test(
+          'listForDayEntryWithLegacyAlias reads null for an unknown day '
+          'entry id', () async {
+        expect(
+            await observations.listForDayEntryWithLegacyAlias('nonexistent'),
+            isEmpty);
+      });
+    });
+
+    group('hasAnyEntries (issue #549)', () {
+      test('false for a profile with no day entries', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        expect(await dayEntries.hasAnyEntries(profile.id), isFalse);
+      });
+
+      test('true once the profile has a live entry', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        await dayEntries.save(entryFor(profile.id, LocalDate(2026, 8, 1)));
+        expect(await dayEntries.hasAnyEntries(profile.id), isTrue);
+      });
+
+      test('false again once that entry is tombstoned', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final date = LocalDate(2026, 8, 2);
+        await dayEntries.save(entryFor(profile.id, date));
+        await dayEntries.delete(profile.id, date);
+        expect(await dayEntries.hasAnyEntries(profile.id), isFalse);
+      });
+
+      test('never leaks another profile\'s entries (R3 isolation)', () async {
+        final a = await profiles.create(displayName: 'A', isMinor: false);
+        final b = await profiles.create(displayName: 'B', isMinor: false);
+        await dayEntries.save(entryFor(a.id, LocalDate(2026, 8, 3)));
+        expect(await dayEntries.hasAnyEntries(a.id), isTrue);
+        expect(await dayEntries.hasAnyEntries(b.id), isFalse);
+      });
+    });
+
+    group('watchHasAnyEntries (issue #642, LLA-010)', () {
+      test('emits false immediately for a profile with no day entries',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        await expectLater(
+          dayEntries.watchHasAnyEntries(profile.id),
+          emits(isFalse),
+        );
+      });
+
+      test('re-emits true once a live entry is saved for the profile',
+          () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final values = <bool>[];
+        final sub = dayEntries.watchHasAnyEntries(profile.id).listen(values.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(values, [false]);
+
+        await dayEntries.save(entryFor(profile.id, LocalDate(2026, 8, 1)));
+        await pumpEventQueue();
+        expect(values, [false, true]);
+      });
+
+      test('re-emits false once that last entry is tombstoned', () async {
+        final profile = await profiles.create(displayName: 'P', isMinor: false);
+        final date = LocalDate(2026, 8, 2);
+        await dayEntries.save(entryFor(profile.id, date));
+        final values = <bool>[];
+        final sub = dayEntries.watchHasAnyEntries(profile.id).listen(values.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+        expect(values, [true]);
+
+        await dayEntries.delete(profile.id, date);
+        await pumpEventQueue();
+        expect(values, [true, false]);
+      });
+
+      test('never leaks another profile\'s entries (R3 isolation)', () async {
+        final a = await profiles.create(displayName: 'A', isMinor: false);
+        final b = await profiles.create(displayName: 'B', isMinor: false);
+        await dayEntries.save(entryFor(a.id, LocalDate(2026, 8, 3)));
+        await expectLater(dayEntries.watchHasAnyEntries(a.id), emits(isTrue));
+        await expectLater(dayEntries.watchHasAnyEntries(b.id), emits(isFalse));
       });
     });
 

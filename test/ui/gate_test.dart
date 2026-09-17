@@ -43,10 +43,20 @@ import '../support/fake_sync_engine.dart';
 import '../support/fake_sync_transport.dart';
 
 class FakeGate implements AppGate {
-  FakeGate({this.grantNext = true, this.requiresUnlock = true});
+  FakeGate({
+    this.grantNext = true,
+    this.requiresUnlock = true,
+    this.canAuthenticateNext = true,
+  });
 
   bool grantNext;
+
+  /// Issue #534: defaults to true (a credential is enrolled) so every
+  /// existing scenario in this suite is unaffected; set false to exercise
+  /// [GateDenialReason.noCredentialEnrolled].
+  bool canAuthenticateNext;
   int requests = 0;
+  int canAuthenticateRequests = 0;
 
   /// When set, the next prompt stays up until this completes (its value is
   /// the answer), so a test can act while the credential prompt is showing
@@ -70,6 +80,12 @@ class FakeGate implements AppGate {
 
   @override
   bool requiresUnlock;
+
+  @override
+  Future<bool> canAuthenticate() async {
+    canAuthenticateRequests++;
+    return canAuthenticateNext;
+  }
 
   @override
   Future<bool> requestAccess() async {
@@ -167,6 +183,7 @@ class Harness {
     SyncTransport? syncTransport,
     SupabaseClient? supabaseClient,
     SyncEngineBuilder syncEngineBuilder = defaultSyncEngineBuilder,
+    bool? qaBuild,
   }) async {
     await pendingSeed;
     // The binding's lifecycle state persists across tests in a suite; every
@@ -188,6 +205,7 @@ class Harness {
       syncTransport: syncTransport,
       supabaseClient: supabaseClient,
       syncEngineBuilder: syncEngineBuilder,
+      qaBuild: qaBuild,
     ));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -231,7 +249,7 @@ Future<void> transitionTo(WidgetTester tester, AppLifecycleState target) async {
   ];
   final start = tester.binding.lifecycleState ?? AppLifecycleState.resumed;
   var from = path.indexOf(start);
-  var to = path.indexOf(target);
+  final to = path.indexOf(target);
   assert(from >= 0 && to >= 0, 'unsupported transition $start -> $target');
   while (from != to) {
     from += to > from ? 1 : -1;
@@ -366,6 +384,11 @@ void main() {
       gate.holdNext = held;
 
       final unlocking = controller.unlock();
+      // #534: `unlock()` now awaits `canAuthenticate()` before opening the
+      // system-UI window, so the window's deadline timer is armed one
+      // microtask later than it used to be — let that resolve before
+      // reaching for it.
+      await Future<void>.value();
       timers.activeWithDelay(const Duration(seconds: 90)).single.fire();
       held.complete(true);
       await unlocking;
@@ -434,6 +457,135 @@ void main() {
       expect(controller.locked, isFalse,
           reason: 'the operator is back, so nothing is replayed and a '
               're-auth never changes the lock state itself');
+    });
+  });
+
+  group('split denial reasons: declined vs no credential enrolled (#534)',
+      () {
+    test('no credential enrolled: denialReason is noCredentialEnrolled and '
+        'no prompt is ever presented', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+      expect(controller.lastAttemptDenied, isTrue,
+          reason: 'back-compat shorthand still reports a denial');
+      expect(gate.requests, 0,
+          reason: 'requestAccess (the prompt) must never be called when '
+              'canAuthenticate already says no');
+      expect(gate.canAuthenticateRequests, 1);
+    });
+
+    test('declined by the operator: denialReason is deniedByUser and the '
+        'prompt was presented', () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.deniedByUser);
+      expect(controller.lastAttemptDenied, isTrue);
+      expect(gate.requests, 1,
+          reason: 'canAuthenticate said yes, so the real prompt ran');
+    });
+
+    test('a granted credential resets denialReason to none', () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: true);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+
+      await controller.unlock();
+
+      expect(controller.locked, isFalse);
+      expect(controller.denialReason, GateDenialReason.none);
+      expect(controller.lastAttemptDenied, isFalse);
+    });
+
+    test('the two reasons are distinguishable from one another', () async {
+      final noCredentialGate =
+          FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final noCredentialController = GateController(gate: noCredentialGate);
+      addTearDown(noCredentialController.dispose);
+      await noCredentialController.unlock();
+
+      final deniedGate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final deniedController = GateController(gate: deniedGate);
+      addTearDown(deniedController.dispose);
+      await deniedController.unlock();
+
+      expect(noCredentialController.denialReason,
+          isNot(deniedController.denialReason));
+    });
+
+    test('resuming while locked with no credential enrolled re-checks '
+        'automatically and unlocks once one is added', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+
+      // The operator went to device settings and added a passcode.
+      gate.canAuthenticateNext = true;
+      gate.grantNext = true;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      // The re-check's canAuthenticate()/requestAccess() are asynchronous
+      // (unawaited from didChangeAppLifecycleState); let them resolve.
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isFalse,
+          reason: 'resume re-verified availability and unlocked without a '
+              'manual retry tap');
+      expect(controller.denialReason, GateDenialReason.none);
+    });
+
+    test('resuming while locked with no credential enrolled re-checks but '
+        'stays locked if still none is enrolled', () async {
+      final gate = FakeGate(requiresUnlock: true, canAuthenticateNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      final requestsBefore = gate.canAuthenticateRequests;
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.noCredentialEnrolled);
+      expect(gate.canAuthenticateRequests, greaterThan(requestsBefore),
+          reason: 'resume must re-run the availability check, not just '
+              'redisplay the old result');
+    });
+
+    test('resuming while locked after a plain decline does not auto-retry',
+        () async {
+      final gate = FakeGate(
+          requiresUnlock: true, canAuthenticateNext: true, grantNext: false);
+      final controller = GateController(gate: gate);
+      addTearDown(controller.dispose);
+      await controller.unlock();
+      expect(gate.requests, 1);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.locked, isTrue);
+      expect(controller.denialReason, GateDenialReason.deniedByUser,
+          reason: 'a decline is not the no-credential case; resume must '
+              'not auto-replay a prompt the operator just dismissed');
+      expect(gate.requests, 1,
+          reason: 'no automatic re-prompt for an ordinary decline');
     });
   });
 
@@ -765,6 +917,38 @@ void main() {
               'have missed');
     });
 
+    test(
+        'a system-UI window opened after dispose arms no timer and never '
+        'notifies (issue #574)', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        inactivityTimerFactory: timers.factory,
+        systemUiDeadline: windowDeadline,
+      );
+      gate.grantNext = true;
+      await controller.unlock();
+
+      var notified = false;
+      controller.addListener(() => notified = true);
+      controller.dispose();
+
+      // _openSystemUiWindow, the entry point duringSystemUi calls, had no
+      // _disposed guard — unlike every sibling that touches this same
+      // state — so a biometric sheet started after disposal would arm a
+      // timer nothing cancels and, via that timer, later call
+      // notifyListeners() on a disposed ChangeNotifier.
+      final picker = Completer<void>();
+      final ceremony = controller.duringSystemUi(() => picker.future);
+      picker.complete();
+      await ceremony;
+
+      expect(timers.anyActive, isFalse,
+          reason: 'no timer should ever be armed once disposed');
+      expect(notified, isFalse);
+    });
+
     testWidgets('the cover is reconciled when a window closes, never '
         'stranded and never lifted while the app is away', (tester) async {
       final (controller, gate, timers) = unlockedRig();
@@ -838,9 +1022,18 @@ void main() {
       expect(controller.locked, isTrue);
     });
 
+    // Issue #102: this test used FakeGate(requiresUnlock: false), under
+    // which lock() never sets _locked — its `controller.locked` assertion
+    // could never fail (docs/residual-review-findings/
+    // fix-gate-system-ui-relock.md, "one pre-existing re-auth test cannot
+    // fail on its lock assertion"). Now gated: the gate starts locked,
+    // opens through unlock(), and the interrupted prompt's suppressed
+    // departure must REPLAY as a re-lock after the prompt settles — an
+    // assertion that fails if the replay (or the lock) regresses.
     testWidgets('returns false when the prompt is interrupted by a '
-        'lifecycle change, without re-locking mid-prompt', (tester) async {
-      final gate = FakeGate(requiresUnlock: false);
+        'lifecycle change, without re-locking mid-prompt — the suppressed '
+        'departure replays as a re-lock afterwards (#102)', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
       // Fake timers: a closing system-UI window re-arms the inactivity
       // countdown (#65 U1), which would otherwise leave a real 2-minute
       // Timer pending past the end of the test.
@@ -848,6 +1041,12 @@ void main() {
       final controller = GateController(
           gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
+      expect(controller.locked, isTrue,
+          reason: 'a gated platform starts locked');
+
+      // reauthenticate() is the already-unlocked prompt: open the gate.
+      gate.grantNext = true;
+      await controller.unlock();
       expect(controller.locked, isFalse);
 
       final hold = Completer<bool>();
@@ -856,12 +1055,23 @@ void main() {
       expect(controller.authenticating, isTrue);
       // The system prompt itself reports `inactive`.
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isFalse,
+          reason: 'no re-lock while the prompt is still up — the window '
+              'suppresses the departure, it does not ignore it');
       hold.complete(true);
       expect(await pending, isFalse);
       expect(controller.authenticating, isFalse);
-      expect(controller.locked, isFalse);
+      expect(controller.locked, isTrue,
+          reason: 'the suppressed departure replays once the window '
+              'settles: the gated platform re-locks, not just covers');
+      expect(controller.obscured, isTrue);
 
-      // A clean prompt afterwards works again.
+      // A clean prompt afterwards works again: come back, unlock, and a
+      // second re-auth with no departure succeeds.
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      gate.grantNext = true;
+      await controller.unlock();
+      expect(controller.locked, isFalse);
       gate.grantNext = true;
       expect(await controller.reauthenticate(), isTrue);
     });
@@ -1242,6 +1452,11 @@ void main() {
       await tester.tap(find.byTooltip('Settings'));
       await tester.pumpAndSettle();
       expect(find.byType(SettingsScreen), findsOneWidget);
+      // Issue #226: the Account section now sits below the fold of the
+      // default 800x600 surface.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('account-sign-in')));
       await tester.pumpAndSettle();
       expect(find.byType(SignInScreen), findsOneWidget);
@@ -1724,6 +1939,12 @@ void main() {
         'fixed 2-minute timeout', (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final store = DriftSettingsStore(db.storage);
+      // Issue #226: the relock toggle now sits in the Privacy & security
+      // section, below the fold of the default 800x600 surface.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
       await tester.pumpWidget(Provider<SettingsStore>.value(
         value: store,
@@ -1770,6 +1991,10 @@ void main() {
 
       expect(find.byTooltip('Settings'), findsOneWidget);
       await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      // Issue #226: same below-the-fold reason as the test above.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('relock-toggle')), findsOneWidget);
       await harness.dispose();

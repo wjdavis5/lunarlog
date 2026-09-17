@@ -22,10 +22,15 @@
 --      byte-identical. Not idempotent: a second call raises.
 --   E. p_source variant: exact-match per-table scope (Issue #159
 --      provenance), authority-checked and source-validated, profile and
---      guardians surviving, full purge still available afterwards.
+--      guardians surviving, full purge still available afterwards. Issue
+--      #595: the matched day_entries/observations now TOMBSTONE (payload
+--      cleared, row survives) rather than hard-delete, so a co-guardian's
+--      device learns of the removal via the ordinary incremental pull;
+--      import_jobs is unchanged (still a hard delete - bookkeeping, no
+--      health content/PII).
 
 begin;
-select plan(71);
+select plan(89);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated, service_role;
@@ -254,34 +259,44 @@ select throws_ok(
 -- by co-guardian b - the deliberate "co-guardian's own entries die with the
 -- profile" case the issue calls out.
 select tests.authenticate_as('a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values
   (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z'),
   (tests.ulid(12), tests.ulid(1), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('b');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(11), tests.ulid(1), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 -- a's OTHER profile, b's OWN profile, and e's own profile: all must survive
 -- a's purge of profile 1 untouched.
 select tests.authenticate_as('a');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(4), 'Second', false, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(41), tests.ulid(4), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('b');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(3), 'B own', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(31), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('e');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(2), 'Bailey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(21), tests.ulid(2), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (user_id, key, value)
 values (tests.get_supabase_uid('e'), 'e-key', 'e-value');
 
@@ -419,22 +434,65 @@ select is(
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
 
-select is((select count(*) from public.profiles where id = tests.ulid(1)), 0::bigint,
-  'D: the profile row itself is gone');
-select is((select count(*) from public.day_entries where profile_id = tests.ulid(1)), 0::bigint,
-  'D: zero day_entries remain on the purged profile');
-select is((select count(*) from public.day_entries where id = tests.ulid(11)), 0::bigint,
-  'D: the co-guardian''s OWN entry on the purged profile is gone with it (deliberate)');
-select is((select count(*) from public.observations where profile_id = tests.ulid(1)), 0::bigint,
-  'D: zero observations remain (both, across sources)');
+-- Issue #522: the full purge now TOMBSTONES the profile and its synced
+-- content tables (payload cleared, server_version bumped) rather than
+-- physically deleting them - the row must survive so the deletion itself
+-- can propagate to co-guardians via the ordinary incremental pull. Every
+-- per-user / non-content table below (profile_modes, profile_guardians,
+-- guardian_invitations, ownership_transfers, prediction_*, import_jobs,
+-- notification_*, missed_entry_alert_state, profile_reminder_windows) is
+-- UNCHANGED - still a real, immediate DELETE (see the migration header's
+-- "Known scope limits").
+select is((select count(*) from public.profiles where id = tests.ulid(1)), 1::bigint,
+  'D: the profile row itself SURVIVES, tombstoned rather than deleted (Issue #522)');
+select isnt((select deleted_at from public.profiles where id = tests.ulid(1)), null,
+  'D: the profile row is tombstoned (deleted_at set)');
+select is((select display_name from public.profiles where id = tests.ulid(1)), '',
+  'D: the tombstoned profile carries no payload (display_name cleared)');
+
+select is((select count(*) from public.day_entries where profile_id = tests.ulid(1)), 3::bigint,
+  'D: all three day_entries SURVIVE the purge, tombstoned (Issue #522)');
+select is((select count(*) from public.day_entries where profile_id = tests.ulid(1) and deleted_at is null), 0::bigint,
+  'D: zero day_entries are LIVE after the purge');
+select is(
+  (select bool_and(flow = 'none' and note is null and tags = '[]'::jsonb)
+     from public.day_entries where profile_id = tests.ulid(1)),
+  true,
+  'D: every tombstoned day_entries row carries no payload (flow/note/tags cleared)'
+);
+select isnt((select deleted_at from public.day_entries where id = tests.ulid(11)), null,
+  'D: the co-guardian''s OWN entry on the purged profile is tombstoned too (deliberate)');
+
+select is((select count(*) from public.observations where profile_id = tests.ulid(1)), 2::bigint,
+  'D: both observations SURVIVE the purge, tombstoned (Issue #522)');
+select is((select count(*) from public.observations where profile_id = tests.ulid(1) and deleted_at is null), 0::bigint,
+  'D: zero observations are LIVE after the purge');
+select is(
+  (select bool_and(category is null and code is null) from public.observations where profile_id = tests.ulid(1)),
+  true,
+  'D: every tombstoned observation carries no payload'
+);
+
 select is((select count(*) from public.profile_modes where profile_id = tests.ulid(1)), 0::bigint,
-  'D: the #188 mode row is gone');
-select is((select count(*) from public.cycle_overrides where profile_id = tests.ulid(1)), 0::bigint,
-  'D: the #188 cycle override is gone');
-select is((select count(*) from public.care_notes where profile_id = tests.ulid(1)), 0::bigint,
-  'D: the #128 care note is gone (caregiver-authored content included)');
-select is((select count(*) from public.visit_prep_items where profile_id = tests.ulid(1)), 0::bigint,
-  'D: the #128 visit-prep item is gone');
+  'D: the #188 mode row is still hard-deleted (no tombstone column - see migration header)');
+
+select is((select count(*) from public.cycle_overrides where profile_id = tests.ulid(1)), 1::bigint,
+  'D: the #188 cycle override SURVIVES the purge, tombstoned (Issue #522)');
+select isnt((select deleted_at from public.cycle_overrides where profile_id = tests.ulid(1)), null,
+  'D: the cycle override is tombstoned');
+select is((select excluded_from_average from public.cycle_overrides where profile_id = tests.ulid(1)), false,
+  'D: the tombstoned cycle override carries no payload');
+
+select is((select count(*) from public.care_notes where profile_id = tests.ulid(1)), 1::bigint,
+  'D: the #128 care note SURVIVES the purge, tombstoned (caregiver-authored content included)');
+select is((select body from public.care_notes where profile_id = tests.ulid(1)), '',
+  'D: the tombstoned care note carries no payload');
+
+select is((select count(*) from public.visit_prep_items where profile_id = tests.ulid(1)), 1::bigint,
+  'D: the #128 visit-prep item SURVIVES the purge, tombstoned');
+select is((select body from public.visit_prep_items where profile_id = tests.ulid(1)), '',
+  'D: the tombstoned visit-prep item carries no payload');
+
 select is((select count(*) from public.profile_reminder_windows where profile_id = tests.ulid(1)), 0::bigint,
   'D: the reminder window is gone');
 select is((select count(*) from public.missed_entry_alert_state where profile_id = tests.ulid(1)), 0::bigint,
@@ -455,8 +513,27 @@ select is((select count(*) from public.prediction_connections where profile_id =
   'D: the prediction connection is gone');
 select is((select count(*) from public.prediction_projections where profile_id = tests.ulid(1)), 0::bigint,
   'D: the prediction projection is gone');
-select is((select count(*) from public.sync_signals where profile_id = tests.ulid(1)), 0::bigint,
-  'D: the profile''s sync_signals row is gone (touch_sync_signal existence check)');
+select is((select count(*) from public.sync_signals where profile_id = tests.ulid(1)), 1::bigint,
+  'D: the profile''s sync_signals row SURVIVES (the profile itself still exists, tombstoned not deleted)');
+
+-- Issue #522: public.deleted_profiles logs the purge with the accepted
+-- guardian list snapshotted before profile_guardians was emptied.
+select is((select count(*) from public.deleted_profiles where profile_id = tests.ulid(1)), 1::bigint,
+  'D: exactly one deleted_profiles row is logged for the purged profile');
+select isnt((select server_version from public.deleted_profiles where profile_id = tests.ulid(1)), null,
+  'D: the deleted_profiles row carries a server_version (set_server_version trigger fired)');
+-- Only a/b/c are captured: d's viewer membership was revoked back in group
+-- C (status <> 'accepted'), so it is correctly excluded from the
+-- ACCEPTED-guardian snapshot even though its now-deleted profile_guardians
+-- row still counted toward the "ALL FOUR" assert above.
+select is(
+  (select array(select unnest(guardian_user_ids) order by 1)
+     from public.deleted_profiles where profile_id = tests.ulid(1)),
+  (select array(select unnest(array[
+      tests.get_supabase_uid('a'), tests.get_supabase_uid('b'), tests.get_supabase_uid('c')
+    ]) order by 1)),
+  'D: deleted_profiles snapshots exactly the three still-ACCEPTED guardians at purge time (revoked d excluded)'
+);
 
 select is(
   jsonb_build_object(
@@ -504,12 +581,14 @@ select throws_ok(
 select tests.authenticate_as('g');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(5), 'Sam', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, source)
 values
   (tests.ulid(51), tests.ulid(5), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z', 'healthkit'),
   (tests.ulid(52), tests.ulid(5), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z', 'healthkit'),
   (tests.ulid(53), tests.ulid(5), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z', 'manual'),
   (tests.ulid(54), tests.ulid(5), '2026-09-04', 'UTC', 'spotting', '2026-09-04T00:00:00Z', 'clue_import');
+select set_config('role', 'authenticated', true);
 insert into public.import_jobs (profile_id, source, total_rows, created_by)
 values
   (tests.ulid(5), 'healthkit', 2, tests.get_supabase_uid('g')),
@@ -564,30 +643,60 @@ select is(
   pg_temp.snap('source_result'),
   jsonb_build_object('source', 'healthkit', 'day_entries', 2, 'observations', 0, 'import_jobs', 1),
   'E: healthkit purge counts: two entries, one import job, zero DIRECT observations '
-  '(the apple_health observation dies via the day_entries cascade, not this filter)'
+  '(the apple_health observation is tombstoned via the day_entries cascade, not this filter - Issue #595)'
 );
 
-select is((select count(*) from public.day_entries where profile_id = tests.ulid(5)), 2::bigint,
-  'E: only the two healthkit day_entries are gone');
+-- Issue #595: the two healthkit day_entries TOMBSTONE rather than
+-- hard-delete - the row count stays at 4 (nothing physically removed), but
+-- only the two non-healthkit entries remain LIVE.
+select is((select count(*) from public.day_entries where profile_id = tests.ulid(5)), 4::bigint,
+  'E: all four day_entries still exist as rows - the two healthkit ones are tombstoned, not hard-deleted (Issue #595)');
 select is(
   (select count(*) from public.day_entries
-    where profile_id = tests.ulid(5) and source = 'manual'),
-  1::bigint,
-  'E: the manually-logged entry survives'
+    where profile_id = tests.ulid(5) and deleted_at is null),
+  2::bigint,
+  'E: only two day_entries remain LIVE after the healthkit source purge'
+);
+select is(
+  (select bool_and(flow = 'none' and note is null and tags = '[]'::jsonb and not pms)
+     from public.day_entries
+    where profile_id = tests.ulid(5) and source = 'healthkit'),
+  true,
+  'E: the tombstoned healthkit entries carry no payload'
 );
 select is(
   (select count(*) from public.day_entries
-    where profile_id = tests.ulid(5) and source = 'clue_import'),
+    where profile_id = tests.ulid(5) and source = 'manual' and deleted_at is null),
   1::bigint,
-  'E: the other-source (clue_import) entry survives'
+  'E: the manually-logged entry survives, live'
 );
-select is((select count(*) from public.observations where profile_id = tests.ulid(5)), 1::bigint,
-  'E: the apple_health observation on a deleted healthkit entry cascaded away');
+select is(
+  (select count(*) from public.day_entries
+    where profile_id = tests.ulid(5) and source = 'clue_import' and deleted_at is null),
+  1::bigint,
+  'E: the other-source (clue_import) entry survives, live'
+);
+-- Issue #595: the apple_health observation riding the tombstoned healthkit
+-- entry is itself tombstoned via cascade_day_entry_tombstone_to_observations
+-- (an AFTER UPDATE trigger), not hard-deleted - the row count stays at 2.
+select is((select count(*) from public.observations where profile_id = tests.ulid(5)), 2::bigint,
+  'E: both observations still exist as rows - the apple_health one is tombstoned via the day_entries cascade, not hard-deleted (Issue #595)');
 select is(
   (select count(*) from public.observations
-    where profile_id = tests.ulid(5) and source = 'manual'),
+    where profile_id = tests.ulid(5) and deleted_at is null),
   1::bigint,
-  'E: the manual observation on the surviving entry survives'
+  'E: only the manual observation remains LIVE'
+);
+select is(
+  (select deleted_at is not null from public.observations where id = tests.ulid(510)),
+  true,
+  'E: the apple_health observation on the tombstoned healthkit entry is itself tombstoned, via the cascade'
+);
+select is(
+  (select count(*) from public.observations
+    where profile_id = tests.ulid(5) and source = 'manual' and deleted_at is null),
+  1::bigint,
+  'E: the manual observation on the surviving entry survives, live'
 );
 select is((select count(*) from public.import_jobs where profile_id = tests.ulid(5)), 1::bigint,
   'E: only the healthkit import job is gone');
@@ -610,11 +719,13 @@ select pg_temp.snapshot('after_source_full_result', public.delete_profile_data(t
 select is(pg_temp.snap('after_source_full_result') -> 'day_entries', '2'::jsonb,
   'E: a full purge after a source purge removes the surviving entries');
 select is(pg_temp.snap('after_source_full_result') -> 'profiles', '1'::jsonb,
-  'E: the full purge after a source purge removes the profile row');
+  'E: the full purge after a source purge tombstones the profile row (Issue #522)');
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
-select is((select count(*) from public.profiles where id = tests.ulid(5)), 0::bigint,
-  'E: profile 5 is fully gone after the follow-up full purge');
+select is((select count(*) from public.profiles where id = tests.ulid(5)), 1::bigint,
+  'E: profile 5 SURVIVES the follow-up full purge, tombstoned (Issue #522)');
+select isnt((select deleted_at from public.profiles where id = tests.ulid(5)), null,
+  'E: profile 5 is tombstoned after the follow-up full purge');
 
 select tests.clear_authentication();
 

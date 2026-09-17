@@ -7,7 +7,8 @@
 ///   Settings (`SettingsKeys.healthStoreProfileId`), and nothing is
 ///   requested from the OS health store until the first sync pass asks for
 ///   write authorization (stamping the grant instant). Off is the default.
-/// * **One-way** — this file only ever calls write methods on
+/// * **One-way** — this file only ever calls write (or, since Issue #619's
+///   LLA-024, delete-by-own-record-id reconciliation) methods on
 ///   [HealthPlatformStore]; no read/query API exists on the port in this
 ///   issue, and no entry is ever created or modified from health-store
 ///   data. Entries the app itself imported *from* a health store
@@ -57,24 +58,18 @@ import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
-import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_flow_mapping.dart';
-
-/// Resolves the guardian rows for one profile, mapped to the domain model
-/// (`ownerUserIdFor` turns them into the guard's owner fact). Production
-/// wiring passes `ProfileGuardiansRepository.getForProfile` as a tear-off;
-/// a bare function type keeps this file free of the concrete repository
-/// and its storage dependency.
-typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
-    String profileId);
 
 /// One eligible day's resolved write, before it is sent to the port.
 class _PendingWrite {
@@ -83,6 +78,7 @@ class _PendingWrite {
     required this.tzName,
     required this.plan,
     required this.cycleStart,
+    required this.recordId,
     required this.updatedAt,
   });
 
@@ -95,20 +91,89 @@ class _PendingWrite {
   /// must carry (true on the cycle's first day, false otherwise). Always
   /// false for intermenstrual markers (that type carries no metadata).
   final bool cycleStart;
+
+  /// The source row's ULID (day-entry id for flow, observation id for
+  /// spotting) — Issue #186 sync mechanics: becomes Health Connect's
+  /// `clientRecordId` / HealthKit's `HKMetadataKeyExternalUUID` so the
+  /// write is idempotent and a tombstone can delete the exact sample.
+  final String recordId;
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
+/// An eligible bleed day's zone + timestamp, used to derive a period
+/// episode's interval write (Issue #202): the newest eligible member day's
+/// `updatedAt` becomes the record's clientRecordVersion, and its `tz` the
+/// episode's zone (#180 — the entry's own zone, never the device's).
+class _EligibleBleed {
+  const _EligibleBleed(this.tzName, this.updatedAt);
+
+  final String tzName;
   final DateTime updatedAt;
 }
 
-/// Accumulates one pass's write plan: days mapped to no sample are
-/// counted, everything else joins [pending].
+/// One period episode's resolved interval write (Issue #202's
+/// `MenstruationPeriodRecord`), before it is sent to the port.
+class _PendingPeriodWrite {
+  const _PendingPeriodWrite({
+    required this.start,
+    required this.end,
+    required this.tzName,
+    required this.recordId,
+    required this.updatedAt,
+  });
+
+  /// The episode's inclusive first bleed day.
+  final LocalDate start;
+
+  /// The episode's inclusive last bleed day; the record's `endTime` is the
+  /// exclusive local midnight after this date.
+  final LocalDate end;
+
+  /// The episode's IANA zone (from its eligible member entries — #180).
+  final String tzName;
+
+  /// The episode's stable clientRecordId: derived from the episode start
+  /// (Issue #186/HS-11) so the SAME in-progress episode keeps the SAME id
+  /// as it extends — Health Connect upserts by clientRecordId, so a
+  /// re-write *updates* rather than duplicates; a closed episode simply
+  /// stops re-writing once it has no new eligible member days.
+  final String recordId;
+
+  /// The newest eligible member day's `updatedAt` — clientRecordVersion,
+  /// higher than any prior write of this episode.
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
+/// Accumulates one pass's write plan: every day (whatever it maps to,
+/// [HealthFlowNoWrite] included since Issue #619's LLA-024 — see [add])
+/// joins [pending], days mapped to no sample are additionally counted in
+/// [withoutSample], and period episodes join [pendingPeriods].
 class _Batch {
   final List<_PendingWrite> pending = [];
+  final List<_PendingPeriodWrite> pendingPeriods = [];
   int withoutSample = 0;
 
-  void add(LocalDate date, String tzName, DateTime updatedAt,
+  void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
       HealthFlowWritePlan plan, Episode? containing) {
     switch (plan) {
       case HealthFlowNoWrite():
         withoutSample++;
+        // Issue #619, LLA-024: also queued as a write-loop item so a day
+        // edited FROM an exportable value TO no sample reconciles away
+        // whatever sample a prior pass wrote under this same recordId —
+        // see _writeFlowRecords's HealthFlowNoWrite branch.
+        pending.add(_PendingWrite(
+          date: date,
+          tzName: tzName,
+          plan: plan,
+          cycleStart: false,
+          recordId: recordId,
+          updatedAt: updatedAt,
+        ));
       case HealthFlowMenstrualSample():
         pending.add(_PendingWrite(
           date: date,
@@ -118,6 +183,7 @@ class _Batch {
           // day of the containing episode (per episodes.dart), false on
           // every other written sample.
           cycleStart: containing != null && containing.start == date,
+          recordId: recordId,
           updatedAt: updatedAt,
         ));
       case HealthFlowIntermenstrualMarker():
@@ -126,6 +192,7 @@ class _Batch {
           tzName: tzName,
           plan: plan,
           cycleStart: false,
+          recordId: recordId,
           updatedAt: updatedAt,
         ));
     }
@@ -219,7 +286,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome = await _writeBatch(batch.pending, bound.facts);
+    final outcome =
+        await _writeBatch(batch.pending, batch.pendingPeriods, bound.facts);
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -232,7 +300,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       authorizationRequested: grant.grantedNow,
       blocked: outcome.failure,
       samplesWritten: outcome.written,
+      periodRecordsWritten: outcome.periodRecordsWritten,
       daysWithoutSample: batch.withoutSample,
+      samplesReconciled: outcome.reconciled,
     );
   }
 
@@ -278,11 +348,15 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
 
   /// Builds the pass's write batch from the bound profile's day entries
   /// and spotting observations: everything strictly newer than [cursor]
-  /// (forward-only), mapped through `health_flow_mapping.dart`.
-  Future<({List<_PendingWrite> pending, int withoutSample})> _collectBatch(
-    String profileId,
-    DateTime cursor,
-  ) async {
+  /// (forward-only), mapped through `health_flow_mapping.dart`, plus one
+  /// `MenstruationPeriodRecord` per period episode that contains an
+  /// eligible bleed day (Issue #202 — see [_periodWritesFor]).
+  Future<
+      ({
+        List<_PendingWrite> pending,
+        List<_PendingPeriodWrite> pendingPeriods,
+        int withoutSample,
+      })> _collectBatch(String profileId, DateTime cursor) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final spottingRows = [
       for (final observation in await _observations.listForProfile(profileId))
@@ -292,13 +366,21 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
 
+    // Eligible bleed days keyed by date, for period-record derivation.
+    final eligibleBleed = <LocalDate, _EligibleBleed>{};
+
     for (final entry in entries) {
       if (!_isEligible(entry.updatedAt, entry.source, cursor)) continue;
+      if (isBleed(entry.flow)) {
+        eligibleBleed[entry.localDate] =
+            _EligibleBleed(entry.tz, entry.updatedAt);
+      }
       final containing = _containing(episodes, entry.localDate);
       batch.add(
         entry.localDate,
         entry.tz,
         entry.updatedAt,
+        entry.id,
         mapFlowToHealthWrite(
           entry.flow,
           inPeriodEpisode: containing != null,
@@ -321,59 +403,275 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         row.localDate,
         row.tz,
         row.updatedAt,
+        row.id,
         mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
         containing,
       );
     }
-    return (pending: batch.pending, withoutSample: batch.withoutSample);
+
+    batch.pendingPeriods
+        .addAll(_periodWritesFor(profileId, episodes, eligibleBleed));
+    return (
+      pending: batch.pending,
+      pendingPeriods: batch.pendingPeriods,
+      withoutSample: batch.withoutSample,
+    );
   }
 
-  /// Sends [pending] to the port. Keeps writing after a failure (one bad
-  /// day must not hide the others), remembering the first failure and
-  /// leaving the cursor — the next pass retries the batch rather than
-  /// half-skipping (see the class doc's forward-only note).
+  /// One `MenstruationPeriodRecord` write per period episode that contains
+  /// at least one eligible (post-cursor, not health-store-sourced) bleed
+  /// day. The stable clientRecordId (`period-<profile>-<start>`) is
+  /// identical across re-writes as an in-progress episode extends, so
+  /// Health Connect's upsert-by-clientRecordId *updates* rather than
+  /// duplicates; a closed episode stops being re-written once none of its
+  /// days is new, so its last write already carries the complete interval —
+  /// the #202 update-on-close strategy.
+  List<_PendingPeriodWrite> _periodWritesFor(
+    String profileId,
+    List<Episode> episodes,
+    Map<LocalDate, _EligibleBleed> eligibleBleed,
+  ) {
+    final writes = <_PendingPeriodWrite>[];
+    for (final episode in episodes) {
+      _EligibleBleed? newest;
+      for (var date = episode.start;
+          !date.isAfter(episode.end);
+          date = date.addDays(1)) {
+        final bleed = eligibleBleed[date];
+        if (bleed == null) continue;
+        if (newest == null || bleed.updatedAt.isAfter(newest.updatedAt)) {
+          newest = bleed;
+        }
+      }
+      if (newest == null) continue;
+      writes.add(_PendingPeriodWrite(
+        start: episode.start,
+        end: episode.end,
+        tzName: newest.tzName,
+        recordId: 'period-$profileId-${episode.start.iso}',
+        updatedAt: newest.updatedAt,
+      ));
+    }
+    return writes;
+  }
+
+  /// Sends [pending] (per-day flow/marker writes) and [pendingPeriods]
+  /// (per-episode interval writes) to the port. Keeps writing after a
+  /// failure (one bad day must not hide the others), remembering the first
+  /// failure and leaving the cursor — the next pass retries the batch
+  /// rather than half-skipping (see the class doc's forward-only note).
+  Future<
+      ({
+        int written,
+        int reconciled,
+        int periodRecordsWritten,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeBatch(
+    List<_PendingWrite> pending,
+    List<_PendingPeriodWrite> pendingPeriods,
+    HealthGuardFacts facts,
+  ) async {
+    final flow = await _writeFlowRecords(pending, facts);
+    final periods = await _writePeriodRecords(pendingPeriods, facts);
+    return (
+      written: flow.written,
+      reconciled: flow.reconciled,
+      periodRecordsWritten: periods.written,
+      failure: flow.failure ?? periods.failure,
+      newest: _latest(flow.newest, periods.newest),
+    );
+  }
+
+  /// Re-validates ownership/profile authority against the CURRENT stored
+  /// binding, signed-in session, and guardian rows — never [facts], which
+  /// was captured once when the pass began (Issue #620, LLA-023): a batch
+  /// can span many individual platform writes, and a pass suspended
+  /// mid-batch (the OS backgrounds the app between calls) can resume after
+  /// an ownership transfer or a profile edit changed who may write here.
+  /// Reusing `HealthSyncBinding.canWrite` — the same recheck every guarded
+  /// port call already performs — means a resolved profile whose ownership
+  /// or minor status changed denies exactly the way a fresh call would.
+  /// Returns the refusal to cancel the rest of the pass with, or null when
+  /// authority still holds.
+  Future<HealthPlatformResult?> _authorityDrift(HealthGuardFacts facts) async {
+    final profile = await _profiles.findById(facts.profile.id);
+    if (profile == null) {
+      // The profile row itself vanished mid-pass (deleted, or its device
+      // no longer has it) — no HealthSyncCheck reason fits "the thing we
+      // were writing to is gone", so this is a platform-level failure
+      // rather than a guard refusal.
+      return const HealthPlatformResult.failed(
+        'bound profile no longer resolves mid-pass',
+      );
+    }
+    final recheck = await _binding.canWrite(
+      profile: profile,
+      signedInUserId: _signedInUserId(),
+      ownerUserId: ownerUserIdFor(await _guardiansForProfile(profile.id)),
+      minorBindingAllowed: _minorBindingAllowed,
+    );
+    return recheck.isAllowed ? null : HealthPlatformResult.refused(recheck);
+  }
+
+  /// Sends the per-day flow/marker writes to the port. Keeps writing after
+  /// a failure (one bad day must not hide the others), remembering the
+  /// first failure and leaving the cursor — the next pass retries the batch
+  /// rather than half-skipping (see the class doc's forward-only note).
+  /// Stops outright, rather than skipping just the one day, the moment
+  /// [_authorityDrift] detects the pass's authority has changed underneath
+  /// it (Issue #620, LLA-023) — a drift found on day N means every day
+  /// after N is written under the same now-invalid authority too.
+  ///
+  /// Issue #619, LLA-024: a [HealthFlowNoWrite] item is not merely skipped
+  /// — it issues [HealthPlatformStore.deleteRecords] for its own
+  /// [_PendingWrite.recordId], reconciling away whatever sample a PRIOR
+  /// pass may have written under that exact id for a day that has since
+  /// been edited to no sample (e.g. bleeding edited to `notBleeding`). An
+  /// id with no matching store sample is a documented no-op delete, so
+  /// this is issued unconditionally rather than only when a prior write is
+  /// known to have happened — see [_resolveNoWriteOutcome].
+  Future<
+      ({
+        int written,
+        int reconciled,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeFlowRecords(
+    List<_PendingWrite> pending,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    var reconciled = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final write in pending) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
+      final current = newest;
+      if (current == null || write.updatedAt.isAfter(current)) {
+        newest = write.updatedAt;
+      }
+      final result = await _resolveNoWriteOutcome(write, facts) ??
+          await _sendSample(write, facts);
+      if (result is! HealthPlatformAllowed) {
+        failure ??= result;
+      } else if (write.plan is HealthFlowNoWrite) {
+        reconciled++;
+      } else {
+        written++;
+      }
+    }
+    return (
+      written: written,
+      reconciled: reconciled,
+      failure: failure,
+      newest: newest,
+    );
+  }
+
+  /// [write]'s reconciliation delete when its plan is [HealthFlowNoWrite],
+  /// or null for every other plan (the caller then sends the sample
+  /// itself via [_sendSample]). Split out purely to keep
+  /// [_writeFlowRecords]'s own CRAP score under the quality gate.
+  Future<HealthPlatformResult?> _resolveNoWriteOutcome(
+    _PendingWrite write,
+    HealthGuardFacts facts,
+  ) async {
+    if (write.plan is! HealthFlowNoWrite) return null;
+    return _platform.deleteRecords(facts, [write.recordId]);
+  }
+
+  /// Sends [write]'s menstrual-flow or intermenstrual-bleeding sample.
+  /// Never called for a [HealthFlowNoWrite] plan — [_resolveNoWriteOutcome]
+  /// handles that case first.
+  Future<HealthPlatformResult> _sendSample(
+    _PendingWrite write,
+    HealthGuardFacts facts,
+  ) {
+    switch (write.plan) {
+      case HealthFlowMenstrualSample(:final value):
+        return _platform.writeMenstrualFlow(
+          HealthMenstrualFlowWrite(
+            facts: facts,
+            date: write.date,
+            tzName: write.tzName,
+            flow: value,
+            cycleStart: write.cycleStart,
+            recordId: write.recordId,
+            recordVersionMs: write.recordVersionMs,
+          ),
+        );
+      case HealthFlowIntermenstrualMarker():
+        return _platform.writeIntermenstrualBleeding(
+          HealthIntermenstrualBleedingWrite(
+            facts: facts,
+            date: write.date,
+            tzName: write.tzName,
+            recordId: write.recordId,
+            recordVersionMs: write.recordVersionMs,
+          ),
+        );
+      case HealthFlowNoWrite():
+        throw StateError(
+          'unreachable: _resolveNoWriteOutcome handles HealthFlowNoWrite',
+        );
+    }
+  }
+
+  /// The later of [a] and [b], or the non-null one when only one is set.
+  static DateTime? _latest(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
+  /// Sends the per-episode interval writes (Issue #202's
+  /// `MenstruationPeriodRecord`). A platform that answers `unavailable` —
+  /// HealthKit encodes episode boundaries via menstrual-flow cycle-start
+  /// metadata instead (#193) — is a graceful skip, never a pass-blocking
+  /// failure (on Android a genuinely missing Health Connect surfaces as
+  /// `unavailable` on the per-day writes above, which already blocks).
+  /// Stops outright on the same mid-pass authority drift
+  /// [_writeFlowRecords] guards against (Issue #620, LLA-023).
   Future<
       ({
         int written,
         HealthPlatformResult? failure,
         DateTime? newest,
-      })> _writeBatch(
-    List<_PendingWrite> pending,
+      })> _writePeriodRecords(
+    List<_PendingPeriodWrite> pendingPeriods,
     HealthGuardFacts facts,
   ) async {
     var written = 0;
     HealthPlatformResult? failure;
     DateTime? newest;
-    for (final write in pending) {
-      final current = newest;
-      if (current == null || write.updatedAt.isAfter(current)) {
-        newest = write.updatedAt;
+    for (final period in pendingPeriods) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
       }
-      final HealthPlatformResult result;
-      switch (write.plan) {
-        case HealthFlowMenstrualSample(:final value):
-          result = await _platform.writeMenstrualFlow(
-            HealthMenstrualFlowWrite(
-              facts: facts,
-              date: write.date,
-              tzName: write.tzName,
-              flow: value,
-              cycleStart: write.cycleStart,
-            ),
-          );
-        case HealthFlowIntermenstrualMarker():
-          result = await _platform.writeIntermenstrualBleeding(
-            HealthIntermenstrualBleedingWrite(
-              facts: facts,
-              date: write.date,
-              tzName: write.tzName,
-            ),
-          );
-        case HealthFlowNoWrite():
-          continue;
+      if (newest == null || period.updatedAt.isAfter(newest)) {
+        newest = period.updatedAt;
       }
+      final result = await _platform.writeMenstrualPeriod(
+        HealthMenstrualPeriodWrite(
+          facts: facts,
+          start: period.start,
+          end: period.end,
+          tzName: period.tzName,
+          recordId: period.recordId,
+          recordVersionMs: period.recordVersionMs,
+        ),
+      );
       if (result is HealthPlatformAllowed) {
         written++;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
       } else {
         failure ??= result;
       }

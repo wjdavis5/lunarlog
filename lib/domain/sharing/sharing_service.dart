@@ -91,9 +91,13 @@ class PendingInvite {
   final DateTime createdAt;
   final DateTime expiresAt;
 
-  /// Whether this invitation has aged past [expiresAt] against the current
-  /// UTC time (issue #362). Derived locally - no new server column.
-  bool get isExpired => !expiresAt.isAfter(DateTime.now().toUtc());
+  /// Whether this invitation has aged past [expiresAt] against [now]
+  /// (issue #362). Derived locally - no new server column. Takes [now]
+  /// explicitly (issue #304 clock-seam audit) rather than reading
+  /// `DateTime.now()` itself: `lib/domain` stays pure of wall-clock reads,
+  /// and every caller already has its own "now" to pass -- see
+  /// `pending_invite_badge.dart`/`manage_guardians_screen.dart`.
+  bool isExpiredAt(DateTime now) => !expiresAt.isAfter(now);
 
   @override
   bool operator ==(Object other) =>
@@ -136,16 +140,36 @@ enum InviteCancellation {
         _ => throw ArgumentError.value(
             value, 'value', 'unknown invite cancellation outcome'),
       };
+}
 
-  /// User-facing copy for the outcome (R5), on the domain type per this
-  /// repo's copy convention rather than hardcoded in the widget - mirrors
-  /// [SharingFailure.userFacingMessage].
-  String get userFacingMessage => switch (this) {
-        revoked => 'Invitation cancelled',
-        alreadyAccepted => 'That invitation was already accepted',
-        alreadyRevoked => 'That invitation was already cancelled',
-        expired => 'That invitation had already expired',
-      };
+/// Issue #594: a pre-accept preview of an invitation, so the accept sheet
+/// isn't blind consent - the profile's display name and the offered role,
+/// for a still-live, unexpired, un-accepted, un-revoked invitation. Never
+/// carries a profile id, other guardians, or anything else the server's
+/// `preview_guardian_invitation` RPC doesn't return (R6/enumeration - see
+/// that migration's header for the full server-side rationale).
+@immutable
+class InvitePreview {
+  const InvitePreview({
+    required this.profileDisplayName,
+    required this.role,
+    required this.expiresAt,
+  });
+
+  final String profileDisplayName;
+  final GuardianRole role;
+  final DateTime expiresAt;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is InvitePreview &&
+          other.profileDisplayName == profileDisplayName &&
+          other.role == role &&
+          other.expiresAt == expiresAt;
+
+  @override
+  int get hashCode => Object.hash(profileDisplayName, role, expiresAt);
 }
 
 /// Result returned upon accepting an invitation.
@@ -188,8 +212,6 @@ sealed class SharingFailure implements Exception {
   const factory SharingFailure.invalidToken() = SharingInvalidTokenFailure;
   const factory SharingFailure.other() = SharingOtherFailure;
 
-  String get userFacingMessage;
-
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
 
@@ -200,15 +222,11 @@ sealed class SharingFailure implements Exception {
 final class SharingNetworkFailure extends SharingFailure {
   const SharingNetworkFailure();
   @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
-  @override
   String toString() => 'SharingFailure.network';
 }
 
 final class SharingNotFoundFailure extends SharingFailure {
   const SharingNotFoundFailure();
-  @override
-  String get userFacingMessage => 'Invitation not found or invalid link.';
   @override
   String toString() => 'SharingFailure.notFound';
 }
@@ -216,15 +234,11 @@ final class SharingNotFoundFailure extends SharingFailure {
 final class SharingExpiredFailure extends SharingFailure {
   const SharingExpiredFailure();
   @override
-  String get userFacingMessage => 'This invitation has expired.';
-  @override
   String toString() => 'SharingFailure.expired';
 }
 
 final class SharingAlreadyAcceptedFailure extends SharingFailure {
   const SharingAlreadyAcceptedFailure();
-  @override
-  String get userFacingMessage => 'This invitation was already accepted.';
   @override
   String toString() => 'SharingFailure.alreadyAccepted';
 }
@@ -232,15 +246,11 @@ final class SharingAlreadyAcceptedFailure extends SharingFailure {
 final class SharingAlreadyGuardianFailure extends SharingFailure {
   const SharingAlreadyGuardianFailure();
   @override
-  String get userFacingMessage => 'You are already an active guardian for this child.';
-  @override
   String toString() => 'SharingFailure.alreadyGuardian';
 }
 
 final class SharingUnauthorizedFailure extends SharingFailure {
   const SharingUnauthorizedFailure();
-  @override
-  String get userFacingMessage => 'You do not have permission for this action.';
   @override
   String toString() => 'SharingFailure.unauthorized';
 }
@@ -248,15 +258,11 @@ final class SharingUnauthorizedFailure extends SharingFailure {
 final class SharingInvalidTokenFailure extends SharingFailure {
   const SharingInvalidTokenFailure();
   @override
-  String get userFacingMessage => 'Invalid invitation link.';
-  @override
   String toString() => 'SharingFailure.invalidToken';
 }
 
 final class SharingOtherFailure extends SharingFailure {
   const SharingOtherFailure();
-  @override
-  String get userFacingMessage => 'Failed to accept invitation. Please try again.';
   @override
   String toString() => 'SharingFailure.other';
 }
@@ -276,6 +282,15 @@ abstract interface class SharingService {
     required String rawToken,
     String? displayName,
   });
+
+  /// Previews an invitation before redeeming it (Issue #594) - the
+  /// profile's display name and offered role, read-only and never
+  /// mutating membership. Returns null for every state that isn't a
+  /// live, unexpired, un-accepted, un-revoked invitation (a wrong token,
+  /// one already redeemed elsewhere, one that expired, or one revoked) -
+  /// deliberately uniform, so a caller can never use this to distinguish
+  /// *why* a token isn't previewable (R6/enumeration).
+  Future<InvitePreview?> previewInvite({required String rawToken});
 
   /// Revokes an active guardian or removes oneself.
   Future<void> revokeGuardian({

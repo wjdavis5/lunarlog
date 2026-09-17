@@ -41,6 +41,14 @@ class FakeReminderScheduler implements ReminderScheduler {
   /// work with an in-flight permission probe.
   final List<Completer<NotificationAvailability>> availabilityGates = [];
 
+  /// When set, [rescheduleAll] parks on this completer before recording
+  /// the call — Issue #634, LLA-097's dispose-must-never-hang regression:
+  /// a test can leave this uncompleted to prove a genuinely hung platform
+  /// call can never block `ReminderCoordinator.dispose()`. Null (the
+  /// default) keeps every other test's `rescheduleAll` resolving
+  /// immediately, unaffected.
+  Completer<void>? rescheduleGate;
+
   final List<List<PlannedReminder>> rescheduleCalls = [];
   int initializeCalls = 0;
   int cancelCalls = 0;
@@ -93,6 +101,7 @@ class FakeReminderScheduler implements ReminderScheduler {
 
   @override
   Future<void> rescheduleAll(List<PlannedReminder> reminders) async {
+    await rescheduleGate?.future;
     rescheduleCalls.add(reminders);
   }
 

@@ -153,6 +153,11 @@ select ok(
 --    import_jobs, left unconstrained by 20260908170000_import_provenance.sql.
 -- ---------------------------------------------------------------------------
 select tests.authenticate_as('mom');
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely; both writes below run as service_role to actually reach the
+-- FK (23503) and land the fixture row (auth.uid() is untouched -- it reads
+-- request.jwt.claims, a separate session GUC from role).
+select set_config('role', 'service_role', true);
 select throws_ok(
   format(
     $sql$insert into public.day_entries (id, profile_id, local_date, tz, flow, import_id, updated_at)
@@ -163,6 +168,7 @@ insert into public.day_entries (id, profile_id, local_date, tz, flow, import_id,
 values (tests.ulid(711), tests.ulid(700), '2026-09-09', 'UTC', 'none', pg_temp.job1(), now());
 select is((select import_id from public.day_entries where id = tests.ulid(711)), pg_temp.job1(),
   'a day_entries row can reference a real import_jobs id');
+select set_config('role', 'authenticated', true);
 select tests.clear_authentication();
 select set_config('request.jwt.claims', '', true);
 select set_config('role', 'service_role', true);
@@ -360,12 +366,15 @@ select tests.authenticate_as('mom');
 --    exact shape import_provenance_test.sql pinned, which sync_push cannot
 --    do (it resolves strictly by id).
 -- ---------------------------------------------------------------------------
+-- Issue #201: service_role for the same reason as section 4 above.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, source, source_id, updated_at)
 values (tests.ulid(750), tests.ulid(700), '2026-09-14', 'UTC', 'light', 'clue_import', 'clue-revive', now());
 update public.day_entries
    set deleted_at = now(), flow = 'none', tags = '[]'::jsonb, note = null, updated_at = now(),
        last_modified_by_user_id = tests.get_supabase_uid('mom')
  where id = tests.ulid(750);
+select set_config('role', 'authenticated', true);
 select isnt((select deleted_at from public.day_entries where id = tests.ulid(750)), null,
   'setup: the row is tombstoned before the revival import runs');
 
@@ -422,11 +431,14 @@ select isnt((select deleted_at from public.day_entries where id = tests.ulid(762
 -- (c) an import row landing on a date with an existing LIVE, differently-
 --     provenanced (manual) row is rejected with the reason, and the rest
 --     of the batch still lands.
+-- Issue #201: service_role for the same reason as section 4 above.
+select set_config('role', 'service_role', true);
 insert into public.day_entries
   (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values
   (tests.ulid(763), tests.ulid(700), '2026-09-24', 'UTC', 'light', now(),
    tests.get_supabase_uid('mom'), tests.get_supabase_uid('mom'));
+select set_config('role', 'authenticated', true);
 insert into r select 'collision_batch', public.bulk_import_entries(pg_temp.job1(), jsonb_build_array(
   jsonb_build_object('id', tests.ulid(764), 'profile_id', tests.ulid(700), 'local_date', '2026-09-24',
     'tz', 'UTC', 'flow', 'medium', 'source_id', 'collide-1', 'updated_at', now()::text),

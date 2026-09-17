@@ -9,17 +9,23 @@
 library;
 
 import 'package:app_links/app_links.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart' show SentryHttpClient;
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import 'app_lifecycle.dart';
 import 'config.dart';
+import 'data/gate/pin_credential_store.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
+import 'data/notifications/notification_scheduler.dart';
+import 'data/notifications/push_presentation.dart';
 import 'data/sync/supabase_sync_transport.dart';
 import 'data/sync/sync_transport.dart';
 import 'domain/auth/auth_service.dart';
+import 'domain/prediction/prediction_service.dart' show dateRolloverTicker;
+import 'domain/util/timezone.dart';
 import 'observability/sentry_bootstrap.dart';
 import 'startup/startup.dart';
 import 'startup/supabase_bootstrap.dart';
@@ -36,6 +42,12 @@ bool _isInviteLink(Uri? uri) =>
 
 Future<void> _runLunarlog() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Issue #169: resolve current device timezone before UI is mounted so
+  // DayEntry.tz and reminders plan against the actual device timezone.
+  configurePlatformTimeZoneProvider(defaultLocalTimeZoneProvider);
+  try {
+    await resolveCurrentTimeZone();
+  } catch (_) {}
   // Supabase auth (U4): initialized before the first frame so a cold-start
   // recovery link is latched in the service before any widget exists
   // (KTD8). Null when the build has no Supabase configuration (KTD11).
@@ -78,16 +90,38 @@ Future<void> _runLunarlog() async {
     }
     inviteLinks = appLinks.uriLinkStream.where(_isInviteLink);
   }
+  // Issue #174: register the FCM background handler before runApp() so a
+  // caregiver alert arriving while the app is backgrounded or terminated
+  // is presented instead of dropped — firebase_messaging persists the
+  // callback handles at registration time, which is why this must happen
+  // early in every launch. Gated on [AppConfig.hasPush] like every
+  // firebase_messaging touch (hasPush already excludes web): an
+  // unconfigured build — every CI and fork build, with empty FCM defines —
+  // never reaches the plugin. This registration is also what backs the
+  // `remote-notification` UIBackgroundModes entry in
+  // ios/Runner/Info.plist.
+  if (AppConfig.hasPush) {
+    FirebaseMessaging.onBackgroundMessage(pushBackgroundMessageHandler);
+  }
   runApp(wrapWithSentry(LunarLogRoot(
     gate: defaultAppGate(),
+    // #271: constructing the store does no I/O (it only opens secure
+    // storage lazily, per call) — safe to pass unconditionally, including
+    // on web, where the gate never consults it (`gate.requiresUnlock` is
+    // false there, so `GateController.unlock` never reaches a PIN check).
+    pinService: PinCredentialStore(),
     // Issue #244: `protectDatabaseFile` runs after `.open()` succeeds (so
     // the file is guaranteed to exist — `.open()`'s own `SELECT 1` probe
     // already forced drift to create it) and on every open, not just the
     // first — a device reset (KTD16) closes and recreates this file, which
     // needs the same iOS hardening reapplied. A no-op on Android/web.
     dbOpener: () async {
-      final db = await (await buildDbFactory()).open();
-      await protectDatabaseFile();
+      final factory = await buildDbFactory();
+      final db = await factory.open();
+      // Issue #561: protect whichever file `factory` actually opened, not
+      // whatever `localDatabaseFile()` would recompute — those differ when
+      // relocation fell back to the legacy file.
+      await protectDatabaseFile(factory.databasePath);
       return db;
     },
     // KTD7/KTD9: reminders are a native-only surface. The composition
@@ -103,5 +137,9 @@ Future<void> _runLunarlog() async {
     initialInviteCode: initialInviteCode,
     initialInviteProfileId: initialInviteProfileId,
     initialInviteKind: initialInviteKind,
+    // Issue LLA-070: the real, periodic civil-date-rollover ticker — see
+    // LunarLogRoot.dateTicker's own doc comment for why this is the only
+    // construction site that passes it.
+    dateTicker: dateRolloverTicker,
   )));
 }

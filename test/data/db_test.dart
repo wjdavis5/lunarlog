@@ -11,8 +11,10 @@ import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/db/ulid.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/data/sync/row_codec.dart';
+import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/database_error.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/tags.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
@@ -249,10 +251,12 @@ Future<int> userVersion(LunarLogDatabase db) async =>
 /// new sync columns, profile_guardians table, v4 profile subject
 /// metadata columns, and the v5 care-mode column at their defaults.
 Future<void> expectFullyUpgraded(LunarLogDatabase db) async {
-  expect(await userVersion(db), 13);
+  expect(await userVersion(db), 24);
   expect(await columnsOf(db, 'profiles'),
-      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
-              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
+      containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at',
+              'transferred_to_user_id', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
+              'tracking_preferences', 'access_revoked_at']));
   expect(
       await columnsOf(db, 'day_entries'),
       containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
@@ -341,10 +345,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 13 and database opens with the expected tables',
+    test('schema version is 24 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 13);
-      expect(await userVersion(db), 13);
+      expect(db.schemaVersion, 24);
+      expect(await userVersion(db), 24);
 
       final tables = (await db
               .customSelect(
@@ -356,19 +360,23 @@ void main() {
       expect(tables,
           containsAll(['profiles', 'day_entries', 'profile_guardians', 'app_settings', 'sync_state',
               'observations', 'profile_modes', 'cycle_overrides',
-              'care_notes', 'visit_prep_items']));
+              'care_notes', 'visit_prep_items', 'health_sync_state']));
       expect(await columnsOf(db, 'profiles'),
-          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at', 'mode',
-              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days']));
+          containsAll(['dirty', 'local_rev', 'birth_year', 'relationship', 'transferred_at',
+              'transferred_to_user_id', 'mode',
+              'last_period_start', 'typical_cycle_length_days', 'typical_period_length_days',
+              'tracking_preferences', 'access_revoked_at']));
       expect(
           await columnsOf(db, 'day_entries'),
           containsAll(['dirty', 'local_rev', 'logged_by_user_id', 'last_modified_by_user_id',
               'source', 'source_id', 'import_id']));
       expect(
-          await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name']));
+          await columnsOf(db, 'profile_guardians'), containsAll(['id', 'profile_id', 'user_id', 'role', 'status', 'display_name', 'server_version']));
       expect(await columnsOf(db, 'observations'), contains('import_id'));
+      expect(await columnsOf(db, 'observations'),
+          contains('exported_to_platform_at'));
       expect(await columnsOf(db, 'profile_modes'),
-          containsAll(['profile_id', 'mode', 'mode_started_on', 'birth_control_method',
+          containsAll(['profile_id', 'mode', 'mode_started_on', 'estimated_due_date', 'birth_control_method',
               'birth_control_started_on', 'birth_control_stopped_on', 'health_sync_consent',
               'updated_at', 'dirty', 'local_rev']));
       expect(await columnsOf(db, 'cycle_overrides'),
@@ -383,7 +391,10 @@ void main() {
               'logged_by_user_id', 'last_modified_by_user_id']));
       expect(await columnsOf(db, 'sync_state'),
           containsAll(['cursor_profile_modes', 'cursor_cycle_overrides',
-              'cursor_care_notes', 'cursor_visit_prep_items']));
+              'cursor_care_notes', 'cursor_visit_prep_items',
+              'cursor_profile_guardians']));
+      expect(await columnsOf(db, 'health_sync_state'),
+          containsAll(['platform', 'anchor', 'last_synced_at']));
 
       // Issue #197: the four read-path indexes exist on a fresh onCreate
       // too, not just via onUpgradeSteps (see schema_migration_test.dart
@@ -555,6 +566,33 @@ void main() {
       expect(reread!.lastPeriodStart, '2026-01-02');
       expect(reread.typicalCycleLengthDays, 26);
       expect(reread.typicalPeriodLengthDays, 4);
+    });
+
+    test('issue #255: remote-applied profile rows carry the display-unit '
+        'preferences (the sync pull path)', () async {
+      final created = await storage.upsertProfile(
+          displayName: 'Units',
+          isMinor: false,
+          bbtUnit: 'fahrenheit',
+          weightUnit: 'lb');
+      // Round-trip through the codec + remote apply, the way a pull does.
+      final decoded = decodeProfile(encodeProfile(created));
+      final applied = await storage.applyRemoteProfile(decoded);
+      expect(applied, isTrue);
+      final reread = await storage.getProfile(created.id);
+      expect(reread!.bbtUnit, 'fahrenheit');
+      expect(reread.weightUnit, 'lb');
+    });
+
+    test('issue #255: a new profile defaults to the metric display units',
+        () async {
+      final created =
+          await storage.upsertProfile(displayName: 'Defaults', isMinor: false);
+      expect(created.bbtUnit, 'celsius');
+      expect(created.weightUnit, 'kg');
+      final domainProfile = profileToDomain(created);
+      expect(domainProfile.bbtUnit, domain.BbtUnit.celsius);
+      expect(domainProfile.weightUnit, domain.WeightUnit.kg);
     });
 
     test('AE5 (data layer half): soft delete tombstones the row — present in '
@@ -1913,6 +1951,93 @@ void main() {
       await expectFullyUpgraded(db);
     });
 
+    test('issue #637, LLA-015: a multi-version upgrade interrupted AFTER an '
+        'earlier version step already committed leaves user_version at '
+        'that step, not the original starting version — so a clean reopen '
+        'never replays already-applied DDL as a duplicate', () async {
+      final dir = await freshTempDir('migration_multi_step_fail');
+      final file = File('${dir.path}${Platform.pathSeparator}v1.db');
+      final raw = sqlite3.sqlite3.open(file.path);
+      seedV1(raw);
+      raw.close();
+
+      // v1 -> v20 in one onUpgrade call. Let the v2 step's transaction
+      // commit in full, then fail partway through the v3 step (before
+      // #637, Drift only ever writes the final user_version once — after
+      // the whole call returns — so a device that reached here would have
+      // v2's DDL (sync_state, profiles.dirty, ...) permanently applied
+      // under a stored user_version of 1; the fix is the per-step
+      // `_advanceSchemaVersion` bump this test proves).
+      final completedSteps = <String>[];
+      final failing = LunarLogDatabase(NativeDatabase(file))
+        ..migrationStepHook = (step) async {
+          completedSteps.add(step);
+          if (step == 'day_entries.logged_by_user_id') {
+            throw StateError('injected failure partway through the v3 step');
+          }
+        };
+      await expectLater(
+        failing.customSelect('SELECT 1').get(),
+        throwsA(isA<StateError>()),
+      );
+      await failing.close();
+      expect(completedSteps, [
+        'profiles.dirty',
+        'profiles.local_rev',
+        'day_entries.dirty',
+        'day_entries.local_rev',
+        'sync_state',
+        'schema_version.v2',
+        'day_entries.logged_by_user_id',
+      ], reason: 'the whole v2 step, including its own version bump, ran '
+          'to completion before the v3 step was interrupted');
+
+      // Inspect the file with a raw handle: v2's DDL is fully applied and
+      // user_version reflects it — NOT the original v1 the device started
+      // from, and NOT v3 (whose transaction rolled back in full).
+      final check = sqlite3.sqlite3.open(file.path);
+      try {
+        expect(check.select('PRAGMA user_version').first.values.first, 2,
+            reason: 'user_version must land exactly on the last step that '
+                'actually committed');
+        final profileCols = check
+            .select('PRAGMA table_info(profiles)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(profileCols, containsAll(['dirty', 'local_rev']),
+            reason: 'the v2 step\'s DDL must survive the v3 failure');
+        final entryCols = check
+            .select('PRAGMA table_info(day_entries)')
+            .map((r) => r['name'])
+            .toSet();
+        expect(entryCols, isNot(contains('logged_by_user_id')),
+            reason: 'the interrupted v3 step\'s addColumn must have been '
+                'rolled back');
+        final tables = check
+            .select("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .map((r) => r['name'])
+            .toSet();
+        expect(tables, contains('sync_state'),
+            reason: 'v2\'s createTable must survive');
+        expect(tables, isNot(contains('profile_guardians')),
+            reason: 'v3\'s createTable must have been rolled back');
+      } finally {
+        check.close();
+      }
+
+      // Clean reopen: without #637's fix, Drift would still see
+      // user_version = 1 (never advanced) and replay the v2 step's
+      // addColumn calls against columns that already exist, throwing a
+      // duplicate-column error and permanently quarantining the file. With
+      // the fix, `from` starts at the true 2, so v2's `if (from < 2)`
+      // guard skips cleanly and only the previously-interrupted v3 step
+      // (and everything after it) re-runs, reaching v20 with every row
+      // intact.
+      final reopened = LunarLogDatabase(NativeDatabase(file));
+      addTearDown(() => reopened.close());
+      await expectFullyUpgraded(reopened);
+    });
+
     test('a database already at the latest version does not re-run the '
         'upgrade on reopen', () async {
       final dir = await freshTempDir('migration_noop');
@@ -1925,7 +2050,7 @@ void main() {
       final second = LunarLogDatabase(NativeDatabase(file))
         ..migrationStepHook = (step) async => steps.add(step);
       addTearDown(() => second.close());
-      expect(await userVersion(second), 13);
+      expect(await userVersion(second), 24);
       expect(steps, isEmpty);
       expect(await second.storage.getProfiles(), hasLength(1));
     });
@@ -1938,7 +2063,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 13);
+      expect(await userVersion(db), 24);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -1983,7 +2108,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 13);
+      expect(await userVersion(db), 24);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at', 'mode']));
 
@@ -2016,7 +2141,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 13);
+      expect(await userVersion(db), 24);
       expect(await columnsOf(db, 'profile_modes'),
           containsAll(['profile_id', 'mode', 'mode_started_on',
               'birth_control_method', 'birth_control_started_on',
@@ -2076,7 +2201,7 @@ void main() {
       final db = LunarLogDatabase(NativeDatabase.opened(raw));
       addTearDown(() => db.close());
 
-      expect(await userVersion(db), 13);
+      expect(await userVersion(db), 24);
       expect(await columnsOf(db, 'day_entries'), containsAll(['pms']));
       // The new column defaults to false for every already-stored row.
       final existing = await db.storage.getDayEntries(
@@ -2109,6 +2234,31 @@ void main() {
       expect(tombstone.deletedAt, isNotNull);
       expect(tombstone.pms, isFalse,
           reason: 'a local tombstone carries no payload, the marker included');
+    });
+
+    test('a v7 fixture upgrades to v17 by adding the tracking-preferences '
+        'document column (Issue #259), preserving every row, and the '
+        'upgraded database immediately curates and reads a document',
+        () async {
+      final raw = sqlite3.sqlite3.openInMemory();
+      seedV7(raw);
+      final db = LunarLogDatabase(NativeDatabase.opened(raw));
+      addTearDown(() => db.close());
+
+      expect(await userVersion(db), 24);
+      expect(await columnsOf(db, 'profiles'), containsAll(['tracking_preferences']));
+      // The new column is nullable with no default: every already-stored
+      // row reads as never-customized (the all-defaults state).
+      final existing = await db.storage.getProfiles(includeTombstones: true);
+      expect(existing.single.trackingPreferences, isNull);
+
+      // The upgraded database is immediately usable: curate the sheet and
+      // read the document back through the domain mapper.
+      final updated = await db.storage.setTrackingPreferences(
+          kV3ProfileId, '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated!.trackingPreferences,
+          '{"mood": {"enabled": false, "sort_order": 0}}');
+      expect(updated.dirty, isTrue);
     });
 
     test('an upgrade step failing on profiles.relationship leaves the '
@@ -2162,7 +2312,7 @@ void main() {
       // Clean reopen: the upgrade retries and completes.
       final db = LunarLogDatabase(NativeDatabase(file));
       addTearDown(() => db.close());
-      expect(await userVersion(db), 13);
+      expect(await userVersion(db), 24);
       expect(await columnsOf(db, 'profiles'),
           containsAll(['birth_year', 'relationship', 'transferred_at']));
       final profile =
@@ -2213,6 +2363,163 @@ void main() {
       final db = await factory.open();
       await db.close();
       expect(file.existsSync(), isTrue, reason: 'fresh database file created');
+    });
+
+    group('Issue #203: WAL mode, tombstone sweep, and periodic VACUUM', () {
+      test('a fresh database opens in WAL mode and NORMAL synchronous mode', () async {
+        final dir = await freshTempDir('wal_mode');
+        final file = File('${dir.path}${Platform.pathSeparator}test.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        // Force open and execute beforeOpen
+        await db.customSelect('SELECT 1').get();
+
+        // Check journal_mode
+        final journalRow = await db.customSelect('PRAGMA journal_mode').getSingle();
+        final journalMode = journalRow.data.values.first.toString().toLowerCase();
+        expect(journalMode, 'wal');
+        expect(await db.getJournalMode(), 'wal');
+
+        // Check synchronous
+        final syncRow = await db.customSelect('PRAGMA synchronous').getSingle();
+        final syncValue = syncRow.data.values.first;
+        expect(syncValue, isIn([1, '1', 'NORMAL']));
+        expect(await db.getSynchronousMode(), 'NORMAL');
+      });
+
+      test('tombstone sweep deletes only clean tombstones older than retention horizon', () async {
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'Test', isMinor: false);
+        final profileId = profile.id;
+
+        final now = DateTime.utc(2026, 9, 12, 12, 0);
+        final oldInstant = now.subtract(const Duration(days: 3)); // 72 hours ago (> 48h horizon)
+        final recentInstant = now.subtract(const Duration(hours: 12)); // 12 hours ago (< 48h horizon)
+
+        // Seed 1: Old and clean tombstone (should be swept)
+        final cleanOld = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(cleanOld.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldInstant),
+            updatedAt: Value(oldInstant),
+            dirty: const Value(false),
+          ),
+        );
+
+        // Seed 2: Old but dirty tombstone (pending upload - must NOT be swept)
+        final dirtyOld = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-02',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(dirtyOld.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldInstant),
+            updatedAt: Value(oldInstant),
+            dirty: const Value(true),
+          ),
+        );
+
+        // Seed 3: Recent and clean tombstone (within horizon - must NOT be swept)
+        final cleanRecent = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-03',
+          tz: 'UTC',
+          flow: FlowLevel.light,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(cleanRecent.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(recentInstant),
+            updatedAt: Value(recentInstant),
+            dirty: const Value(false),
+          ),
+        );
+
+        // Seed 4: Live clean entry (must NOT be swept)
+        final liveEntry = await db.storage.upsertDayEntry(
+          profileId: profileId,
+          localDate: '2026-09-04',
+          tz: 'UTC',
+          flow: FlowLevel.heavy,
+        );
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(liveEntry.id))).write(
+          const DayEntriesCompanion(dirty: Value(false)),
+        );
+
+        // Perform sweep
+        final swept = await db.sweepTombstones(
+          retentionHorizon: const Duration(hours: 48),
+          olderThan: now.subtract(const Duration(hours: 48)),
+        );
+
+        expect(swept, 1, reason: 'Only the old-and-clean tombstone is swept');
+
+        final remaining = await db.select(db.dayEntries).get();
+        final remainingIds = remaining.map((r) => r.id).toSet();
+
+        expect(remainingIds.contains(cleanOld.id), isFalse, reason: 'clean old tombstone was deleted');
+        expect(remainingIds.contains(dirtyOld.id), isTrue, reason: 'dirty old tombstone was kept for sync');
+        expect(remainingIds.contains(cleanRecent.id), isTrue, reason: 'recent tombstone was kept');
+        expect(remainingIds.contains(liveEntry.id), isTrue, reason: 'live entry was kept');
+      });
+
+      test('wipeAllData runs VACUUM outside transaction', () async {
+        final dir = await freshTempDir('wipe_vacuum');
+        final file = File('${dir.path}${Platform.pathSeparator}wipe.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'ToWipe', isMinor: false);
+        await db.storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+
+        await db.wipeAllData();
+        final profiles = await db.storage.getProfiles(includeTombstones: true);
+        expect(profiles, isEmpty);
+      });
+
+      test('runMaintenance executes tombstone sweep followed by VACUUM', () async {
+        final dir = await freshTempDir('maintenance');
+        final file = File('${dir.path}${Platform.pathSeparator}maint.db');
+        final db = LunarLogDatabase(NativeDatabase(file));
+        addTearDown(() => db.close());
+
+        final profile = await db.storage.upsertProfile(displayName: 'MaintProfile', isMinor: false);
+        final entry = await db.storage.upsertDayEntry(
+          profileId: profile.id,
+          localDate: '2026-09-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+        );
+
+        final oldCutoff = DateTime.utc(2026, 1, 1);
+        await (db.update(db.dayEntries)..where((t) => t.id.equals(entry.id))).write(
+          DayEntriesCompanion(
+            deletedAt: Value(oldCutoff),
+            updatedAt: Value(oldCutoff),
+            dirty: const Value(false),
+          ),
+        );
+
+        final swept = await db.runMaintenance(olderThan: DateTime.utc(2026, 6, 1));
+        expect(swept, 1);
+
+        final remaining = await (db.select(db.dayEntries)).get();
+        expect(remaining, isEmpty);
+      });
     });
   });
 }

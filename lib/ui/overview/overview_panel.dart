@@ -45,8 +45,11 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/pregnancy.dart' show pregnancyWeekOf;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
@@ -55,13 +58,18 @@ import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
+import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
+import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
+import 'package:lunarlog/ui/components/pregnancy_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -70,6 +78,9 @@ import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/routes.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 // Issue #316 review: re-exported (not just imported) so
@@ -92,9 +103,9 @@ export 'package:lunarlog/ui/overview/estimate_copy.dart'
 /// replacing the old `kMonthNames` list this file used to re-import.
 String _estimateDateText(ActivePrediction prediction, String locale) {
   String format(LocalDate date) => dates.formatMonthDayYear(
-        DateTime(date.year, date.month, date.day),
-        locale: locale,
-      );
+    DateTime(date.year, date.month, date.day),
+    locale: locale,
+  );
   if (prediction.tier == CycleConfidence.high) {
     return format(prediction.estimatedNextStart);
   }
@@ -111,6 +122,8 @@ class OverviewPanel extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.trackingPreferences,
+    this.isMinor = false,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.timezoneProvider,
@@ -124,6 +137,14 @@ class OverviewPanel extends StatefulWidget {
   /// Presentation only — it never changes what any guardian role may read
   /// or write ([_effectiveReadOnly] consults roles alone).
   final ProfileMode mode;
+
+  /// The profile's curated tracking categories (Issue #259), forwarded to
+  /// [DaySheet]; null means never customized. Presentation only.
+  final TrackingPreferences? trackingPreferences;
+
+  /// Whether the profile subject is a minor (Issue #259): gates the
+  /// minor-visibility defaults in [DaySheet]. Presentation only.
+  final bool isMinor;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -157,14 +178,39 @@ class OverviewPanel extends StatefulWidget {
   State<OverviewPanel> createState() => _OverviewPanelState();
 }
 
-class _OverviewPanelState extends State<OverviewPanel> {
+class _OverviewPanelState extends State<OverviewPanel>
+    with GuardianWatchMixin<OverviewPanel> {
   late CyclePredictionService _service;
   late Stream<CyclePrediction> _predictions;
+
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level `StreamBuilder`.
+  void _retryPredictions() {
+    setState(() {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
+    });
+  }
+
   // Captured once (matches _resolverFor/cycle_history_section.dart's
   // pattern) rather than re-reading context.read inside a button callback.
   late final CycleExclusionList _exclusions = context
       .read<CycleExclusionList>();
-  StreamSubscription<List<ProfileGuardian>>? _guardiansSub;
+  late final SettingsStore? _settings = Provider.of<SettingsStore?>(
+    context,
+    listen: false,
+  );
+
+  /// Issue #192: the profile's life-stage mode row (null repository on a
+  /// test/unwired tree — no Pregnancy card, exactly the pre-#192 view).
+  late final ProfileModesRepository? _profileModes =
+      Provider.of<ProfileModesRepository?>(context, listen: false);
+  StreamSubscription<ProfileLifecycleMode?>? _modeRowSub;
+  ProfileLifecycleMode? _modeRow;
+  StreamSubscription<String?>? _suggestionDismissedSub;
+  bool _irregularSuggestionDismissed = false;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -187,6 +233,24 @@ class _OverviewPanelState extends State<OverviewPanel> {
       _auth = auth;
     }
     _watchGuardians();
+    _watchSuggestionDismissed();
+    _watchModeRow();
+  }
+
+  /// Issue #192: watches the profile's `profile_modes` row so the
+  /// Pregnancy card (week-of-pregnancy counter) renders while the mode is
+  /// `pregnancy` and disappears the moment it is switched away — the same
+  /// re-derive-on-write cadence the prediction stream above already has.
+  void _watchModeRow() {
+    unawaited(_modeRowSub?.cancel());
+    _modeRowSub = null;
+    _modeRow = null;
+    final modes = _profileModes;
+    if (modes == null) return;
+    _modeRowSub = modes.watch(widget.profileId).listen((row) {
+      if (!mounted) return;
+      setState(() => _modeRow = row);
+    });
   }
 
   void _onAuthChanged() {
@@ -196,16 +260,34 @@ class _OverviewPanelState extends State<OverviewPanel> {
   }
 
   void _watchGuardians() {
-    _guardiansSub?.cancel();
-    _guardians = const [];
-    final repository = widget.guardiansRepository;
-    if (repository == null) return;
-    _guardiansSub = repository.watchForProfile(widget.profileId).listen((
-      guardians,
-    ) {
-      if (!mounted) return;
-      setState(() => _guardians = guardians);
-    });
+    watchGuardiansForProfile(
+      widget.guardiansRepository,
+      widget.profileId,
+      (guardians) => setState(() => _guardians = guardians),
+    );
+  }
+
+  void _watchSuggestionDismissed() {
+    unawaited(_suggestionDismissedSub?.cancel());
+    _suggestionDismissedSub = null;
+    _irregularSuggestionDismissed = false;
+    final settings = _settings;
+    if (settings == null) return;
+    _suggestionDismissedSub = settings
+        .watch(predictionsSuggestionDismissedSettingKey(widget.profileId))
+        .listen((val) {
+          if (!mounted) return;
+          setState(() => _irregularSuggestionDismissed = val == 'true');
+        });
+  }
+
+  Future<void> _dismissIrregularSuggestion() async {
+    final settings = _settings;
+    if (settings == null) return;
+    await settings.set(
+      predictionsSuggestionDismissedSettingKey(widget.profileId),
+      'true',
+    );
   }
 
   @override
@@ -217,13 +299,31 @@ class _OverviewPanelState extends State<OverviewPanel> {
         today: widget.todayProvider,
       );
       _watchGuardians();
+      _watchSuggestionDismissed();
+      _watchModeRow();
+      return;
+    }
+    // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
+    // changed underneath it — re-run just the watch that reads the changed
+    // collaborator.
+    if (oldWidget.guardiansRepository != widget.guardiansRepository) {
+      _watchGuardians();
+    }
+    if (oldWidget.todayProvider != widget.todayProvider) {
+      _predictions = _service.watch(
+        widget.profileId,
+        today: widget.todayProvider,
+      );
     }
   }
 
   @override
   void dispose() {
-    _guardiansSub?.cancel();
-    _guardiansSub = null;
+    disposeGuardianWatch();
+    unawaited(_suggestionDismissedSub?.cancel());
+    _suggestionDismissedSub = null;
+    unawaited(_modeRowSub?.cancel());
+    _modeRowSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -255,6 +355,8 @@ class _OverviewPanelState extends State<OverviewPanel> {
         existing: existing,
         today: today,
         mode: widget.mode,
+        trackingPreferences: widget.trackingPreferences,
+        isMinor: widget.isMinor,
         readOnly: _effectiveReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,
@@ -293,8 +395,9 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final previous = await repository.find(widget.profileId, today);
     if (!mounted) return;
     final flow = quickLogFlowLevel(previous?.flow);
-    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZone)();
-    final entry = previous?.copyWith(flow: flow, tz: tz) ??
+    final tz = (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)();
+    final entry =
+        previous?.copyWith(flow: flow, tz: tz) ??
         DayEntry(
           id: '',
           profileId: widget.profileId,
@@ -307,16 +410,18 @@ class _OverviewPanelState extends State<OverviewPanel> {
     await repository.save(entry);
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
-    messenger.showSnackBar(SnackBar(
-      content: Text(
-        l10n.overviewLoggedSnackbar,
-        key: const ValueKey('today-card-logged-snackbar'),
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.overviewLoggedSnackbar,
+          key: const ValueKey('today-card-logged-snackbar'),
+        ),
+        action: SnackBarAction(
+          label: l10n.overviewUndo,
+          onPressed: () => _undoLogToday(previous, today),
+        ),
       ),
-      action: SnackBarAction(
-        label: l10n.overviewUndo,
-        onPressed: () => _undoLogToday(previous, today),
-      ),
-    ));
+    );
   }
 
   /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
@@ -339,24 +444,83 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return StreamBuilder<CyclePrediction>(
       stream: _predictions,
       builder: (context, snapshot) {
-        final prediction = snapshot.data;
-        if (prediction == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            switch (prediction) {
-              ActivePrediction() => _activeCard(context, prediction),
-              NotEnoughHistory() => _notEnoughCard(context),
-            },
-            _seeHistoryLink(context),
-            if (availability == NotificationAvailability.denied)
-              const _ReminderHint(),
-            ...widget.trailingChildren,
-          ],
+        return AsyncSnapshotView<CyclePrediction>(
+          snapshot: snapshot,
+          errorMessage: AppLocalizations.of(context).overviewEstimateLoadError,
+          onRetry: _retryPredictions,
+          builder: (context, prediction) =>
+              _overviewBody(context, prediction, availability),
         );
       },
+    );
+  }
+
+  Widget _overviewBody(
+    BuildContext context,
+    CyclePrediction prediction,
+    NotificationAvailability availability,
+  ) {
+    return ListView(
+      padding: const EdgeInsets.all(LLSpace.space4),
+      children: [
+        // Issue #192: while the profile is in Pregnancy mode, the
+        // week-of-pregnancy counter replaces the ordinary cycle countdown
+        // as the panel's headline. Prediction below stays suppressed
+        // (#528) with its explanatory card — this card is the "instead"
+        // half of the Cycle View swap, not a replacement for the
+        // explanation.
+        if (_modeRow?.mode == LifecycleMode.pregnancy)
+          _pregnancyCard(context),
+        switch (prediction) {
+          ActivePrediction() => _activeCard(context, prediction),
+          NotEnoughHistory() => _notEnoughCard(context),
+          // Issue #233/#528: an in-effect continuous birth-control
+          // method, or a life-stage mode the averaging model doesn't
+          // apply to, replaces the estimate with an explicit suppressed
+          // state — never NotEnoughHistory and never a silent
+          // late/paused line.
+          PredictionsSuppressed() => PredictionsSuppressedCard(
+            method: prediction.method,
+            lifecycleMode: prediction.lifecycleMode,
+          ),
+          // Issue #225: per-profile predictions disabled toggle.
+          PredictionsDisabled() => PredictionsDisabledCard(
+            onManageSettings: () =>
+                pushNamedScreen<void>(context, kRouteSettingsScreen),
+          ),
+        },
+        _seeHistoryLink(context),
+        if (availability == NotificationAvailability.denied)
+          const _ReminderHint(),
+        ...widget.trailingChildren,
+      ],
+    );
+  }
+
+  /// Issue #192: the Pregnancy-mode headline — the week counter and due
+  /// date computed from the synced `profile_modes.estimated_due_date`, or
+  /// the quiet "not recorded" line when no due date was collected. The
+  /// week math is `pregnancyWeekOf` (pure, `lib/domain/pregnancy.dart`);
+  /// this only renders it.
+  Widget _pregnancyCard(BuildContext context) {
+    final dueIso = _modeRow?.estimatedDueDate;
+    LocalDate? due;
+    if (dueIso != null) {
+      try {
+        due = LocalDate.fromIso(dueIso);
+      } on ArgumentError {
+        due = null; // defensive: a malformed stored date renders as unset
+      }
+    }
+    final today = widget.todayProvider();
+    return PregnancyCard(
+      week: due == null ? null : pregnancyWeekOf(dueDate: due, today: today),
+      dueDateText: due == null
+          ? null
+          : dates.formatMonthDayYear(
+              DateTime(due.year, due.month, due.day),
+              locale: dates.calendarLocale(context),
+            ),
     );
   }
 
@@ -372,7 +536,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final scope = AppShellScope.maybeOf(context);
     if (scope == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: LLSpace.space2),
       child: Align(
         alignment: Alignment.centerLeft,
         child: TextButton(
@@ -405,7 +569,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     if (_copy.silencesLateBanner) {
       return Padding(
         key: const ValueKey('overview-irregular-overdue'),
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.only(top: LLSpace.space2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -435,7 +599,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return Card(
       key: const ValueKey('overview-active'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -451,7 +615,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               canLog: !_effectiveReadOnly,
               onLogToday: _logPeriodStartedToday,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: LLSpace.space3),
             // Issue #213: below `high` confidence (`learning` included —
             // #213 item 5), the estimate above is already a range rather
             // than one exact date; this caption names why (no numbers,
@@ -472,7 +636,13 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 key: const ValueKey('overview-tier-caption'),
                 style: theme.textTheme.bodySmall,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: LLSpace.space1),
+            ],
+            // Issue #225: auto-suggest turning off predictions when confidence is irregular.
+            if (prediction.tier == CycleConfidence.irregular &&
+                !_irregularSuggestionDismissed) ...[
+              _irregularSuggestionCard(context, theme),
+              const SizedBox(height: LLSpace.space2),
             ],
             // Issue #220: the predicted PMS phase — only when the profile
             // has the 3+ logged PMS intervals the hard minimum requires
@@ -483,7 +653,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
             // disclaimer line.
             if (prediction.pms != null) ...[
               _pmsSection(context, prediction.pms!, theme),
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
             ],
             if (prediction.isLate || prediction.unusuallyLongCycle)
               _lateSectionFor(prediction, theme)
@@ -494,7 +664,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
                 style: theme.textTheme.bodyLarge,
               ),
             if (prediction.unusuallyLongCycle) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: LLSpace.space2),
               _longCycleSection(context, prediction, theme),
             ],
           ],
@@ -511,11 +681,10 @@ class _OverviewPanelState extends State<OverviewPanel> {
   Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
     String format(LocalDate date) => dates.formatMonthDayYear(
-          DateTime(date.year, date.month, date.day),
-          locale: dates.calendarLocale(context),
-        );
-    final range =
-        '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';
+      DateTime(date.year, date.month, date.day),
+      locale: dates.calendarLocale(context),
+    );
+    final range = '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -566,9 +735,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final copy = AppLocalizations.of(context).overviewExcludedSnackbar;
     await _exclusions.omit(widget.profileId, prediction.lastEpisodeStart);
     if (!mounted) return;
-    messenger.showSnackBar(
-      SnackBar(content: Text(copy)),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(copy)));
   }
 
   /// Issue #221/A2-12: replaces the old dead-end "predictions paused" card.
@@ -591,11 +758,11 @@ class _OverviewPanelState extends State<OverviewPanel> {
     final l10n = AppLocalizations.of(context);
     return Container(
       key: const ValueKey('overview-long-cycle-prompt'),
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: LLSpace.space1),
+      padding: const EdgeInsets.all(LLSpace.space3),
       decoration: BoxDecoration(
         color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -607,7 +774,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               color: theme.colorScheme.onSecondaryContainer,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: LLSpace.space1),
           Text(
             l10n.overviewLongCycleBody,
             key: const ValueKey('overview-long-cycle-body'),
@@ -616,30 +783,88 @@ class _OverviewPanelState extends State<OverviewPanel> {
             ),
           ),
           if (!_effectiveReadOnly) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Wrap(
-              spacing: 8,
-              runSpacing: 4,
+              spacing: LLSpace.space2,
+              runSpacing: LLSpace.space1,
               children: [
                 OutlinedButton(
                   key: const ValueKey('long-cycle-exclude'),
                   onPressed: () => _excludeLongCycle(context, prediction),
                   child: Text(l10n.overviewLongCycleExclude),
                 ),
-                // TODO(#225): wire this up once profile-level "turn
-                // predictions off" exists. Until then it stays a disabled,
-                // honestly-labeled button rather than a live one that only
-                // ever shows a "coming soon" snackbar — a button that always
-                // just defers reads as broken, not as a placeholder.
+                // Issue #225: profile-level "turn predictions off" in Settings.
                 OutlinedButton(
                   key: const ValueKey('long-cycle-predictions-off'),
-                  onPressed: null,
+                  onPressed: () =>
+                      pushNamedScreen<void>(context, kRouteSettingsScreen),
                   child: Text(l10n.overviewLongCyclePredictionsOff),
                 ),
               ],
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Issue #225: dismissible suggestion card offered when confidence tier is
+  /// irregular. Matches Clue's "offer, do not force" posture; navigating to
+  /// Settings lets the user decide without the banner flipping the toggle itself.
+  Widget _irregularSuggestionCard(BuildContext context, ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    return Card(
+      key: const ValueKey('overview-irregular-prediction-suggestion'),
+      color: theme.colorScheme.surfaceContainerHighest,
+      margin: const EdgeInsets.only(top: LLSpace.space2),
+      child: Padding(
+        padding: const EdgeInsets.all(LLSpace.space3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: LLSpace.space2),
+                Expanded(
+                  child: Text(
+                    l10n.overviewIrregularSuggestionTitle,
+                    key: const ValueKey('irregular-suggestion-title'),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: LLSpace.space1),
+            Text(
+              l10n.overviewIrregularSuggestionBody,
+              key: const ValueKey('irregular-suggestion-body'),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  key: const ValueKey('irregular-suggestion-dismiss'),
+                  onPressed: _dismissIrregularSuggestion,
+                  child: Text(l10n.overviewIrregularSuggestionDismiss),
+                ),
+                const SizedBox(width: LLSpace.space2),
+                OutlinedButton(
+                  key: const ValueKey('irregular-suggestion-settings'),
+                  onPressed: () =>
+                      pushNamedScreen<void>(context, kRouteSettingsScreen),
+                  child: Text(l10n.overviewIrregularSuggestionSettings),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -660,7 +885,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
     return Card(
       key: const ValueKey('overview-not-enough'),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(LLSpace.space4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -670,7 +895,7 @@ class _OverviewPanelState extends State<OverviewPanel> {
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Text(
               kEstimateDisclaimer,
               key: const ValueKey('overview-not-enough-disclaimer'),
@@ -724,7 +949,7 @@ class _ReminderHintState extends State<_ReminderHint> {
     final request = context.read<RequestNotificationPermissionCallback?>();
     return Padding(
       key: const ValueKey('reminder-hint'),
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: LLSpace.space2),
       child: Row(
         children: [
           // Issue #162 (B-24): the hint reads as de-emphasised copy, so it
@@ -736,7 +961,7 @@ class _ReminderHintState extends State<_ReminderHint> {
             size: 18,
             color: theme.colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               l10n.overviewReminderHint,

@@ -96,12 +96,17 @@ void main() {
         minorBindingAllowed: minorBindingAllowed,
       );
 
+  const flowWriteRecordId = '01ARZ3NDEKTSV4RRFFQ69G5FAV';
+  const flowWriteRecordVersionMs = 1234567890000;
+
   final flowWrite = HealthMenstrualFlowWrite(
     facts: _facts(),
     date: LocalDate(2026, 8, 30),
     tzName: 'America/New_York',
     flow: HealthFlowValue.heavy,
     cycleStart: true,
+    recordId: flowWriteRecordId,
+    recordVersionMs: flowWriteRecordVersionMs,
   );
 
   group('guard ordering: a denied write never reaches the channel', () {
@@ -128,6 +133,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(result, HealthSyncCheck.profileNotBound);
@@ -141,6 +148,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.medium,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(result, HealthSyncCheck.notOwner);
@@ -155,6 +164,8 @@ void main() {
           tzName: 'America/New_York',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expectRefusedWithoutInvocation(
@@ -163,9 +174,9 @@ void main() {
       );
     });
 
-    test('bindProfile, requestWriteAuthorization, and '
-        'writeIntermenstrualBleeding all refuse identically '
-        '(notOwner)', () async {
+    test('bindProfile, requestWriteAuthorization, '
+        'writeIntermenstrualBleeding, and writeMenstrualPeriod all refuse '
+        'identically (notOwner)', () async {
       final platform = makePlatform();
       final notOwnerFacts = _facts(ownerUserId: 'someone-else');
       expectRefusedWithoutInvocation(
@@ -182,6 +193,23 @@ void main() {
             facts: notOwnerFacts,
             date: LocalDate(2026, 8, 30),
             tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
+          ),
+        ),
+        HealthSyncCheck.notOwner,
+      );
+      // #202: the period-record write is behind the same guard and is
+      // refused with zero channel invocations on a deny, like every write.
+      expectRefusedWithoutInvocation(
+        await platform.writeMenstrualPeriod(
+          HealthMenstrualPeriodWrite(
+            facts: notOwnerFacts,
+            start: LocalDate(2026, 8, 30),
+            end: LocalDate(2026, 9, 1),
+            tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
           ),
         ),
         HealthSyncCheck.notOwner,
@@ -217,6 +245,25 @@ void main() {
       // Payload.
       expect(args['flow'], 'heavy');
       expect(args['cycleStart'], true);
+      // Issue #186 sync mechanics: the source record id and version ride
+      // the write for clientRecordId / HKMetadataKeyExternalUUID stamping.
+      expect(args['recordId'], flowWriteRecordId);
+      expect(args['recordVersionMs'], flowWriteRecordVersionMs);
+    });
+
+    test('deleteRecords sends guard args + recordIds', () async {
+      await makePlatform().deleteRecords(
+        _facts(),
+        const [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC'],
+      );
+
+      expect(calls, hasLength(1));
+      final call = calls.single;
+      expect(call.method, 'deleteRecords');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['profileId'], 'p1');
+      expect(args['recordIds'],
+          [flowWriteRecordId, '01ARZ3NDEKTSV4RRFFQ69G5FBC']);
     });
 
     test('writeIntermenstrualBleeding sends guard + day args, no flow key',
@@ -226,6 +273,8 @@ void main() {
           facts: _facts(),
           date: LocalDate(2026, 8, 30),
           tzName: 'America/New_York',
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(calls, hasLength(1));
@@ -235,6 +284,9 @@ void main() {
       expect(args['instantMs'], isNotNull);
       expect(args.containsKey('flow'), isFalse);
       expect(args.containsKey('cycleStart'), isFalse);
+      // Issue #186: the record id/version ride this write too.
+      expect(args['recordId'], flowWriteRecordId);
+      expect(args['recordVersionMs'], flowWriteRecordVersionMs);
     });
 
     test('bindProfile and requestWriteAuthorization send guard args',
@@ -246,6 +298,35 @@ void main() {
       for (final call in calls) {
         expect((call.arguments as Map<Object?, Object?>)['profileId'], 'p1');
       }
+    });
+
+    test('writeMenstrualPeriod sends guard args + the interval envelope '
+        '(start/end instants and offsets from the entry tz, #202)', () async {
+      // 2026-08-30..2026-09-01 America/New_York (EDT, UTC-4): start = 08-30
+      // 04:00Z; end = exclusive 09-02 04:00Z; both offsets -4h.
+      await makePlatform(minorBindingAllowed: false).writeMenstrualPeriod(
+        HealthMenstrualPeriodWrite(
+          facts: _facts(),
+          start: LocalDate(2026, 8, 30),
+          end: LocalDate(2026, 9, 1),
+          tzName: 'America/New_York',
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
+        ),
+      );
+
+      expect(calls, hasLength(1));
+      final call = calls.single;
+      expect(call.method, 'writeMenstrualPeriod');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['profileId'], 'p1');
+      expect(args['startMs'], DateTime.utc(2026, 8, 30, 4).millisecondsSinceEpoch);
+      expect(args['startZoneOffsetMs'], -4 * 3600 * 1000);
+      expect(args['endMs'], DateTime.utc(2026, 9, 2, 4).millisecondsSinceEpoch);
+      expect(args['endZoneOffsetMs'], -4 * 3600 * 1000);
+      // #186 sync mechanics ride this write too.
+      expect(args['recordId'], flowWriteRecordId);
+      expect(args['recordVersionMs'], flowWriteRecordVersionMs);
     });
   });
 
@@ -336,6 +417,8 @@ void main() {
           tzName: 'Not/AZone',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(result, isA<HealthPlatformFailed>());
@@ -352,6 +435,8 @@ void main() {
           tzName: 'Not/AZone',
           flow: HealthFlowValue.light,
           cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
         ),
       );
       expect(result, isA<HealthPlatformRefused>());
@@ -376,6 +461,21 @@ void main() {
             facts: _facts(),
             date: LocalDate(2026, 8, 30),
             tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
+          ),
+        ),
+        isA<HealthPlatformUnavailable>(),
+      );
+      expect(
+        await platform.writeMenstrualPeriod(
+          HealthMenstrualPeriodWrite(
+            facts: _facts(),
+            start: LocalDate(2026, 8, 30),
+            end: LocalDate(2026, 9, 1),
+            tzName: 'America/New_York',
+            recordId: flowWriteRecordId,
+            recordVersionMs: flowWriteRecordVersionMs,
           ),
         ),
         isA<HealthPlatformUnavailable>(),

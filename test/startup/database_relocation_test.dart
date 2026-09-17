@@ -163,9 +163,10 @@ void main() {
     });
 
     test('a target that exists WITHOUT the sentinel, isn\'t even an '
-        'openable database, and has no legacy file left is cleaned up '
-        '(genuine residue from a broken previous attempt, nothing to '
-        'protect and nothing to retry from)', () async {
+        'openable database, and has no legacy file left is quarantined, '
+        'not deleted, so a fresh database can be created at the original '
+        'path without destroying the only copy of whatever this file held '
+        '(issue #614)', () async {
       final dir = await _freshTempDir('interrupted_no_legacy_garbage');
       final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
       final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
@@ -179,8 +180,16 @@ void main() {
 
       expect(result.path, target.path);
       expect(target.existsSync(), isFalse,
-          reason: 'the stale partial target was removed and nothing '
-              'replaced it — the caller creates a fresh database there');
+          reason: 'the stale partial target no longer sits at the original '
+              'path — the caller creates a fresh database there');
+      final quarantined = targetDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.contains('.quarantined'));
+      expect(quarantined, hasLength(1),
+          reason: 'the damaged bytes must be preserved somewhere, not '
+              'destroyed — see the dedicated issue #614 group below for '
+              'the byte-for-byte assertions');
     });
 
     test('a REAL sqlite database at the target with no sentinel and no '
@@ -494,6 +503,463 @@ void main() {
               'in a table the original check never looked at');
       expect(target.existsSync(), isFalse);
       expect(legacy.existsSync(), isTrue);
+    });
+  });
+
+  group('quarantining a damaged canonical target instead of deleting it '
+      '(issue #614, no legacy file)', () {
+    test('a damaged, populated canonical target with NO sentinel is moved '
+        'to a quarantine location byte-for-byte instead of being deleted',
+        () async {
+      final dir = await _freshTempDir('quarantine_no_sentinel');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      // Not a valid sqlite file — fails PRAGMA quick_check — but stands in
+      // for a damaged, previously-populated database: real bytes, just no
+      // longer openable.
+      final damagedBytes = List<int>.generate(2048, (i) => i % 251);
+      target.writeAsBytesSync(damagedBytes);
+      // No legacy file at all.
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path,
+          reason: 'startup proceeds with a fresh database at the original '
+              'path once the damaged one is quarantined');
+      expect(target.existsSync(), isFalse,
+          reason: 'the damaged file no longer sits at the canonical path');
+
+      final quarantined = targetDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.contains('.quarantined'))
+          .toList();
+      expect(quarantined, hasLength(1),
+          reason: 'the damaged file must be preserved, never destroyed');
+      expect(quarantined.single.readAsBytesSync(), damagedBytes,
+          reason: 'quarantine must preserve the file byte-for-byte');
+    });
+
+    test('a damaged, populated canonical target WITH the completed '
+        'sentinel already present is ALSO quarantined rather than '
+        'deleted, and the now-stale sentinel is cleared (issue #614 calls '
+        'this out explicitly: "with or without the completed sentinel")',
+        () async {
+      final dir = await _freshTempDir('quarantine_with_sentinel');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      final damagedBytes = List<int>.generate(3000, (i) => (i * 7) % 256);
+      target.writeAsBytesSync(damagedBytes);
+      final sentinel =
+          File('${targetDir.path}${Platform.pathSeparator}$kRelocationSentinelName')
+            ..writeAsStringSync('previously completed');
+      // No legacy file — the "no legacy" branch is reached the same way
+      // regardless of the sentinel.
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isFalse);
+      expect(sentinel.existsSync(), isFalse,
+          reason: 'the stale sentinel for the now-quarantined data must '
+              'not survive to short-circuit a later launch');
+
+      final quarantined = targetDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.contains('.quarantined'))
+          .toList();
+      expect(quarantined, hasLength(1));
+      expect(quarantined.single.readAsBytesSync(), damagedBytes);
+    });
+
+    test('every existing sidecar (-wal/-shm/-journal) is quarantined '
+        'alongside the main file, byte-for-byte, with none left behind at '
+        'the original suffixed paths', () async {
+      final dir = await _freshTempDir('quarantine_sidecars');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+
+      final mainBytes = 'damaged main bytes'.codeUnits;
+      final walBytes = 'damaged wal bytes'.codeUnits;
+      final shmBytes = 'damaged shm bytes'.codeUnits;
+      final journalBytes = 'damaged journal bytes'.codeUnits;
+      target.writeAsBytesSync(mainBytes);
+      File('${target.path}-wal').writeAsBytesSync(walBytes);
+      File('${target.path}-shm').writeAsBytesSync(shmBytes);
+      File('${target.path}-journal').writeAsBytesSync(journalBytes);
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isFalse);
+      expect(File('${target.path}-wal').existsSync(), isFalse);
+      expect(File('${target.path}-shm').existsSync(), isFalse);
+      expect(File('${target.path}-journal').existsSync(), isFalse);
+
+      final quarantined = targetDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.contains('.quarantined'))
+          .toList();
+      expect(quarantined, hasLength(4),
+          reason: 'the main file and all three sidecars must all be '
+              'quarantined');
+
+      List<int> bytesEndingWith(String suffix) => quarantined
+          .singleWhere((f) => f.path.endsWith(suffix))
+          .readAsBytesSync();
+      expect(bytesEndingWith('-wal'), walBytes);
+      expect(bytesEndingWith('-shm'), shmBytes);
+      expect(bytesEndingWith('-journal'), journalBytes);
+      // The main file's quarantine name carries no sqlite suffix at all,
+      // so it is whichever quarantined file doesn't end in one of the
+      // sidecar suffixes checked above.
+      final mainQuarantined = quarantined.singleWhere((f) =>
+          !f.path.endsWith('-wal') &&
+          !f.path.endsWith('-shm') &&
+          !f.path.endsWith('-journal'));
+      expect(mainQuarantined.readAsBytesSync(), mainBytes);
+    });
+
+    test('a healthy canonical target with no legacy file is left exactly '
+        'in place — untouched, unmoved, and never quarantined', () async {
+      final dir = await _freshTempDir('quarantine_healthy_untouched');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      _seedRealDatabase(target, profileId: 'p-healthy-614');
+      final originalBytes = target.readAsBytesSync();
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue);
+      expect(target.readAsBytesSync(), originalBytes,
+          reason: 'a healthy target must never be quarantined');
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.quarantined')),
+        isEmpty,
+        reason: 'nothing should be quarantined when the target is healthy',
+      );
+    });
+
+    test('a healthy WAL-mode target with un-checkpointed -wal content '
+        'passes the quick_check probe and is left in place with its -wal '
+        '/-shm byte-identical (issue #614 review: the immutable-URI probe '
+        'must never mistake this for damage, and must never touch the '
+        'sidecars while checking)', () async {
+      final dir = await _freshTempDir('quarantine_healthy_wal');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+
+      // Keep this writer connection open for the whole test — closing the
+      // last connection to a WAL-mode database auto-checkpoints it, which
+      // would defeat the point: the row must live only in -wal, never
+      // folded into the main file, while the probe runs.
+      final writer = sqlite3.sqlite3.open(target.path);
+      var writerClosed = false;
+      addTearDown(() {
+        if (!writerClosed) writer.close();
+      });
+      writer.execute('PRAGMA journal_mode=WAL');
+      writer.execute('CREATE TABLE "profiles" ("id" TEXT NOT NULL, '
+          '"display_name" TEXT NOT NULL, PRIMARY KEY ("id"))');
+      writer.execute(
+          "INSERT INTO profiles (id, display_name) VALUES ('p-wal-614', 'W')");
+
+      final walFile = File('${target.path}-wal');
+      final shmFile = File('${target.path}-shm');
+      expect(walFile.existsSync(), isTrue,
+          reason: 'WAL mode must have produced a -wal sidecar');
+      final walBytesBefore = walFile.readAsBytesSync();
+      final shmBytesBefore =
+          shmFile.existsSync() ? shmFile.readAsBytesSync() : null;
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'a healthy WAL-mode target must never be quarantined');
+      expect(walFile.readAsBytesSync(), walBytesBefore,
+          reason: 'the probe must not touch -wal — verified empirically: a '
+              'plain (non-immutable) open mutates it merely by opening');
+      if (shmBytesBefore != null) {
+        expect(shmFile.readAsBytesSync(), shmBytesBefore);
+      }
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.quarantined')),
+        isEmpty,
+        reason: 'a healthy WAL-mode target must never be quarantined',
+      );
+      expect(
+        File('${targetDir.path}${Platform.pathSeparator}$kRelocationSentinelName')
+            .existsSync(),
+        isTrue,
+        reason: 'a healthy target is retroactively marked done',
+      );
+
+      writer.close();
+      writerClosed = true;
+      final reopened = sqlite3.sqlite3.open(target.path);
+      final rows = reopened.select('SELECT id FROM profiles');
+      reopened.close();
+      expect(rows.map((r) => r['id']), contains('p-wal-614'),
+          reason: 'the un-checkpointed row must still be there — the probe '
+              'must never have discarded or rolled back the WAL content');
+    });
+
+    test('a WAL-mode target whose committed data lives only in the '
+        'un-checkpointed -wal, with the main file corrupted just enough '
+        'to fail the fast immutable probe, is confirmed recoverable via '
+        'a staged, recovery-enabled re-check and is NOT quarantined '
+        '(issue #614 review round 2 — simulates a crash mid-checkpoint, '
+        'where the main file is temporarily inconsistent but -wal is '
+        'still authoritative)', () async {
+      final dir = await _freshTempDir('quarantine_recoverable_wal');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+
+      final writer = sqlite3.sqlite3.open(target.path);
+      var writerClosed = false;
+      addTearDown(() {
+        if (!writerClosed) writer.close();
+      });
+      writer.execute('PRAGMA journal_mode=WAL');
+      writer.execute('CREATE TABLE "profiles" ("id" TEXT NOT NULL, '
+          '"display_name" TEXT NOT NULL, PRIMARY KEY ("id"))');
+      writer.execute("INSERT INTO profiles (id, display_name) VALUES "
+          "('p-recoverable', 'R')");
+      expect(File('${target.path}-wal').existsSync(), isTrue);
+
+      // Corrupt bytes inside the main file's own header/page-1 area — a
+      // stand-in for a torn write left by a process killed mid-checkpoint
+      // — while -wal (holding this session's authoritative frames,
+      // including page 1's own committed version, since CREATE TABLE
+      // modifies sqlite_master on page 1) is completely untouched.
+      // Verified with a throwaway probe script: a raw/immutable read of
+      // the main file alone now fails ("file is not a database"); a
+      // normal, recovery-enabled open resolves page 1 (and everything
+      // else) from -wal instead and is unaffected.
+      final raf = target.openSync(mode: FileMode.writeOnlyAppend);
+      raf.setPositionSync(20);
+      raf.writeFromSync(List<int>.filled(60, 0xFF));
+      raf.flushSync();
+      raf.closeSync();
+
+      final result =
+          await relocateLegacyDatabase(legacyFile: legacy, targetFile: target);
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'a confirmed-recoverable WAL-mode target must never be '
+              'quarantined');
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.quarantined')),
+        isEmpty,
+        reason: 'confirmed recoverable, not damaged — nothing is '
+            'quarantined',
+      );
+      expect(
+        File('${targetDir.path}${Platform.pathSeparator}$kRelocationSentinelName')
+            .existsSync(),
+        isTrue,
+        reason: 'a confirmed-recoverable target is treated as healthy',
+      );
+
+      writer.close();
+      writerClosed = true;
+
+      // The real recovery happens on a genuine reopen of the real file —
+      // relocateLegacyDatabase itself never mutates targetFile in this
+      // branch, it only confirms and leaves the real recovery to the
+      // caller's own normal open.
+      final reopened = sqlite3.sqlite3.open(target.path);
+      final rows = reopened.select('SELECT id FROM profiles');
+      reopened.close();
+      expect(rows.map((r) => r['id']), contains('p-recoverable'),
+          reason: 'the row committed only to -wal must survive a real '
+              'reopen of the target relocateLegacyDatabase left '
+              'untouched');
+    });
+
+    test('a throwing copier during recovery confirmation leaves the '
+        'target in place and never throws or quarantines (issue #614 '
+        'review round 2: a staging failure — disk full, a transient '
+        'permission error, … — says nothing about whether the target is '
+        'actually damaged)', () async {
+      final dir = await _freshTempDir('quarantine_confirm_copy_fails');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      final mainBytes = 'damaged main bytes'.codeUnits;
+      final walBytes = 'damaged wal bytes'.codeUnits;
+      target.writeAsBytesSync(mainBytes);
+      File('${target.path}-wal').writeAsBytesSync(walBytes);
+
+      Future<void> throwingCopier(File from, File to) async {
+        throw const FileSystemException('simulated disk-full during staging');
+      }
+
+      final result = await relocateLegacyDatabase(
+        legacyFile: legacy,
+        targetFile: target,
+        copier: throwingCopier,
+      );
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'a failed confirmation attempt must leave the target '
+              'exactly where it is — neither quarantined nor deleted');
+      expect(target.readAsBytesSync(), mainBytes);
+      expect(File('${target.path}-wal').existsSync(), isTrue);
+      expect(File('${target.path}-wal').readAsBytesSync(), walBytes);
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.quarantined')),
+        isEmpty,
+        reason: 'an inconclusive confirmation must never quarantine',
+      );
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.migrating')),
+        isEmpty,
+        reason: 'no staging residue should survive a failed confirmation '
+            'copy',
+      );
+    });
+
+    test('the no-legacy quick_check probe never invokes any copier — '
+        'issue #614 review: an earlier version of this fix staged a full '
+        'copy of the canonical database on every cold start just to probe '
+        'it safely; the immutable-URI probe needs no copy at all, healthy '
+        'or damaged', () async {
+      final dir = await _freshTempDir('probe_no_copy');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      _seedRealDatabase(target, profileId: 'p-no-copy-614');
+
+      Future<void> explodingCopier(File from, File to) async {
+        fail('the no-legacy quick_check probe must never copy any file '
+            '(copier invoked for ${from.path} -> ${to.path})');
+      }
+
+      final result = await relocateLegacyDatabase(
+        legacyFile: legacy,
+        targetFile: target,
+        copier: explodingCopier,
+      );
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue);
+    });
+
+    test('the no-legacy quick_check probe never invokes any copier for a '
+        'damaged target either — quarantining a damaged file needs only '
+        'renames, never a copy', () async {
+      final dir = await _freshTempDir('probe_no_copy_damaged');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      target.writeAsBytesSync('damaged bytes'.codeUnits);
+
+      Future<void> explodingCopier(File from, File to) async {
+        fail('quarantining a damaged target must never copy any file '
+            '(copier invoked for ${from.path} -> ${to.path})');
+      }
+
+      final result = await relocateLegacyDatabase(
+        legacyFile: legacy,
+        targetFile: target,
+        copier: explodingCopier,
+      );
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isFalse);
+      expect(
+        targetDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.contains('.quarantined')),
+        hasLength(1),
+      );
+    });
+
+    test('a rename failure partway through quarantine is rolled back — '
+        'nothing already moved is left stranded, nothing is deleted, and '
+        'the caller never falls back to deleting the target', () async {
+      final dir = await _freshTempDir('quarantine_rollback');
+      final legacy = File('${dir.path}${Platform.pathSeparator}old.db');
+      final targetDir = Directory('${dir.path}${Platform.pathSeparator}support')
+        ..createSync();
+      final target = File('${targetDir.path}${Platform.pathSeparator}new.db');
+      final mainBytes = 'damaged main bytes'.codeUnits;
+      final walBytes = 'damaged wal bytes'.codeUnits;
+      target.writeAsBytesSync(mainBytes);
+      File('${target.path}-wal').writeAsBytesSync(walBytes);
+
+      // The main file (suffix '') renames fine; the -wal rename fails —
+      // simulating, e.g., a lock held by another process on that one
+      // sibling. Only the main file has moved by the time this throws.
+      Future<void> flakyRenamer(File from, File to) async {
+        if (from.path.endsWith('-wal')) {
+          throw const FileSystemException('simulated rename failure');
+        }
+        await from.rename(to.path);
+      }
+
+      final result = await relocateLegacyDatabase(
+        legacyFile: legacy,
+        targetFile: target,
+        quarantineRenamer: flakyRenamer,
+      );
+
+      expect(result.path, target.path);
+      expect(target.existsSync(), isTrue,
+          reason: 'a failed quarantine must roll back — the main file '
+              'must not end up missing from both its original and '
+              'quarantine locations');
+      expect(target.readAsBytesSync(), mainBytes);
+      expect(File('${target.path}-wal').existsSync(), isTrue);
+      expect(File('${target.path}-wal').readAsBytesSync(), walBytes);
+      for (final entity in targetDir.listSync()) {
+        expect(entity.path, isNot(contains('.quarantined')),
+            reason: 'no quarantine residue should survive a rolled-back '
+                'attempt');
+      }
     });
   });
 

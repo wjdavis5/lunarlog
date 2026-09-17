@@ -17,12 +17,17 @@ import '../models/lifecycle_mode.dart';
 
 /// The read shape of a profile's mode row: the life-stage mode (never
 /// null — an absent row means [LifecycleMode.tracking], the server's
-/// lazy-default contract), the optional free-text birth-control method
-/// answer, and its raw effective-date columns (`yyyy-MM-dd` or null —
-/// issue #260's `birth_control_started_on`/`birth_control_stopped_on`,
-/// consumed by the #183 reminders and #233's prediction adaptation).
+/// lazy-default contract), the date the current mode took effect (Issue
+/// #192's exit-exclusion interval needs it; null when never stamped),
+/// the Pregnancy-mode estimated due date (Issue #192; null when not
+/// recorded), the optional free-text birth-control method answer, and
+/// its raw effective-date columns (`yyyy-MM-dd` or null — issue #260's
+/// `birth_control_started_on`/`birth_control_stopped_on`, consumed by
+/// the #183 reminders and #233's prediction adaptation).
 typedef ProfileLifecycleMode = ({
   LifecycleMode mode,
+  String? modeStartedOn,
+  String? estimatedDueDate,
   String? birthControlMethod,
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
@@ -36,7 +41,11 @@ abstract interface class ProfileModesRepository {
   ///
   /// [modeStartedOn] is the date the mode took effect (today for an
   /// onboarding answer that named a non-default mode; null keeps the
-  /// column unset).
+  /// column unset). [estimatedDueDate] (Issue #192) is the
+  /// Pregnancy-mode due date — derived (last recorded period start +
+  /// 280 days, Naegele's rule) or manually supplied by the caller; null
+  /// keeps the column unset. Callers that only want to change one field
+  /// read the current row first via [find].
   ///
   /// The birth-control effective dates are owned by this save (issue
   /// #183's anchor requirement): when the recorded method changes to a
@@ -51,10 +60,19 @@ abstract interface class ProfileModesRepository {
     required String profileId,
     required LifecycleMode mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
   });
 
   /// The profile's mode row, or null when none was ever written (meaning
   /// [LifecycleMode.tracking] with no birth-control answer).
   Future<ProfileLifecycleMode?> find(String profileId);
+
+  /// Reactive variant of [find] (issue #551): emits again on every write —
+  /// an onboarding answer, a profile-settings edit, or a sync pull. The
+  /// one seam `lib/app.dart`'s reminder-coordinator wiring and
+  /// `AppDependencies`' own prediction-service wiring should both watch
+  /// through, rather than each reaching past this repository into
+  /// `LunarLogStorage.watchProfileMode` directly.
+  Stream<ProfileLifecycleMode?> watch(String profileId);
 }

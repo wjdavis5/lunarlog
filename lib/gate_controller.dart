@@ -3,7 +3,10 @@
 ///
 /// * Cold start: gated platforms show the lock screen *before any profile
 ///   data renders* and *before the database is opened* — a declined
-///   credential never decrypts anything (AE4).
+///   credential never decrypts anything (AE4). Exception (issue #739): a
+///   QA build (`LUNARLOG_QA_BUILD=true`) starts unlocked and never
+///   re-locks, so testers reach the feature set without the credential
+///   ceremony; the privacy cover below still applies.
 /// * Re-lock: backgrounding (paused/hidden — and `inactive`, which is what
 ///   split-screen/multi-window focus loss reports) always re-locks;
 ///   foreground inactivity re-locks after a timeout (default 2 minutes,
@@ -41,8 +44,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
+import 'package:lunarlog/domain/gate/pin_credential_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+export 'package:lunarlog/domain/gate/pin_credential_service.dart';
 
 /// Platform channel used to set Android FLAG_SECURE (snapshot/screenshot
 /// suppression at the window level). Best effort — see
@@ -64,13 +73,19 @@ const Duration kSystemUiSettleTimeout = Duration(seconds: 3);
 /// Currently: FLAG_SECURE on Android (blocks app-switcher snapshots and
 /// screenshots natively). Failures are swallowed — the opaque lifecycle
 /// cover remains the cross-platform baseline.
-Future<void> applyPlatformPrivacyProtections() async {
+Future<void> applyPlatformPrivacyProtections({
+  BreadcrumbLog? breadcrumbLog,
+}) async {
   if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
   try {
     await const MethodChannel(kPrivacyChannel)
         .invokeMethod<void>('setFlagSecure', true);
-  } catch (_) {
-    // Best effort only.
+  } catch (error, stackTrace) {
+    (breadcrumbLog ?? defaultBreadcrumbLog).record(
+      'privacy',
+      error.runtimeType.toString(),
+    );
+    unawaited(Sentry.captureException(error, stackTrace: stackTrace));
   }
 }
 
@@ -81,7 +96,9 @@ abstract interface class InactivityTimer {
 }
 
 typedef InactivityTimerFactory = InactivityTimer Function(
-    Duration delay, VoidCallback onTimeout);
+  Duration delay,
+  VoidCallback onTimeout,
+);
 
 class _RealInactivityTimer implements InactivityTimer {
   _RealInactivityTimer(this._timer);
@@ -93,8 +110,31 @@ class _RealInactivityTimer implements InactivityTimer {
 }
 
 InactivityTimer defaultInactivityTimerFactory(
-        Duration delay, VoidCallback onTimeout) =>
-    _RealInactivityTimer(Timer(delay, onTimeout));
+  Duration delay,
+  VoidCallback onTimeout,
+) => _RealInactivityTimer(Timer(delay, onTimeout));
+
+/// Why the last credential attempt left the gate locked (issue #534). A
+/// single `_denied` boolean used to cover two very different situations —
+/// the operator saw the OS prompt and declined/failed it, versus the
+/// device never had a prompt to show because nothing is enrolled at all —
+/// with one generic denial message for both. [GateController.unlock] tells
+/// them apart by checking [AppGate.canAuthenticate] itself before ever
+/// calling [AppGate.requestAccess], and [LockScreen] renders distinct copy
+/// for each.
+enum GateDenialReason {
+  /// No attempt has failed, or the last attempt succeeded.
+  none,
+
+  /// The OS presented the credential prompt and the operator declined,
+  /// cancelled, or failed it.
+  deniedByUser,
+
+  /// The OS reports no credential is enrolled at all — no prompt was ever
+  /// shown. The lock screen's primary action here is a settings deep link,
+  /// not a retry.
+  noCredentialEnrolled,
+}
 
 /// Owns the locked/unlocked session state and everything that flips it.
 ///
@@ -103,16 +143,55 @@ InactivityTimer defaultInactivityTimerFactory(
 class GateController extends ChangeNotifier with WidgetsBindingObserver {
   GateController({
     required AppGate gate,
+    // Deliberately not an initializing formal (`this._pinService`): that
+    // would rename the public `pinService:` argument every call site below
+    // uses to `_pinService:`, an API break for one lint's sake.
+    PinCredentialService? pinService,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
     this.systemUiDeadline = kDefaultInactivityTimeout,
     this.settleTimeout = kSystemUiSettleTimeout,
-  }) : _gate = gate {
-    _locked = gate.requiresUnlock;
+    bool? qaBuild,
+  })  : _gate = gate,
+        // ignore: prefer_initializing_formals
+        _pinService = pinService,
+        _qaBuild = qaBuild ?? AppConfig.qaBuild {
+    // Issue #739: a QA build starts unlocked even on a gated platform —
+    // the tester's whole point is reaching the feature set without the
+    // credential ceremony. The privacy cover machinery is untouched: a
+    // departure still covers content while the app is away (see [lock]).
+    _locked = gate.requiresUnlock && !_qaBuild;
+    // Issue #739: relock is permanently off in a QA build, ahead of (and
+    // regardless of) whatever the persisted toggle says — see
+    // [attachSettings], which keeps forcing it off there too.
+    _relockEnabled = !_qaBuild;
     WidgetsBinding.instance.addObserver(this);
   }
 
   final AppGate _gate;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`,
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// precedent). Injected as a nullable constructor parameter so
+  /// `test/ui/qa_build_test.dart` exercises both flag values in one
+  /// default-off test run; production always resolves the const. While
+  /// true: the gate starts unlocked, [lock] never re-locks (the privacy
+  /// cover still applies), the inactivity countdown never arms, and
+  /// [reauthenticate] auto-grants. Permissions are untouched — the
+  /// server's checks are identical for every build.
+  final bool _qaBuild;
+
+  /// The optional in-app PIN layer (#271 D-6). Null on an unconfigured
+  /// build or a platform this gate does not cover — every PIN check below
+  /// degrades to "no PIN step" in that case, leaving [unlock]'s behavior
+  /// identical to before this issue (the acceptance criterion that an
+  /// operator who never enables a PIN sees no change).
+  final PinCredentialService? _pinService;
+
+  /// Whether a PIN is even configurable on this build/platform — the
+  /// settings screen uses this to decide whether to offer the toggle at
+  /// all, without awaiting [PinCredentialService.isPinSet].
+  bool get pinAvailable => _pinService != null;
   final Duration inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
 
@@ -128,7 +207,16 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   bool _locked = false;
   bool _authenticating = false;
-  bool _denied = false;
+  GateDenialReason _denialReason = GateDenialReason.none;
+
+  /// True once the device credential (or its absence, when a PIN can stand
+  /// alone — see [unlock]) has cleared and only the in-app PIN remains
+  /// (#271 D-6). [LockScreen] renders the PIN entry section instead of the
+  /// device-credential content while this is true. Reset by [lock] — a
+  /// re-lock discards a pending PIN step exactly like it discards a pending
+  /// device-credential prompt, so background-during-PIN-entry never leaves
+  /// a half-open gate.
+  bool _pinRequired = false;
   bool _obscured = false;
   bool _relockEnabled = true;
   String? _pendingLaunchProfileId;
@@ -186,7 +274,22 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   bool get authenticating => _authenticating;
 
   /// True when the last credential attempt was declined or unavailable.
-  bool get lastAttemptDenied => _denied;
+  /// Back-compat shorthand for `denialReason != GateDenialReason.none`
+  /// (issue #534) — new code should read [denialReason] instead, to tell
+  /// [GateDenialReason.deniedByUser] apart from
+  /// [GateDenialReason.noCredentialEnrolled].
+  bool get lastAttemptDenied => _denialReason != GateDenialReason.none;
+
+  /// Why the last credential attempt left the gate locked, or
+  /// [GateDenialReason.none] if the last attempt succeeded or none has run
+  /// yet (issue #534). Drives [LockScreen]'s copy and its settings deep
+  /// link.
+  GateDenialReason get denialReason => _denialReason;
+
+  /// True while the gate is waiting on an in-app PIN, having already
+  /// cleared (or bypassed, for a device with none set) the device
+  /// credential (#271 D-6). See [submitPin].
+  bool get pinRequired => _pinRequired;
 
   /// True while content must be covered: either the lifecycle is not resumed
   /// or system UI opened by the app is still active.
@@ -215,9 +318,13 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// Subscribes the inactivity toggle to the persisted setting (read after
   /// the database opens, so it is not available at construction).
   void attachSettings(SettingsStore store) {
-    _relockSub?.cancel();
+    unawaited(_relockSub?.cancel());
     _relockSub = store.watch(SettingsKeys.relockEnabled).listen((value) {
-      _relockEnabled = value != 'false'; // absent ⇒ default ON (fail closed)
+      // Issue #739: a QA build keeps relock off even when the persisted
+      // toggle says on — the setting is presentation for store builds
+      // only, and re-enabling it here would re-arm the inactivity
+      // countdown below on a build whose promise is "no prompts".
+      _relockEnabled = !_qaBuild && value != 'false'; // absent ⇒ default ON (fail closed)
       if (_relockEnabled) {
         _armInactivity();
       } else {
@@ -262,6 +369,14 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   int _openSystemUiWindow() {
+    // Issue #574: every sibling that touches system-UI-window state
+    // (`_closeSystemUiWindow`, `_systemUiDeadlineExpired`,
+    // `_reconcileWindowClose`) guards on `_disposed`; this one didn't. A
+    // biometric sheet started after disposal (see `dispose()`'s own doc
+    // comment for the exact hazard) would otherwise arm a timer nothing
+    // cancels and, via that timer, later call `notifyListeners()` on a
+    // disposed `ChangeNotifier`.
+    if (_disposed) return _systemUiEpoch ?? 0;
     if (_systemUiWindows > 0) {
       _systemUiWindows++;
       return _systemUiEpoch!;
@@ -282,7 +397,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = inactivityTimerFactory(
-        systemUiDeadline, () => _systemUiDeadlineExpired(epoch));
+      systemUiDeadline,
+      () => _systemUiDeadlineExpired(epoch),
+    );
     if (!wasObscured) notifyListeners();
     return epoch;
   }
@@ -299,7 +416,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _settling = true;
     _settleTimer?.cancel();
     _settleTimer = inactivityTimerFactory(
-        settleTimeout, () => _onSettleTimeout(epoch));
+      settleTimeout,
+      () => _onSettleTimeout(epoch),
+    );
   }
 
   /// The settle timer fired. Guarded because a cancelled-but-already-queued
@@ -388,33 +507,165 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// discards a grant: that check could never be implemented correctly,
   /// and on iOS — where the Face ID prompt reports `inactive` itself — it
   /// meant the app could not be unlocked at all (issue #65).
+  ///
+  /// Checks [AppGate.canAuthenticate] first (issue #534): when the device
+  /// has no credential enrolled at all, [AppGate.requestAccess] would
+  /// return false without ever presenting a prompt, and wrapping that
+  /// no-op in [duringSystemUi] would still open (and then have to settle)
+  /// a system-UI window for a prompt that never appeared. Failing here
+  /// instead sets [GateDenialReason.noCredentialEnrolled] without touching
+  /// the system-UI machinery at all.
   Future<void> unlock() async {
     if (!_locked || _authenticating) return;
     _authenticating = true;
     notifyListeners();
     final generation = _generation;
     try {
+      final canAuthenticate = await _gate.canAuthenticate();
+      if (_disposed || generation != _generation) return;
+      if (!canAuthenticate) {
+        await _handleNoCredentialEnrolled();
+        return;
+      }
       final granted = await duringSystemUi(_gate.requestAccess);
       if (_disposed || generation != _generation) {
         // The window deadline already locked while this request hung.
         // Honouring the answer now would re-open the session behind it.
         return;
       }
-      if (granted) {
-        _denied = false;
-        _locked = false;
-        _armInactivity();
-      } else {
-        _denied = true;
-      }
       // The cover is not cleared here: it is reconciled against the
       // lifecycle when the window settles (#65 KTD9).
+      await _handleCredentialResult(granted);
     } finally {
       // Without this a throwing authenticator leaves the flag set and the
       // re-entrancy guard turns every later Unlock tap into a no-op.
       _authenticating = false;
       if (!_disposed) notifyListeners();
     }
+  }
+
+  /// #271 D-6: the device has no credential enrolled at all — no longer a
+  /// dead end when a PIN is set, since it can stand alone as the gate's
+  /// only layer (the issue's "a user with no device passcode set can still
+  /// gain a functional lock via the in-app PIN alone" acceptance
+  /// criterion). An account with no PIN configured falls straight through
+  /// to the pre-#271 dead end, unchanged. Split out of [unlock] to keep
+  /// that method's own cyclomatic complexity under the CRAP gate's budget.
+  Future<void> _handleNoCredentialEnrolled() async {
+    if (await _pinIsSet()) {
+      _denialReason = GateDenialReason.none;
+      _pinRequired = true;
+    } else {
+      _denialReason = GateDenialReason.noCredentialEnrolled;
+    }
+  }
+
+  /// The device-credential prompt's own result decides (#65 U1; KTD1).
+  /// #271 D-6: the PIN is an *additional* layer on top of a granted device
+  /// credential — only [_completeUnlock]d once the PIN is also entered
+  /// correctly, or immediately when no PIN is configured (identical to
+  /// pre-#271 behavior). Split out of [unlock], same reason as
+  /// [_handleNoCredentialEnrolled].
+  Future<void> _handleCredentialResult(bool granted) async {
+    if (!granted) {
+      _denialReason = GateDenialReason.deniedByUser;
+      return;
+    }
+    _denialReason = GateDenialReason.none;
+    if (await _pinIsSet()) {
+      _pinRequired = true;
+    } else {
+      _completeUnlock();
+    }
+  }
+
+  Future<bool> _pinIsSet() async {
+    final service = _pinService;
+    if (service == null) return false;
+    return service.isPinSet();
+  }
+
+  // ---------------------------------------------------------- PIN settings
+  // Passthroughs to [PinCredentialService] for the settings screen (#271
+  // U1/U4) — kept behind [GateController] rather than exposing the service
+  // itself on the widget tree, the same seam pattern [AuthController] gives
+  // [AuthService]. None of these touch [locked]/[pinRequired]: unlike
+  // [submitPin] (the lock-screen entry point), a settings-screen check runs
+  // while the app is already unlocked and must never itself lock or unlock
+  // anything.
+
+  /// Whether a PIN is set, for the settings toggle's initial state.
+  Future<bool> isPinSet() => _pinIsSet();
+
+  /// The current lockout state, without attempting a verification — so the
+  /// lock screen can show a countdown immediately after a relaunch mid
+  /// lockout, rather than waiting for another wrong attempt.
+  Future<PinLockoutState> pinLockoutState() {
+    final service = _pinService;
+    if (service == null) return Future.value(const PinLockoutState());
+    return service.lockoutState();
+  }
+
+  /// Verifies [pin] against the stored hash without touching lock state —
+  /// the "current PIN" gate the settings screen applies before letting the
+  /// operator change or remove their PIN (#271 "requires the current PIN or
+  /// device auth"). Throws [StateError] with no PIN service configured.
+  Future<PinVerification> verifyPinForSettings(String pin) {
+    final service = _pinService;
+    if (service == null) {
+      throw StateError(
+          'GateController.verifyPinForSettings called with no PIN service');
+    }
+    return service.verifyPin(pin);
+  }
+
+  /// Sets (or replaces) the PIN. The caller is responsible for having
+  /// already confirmed the operator's right to do this — [verifyPinForSettings]
+  /// or a device-credential [reauthenticate] — for a *change*; creating a
+  /// brand-new PIN where none exists needs no such check.
+  Future<void> setPin(String pin) {
+    final service = _pinService;
+    if (service == null) {
+      throw StateError('GateController.setPin called with no PIN service');
+    }
+    return service.setPin(pin);
+  }
+
+  /// Removes the PIN entirely, same caller responsibility as [setPin].
+  Future<void> clearPin() {
+    final service = _pinService;
+    if (service == null) {
+      throw StateError('GateController.clearPin called with no PIN service');
+    }
+    return service.clearPin();
+  }
+
+  /// The one place [_locked] actually flips to unlocked (#271): shared by
+  /// the no-PIN path in [unlock] and a successful [submitPin].
+  void _completeUnlock() {
+    _locked = false;
+    _pinRequired = false;
+    _armInactivity();
+  }
+
+  /// The PIN entry UI's submission (#271 U3). Delegates the hash
+  /// comparison and lockout backoff to [PinCredentialService.verifyPin];
+  /// only a [PinCheckOutcome.correct] result actually opens the gate.
+  /// Throws [StateError] if called with no PIN service configured — the
+  /// UI can only reach this screen when [pinAvailable] and [pinRequired]
+  /// are both true, so that would be a caller bug, not a runtime
+  /// condition to render.
+  Future<PinVerification> submitPin(String pin) async {
+    final service = _pinService;
+    if (service == null) {
+      throw StateError('GateController.submitPin called with no PIN service');
+    }
+    final result = await service.verifyPin(pin);
+    if (result.outcome == PinCheckOutcome.correct) {
+      _completeUnlock();
+      notifyListeners();
+    }
+    return result;
   }
 
   /// A fresh device-credential check for a sensitive action while the app
@@ -437,7 +688,13 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// whether the operator is *still away* when the window settles, not on
   /// which lifecycle events arrived. That is a level check at one known
   /// moment, which no ordering guarantee is needed to answer.
+  ///
+  /// Issue #739: a QA build auto-grants — no prompt, no gate call, no
+  /// system-UI window. This is the client-side prompt bypass only; every
+  /// server-side re-check (the `delete-account` AAL2 gate, RLS) still runs
+  /// exactly as in a store build.
   Future<bool> reauthenticate() async {
+    if (_qaBuild) return true;
     if (_authenticating) return false;
     _authenticating = true;
     notifyListeners();
@@ -459,14 +716,23 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Re-lock now. Backgrounding always calls this; on un-gated platforms it
   /// only sets the cover flag.
+  ///
+  /// Issue #739: a QA build takes the un-gated branch on every platform —
+  /// a departure covers the content (the snapshot posture is unchanged)
+  /// but never re-locks, which is the whole point of the QA flag.
   void lock() {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
-    if (_gate.requiresUnlock) {
+    // #271: a re-lock discards any pending PIN step — backgrounding
+    // mid-entry must require the whole gate again, not resume where it
+    // left off.
+    _pinRequired = false;
+    if (_gate.requiresUnlock && !_qaBuild) {
       _locked = true;
     } else {
-      // Un-gated (web): there is no lock screen to dismiss a cover with,
-      // so only cover when the app is actually away.
+      // Un-gated (web, or a QA build per issue #739): there is no lock
+      // screen to dismiss a cover with, so only cover when the app is
+      // actually away.
       _obscured = !_resumed;
     }
     notifyListeners();
@@ -486,18 +752,14 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
     if (!_relockEnabled || _locked || _suppressingLock) return;
-    _inactivityTimer = inactivityTimerFactory(
-        inactivityTimeout, () => lock());
+    _inactivityTimer = inactivityTimerFactory(inactivityTimeout, () => lock());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        _resumed = true;
-        if (_systemUiWindows == 0) _obscured = false;
-        if (!_locked && !_suppressingLock) _armInactivity();
-        notifyListeners();
+        _resumedToForeground();
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
@@ -506,6 +768,25 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.detached:
         break;
     }
+  }
+
+  /// The `resumed` half of [didChangeAppLifecycleState], split out to keep
+  /// that switch under the CRAP gate's complexity budget.
+  void _resumedToForeground() {
+    _resumed = true;
+    if (_systemUiWindows == 0) _obscured = false;
+    if (!_locked && !_suppressingLock) _armInactivity();
+    // Issue #534: a `noCredentialEnrolled` denial means no prompt was
+    // ever shown, so there is nothing an operator could have "come
+    // back from" except the device's own settings. Re-check now
+    // rather than stranding them on the same denial screen until they
+    // tap Unlock again — [unlock] re-verifies `canAuthenticate()` and,
+    // if a credential was added, carries straight on to the real
+    // prompt.
+    if (_locked && _denialReason == GateDenialReason.noCredentialEnrolled) {
+      unawaited(unlock());
+    }
+    notifyListeners();
   }
 
   /// Any departure from the foreground: cover the content (snapshots), and

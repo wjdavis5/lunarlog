@@ -38,6 +38,9 @@ class _StubSharingService implements SharingService {
       );
 
   @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) async => null;
+
+  @override
   Future<void> revokeGuardian({
     required String profileId,
     required String targetUserId,
@@ -113,6 +116,10 @@ class _StubPredictionService implements PredictionConnectionService {
       throw UnimplementedError();
 
   @override
+  Future<void> leaveConnection({required String connectionId}) =>
+      throw UnimplementedError();
+
+  @override
   Future<ActivePredictionConnection?> getActiveConnection({required String profileId}) async =>
       null;
 
@@ -130,6 +137,10 @@ class _StubPredictionService implements PredictionConnectionService {
     required String profileId,
     required PredictionProjection projection,
   }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> retractProjection({required String profileId}) =>
       throw UnimplementedError();
 }
 

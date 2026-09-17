@@ -12,7 +12,9 @@ library;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -177,9 +179,9 @@ class _BlockingSettingsStore implements SettingsStore {
   bool get watchLive =>
       _watchStreams.any((stream) => stream.subscribed && !stream.cancelled);
 
-  void closeAll() {
+  Future<void> closeAll() async {
     for (final stream in _watchStreams) {
-      stream.close();
+      await stream.close();
     }
   }
 }
@@ -220,9 +222,9 @@ class _ManualProfilesRepository implements ProfilesRepository {
     return stream.map<List<Profile>>((_) => const <Profile>[]);
   }
 
-  void closeAll() {
+  Future<void> closeAll() async {
     for (final stream in _watchStreams) {
-      stream.close();
+      await stream.close();
     }
   }
 
@@ -237,7 +239,16 @@ class _ManualProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
+      throw UnimplementedError('not exercised in the lifecycle tests');
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+    String id,
+    TrackingPreferences? preferences,
+  ) =>
       throw UnimplementedError('not exercised in the lifecycle tests');
 
   @override
@@ -254,6 +265,10 @@ class _ManualProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) =>
+      throw UnimplementedError('not exercised in the lifecycle tests');
+
+  @override
+  Future<void> applyServerPurge(String id) =>
       throw UnimplementedError('not exercised in the lifecycle tests');
 }
 

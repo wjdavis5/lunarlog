@@ -156,6 +156,101 @@ class TwoMethods {
       expect(result.offenders.single.coveragePercent, 0.0);
     });
 
+    test(
+      'a file entirely absent from the coverage map scores its methods at '
+      '0%, not 100% (LLA-106)',
+      () {
+        // Three sequential ifs => complexity 4. At 100% coverage this would
+        // pass (CRAP = 4); the fix must score it as if 0% covered (CRAP =
+        // 4^2*1^3 + 4 = 20) when the file has no lcov entry whatsoever --
+        // the opposite of what "no measurable lines: not a coverage risk"
+        // (meant for a genuinely non-executable range inside a *present*
+        // file) would give it.
+        final source = '''
+class Risky {
+  int classify(int x) {
+    if (x > 0) return 1;
+    if (x > 1) return 2;
+    if (x > 2) return 3;
+    return 0;
+  }
+}
+''';
+        final dir = _fixtureLibDir('never_loaded.dart', source);
+        addTearDown(() => dir.deleteSync(recursive: true));
+
+        // The coverage map has no key at all for lib/never_loaded.dart --
+        // as if its SF: record were dropped from coverage/lcov.info, not
+        // merely present with zero DA hits.
+        final result = evaluateCrapGate(const {}, libDir: dir);
+
+        expect(result.passed, isFalse);
+        expect(result.offenders, hasLength(1));
+        final offender = result.offenders.single;
+        expect(offender.methodName, 'Risky.classify');
+        expect(offender.coveragePercent, 0.0);
+        expect(offender.crapScore, closeTo(20.0, 0.01));
+      },
+    );
+
+    test('an enum method is discovered and scored (LLA-107)', () {
+      // A switch expression with 4 arms on `this` inside an enum method --
+      // discovery previously handled classes/mixins/extensions/functions
+      // but never visited EnumDeclaration.body.members, so this method was
+      // silently invisible to the gate no matter its complexity/coverage.
+      // complexity = 1 (base) + 4 (one per arm) = 5; at 0% coverage:
+      // CRAP = 5^2*1^3 + 5 = 30.
+      final source = '''
+enum Flavor {
+  a,
+  b,
+  c,
+  d;
+
+  String label() => switch (this) {
+        Flavor.a => 'a',
+        Flavor.b => 'b',
+        Flavor.c => 'c',
+        Flavor.d => 'd',
+      };
+}
+''';
+      final dir = _fixtureLibDir('flavor.dart', source);
+      addTearDown(() => dir.deleteSync(recursive: true));
+
+      final daHits = {for (var line = 7; line <= 12; line++) line: 0};
+      final coverage = _coverageFor('lib/flavor.dart', daHits);
+
+      final result = evaluateCrapGate(coverage, libDir: dir);
+      expect(result.passed, isFalse);
+      expect(result.offenders, hasLength(1));
+      final offender = result.offenders.single;
+      expect(offender.methodName, 'Flavor.label');
+      expect(offender.complexity, 5);
+      expect(offender.crapScore, closeTo(30.0, 0.01));
+    });
+
+    test(
+      'an enum with only trivial methods stays under threshold (no false '
+      'positive from the new discovery path)',
+      () {
+        final source = '''
+enum Simple {
+  x,
+  y;
+
+  bool get isX => this == Simple.x;
+}
+''';
+        final dir = _fixtureLibDir('simple_enum.dart', source);
+        addTearDown(() => dir.deleteSync(recursive: true));
+
+        final result = evaluateCrapGate(const {}, libDir: dir);
+        expect(result.passed, isTrue);
+        expect(result.offenders, isEmpty);
+      },
+    );
+
     test('a switch *expression* counts one decision point per arm, same as a switch statement', () {
       // Regression test: SwitchExpressionCase is a distinct AST node from
       // SwitchCase/SwitchPatternCase (which only cover switch statements).

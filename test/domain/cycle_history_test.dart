@@ -8,10 +8,12 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show ActivePrediction, computePrediction;
+import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 LocalDate d(int y, int m, int day) => LocalDate(y, m, day);
@@ -498,6 +500,150 @@ void main() {
       ]);
     });
   });
+
+  group('CycleExclusionList with a CycleOverridesRepository (issue #568 (b))',
+      () {
+    late FakeSettingsStore store;
+    late FakeCycleOverridesRepository overrides;
+    late CycleExclusionList exclusions;
+
+    setUp(() {
+      store = FakeSettingsStore();
+      overrides = FakeCycleOverridesRepository();
+      exclusions = CycleExclusionList(store, overrides: overrides);
+    });
+
+    test('omit/include/load/watch all go through the repository, never the '
+        'settings store', () async {
+      expect(await exclusions.load('p1'), isEmpty);
+
+      await exclusions.omit('p1', d(2026, 4, 15));
+      expect(await exclusions.load('p1'), {d(2026, 4, 15)});
+      expect(store.values, isEmpty,
+          reason: 'the settings-store path must be bypassed entirely');
+
+      await exclusions.include('p1', d(2026, 4, 15));
+      expect(await exclusions.load('p1'), isEmpty);
+    });
+
+    test('watch reflects the repository stream', () async {
+      final seen = <Set<LocalDate>>[];
+      final sub = exclusions.watch('p1').listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      await exclusions.omit('p1', d(2026, 4, 15));
+      await pumpEventQueue();
+      expect(seen, [
+        isEmpty,
+        {d(2026, 4, 15)},
+      ]);
+    });
+  });
+
+  group('migrateOmittedCyclesToCycleOverrides (issue #568 (b))', () {
+    test('copies every profile\'s pre-existing omission list into the '
+        'repository, once', () async {
+      final store = FakeSettingsStore();
+      await store.set(
+          omittedCyclesSettingKey('p1'), encodeOmittedCycles([d(2026, 1, 1)]));
+      await store.set(omittedCyclesSettingKey('p2'),
+          encodeOmittedCycles([d(2026, 2, 2), d(2026, 3, 3)]));
+      final overrides = FakeCycleOverridesRepository();
+
+      await migrateOmittedCyclesToCycleOverrides(
+        settings: store,
+        overrides: overrides,
+        profileIds: ['p1', 'p2'],
+      );
+
+      expect(await overrides.excludedCycleStarts('p1'), {'2026-01-01'});
+      expect(
+          await overrides.excludedCycleStarts('p2'), {'2026-02-02', '2026-03-03'});
+      expect(
+          store.values[SettingsKeys.cycleOverridesMigratedFromOmissionList],
+          'true');
+    });
+
+    test('is a no-op on a second call — the flag short-circuits it', () async {
+      final store = FakeSettingsStore();
+      await store.set(
+          omittedCyclesSettingKey('p1'), encodeOmittedCycles([d(2026, 1, 1)]));
+      final overrides = FakeCycleOverridesRepository();
+
+      await migrateOmittedCyclesToCycleOverrides(
+          settings: store, overrides: overrides, profileIds: ['p1']);
+      // A local change after the migration ran must survive a second call.
+      await overrides.setExcludedFromAverage(
+          profileId: 'p1', cycleStartDate: '2026-01-01', excluded: false);
+      await migrateOmittedCyclesToCycleOverrides(
+          settings: store, overrides: overrides, profileIds: ['p1']);
+
+      expect(await overrides.excludedCycleStarts('p1'), isEmpty,
+          reason: 'the second call must not re-apply the old list');
+    });
+
+    test('a profile with no stored omission list is a harmless no-op',
+        () async {
+      final store = FakeSettingsStore();
+      final overrides = FakeCycleOverridesRepository();
+      await migrateOmittedCyclesToCycleOverrides(
+          settings: store, overrides: overrides, profileIds: ['p1']);
+      expect(await overrides.excludedCycleStarts('p1'), isEmpty);
+    });
+  });
+}
+
+/// Minimal in-memory [CycleOverridesRepository] fake — a set per profile,
+/// with a replaying watch mirroring [FakeSettingsStore]'s own contract.
+class FakeCycleOverridesRepository implements CycleOverridesRepository {
+  final Map<String, Set<String>> _excluded = {};
+  final _controllers = <String, StreamController<Set<String>>>{};
+
+  StreamController<Set<String>> _controllerFor(String profileId) =>
+      _controllers.putIfAbsent(
+        profileId,
+        () => StreamController<Set<String>>.broadcast(onListen: () {}),
+      );
+
+  /// Not exercised by this file's own scenarios (a device-local-omission
+  /// migration test, not an export test) — synthesises a minimal
+  /// [CycleOverride] per excluded date so the interface contract still
+  /// holds for any future caller.
+  @override
+  Future<List<CycleOverride>> listForProfile(String profileId) async => [
+        for (final date in _excluded[profileId] ?? const <String>{})
+          CycleOverride(
+            id: date,
+            profileId: profileId,
+            cycleStartDate: date,
+            excludedFromAverage: true,
+          ),
+      ];
+
+  @override
+  Future<Set<String>> excludedCycleStarts(String profileId) async =>
+      Set.of(_excluded[profileId] ?? const {});
+
+  @override
+  Stream<Set<String>> watchExcludedCycleStarts(String profileId) async* {
+    yield await excludedCycleStarts(profileId);
+    yield* _controllerFor(profileId).stream;
+  }
+
+  @override
+  Future<void> setExcludedFromAverage({
+    required String profileId,
+    required String cycleStartDate,
+    required bool excluded,
+  }) async {
+    final set = _excluded.putIfAbsent(profileId, () => <String>{});
+    if (excluded) {
+      set.add(cycleStartDate);
+    } else {
+      set.remove(cycleStartDate);
+    }
+    _controllerFor(profileId).add(Set.of(set));
+  }
 }
 
 /// Minimal in-memory [SettingsStore] with a replaying watch, mirroring

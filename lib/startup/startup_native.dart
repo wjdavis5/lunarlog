@@ -119,13 +119,20 @@ Future<void> deleteLocalDatabase() async => deleteRelocationArtifacts(
 /// Support directory move is hygiene; `NSURLIsExcludedFromBackupKey` here
 /// is the actual control (see the module doc comment above) — which is
 /// exactly why a failure here needs to be seen, not swallowed.
-Future<void> protectDatabaseFile() async {
+///
+/// Issue #561: takes the [databasePath] the caller actually opened —
+/// `LunarLogDbFactory.databasePath` from the same [buildDbFactory] call —
+/// rather than recomputing [localDatabaseFile] here. Those two only differ
+/// when [buildDbFactory] fell back to the legacy `Documents/` file (relocation
+/// verification failed); recomputing would always protect the Application
+/// Support target even when that file is untouched, leaving the plaintext
+/// legacy copy actually in use unprotected and still eligible for backup.
+Future<void> protectDatabaseFile(String databasePath) async {
   if (defaultTargetPlatform != TargetPlatform.iOS) return;
   try {
-    final file = await localDatabaseFile();
     await const MethodChannel(kPrivacyChannel).invokeMethod<void>(
       'protectDatabaseFile',
-      <String, String>{'path': file.path},
+      <String, String>{'path': databasePath},
     );
   } catch (error, stackTrace) {
     // U7-style (KTD12): never log the path or content, only the type.

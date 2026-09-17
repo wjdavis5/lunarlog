@@ -104,6 +104,16 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // Issue #607 (LLA-027): local_auth_android (1.0.56) itself only pulls in
+    // androidx.core/androidx.biometric/androidx.fragment -- it does not
+    // depend on androidx.appcompat, but its README requires the app's
+    // LaunchTheme/NormalTheme to parent off a Theme.AppCompat style "to
+    // prevent crashes on Android 8 and below" (values/styles.xml,
+    // values-night/styles.xml). Without this dependency those style parents
+    // fail to resolve at build time (no other plugin here pulls appcompat
+    // in transitively). 1.8.0 is the current stable release, consistent
+    // with compileSdk 37 above.
+    implementation("androidx.appcompat:appcompat:1.8.0")
     // U3 (R7): real Android NDK crash capture. `sentry-native-ndk` carries
     // its own independent version series (0.x), separate from
     // `io.sentry:sentry-android`'s (8.x) -- a versionless declaration fails

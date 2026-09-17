@@ -56,35 +56,6 @@ class CycleOverride {
 
   bool get isTombstone => deletedAt != null;
 
-  CycleOverride copyWith({
-    String? id,
-    String? profileId,
-    String? cycleStartDate,
-    bool? excludedFromAverage,
-    bool? manualStart,
-    Object? noteId = _unset,
-    Object? updatedAt,
-    Object? deletedAt = _unset,
-  }) =>
-      CycleOverride(
-        id: id ?? this.id,
-        profileId: profileId ?? this.profileId,
-        cycleStartDate: cycleStartDate ?? this.cycleStartDate,
-        excludedFromAverage: excludedFromAverage ?? this.excludedFromAverage,
-        manualStart: manualStart ?? this.manualStart,
-        noteId: _resolveNullable(noteId, this.noteId),
-        updatedAt: updatedAt as DateTime? ?? this.updatedAt,
-        deletedAt: _resolveNullable(deletedAt, this.deletedAt),
-      );
-
-  static const Object _unset = Object();
-
-  /// Resolves a `copyWith` sentinel-typed parameter: an unpassed argument
-  /// (still `_unset`) keeps [fallback]; anything else (including an
-  /// explicit `null`) overrides it. Same shape as [Profile._resolveNullable].
-  static T? _resolveNullable<T>(Object? value, T? fallback) =>
-      identical(value, _unset) ? fallback : value as T?;
-
   bool _sameIdentity(CycleOverride other) =>
       other.id == id &&
       other.profileId == profileId &&

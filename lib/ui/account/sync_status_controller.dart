@@ -30,6 +30,11 @@ class SyncStatusController extends ChangeNotifier {
   /// Answers [SyncPhase.awaitingUploadConsent] (R14); a no-op otherwise.
   Future<void> confirmUpload() => _engine.confirmUpload();
 
+  /// Makes the rejected state actionable (issue #568): bumps `local_rev`
+  /// on held-out rows so the next cycle retries them. A no-op when nothing
+  /// is currently rejected.
+  Future<void> retryRejected() => _engine.retryRejected();
+
   void _onSnapshot(SyncSnapshot next) {
     if (next == _snapshot) return;
     _snapshot = next;

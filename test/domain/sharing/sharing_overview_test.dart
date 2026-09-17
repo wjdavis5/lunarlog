@@ -120,27 +120,8 @@ void main() {
     });
   });
 
-  group('SharingProfileInfo.roleSubtitle', () {
-    test('shared profiles name the group and the role', () {
-      expect(
-          SharingProfileInfo.roleSubtitle(const SharingProfileInfo(
-              myRole: GuardianRole.coParent, acceptedCount: 2)),
-          'Shared with me · Co-Parent');
-      expect(
-          SharingProfileInfo.roleSubtitle(const SharingProfileInfo(
-              myRole: GuardianRole.viewer, acceptedCount: 2)),
-          'Shared with me · Viewer');
-    });
-
-    test('owned profiles name the role only when known', () {
-      expect(
-          SharingProfileInfo.roleSubtitle(const SharingProfileInfo(
-              myRole: GuardianRole.primaryGuardian, acceptedCount: 2)),
-          'Primary Guardian');
-      expect(
-          SharingProfileInfo.roleSubtitle(
-              const SharingProfileInfo.unknown()),
-          isNull);
-    });
-  });
+  // Issue #545: SharingProfileInfo.roleSubtitle moved to
+  // sharingProfileRoleSubtitle (lib/ui/l10n/guardian_role_copy.dart) since
+  // it renders localized copy — pinned in
+  // test/ui/l10n/guardian_role_copy_test.dart now.
 }

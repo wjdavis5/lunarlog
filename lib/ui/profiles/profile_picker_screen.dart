@@ -13,11 +13,18 @@
 /// no error and no spinner.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
@@ -26,22 +33,20 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/profile_card.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/profiles/pregnancy_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
-import 'package:lunarlog/ui/sharing/profile_sharing_tile.dart';
 import 'package:lunarlog/ui/sharing/sharing_overview_controller.dart';
 import 'package:provider/provider.dart';
 
-String formatCreatedDate(DateTime utc) {
-  final local = utc.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
-}
+String formatCreatedDate(DateTime utc, {String locale = dates.kFallbackLocale}) =>
+    dates.formatShortDate(utc.toLocal(), locale: locale);
 
 class ProfilePickerScreen extends StatefulWidget {
   const ProfilePickerScreen({super.key});
@@ -93,6 +98,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       overview.observeProfiles([for (final profile in active) profile.id]);
     }
     final sharing = Provider.of<SharingService?>(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profiles'),
@@ -100,12 +106,12 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
           const SharedWithMeAction(),
           IconButton(
-            tooltip: 'Settings',
+            tooltip: l10n.settingsTooltip,
             icon: const Icon(Icons.settings),
             onPressed: openSettings,
           ),
           IconButton(
-            tooltip: 'Add profile',
+            tooltip: l10n.profilePickerAddProfileTooltip,
             icon: const Icon(Icons.person_add),
             onPressed: () => _addProfile(context),
           ),
@@ -131,7 +137,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                         ListTile(
                           title: Text(profile.displayName),
                           subtitle: Text(
-                              'Created ${formatCreatedDate(profile.createdAt)}'),
+                              'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}'),
                           onTap: () => Navigator.of(context).push(
                             buildNamedRoute<void>(
                               name: kRouteProfileDetailScreen,
@@ -142,7 +148,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                             ),
                           ),
                           trailing: IconButton(
-                            tooltip: 'Unarchive',
+                            tooltip: l10n.profilePickerUnarchiveTooltip,
                             icon: const Icon(Icons.unarchive),
                             onPressed: () =>
                                 controller.unarchiveProfile(profile.id),
@@ -210,23 +216,42 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     Profile profile,
   ) {
     final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
-    final roleSubtitle = SharingProfileInfo.roleSubtitle(info);
-    return ProfileSharingTile(
+    final roleSubtitle =
+        sharingProfileRoleSubtitle(AppLocalizations.of(context), info);
+    // Issue #241: the picker row is a ProfileCard — avatar, cycle status
+    // (when a prediction service exists; an unconfigured tree keeps the
+    // bare name/subtitle row), and the #126 badges, replacing the bare
+    // sharing tile.
+    return ProfileCard(
       key: ValueKey('profile-row-${profile.id}'),
       profile: profile,
       info: info,
+      predictionService: Provider.of<CyclePredictionService?>(context),
       sharingService: sharing,
       refreshToken: overview?.badgeEpoch ?? 0,
-      subtitle: roleSubtitle ?? 'Created ${formatCreatedDate(profile.createdAt)}',
+      subtitle: roleSubtitle ??
+          'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}',
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
       trailing: PopupMenuButton<String>(
-        tooltip: 'Profile actions',
+        tooltip: AppLocalizations.of(context).profilePickerActionsTooltip,
         onSelected: (action) => _onRowAction(context, profile, action),
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
-          PopupMenuItem(value: 'rename', child: Text('Rename')),
-          PopupMenuItem(value: 'archive', child: Text('Archive')),
-        ],
+        itemBuilder: (context) {
+          // Issue #531: an unknown role (null - the guardian rows haven't
+          // synced, or this is a local-only/not-yet-shared profile) fails
+          // open to the full menu, matching the #3 null-vs-empty
+          // discipline documented on `acceptedGuardianFor` - only a known,
+          // resolved role that is actually insufficient hides an item.
+          final role = info.myRole;
+          final canEdit = role == null || role.canEditProfile;
+          final canDelete = role == null || role.canDeleteProfile;
+          return [
+            const PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
+            if (canEdit)
+              const PopupMenuItem(value: 'rename', child: Text('Rename')),
+            if (canDelete)
+              const PopupMenuItem(value: 'archive', child: Text('Archive')),
+          ];
+        },
       ),
     );
   }
@@ -247,28 +272,19 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
   }
 
   Future<void> _onRowAction(
-      BuildContext context, Profile profile, String action) async {
+    BuildContext context, Profile profile, String action) async {
     final controller = context.read<ProfileController>();
     if (action == 'caregivers') {
       // Returning from Manage Guardians may have cancelled an invitation:
       // refresh outside badges so the change surfaces without a restart.
       // The shared push site carries the #151 prediction-connection wiring
       // too — this must stay a single push of the screen.
-      openManageGuardians(context, profile)
-          ?.then((_) => _overview?.refreshBadges());
-    } else if (action == 'rename') {
-      final result = await showProfileEditDialog(context, existing: profile);
-      if (result == null) return;
-      await controller.renameProfile(
-        profile,
-        displayName: result.displayName,
-        isMinor: result.isMinor,
-        mode: result.mode,
-        birthYear: result.birthYear,
-        relationship: result.relationship,
+      unawaited(
+        openManageGuardians(context, profile)
+            ?.then((_) => _overview?.refreshBadges()),
       );
-      if (!context.mounted) return;
-      await _recordCycleAnswers(context, profile.id, result);
+    } else if (action == 'rename') {
+      await _onRenameAction(context, profile, controller);
     } else if (action == 'archive') {
       if (await confirmArchiveProfile(context, profile)) {
         await controller.archiveProfile(profile.id);
@@ -276,10 +292,55 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     }
   }
 
-  /// Persists the two #216 onboarding answers that are editable from the
-  /// profile edit dialog (life-stage mode and birth-control method)
-  /// through the same recorder seam the first-run flow uses — no-op on a
-  /// tree with no storage wired or when nothing changed.
+  /// The rename/edit action, extracted from [_onRowAction] for the same
+  /// complexity reason every other seam hook there was (the CRAP gate).
+  ///
+  /// Issue #192: the profile's pregnancy state is captured BEFORE the
+  /// edit dialog opens — leaving Pregnancy mode auto-offers exclusion of
+  /// the pregnancy interval from cycle averages once the switch itself
+  /// has landed. Read up front (not after the dialog) so the awaited
+  /// dialog round-trip never leaves this lookup on an unmounted context,
+  /// and so the row is the pre-edit one by construction.
+  Future<void> _onRenameAction(
+    BuildContext context,
+    Profile profile,
+    ProfileController controller,
+  ) async {
+    final modes = Provider.of<ProfileModesRepository?>(context, listen: false);
+    final pregnancyRow = await modes?.find(profile.id);
+    if (!context.mounted) return;
+    final result = await showProfileEditDialog(context, existing: profile);
+    if (result == null) return;
+    final wasPregnancy =
+        (pregnancyRow?.mode ?? LifecycleMode.tracking) ==
+            LifecycleMode.pregnancy;
+    final pregnancyStartedOn = pregnancyRow?.modeStartedOn;
+    await controller.renameProfile(
+      profile,
+      displayName: result.displayName,
+      isMinor: result.isMinor,
+      mode: result.mode,
+      birthYear: result.birthYear,
+      relationship: result.relationship,
+    );
+    if (!context.mounted) return;
+    await _recordCycleAnswers(context, profile.id, result);
+    if (context.mounted &&
+        wasPregnancy &&
+        result.lifecycleMode != LifecycleMode.pregnancy) {
+      await offerPregnancyExitExclusionFromTree(
+        context,
+        profileId: profile.id,
+        modeStartedOn: pregnancyStartedOn,
+      );
+    }
+  }
+
+  /// Persists the #216 onboarding answers that are editable from the
+  /// profile edit dialog (life-stage mode, birth-control method, and —
+  /// Issue #192 — the pregnancy estimated due date) through the same
+  /// recorder seam the first-run flow uses — no-op on a tree with no
+  /// storage wired or when nothing changed.
   Future<void> _recordCycleAnswers(
     BuildContext context,
     String profileId,
@@ -294,6 +355,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         lifecycleMode: result.lifecycleMode,
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice),
+        estimatedDueDate: result.estimatedDueDate,
       ),
     );
   }
@@ -313,7 +375,7 @@ class SharedWithMeAction extends StatelessWidget {
     if (service == null) return const SizedBox.shrink();
     return IconButton(
       key: const ValueKey('shared-with-me'),
-      tooltip: 'Shared with me',
+      tooltip: AppLocalizations.of(context).profilePickerSharedWithMeTooltip,
       icon: const Icon(Icons.calendar_month),
       onPressed: () => Navigator.of(context).push(
         buildNamedRoute<void>(

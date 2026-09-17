@@ -13,19 +13,25 @@ import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
@@ -76,6 +82,11 @@ class FakeObservationsRepository implements ObservationsRepository {
 
   @override
   Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+          String dayEntryId) async =>
       const [];
 
   @override
@@ -152,10 +163,23 @@ class FakeAccountDeletionService implements AccountDeletionService {
   Object? nextError;
   Completer<void>? hold;
 
+  /// Simulates the server's own Step 3 (Issue #605/LLA-052's server-informed
+  /// flow): when true, a call with no Apple code fails closed with
+  /// [AccountDeletionFailure.appleCodeRequired] - exactly `delete-account
+  /// /index.ts`'s behavior for an Apple-linked account whose deletion-
+  /// progress marker (#527/#605) does not already cover the current Apple
+  /// identity. A call that supplies a code (or any call at all when this is
+  /// false, e.g. a "code-free retry" or a non-Apple account) proceeds
+  /// normally to [nextError]/[hold] below.
+  bool requireAppleCode = false;
+
   @override
   Future<void> deleteAccount({String? appleAuthorizationCode}) async {
     deleteCalls++;
     appleCodesPassed.add(appleAuthorizationCode);
+    if (requireAppleCode && appleAuthorizationCode == null) {
+      throw const AccountDeletionFailure.appleCodeRequired();
+    }
     final holdFuture = hold?.future;
     if (holdFuture != null) await holdFuture;
     final error = nextError;
@@ -185,6 +209,28 @@ AuthorizationCredentialAppleID _appleCredential(String code) =>
       state: null,
     );
 
+/// Issue #140 review, LLA-094: [AccountSection._runExport] reads entries/
+/// observations through this one coherent seam now — delegates straight to
+/// the harness's own fakes so every prior "what gets threaded through"
+/// regression-guard still holds; profileMode/cycleOverrides are outside
+/// this file's own test scope (LLA-084 coverage lives in
+/// `account_importer_test.dart`/`account_export_test.dart`).
+class _HarnessExportSnapshotRepository implements AccountExportSnapshotRepository {
+  _HarnessExportSnapshotRepository(this._entries, this._observations);
+
+  final DayEntriesRepository _entries;
+  final ObservationsRepository _observations;
+
+  @override
+  Future<AccountExportSnapshot> forProfile(String profileId) async => (
+        entries: await _entries.listForProfile(profileId),
+        observations: await _observations.listForProfile(profileId),
+        profileMode: null,
+        cycleOverrides: const <CycleOverride>[],
+        mergeEvents: const <DayEntryMergeEvent>[],
+      );
+}
+
 class DeletionHarness {
   DeletionHarness({
     List<String> providers = const ['email'],
@@ -194,13 +240,15 @@ class DeletionHarness {
     FakeAccountDeletionService? deletionService,
     this.exportAccount,
     this.appleAuthorizationCodeRequest,
+    this.showAddApple,
+    this.mfaEnabled,
   })  : auth = FakeAuthService(),
         deletion = deletionService ??
             (provideDeletionService ? FakeAccountDeletionService() : null),
         gate = FakeGate(grantNext: grantReauth) {
     auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1', email: 'a@b.c'));
     auth.providers = providers;
-    controller = AuthController(authService: auth);
+    controller = AuthController(authService: auth, mfaEnabled: mfaEnabled);
     // A real Timer factory would leave the inactivity/system-UI timers
     // pending past the end of each test (the same reason
     // test/ui/account_test.dart's pumpSection uses this fake).
@@ -215,6 +263,18 @@ class DeletionHarness {
   final FakeAccountDeletionService? deletion;
   final ExportAccountCollaborator? exportAccount;
   final AppleAuthorizationCodeRequest? appleAuthorizationCodeRequest;
+
+  /// Issue #738: forwarded to the [AuthController] so the AAL2 step-up
+  /// group can run the flag-on (`LUNARLOG_ENABLE_MFA=true`) build; null
+  /// means the default-off build this test run compiles with.
+  final bool? mfaEnabled;
+
+  /// Forces [AccountSection]'s platform gate for the native Apple ceremony
+  /// (Issue #605/LLA-052): `true` simulates an iOS-capable device, `false`
+  /// simulates a platform with no native Sign in with Apple ceremony at all
+  /// (e.g. Android); null (the default) uses the real platform check, which
+  /// this test host does not satisfy.
+  final bool? showAddApple;
   final bool provideGate;
   int resetCalls = 0;
 
@@ -240,6 +300,12 @@ class DeletionHarness {
   Future<void> pump(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        // Issue #268: MfaSettingsSection renders unconditionally whenever
+        // AccountSection is signed-in, and calls AppLocalizations.of
+        // immediately — this harness needs the real delegates now, not
+        // just the ones a screen-specific failure path used to reach.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: MultiProvider(
           providers: [
             ChangeNotifierProvider<AuthController>.value(value: controller),
@@ -250,6 +316,18 @@ class DeletionHarness {
             Provider<DayEntriesRepository>.value(value: dayEntriesRepository),
             Provider<ObservationsRepository>.value(value: observationsRepository),
             Provider<CareContentRepository>.value(value: careContentRepository),
+            // Issue #140 review, LLA-094: `_runExport` reads entries/
+            // observations through this coherent snapshot seam now, not the
+            // two repos above directly — still backed by the SAME fakes, so
+            // this harness's "pins the observationsRepo.listForProfile call"
+            // regression-guard (see the field doc comment above) still
+            // holds.
+            Provider<AccountExportSnapshotRepository>.value(
+              value: _HarnessExportSnapshotRepository(
+                dayEntriesRepository,
+                observationsRepository,
+              ),
+            ),
             // The tree-provided export writer `_runExport` reads before
             // falling back to the injected collaborator (mirrors
             // `lib/app.dart`).
@@ -265,15 +343,23 @@ class DeletionHarness {
             ),
           ],
           child: Scaffold(
-            body: ValueListenableBuilder<bool>(
-              valueListenable: _sectionVisible,
-              builder: (context, visible, _) => visible
-                  ? AccountSection(
-                      showExportAndDelete: true,
-                      exportAccount: exportAccount,
-                      appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
-                    )
-                  : const SizedBox.shrink(),
+            // Issue #268: MfaSettingsSection adds another tile group to
+            // AccountSection's Column, which the real Settings screen
+            // always hosts inside a scrolling ListView (see
+            // settings_screen.dart) — this harness needs the same, or the
+            // fixed test viewport overflows on a small screen size.
+            body: SingleChildScrollView(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _sectionVisible,
+                builder: (context, visible, _) => visible
+                    ? AccountSection(
+                        showExportAndDelete: true,
+                        exportAccount: exportAccount,
+                        appleAuthorizationCodeRequest: appleAuthorizationCodeRequest,
+                        showAddApple: showAddApple,
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ),
           ),
         ),
@@ -288,10 +374,10 @@ class DeletionHarness {
     await tester.pump();
   }
 
-  void dispose() {
+  Future<void> dispose() async {
     controller.dispose();
     gateController.dispose();
-    auth.dispose();
+    await auth.dispose();
     _sectionVisible.dispose();
   }
 }
@@ -315,6 +401,128 @@ void main() {
       expect(h.deletion!.deleteCalls, 1);
       expect(h.resetCalls, 1);
       expect(h.gate.requests, 1, reason: 'the device credential came first');
+    });
+  });
+
+  group('AAL2 step-up before deletion (issue #268 D-6)', () {
+    // Issue #738: this group runs the flag-on build (`mfaEnabled: true`,
+    // what `--dart-define=LUNARLOG_ENABLE_MFA=true` compiles to) — #714's
+    // behavior exactly, nothing deleted. The flag-off default is pinned by
+    // the closing test.
+    testWidgets(
+        'a verified MFA factor requires a correct step-up code, after the '
+        'device credential and before the delete confirmation dialog',
+        (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(h.gate.requests, 1,
+          reason: 'the device credential still runs first, unchanged');
+      expect(find.text("Confirm it's you"), findsOneWidget);
+      expect(find.text('Delete account?'), findsNothing,
+          reason: 'the delete confirmation must wait for the step-up');
+      expect(h.deletion!.deleteCalls, 0);
+
+      await tester.enterText(
+          find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+      await tester.tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+      await tester.pumpAndSettle();
+
+      expect(h.auth.verifyTotpCodeCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+      expect(find.text('Delete account?'), findsOneWidget);
+
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.deletion!.deleteCalls, 1);
+      expect(h.resetCalls, 1);
+    });
+
+    testWidgets('cancelling the step-up dialog never opens the confirmation '
+        'or calls the deletion service', (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete account?'), findsNothing);
+      expect(h.deletion!.deleteCalls, 0);
+      expect(h.resetCalls, 0);
+    });
+
+    testWidgets('no verified MFA factor: the delete confirmation opens '
+        'immediately with no step-up dialog (unaffected pre-#268 path)',
+        (tester) async {
+      final h = DeletionHarness(mfaEnabled: true);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing);
+      expect(find.text('Delete account?'), findsOneWidget);
+    });
+
+    testWidgets(
+        'feature flag off (issue #738, the default build): even a '
+        'step-up-required account deletes with no step-up dialog — '
+        'ensureAal2 auto-passes', (tester) async {
+      final h = DeletionHarness();
+      addTearDown(h.dispose);
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsNothing,
+          reason: 'a flag-off build never demands an AAL2 step-up');
+      expect(find.text('Delete account?'), findsOneWidget);
+      expect(h.auth.requiresMfaStepUpCalls, 0,
+          reason: 'the gate short-circuits before consulting the service');
+      expect(h.auth.listMfaFactorsCalls, 0,
+          reason: 'the MFA settings tile group never rendered either');
+
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.deletion!.deleteCalls, 1);
     });
   });
 
@@ -364,6 +572,9 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -400,6 +611,9 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -449,6 +663,9 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -481,6 +698,9 @@ void main() {
           Map<String, List<Observation>>? observationsByProfile = const {},
           Map<String, List<CareNote>>? careNotesByProfile = const {},
           Map<String, List<VisitPrepItem>>? visitPrepByProfile = const {},
+          Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
+          Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
+          Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;
@@ -567,12 +787,17 @@ void main() {
     });
   });
 
-  group('Apple identity ceremony (KTD3)', () {
-    testWidgets('with apple in providers, the code is fetched and forwarded '
-        'to the service', (tester) async {
+  group('Apple identity ceremony (KTD3) - server-informed flow '
+      '(Issue #605/LLA-052)', () {
+    testWidgets('the normal iOS first attempt: the server asks for a code, '
+        'then the ceremony runs, then a second call carries the code',
+        (tester) async {
       var appleCalls = 0;
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           appleCalls++;
           return _appleCredential('fresh-code-123');
@@ -587,13 +812,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(appleCalls, 1);
-      expect(h.deletion!.deleteCalls, 1);
-      expect(h.deletion!.appleCodesPassed.single, 'fresh-code-123');
+      expect(service.deleteCalls, 2,
+          reason: 'the first, code-free call must run before the ceremony '
+              'is ever invoked');
+      expect(service.appleCodesPassed, [null, 'fresh-code-123']);
       expect(h.resetCalls, 1);
     });
 
-    testWidgets('without apple in providers, the service is called with a '
-        'null code and no Apple ceremony runs', (tester) async {
+    testWidgets('code-free retry on iOS: the server accepts the first, '
+        'code-free call, and the ceremony is never invoked even though '
+        'this device has one', (tester) async {
+      var appleCalls = 0;
+      final h = DeletionHarness(
+        providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        appleAuthorizationCodeRequest: () async {
+          appleCalls++;
+          return _appleCredential('should-not-be-used');
+        },
+      );
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(appleCalls, 0,
+          reason:
+              'the server never asked for a code, so the ceremony must not run');
+      expect(h.deletion!.deleteCalls, 1);
+      expect(h.deletion!.appleCodesPassed.single, isNull);
+      expect(h.resetCalls, 1);
+    });
+
+    testWidgets('a non-Apple account needs no code either: the first, '
+        'code-free call succeeds and no ceremony runs', (tester) async {
       var appleCalls = 0;
       final h = DeletionHarness(
         providers: ['email'],
@@ -615,10 +870,14 @@ void main() {
       expect(h.deletion!.appleCodesPassed.single, isNull);
     });
 
-    testWidgets('a cancelled Apple dialog aborts deletion silently: no '
-        'service call, no reset', (tester) async {
+    testWidgets('a cancelled Apple dialog aborts deletion silently after '
+        'the server asks for a code: exactly one (code-free) service call, '
+        'no reset, no error copy', (tester) async {
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           throw const SignInWithAppleAuthorizationException(
             code: AuthorizationErrorCode.canceled,
@@ -634,15 +893,20 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      expect(h.deletion!.deleteCalls, 0);
+      expect(service.deleteCalls, 1,
+          reason: 'only the first, code-free call ran - the cancelled '
+              'ceremony aborted before a second call could happen');
       expect(h.resetCalls, 0);
       expect(key('account-delete-error'), findsNothing);
     });
 
     testWidgets('a non-cancellation Apple error surfaces unknown copy, not '
         'silence', (tester) async {
+      final service = FakeAccountDeletionService()..requireAppleCode = true;
       final h = DeletionHarness(
         providers: ['email', 'apple'],
+        showAddApple: true, // this device has the native ceremony available
+        deletionService: service,
         appleAuthorizationCodeRequest: () async {
           throw const SignInWithAppleAuthorizationException(
             code: AuthorizationErrorCode.failed,
@@ -658,7 +922,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      expect(h.deletion!.deleteCalls, 0);
+      expect(service.deleteCalls, 1);
       expect(h.resetCalls, 0);
       expect(key('account-delete-error'), findsOneWidget);
       expect(
@@ -672,6 +936,78 @@ void main() {
         findsOneWidget,
       );
     });
+
+    group('no native ceremony on a platform that lacks it (mixed-provider '
+        'Android)', () {
+      testWidgets('a code-free retry succeeds: the native ceremony never '
+          'runs, the service is called with a null code, and deletion '
+          'still succeeds', (tester) async {
+        var appleCalls = 0;
+        final h = DeletionHarness(
+          providers: ['email', 'apple'],
+          showAddApple: false, // simulates Android: no native ceremony
+          appleAuthorizationCodeRequest: () async {
+            appleCalls++;
+            return _appleCredential('should-not-be-used');
+          },
+        );
+        addTearDown(h.dispose);
+        await h.pump(tester);
+
+        await tester.tap(key('account-delete'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-delete-confirm'));
+        await tester.pumpAndSettle();
+
+        expect(appleCalls, 0,
+            reason: 'the unavailable native ceremony must never be invoked');
+        expect(h.deletion!.deleteCalls, 1);
+        expect(h.deletion!.appleCodesPassed.single, isNull);
+        expect(h.resetCalls, 1);
+      });
+
+      testWidgets('when the server still needs a fresh code: surfaces the '
+          'distinct, honest appleNativeCeremonyUnavailable copy rather than '
+          'either the native ceremony throwing '
+          'SignInWithAppleNotSupportedException or the misleading plain '
+          'apple_code_required "please try again" copy', (tester) async {
+        var appleCalls = 0;
+        final service = FakeAccountDeletionService()..requireAppleCode = true;
+        final h = DeletionHarness(
+          providers: ['email', 'apple'],
+          showAddApple: false, // simulates Android: no native ceremony
+          deletionService: service,
+          appleAuthorizationCodeRequest: () async {
+            appleCalls++;
+            return _appleCredential('should-not-be-used');
+          },
+        );
+        addTearDown(h.dispose);
+        await h.pump(tester);
+
+        await tester.tap(key('account-delete'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-delete-confirm'));
+        await tester.pumpAndSettle();
+
+        expect(appleCalls, 0,
+            reason: 'the unavailable native ceremony must never be invoked');
+        expect(service.deleteCalls, 1,
+            reason: 'only the first, code-free call ran - no second call '
+                'was ever attempted on a platform with no ceremony');
+        expect(service.appleCodesPassed.single, isNull);
+        expect(h.resetCalls, 0);
+        expect(
+          find.descendant(
+            of: key('account-delete-error'),
+            matching: find.text(accountDeletionFailureCopy(
+                const AccountDeletionFailure.appleNativeCeremonyUnavailable())),
+            matchRoot: true,
+          ),
+          findsOneWidget,
+        );
+      });
+    });
   });
 
   group('each AccountDeletionFailure variant renders its own copy (R12)', () {
@@ -679,15 +1015,31 @@ void main() {
       AccountDeletionFailure.network(),
       AccountDeletionFailure.unauthorized(),
       AccountDeletionFailure.appleCodeRequired(),
+      AccountDeletionFailure.appleNativeCeremonyUnavailable(),
       AccountDeletionFailure.appleRevokeFailed(),
+      AccountDeletionFailure.appleRevocationMarkerFailed(),
       AccountDeletionFailure.attachmentCleanupFailed(),
+      AccountDeletionFailure.attachmentCleanupUnbounded(),
       AccountDeletionFailure.timeout(),
       AccountDeletionFailure.deleteUserFailed(),
       AccountDeletionFailure.unknown(),
+      AccountDeletionFailure.mfaRequired(),
     ]) {
       testWidgets('$failure', (tester) async {
         final service = FakeAccountDeletionService()..nextError = failure;
-        final h = DeletionHarness(deletionService: service);
+        // showAddApple: true (Issue #605/LLA-052) so a persistent
+        // appleCodeRequired (set unconditionally as nextError above, so it
+        // also fires on the ceremony's own follow-up call) still surfaces
+        // its own copy via _performDeletion's generic catch, rather than
+        // this loop accidentally exercising the
+        // appleNativeCeremonyUnavailable path on a test host with no
+        // native ceremony of its own.
+        final h = DeletionHarness(
+          deletionService: service,
+          showAddApple: true,
+          appleAuthorizationCodeRequest: () async =>
+              _appleCredential('generic-loop-code'),
+        );
         addTearDown(h.dispose);
         await h.pump(tester);
 
@@ -732,6 +1084,30 @@ void main() {
       expect(copy.toLowerCase(), contains('try again'));
     });
 
+    testWidgets('appleNativeCeremonyUnavailable explains nothing was '
+        'deleted and points to another device or support, not a bare retry '
+        '(Issue #605/LLA-052)', (tester) async {
+      const failure = AccountDeletionFailure.appleNativeCeremonyUnavailable();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // Unlike appleCodeRequired, a bare retry can never succeed here - the
+      // ceremony will never become available on this platform - so the
+      // copy must not read as a plain "please try again" and must instead
+      // point somewhere that can actually finish the job.
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('device'));
+      expect(copy.toLowerCase(), contains('support'));
+    });
+
     testWidgets('attachmentCleanupFailed explains nothing was deleted and '
         'the operator should retry (Issue #243 round 2 fix)', (tester) async {
       const failure = AccountDeletionFailure.attachmentCleanupFailed();
@@ -754,6 +1130,52 @@ void main() {
       expect(copy, isNot(contains('your account data was deleted')));
       expect(copy.toLowerCase(), contains('nothing was deleted'));
       expect(copy.toLowerCase(), contains('try again'));
+    });
+
+    testWidgets('appleRevocationMarkerFailed explains the data WAS deleted and '
+        'Apple DID confirm the revocation, unlike appleRevokeFailed (Issue '
+        '#599)', (tester) async {
+      const failure = AccountDeletionFailure.appleRevocationMarkerFailed();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      expect(copy, isNot(contains('could not confirm')));
+      expect(copy.toLowerCase(), contains('deleted'));
+      expect(copy.toLowerCase(), contains('confirmed the sign-in'));
+      expect(copy.toLowerCase(), contains('try again'));
+      expect(copy.toLowerCase(), contains('support'));
+    });
+
+    testWidgets('attachmentCleanupUnbounded explains nothing was deleted and '
+        'directs to support rather than inviting a bare retry (Issue #605/'
+        'LLA-053)', (tester) async {
+      const failure = AccountDeletionFailure.attachmentCleanupUnbounded();
+      final service = FakeAccountDeletionService()..nextError = failure;
+      final h = DeletionHarness(deletionService: service);
+      addTearDown(h.dispose);
+      await h.pump(tester);
+
+      await tester.tap(key('account-delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-delete-confirm'));
+      await tester.pumpAndSettle();
+
+      final copy = accountDeletionFailureCopy(failure);
+      // Unlike attachmentCleanupFailed, this is a bound on the account's own
+      // data - a bare retry can never clear it, so the copy must say so and
+      // point to support instead of "please try again".
+      expect(copy, isNot(contains('your account data was deleted')));
+      expect(copy.toLowerCase(), contains('nothing was deleted'));
+      expect(copy.toLowerCase(), contains('support'));
+      expect(copy.toLowerCase(), isNot(contains('please try again')));
     });
 
     testWidgets('appleRevokeFailed explains the data WAS deleted, only Apple '
@@ -900,6 +1322,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               ChangeNotifierProvider<AuthController>.value(value: controller),

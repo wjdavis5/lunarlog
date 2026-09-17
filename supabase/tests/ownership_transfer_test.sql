@@ -4,7 +4,7 @@
 -- handover transaction, sovereignty after transfer, the attribution-guard
 -- bypass, and the cascade proofs that motivated R15.
 begin;
-select plan(94);
+select plan(95);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -483,6 +483,12 @@ select throws_ok(
 -- schema also lists aggregates, and pg_get_functiondef() raises "<name> is
 -- an aggregate function" if handed one of those oids instead of an
 -- ordinary function's.
+-- Issue #616, LLA-059: enforce_profile_transfer_fields() (the new BEFORE
+-- INSERT/UPDATE guard on profiles.transferred_at/transferred_to_user_id)
+-- reuses this same GUC as its own bypass condition, per the migration's
+-- own "keep the lunarlog.ownership_transfer/lunarlog.import_cleanup GUC
+-- bypass patterns in mind" guidance - so the count below grows from two
+-- to three, deliberately.
 select is(
   (select count(*)
      from pg_proc p
@@ -490,8 +496,8 @@ select is(
     where n.nspname = 'public'
       and p.prokind = 'f'
       and pg_get_functiondef(p.oid) like '%lunarlog.ownership_transfer%'),
-  2::bigint,
-  'R21/KTD4: exactly two functions in public reference the ownership-transfer GUC name'
+  3::bigint,
+  'R21/KTD4: exactly three functions in public reference the ownership-transfer GUC name (Issue #616/LLA-059 added the third)'
 );
 select ok(
   pg_get_functiondef('public.accept_ownership_transfer(text, text, text)'::regprocedure) like '%lunarlog.ownership_transfer%',
@@ -499,7 +505,11 @@ select ok(
 );
 select ok(
   pg_get_functiondef('public.enforce_day_entry_attribution()'::regprocedure) like '%lunarlog.ownership_transfer%',
-  'R21/KTD4: the other is enforce_day_entry_attribution (reads it)'
+  'R21/KTD4: another is enforce_day_entry_attribution (reads it)'
+);
+select ok(
+  pg_get_functiondef('public.enforce_profile_transfer_fields()'::regprocedure) like '%lunarlog.ownership_transfer%',
+  'R21/KTD4: the third is enforce_profile_transfer_fields (Issue #616/LLA-059, reads it)'
 );
 select is(
   (select count(*)
@@ -876,10 +886,16 @@ select is(
 );
 
 select tests.authenticate_as('kid');
+-- A push guaranteed to win any LWW race against this profile's current
+-- stored updated_at, so this test also proves the worst case (this push
+-- WOULD otherwise fully apply): even so, transferred_to_user_id is never
+-- written. now() (rather than a fixed future literal) keeps this ahead of
+-- every earlier fixture in this file while staying under Issue #566's
+-- five-minutes-ahead-of-the-server clamp.
 insert into r select 'aot296_push', public.sync_push(
   jsonb_build_array(jsonb_build_object(
     'id', tests.ulid(401), 'display_name', 'Riley', 'is_minor', true,
-    'updated_at', '2030-01-01T00:00:00Z',
+    'updated_at', to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     'transferred_to_user_id', tests.get_supabase_uid('eve'))),
   '[]'::jsonb);
 select is(pg_temp.resp('aot296_push') -> 'rejected', '[]'::jsonb,

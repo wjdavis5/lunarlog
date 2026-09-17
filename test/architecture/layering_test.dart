@@ -107,23 +107,46 @@ List<File> _dartFilesUnder(String path, {bool excludeGenerated = false}) =>
         .where((f) => !excludeGenerated || !f.path.endsWith('.g.dart'))
         .toList();
 
+/// The `.dart` files directly in `lib/` (non-recursive — `lib/data/`,
+/// `lib/domain/`, `lib/ui/`, etc. are each already covered by their own
+/// scan above). Issue #551: `lib/app.dart` and `lib/app_root.dart` sat
+/// outside every scan in this file despite importing both `lib/data` and
+/// `lib/ui` — 1800+ combined lines with no layering guard of any kind.
+List<File> _bareLibDartFiles() => Directory('lib')
+    .listSync()
+    .whereType<File>()
+    .where((f) => f.path.endsWith('.dart'))
+    .toList();
+
+void _expectNoOffendersAmong(
+  List<File> files,
+  bool Function(String contents, String path) violates,
+  String rule,
+) {
+  expect(files, isNotEmpty, reason: 'scanned zero files — check the path');
+
+  // Issue #658: normalise to posix separators for reporting too, so an
+  // offender list printed on Windows reads the same (`lib/data/x.dart`) as
+  // it does in CI, rather than `lib\data\x.dart`.
+  final offenders = [
+    for (final file in files)
+      if (violates(file.readAsStringSync(), file.path))
+        file.path.replaceAll(r'\', '/'),
+  ];
+  expect(offenders, isEmpty,
+      reason: '$rule, but these files do:\n${offenders.join('\n')}');
+}
+
 void _expectNoOffenders(
   String root,
   bool Function(String contents, String path) violates,
   String rule, {
   bool excludeGenerated = false,
-}) {
-  final files = _dartFilesUnder(root, excludeGenerated: excludeGenerated);
-  expect(files, isNotEmpty,
-      reason: 'scanned zero files under $root — check the path');
-
-  final offenders = [
-    for (final file in files)
-      if (violates(file.readAsStringSync(), file.path)) file.path,
-  ];
-  expect(offenders, isEmpty,
-      reason: '$rule, but these files do:\n${offenders.join('\n')}');
-}
+}) =>
+    _expectNoOffendersAmong(
+        _dartFilesUnder(root, excludeGenerated: excludeGenerated),
+        violates,
+        rule);
 
 void main() {
   group('layering (KTD2)', () {
@@ -159,6 +182,35 @@ void main() {
     test('no lib/domain file depends on lib/data', () {
       _expectNoOffenders(
           'lib/domain', dependsOnDataLayer, 'lib/domain must not depend on lib/data');
+    });
+
+    // Issue #551: `lib/app.dart` and `lib/app_root.dart` are the
+    // composition-root widgets — they legitimately import both `lib/data`
+    // and `lib/ui` to assemble the provider tree, so neither the
+    // `lib/data -/-> lib/ui` nor the `lib/ui -/-> lib/data` rule above can
+    // apply to them (and previously didn't, since neither scan reaches a
+    // bare `lib/*.dart` file at all). Every *other* bare `lib/*.dart` file
+    // (`main.dart`, `config.dart`, `gate_controller.dart`,
+    // `app_lifecycle.dart`) has no such reason to import `lib/ui` directly
+    // — this scan gives them the same guard `lib/data` already has, and
+    // catches a future bare `lib/*.dart` file drifting into a UI import
+    // without earning the same documented exception these two have.
+    test(
+        'no lib/*.dart file depends on lib/ui, except the two documented '
+        'composition-root widgets', () {
+      const composesTheUiTreeItself = {'lib/app.dart', 'lib/app_root.dart'};
+      // Issue #658: `File.path` from `Directory.listSync()` is
+      // backslash-separated on Windows (`lib\app.dart`), so comparing it
+      // directly against the posix-style allowlist above never matched and
+      // both composition-root widgets were reported as offenders on every
+      // Windows run. Normalise to posix separators first, same as
+      // `_resolve` already does for relative-import targets.
+      final files = _bareLibDartFiles()
+          .where((f) =>
+              !composesTheUiTreeItself.contains(f.path.replaceAll(r'\', '/')))
+          .toList();
+      _expectNoOffendersAmong(files, dependsOnUiLayer,
+          'a bare lib/*.dart file must not depend on lib/ui');
     });
 
     // Gives the guard above its own teeth: without this, a detector that

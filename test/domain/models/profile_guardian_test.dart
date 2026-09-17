@@ -96,27 +96,33 @@ void main() {
     test('toDb and fromDb round-trip properly', () {
       for (final role in GuardianRole.values) {
         expect(GuardianRole.fromDb(role.toDb()), role);
-        expect(role.label.isNotEmpty, isTrue);
       }
       for (final status in GuardianStatus.values) {
         expect(GuardianStatus.fromDb(status.toDb()), status);
       }
     });
 
-    test('unknown db value throws ArgumentError', () {
-      expect(() => GuardianRole.fromDb('unknown'), throwsArgumentError);
-      expect(() => GuardianStatus.fromDb('unknown'), throwsArgumentError);
+    // Issue #540: fromDb returns null on an unrecognised value rather than
+    // throwing — profileGuardianToDomain is what fails closed, tested in
+    // mappers_test.dart.
+    test('unknown db value returns null, not a thrown ArgumentError', () {
+      expect(GuardianRole.fromDb('unknown'), isNull);
+      expect(GuardianStatus.fromDb('unknown'), isNull);
     });
 
-    test('readOnlyReason is set only for the one role that cannot log '
-        '(Issue #3 gap-closure plan, U6)', () {
+    // Issue #545: GuardianRole.label and .readOnlyReason moved to
+    // guardianRoleLabel/guardianRoleReadOnlyReason
+    // (lib/ui/l10n/guardian_role_copy.dart) — they rendered user-facing
+    // English directly in this pure-Dart domain module. Coverage
+    // (including "readOnlyReason is set only for the one role that cannot
+    // log") moved to test/ui/l10n/guardian_role_copy_test.dart; [canLog]
+    // itself is still pinned right here since it stays a domain capability
+    // flag.
+    test('only the viewer role cannot log', () {
       expect(GuardianRole.viewer.canLog, isFalse);
-      expect(GuardianRole.viewer.readOnlyReason, isNotNull);
-      expect(GuardianRole.viewer.readOnlyReason, isNotEmpty);
       for (final role
           in GuardianRole.values.where((r) => r != GuardianRole.viewer)) {
         expect(role.canLog, isTrue);
-        expect(role.readOnlyReason, isNull);
       }
     });
   });

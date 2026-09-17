@@ -10,12 +10,14 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/help/help_cards.dart';
+import '../../observability/route_names.dart';
 
 /// Presents [card] in a modal bottom sheet built purely from bundled copy.
 Future<void> showHelpCardSheet(BuildContext context, HelpCard card) =>
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      routeSettings: const RouteSettings(name: kRouteHelpCardSheet),
       builder: (_) => HelpCardView(card: card),
     );
 

@@ -162,6 +162,8 @@ void main() {
         'p_cycle_overrides': [],
         'p_care_notes': [],
         'p_visit_prep_items': [],
+        'p_merge_events': [],
+        'p_tag_registry': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -232,7 +234,8 @@ void main() {
       expect(jsonDecode(requests.single.body),
           {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
             'p_profile_modes': [], 'p_cycle_overrides': [],
-            'p_care_notes': [], 'p_visit_prep_items': []});
+            'p_care_notes': [], 'p_visit_prep_items': [],
+            'p_merge_events': [], 'p_tag_registry': []});
     });
 
     test('sends at most 500 rows per array', () async {
@@ -252,6 +255,16 @@ void main() {
       final tooMany = List.generate(501, (i) => <String, Object?>{'id': '$i'});
       expect(() => PushBatch(profiles: tooMany), throwsArgumentError);
       expect(() => PushBatch(dayEntries: tooMany), throwsArgumentError);
+      // Issue #257: every array carries the same per-array ceiling — the
+      // constructor's cap branches all stay covered (and the CRAP gate
+      // green) as the batch grows with each synced table.
+      expect(() => PushBatch(observations: tooMany), throwsArgumentError);
+      expect(() => PushBatch(profileModes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(cycleOverrides: tooMany), throwsArgumentError);
+      expect(() => PushBatch(careNotes: tooMany), throwsArgumentError);
+      expect(() => PushBatch(visitPrepItems: tooMany), throwsArgumentError);
+      expect(() => PushBatch(mergeEvents: tooMany), throwsArgumentError);
+      expect(() => PushBatch(tagRegistry: tooMany), throwsArgumentError);
       expect(PushBatch.maxRows, 500);
     });
 
@@ -377,6 +390,62 @@ void main() {
       expect(row.serverVersion, 11);
     });
 
+    test('deleted profiles use the deleted_profiles table (Issue #522)',
+        () async {
+      client = makeClient((_) async => json([
+            {
+              'profile_id': profileId,
+              'deleted_at': '2026-09-01T10:00:00+00:00',
+              'server_version': 9,
+            }
+          ]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      final request = requests.single;
+      expect(request.url.path, '/rest/v1/deleted_profiles');
+      final row = rows.single as RemoteDeletedProfileRow;
+      expect(row.profileId, profileId);
+      expect(row.deletedAt, DateTime.utc(2026, 9, 1, 10));
+      expect(row.serverVersion, 9);
+    });
+
+    test('deleted_profiles falls back to an empty page — never a cycle '
+        'failure — when the server has not run the migration adding it yet '
+        '(issue #522)', () async {
+      client = makeClient((_) async => json(
+            {
+              'message': 'Could not find the table \'public.deleted_profiles\'',
+              'code': 'PGRST205',
+            },
+            status: 404,
+          ));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.deletedProfiles,
+        afterVersion: 0,
+        limit: 100,
+      );
+      expect(rows, isEmpty);
+    });
+
+    test('a "table not found" response for any OTHER table still throws — '
+        'the leniency above is scoped to deleted_profiles only', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the table', 'code': 'PGRST205'},
+            status: 404,
+          ));
+      await expectLater(
+        SupabaseSyncTransport(client!).pullPage(
+          table: SyncTable.profiles,
+          afterVersion: 0,
+          limit: 100,
+        ),
+        throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+
     test('an empty page decodes to an empty list', () async {
       client = makeClient((_) async => json([]));
       final rows = await SupabaseSyncTransport(client!).pullPage(
@@ -413,6 +482,386 @@ void main() {
           limit: 500,
         ),
         throwsA(isA<SyncTransportOtherError>()),
+      );
+    });
+  });
+
+  group('primePullCycle / pullPage RPC caching (issue #598)', () {
+    test('primePullCycle POSTs once to /rpc/sync_pull with p_cursors built '
+        'from the given map, and pullPage then answers every one of those '
+        'tables from the cache with no further request (multi-table cursor '
+        'advancement in one round trip)', () async {
+      client = makeClient((_) async => json({
+            'profiles': [profileJson(version: 43), profileJson(version: 44)],
+            'day_entries': [entryJson(version: 9)],
+          }));
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({
+        SyncTable.profiles: 42,
+        SyncTable.dayEntries: 0,
+      });
+      final profiles = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 42, limit: 500);
+      final entries = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(requests, hasLength(1),
+          reason: 'one sync_pull call served both tables\' first page');
+      final request = requests.single;
+      expect(request.method, 'POST');
+      expect(request.url.toString(), '$baseUrl/rest/v1/rpc/sync_pull');
+      expect(jsonDecode(request.body), {
+        'p_cursors': {'profiles': 42, 'day_entries': 0},
+      });
+      expect(profiles.map((r) => r.serverVersion), [43, 44]);
+      expect(entries.single.serverVersion, 9);
+    });
+
+    test('a table not named in primePullCycle\'s cursors is unaffected — '
+        'pullPage falls back to its own select for it', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': []});
+        }
+        return json([entryJson(version: 5)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/day_entries');
+    });
+
+    test('pullPage falls back to the per-table select when sync_pull was '
+        'never primed at all (every pre-#598 caller)', () async {
+      client = makeClient((_) async => json([profileJson(version: 7)]));
+      final rows = await SupabaseSyncTransport(client!).pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+      expect(rows, hasLength(1));
+      expect(requests.single.url.path, '/rest/v1/profiles');
+    });
+
+    test('a PGRST202 "function not found" response to sync_pull leaves the '
+        'cache empty, so pullPage falls back to the per-table select — the '
+        'graceful degradation for a server predating the migration that '
+        'adds sync_pull', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          );
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.first.url.toString(), '$baseUrl/rest/v1/rpc/sync_pull');
+      expect(requests.last.url.path, '/rest/v1/profiles');
+    });
+
+    test('a raw Postgres 42883 undefined_function response to sync_pull '
+        'also falls back cleanly (a stale PostgREST schema cache can '
+        'surface the SQLSTATE directly instead of PGRST202)', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json(
+            {'message': 'function does not exist', 'code': '42883'},
+            status: 404,
+          );
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+    });
+
+    test('any other sync_pull failure (network, malformed shape) also '
+        'degrades to the select fallback rather than failing the pull',
+        () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json([1, 2, 3]); // not the expected object shape
+        }
+        return json([profileJson(version: 8)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+    });
+
+    test('deletedProfiles always uses the select path, even when primed — '
+        'sync_pull does not cover it', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': []});
+        }
+        return json([
+          {
+            'profile_id': profileId,
+            'deleted_at': '2026-09-01T10:00:00+00:00',
+            'server_version': 9,
+          }
+        ]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.deletedProfiles, afterVersion: 0, limit: 100);
+
+      expect(rows, hasLength(1));
+      expect(requests, hasLength(2));
+      expect(requests.last.url.path, '/rest/v1/deleted_profiles');
+    });
+
+    test('a cached page capped at sync_pull\'s 500-row page size cannot '
+        'fill a full page from what remains cached, so pullPage falls back '
+        'to a fresh select for the rest rather than reporting a false '
+        'short/final page', () async {
+      final full500 = List.generate(500, (i) => profileJson(version: i + 1));
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({'profiles': full500});
+        }
+        // The fallback select for the remainder beyond the cached window.
+        return json([profileJson(version: 998), profileJson(version: 999)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      // Only 3 cached rows remain unconsumed past version 497, far short of
+      // the requested limit — with the raw cache at the 500-row cap, this
+      // must not be trusted as the final page.
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 497, limit: 500);
+
+      expect(requests, hasLength(2),
+          reason: 'the short remainder forces a fresh select instead of '
+              'trusting the capped cache');
+      expect(rows.map((r) => r.serverVersion), [998, 999]);
+    });
+
+    test('a cached page shorter than the 500-row cap is trusted as final, '
+        'even when the slice comes up short of the caller\'s limit',
+        () async {
+      client = makeClient((_) async => json({
+            'profiles': [profileJson(version: 1), profileJson(version: 2)],
+          }));
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.profiles: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.profiles, afterVersion: 0, limit: 500);
+
+      expect(requests, hasLength(1),
+          reason: 'a genuinely short (uncapped) cached page is trusted '
+              'without a fallback call');
+      expect(rows.map((r) => r.serverVersion), [1, 2]);
+    });
+
+    test('a malformed row inside sync_pull\'s response is not silently '
+        'skipped — it is treated as a decode failure and falls back to '
+        'the select path instead', () async {
+      client = makeClient((request) async {
+        if (request.url.path.endsWith('/rpc/sync_pull')) {
+          return json({
+            'day_entries': [
+              {...entryJson(version: 45), 'tags': [1, 2]},
+            ],
+          });
+        }
+        return json([entryJson(version: 46)]);
+      });
+      final transport = SupabaseSyncTransport(client!);
+
+      await transport.primePullCycle({SyncTable.dayEntries: 0});
+      final rows = await transport.pullPage(
+        table: SyncTable.dayEntries, afterVersion: 0, limit: 500);
+
+      expect(rows.single.serverVersion, 46);
+      expect(requests, hasLength(2));
+    });
+  });
+
+  group('fetchWatermark (issue #521)', () {
+    test('POSTs to /rpc/sync_watermark and returns the decoded value',
+        () async {
+      client = makeClient((_) async => json(12345));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+
+      expect(requests, hasLength(1));
+      expect(requests.single.method, 'POST');
+      expect(requests.single.url.toString(),
+          '$baseUrl/rest/v1/rpc/sync_watermark');
+      expect(watermark, 12345);
+    });
+
+    test('a PGRST202 "function not found" response falls back to null — '
+        'the server has not run the paired migration yet', () async {
+      client = makeClient((_) async => json(
+            {'message': 'Could not find the function', 'code': 'PGRST202'},
+            status: 404,
+          ));
+      final watermark = await SupabaseSyncTransport(client!).fetchWatermark();
+      expect(watermark, isNull);
+    });
+
+    test('any other transport failure also falls back to null — the '
+        'watermark is an optimization, never a correctness requirement',
+        () async {
+      client = makeClient((_) async => http.Response('bad gateway', 502));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+      await client!.dispose();
+
+      client = makeClient((_) async => throw const SocketException('down'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+
+    test('a malformed (non-numeric) response falls back to null', () async {
+      client = makeClient((_) async => json({'not': 'a number'}));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+
+    test('a quoted-string bigint (PR #582\'s public.sync_watermark() '
+        'returns `bigint`, which some renderers quote to avoid precision '
+        'loss) still decodes', () async {
+      client = makeClient((_) async => json('12345'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), 12345);
+    });
+
+    test('a non-numeric string falls back to null', () async {
+      client = makeClient((_) async => json('not-a-number'));
+      expect(await SupabaseSyncTransport(client!).fetchWatermark(), isNull);
+    });
+  });
+
+  group('fetchMaxVersion (issue #42)', () {
+    test(
+      'GETs the table\'s newest server_version row — order desc, limit 1',
+      () async {
+        client = makeClient(
+          (_) async => json([
+            {'server_version': 4242},
+          ]),
+        );
+        final max = await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles);
+
+        expect(requests, hasLength(1));
+        expect(requests.single.method, 'GET');
+        expect(requests.single.url.path, '/rest/v1/profiles');
+        expect(requests.single.url.queryParameters['select'], 'server_version');
+        expect(
+          requests.single.url.queryParameters['order'],
+          'server_version.desc.nullslast',
+        );
+        expect(requests.single.url.queryParameters['limit'], '1');
+        expect(max, 4242);
+      },
+    );
+
+    test('a table with nothing visible answers 0, not null — an empty '
+        'table cannot hold a change', () async {
+      client = makeClient((_) async => json([]));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.dayEntries),
+        0,
+      );
+    });
+
+    test('a quoted-string bigint still decodes', () async {
+      client = makeClient(
+        (_) async => json([
+          {'server_version': '4242'},
+        ]),
+      );
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        4242,
+      );
+    });
+
+    test('a non-integer number shape decodes through toInt', () async {
+      client = makeClient(
+        (_) async => json([
+          {'server_version': 4242.0},
+        ]),
+      );
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        4242,
+      );
+    });
+
+    test(
+      'a value the shape rules cannot decode answers null (unknown)',
+      () async {
+        client = makeClient(
+          (_) async => json([
+            {'server_version': null},
+          ]),
+        );
+        expect(
+          await SupabaseSyncTransport(client!)
+              .fetchMaxVersion(SyncTable.profiles),
+          isNull,
+        );
+        await client!.dispose();
+
+        client = makeClient(
+          (_) async => json([
+            {'server_version': 'not-a-number'},
+          ]),
+        );
+        expect(
+          await SupabaseSyncTransport(client!)
+              .fetchMaxVersion(SyncTable.profiles),
+          isNull,
+        );
+      },
+    );
+
+    test('any transport failure answers null — the caller falls back to the '
+        'full re-pull rather than silently skipping sync', () async {
+      client = makeClient((_) async => http.Response('bad gateway', 502));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.profiles),
+        isNull,
+      );
+      await client!.dispose();
+
+      client = makeClient((_) async => throw const SocketException('down'));
+      expect(
+        await SupabaseSyncTransport(client!)
+            .fetchMaxVersion(SyncTable.deletedProfiles),
+        isNull,
       );
     });
   });

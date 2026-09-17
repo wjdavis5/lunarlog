@@ -19,20 +19,22 @@ library;
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 
-/// Inclusive sanity bounds for the two numeric onboarding questions.
-/// Advisory-only today (the answers are seam-carried until #218), but
-/// they keep garbage out of any future consumer, and the UI mirrors
-/// them in its validators and error copy.
-const int kMinTypicalCycleLengthDays = 10;
-const int kMaxTypicalCycleLengthDays = 90;
+/// Inclusive sanity bounds for the two numeric onboarding questions. The
+/// cycle-length bounds match [kMinCycleDays]/[kMaxCycleDays]
+/// (`lib/domain/prediction/prediction.dart`) exactly — that is the same
+/// window `CycleFacts.canSeed` requires, so a cycle length the form
+/// accepts is never silently unable to seed a provisional estimate
+/// (issue #530). The UI mirrors these in its validators and error copy.
+const int kMinTypicalCycleLengthDays = 15;
+const int kMaxTypicalCycleLengthDays = 60;
 const int kMinTypicalPeriodLengthDays = 1;
 const int kMaxTypicalPeriodLengthDays = 14;
 
-/// The five onboarding cycle answers (Issue #216's table), each
-/// individually skippable — every field is nullable/optional except the
-/// goal, whose "unanswered" state is the neutral default
-/// [LifecycleMode.tracking] (matching `profile_modes`' lazy-row
-/// contract: an absent row means `tracking`).
+/// The onboarding cycle answers (Issue #216's table, plus Issue #192's
+/// pregnancy due-date answer), each individually skippable — every field
+/// is nullable/optional except the goal, whose "unanswered" state is the
+/// neutral default [LifecycleMode.tracking] (matching `profile_modes`'
+/// lazy-row contract: an absent row means `tracking`).
 class OnboardingCycleAnswers {
   const OnboardingCycleAnswers({
     this.lastPeriodStart,
@@ -40,6 +42,7 @@ class OnboardingCycleAnswers {
     this.typicalPeriodLengthDays,
     this.birthControlMethod,
     this.lifecycleMode = LifecycleMode.tracking,
+    this.estimatedDueDate,
   });
 
   /// Civil date the last period started on, or null when skipped.
@@ -58,16 +61,28 @@ class OnboardingCycleAnswers {
   final String? birthControlMethod;
 
   /// Life-stage goal/mode answer (Issue #188's axis — the Clue-style
-  /// goal question; #131's care-mode axis is collected separately on
-  /// the name form and the two are never merged).
+  /// goal question; #131's care-mode axis is collected separately on the
+  /// name form and the two are never merged).
   final LifecycleMode lifecycleMode;
 
+  /// Issue #192: the estimated due date (`yyyy-MM-dd`) collected or
+  /// derived when the goal answer is `pregnancy` — the last recorded
+  /// period start + 280 days (Naegele's rule) when that start is known,
+  /// or a manual pick when it is not. Null when skipped or when the goal
+  /// is not `pregnancy`; the recorder persists it only on entry into
+  /// Pregnancy mode and preserves whatever is stored otherwise (see the
+  /// drift recorder's preservation rules).
+  final String? estimatedDueDate;
+
   /// Whether [record] has anything at all to persist: a non-default
-  /// life-stage mode or a birth-control answer. With everything
-  /// skipped/default this is false and the recorder must not create a
-  /// `profile_modes` row (the server's lazy-default contract).
+  /// life-stage mode, a birth-control answer, or (Issue #192) a due
+  /// date alongside a `pregnancy` goal. With everything skipped/default
+  /// this is false and the recorder must not create a `profile_modes`
+  /// row (the server's lazy-default contract).
   bool get hasPersistableAnswers =>
-      lifecycleMode != LifecycleMode.tracking || birthControlMethod != null;
+      lifecycleMode != LifecycleMode.tracking ||
+      birthControlMethod != null ||
+      (lifecycleMode == LifecycleMode.pregnancy && estimatedDueDate != null);
 }
 
 /// The seam #216 leaves for #218: the first-run flow (and the profile

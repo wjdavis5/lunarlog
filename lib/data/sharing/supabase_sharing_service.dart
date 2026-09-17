@@ -107,7 +107,10 @@ class SupabaseSharingService implements SharingService {
       final profileId = res['profile_id'] as String;
       final profileName = res['profile_name'] as String;
       final roleStr = res['role'] as String;
-      final role = GuardianRole.fromDb(roleStr);
+      // Issue #540: fail closed on an unrecognised role, matching
+      // profileGuardianToDomain — never let an unrecognised server value
+      // propagate as a null role this codebase has no representation for.
+      final role = GuardianRole.fromDb(roleStr) ?? GuardianRole.viewer;
 
       // Trigger full reconcile so this client downloads the newly joined profile and entries.
       syncEngine.triggerFullReconcile();
@@ -127,6 +130,41 @@ class SupabaseSharingService implements SharingService {
         syncEngine.triggerFullReconcile();
       }
       throw failure;
+    }
+  }
+
+  @override
+  Future<InvitePreview?> previewInvite({required String rawToken}) async {
+    final tokenHash = sha256.convert(utf8.encode(rawToken)).toString();
+
+    try {
+      final res = await client.rpc<dynamic>(
+        'preview_guardian_invitation',
+        params: {'p_token_hash': tokenHash},
+      );
+
+      // The RPC's uniform "not available" result (Issue #594): a wrong,
+      // expired, revoked, or already-accepted token all return SQL null
+      // here, indistinguishable from one another by design.
+      if (res == null) return null;
+
+      if (res is! Map) {
+        throw const SharingFailure.other();
+      }
+
+      final profileDisplayName = res['profile_display_name'] as String;
+      final roleStr = res['role'] as String;
+      // Issue #540's fail-closed pattern, same as acceptInvite above.
+      final role = GuardianRole.fromDb(roleStr) ?? GuardianRole.viewer;
+      final expiresAt = DateTime.parse(res['expires_at'] as String).toUtc();
+
+      return InvitePreview(
+        profileDisplayName: profileDisplayName,
+        role: role,
+        expiresAt: expiresAt,
+      );
+    } catch (e) {
+      throw _mapError(e);
     }
   }
 
@@ -174,7 +212,8 @@ class SupabaseSharingService implements SharingService {
           PendingInvite(
             invitationId: row['id'] as String,
             profileId: row['profile_id'] as String,
-            role: GuardianRole.fromDb(row['role'] as String),
+            // Issue #540: fail closed, matching profileGuardianToDomain.
+            role: GuardianRole.fromDb(row['role'] as String) ?? GuardianRole.viewer,
             recipientLabel: row['recipient_label'] as String?,
             createdAt: DateTime.parse(row['created_at'] as String).toUtc(),
             expiresAt: DateTime.parse(row['expires_at'] as String).toUtc(),

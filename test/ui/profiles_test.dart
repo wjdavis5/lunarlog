@@ -3,6 +3,8 @@
 /// moved to U7's fail-closed screen (test/ui/gate_test.dart).
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -16,8 +18,10 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -115,6 +119,7 @@ void main() {
   test('first-run notice key follows the settled settings naming convention',
       () {
     expect(SettingsKeys.firstRunNoticeShown, 'first_run_notice_shown');
+    expect(SettingsKeys.minimumAgeAcknowledged, 'minimum_age_acknowledged');
   });
 
   group('first run (F1)', () {
@@ -144,6 +149,8 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField), 'Luna');
       await tester.tap(find.text('This profile is for a minor'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
       await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
@@ -176,6 +183,8 @@ void main() {
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'Luna');
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
+      await tester.pump();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Create profile'));
@@ -325,7 +334,12 @@ void main() {
       expect(find.text('Alice'), findsOneWidget,
           reason: 'last-active opens the profile');
 
+      // Issue #241: the app-bar switcher now opens the quick-switcher
+      // popup; the full picker (whose rows are ListTiles) is reached
+      // through its "Manage profiles…" entry.
       await tester.tap(find.byTooltip('Switch profile'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manage profiles…'));
       await tester.pumpAndSettle();
 
       final aliceTile =
@@ -466,12 +480,12 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
       expect(find.text('Name cannot be empty'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
 
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       expect(find.text('Same'), findsNWidgets(1),
           reason: 'nothing was created from the invalid name');
 
@@ -514,7 +528,7 @@ void main() {
 
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       final names = (await db.storage.getProfiles())
           .map((p) => p.displayName)
           .toList();
@@ -567,7 +581,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       expect(find.text('Alice'), findsOneWidget,
           reason: 'cancelling the dialog never calls renameProfile');
       expect(find.text('Alicia'), findsNothing);
@@ -637,8 +651,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a valid year'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
       final profiles = await DriftProfilesRepository(db.storage).list();
@@ -662,8 +676,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Enter a year between 1900 and 2200'), findsOneWidget);
-      expect(find.byType(AlertDialog), findsOneWidget,
-          reason: 'dialog stays open on invalid input');
+      expect(find.byType(BottomSheet), findsOneWidget,
+          reason: 'sheet stays open on invalid input');
       await disposeApp(tester, db);
     });
 
@@ -686,7 +700,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
       final profiles = await DriftProfilesRepository(db.storage).list();
       final luna = profiles.singleWhere((p) => p.displayName == 'Luna');
       expect(luna.birthYear, 2200);
@@ -1065,7 +1079,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 
@@ -1113,7 +1128,8 @@ void main() {
       final controller = ProfileController(
         profilesRepository: _EmptyProfilesRepository(),
         settingsStore: settings,
-      )..load();
+      );
+      unawaited(controller.load());
       addTearDown(controller.dispose);
       addTearDown(settings.close);
 
@@ -1171,6 +1187,8 @@ class _EmptyProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       throw UnimplementedError('not exercised in the empty-edge test');
 
@@ -1184,5 +1202,14 @@ class _EmptyProfilesRepository implements ProfilesRepository {
 
   @override
   Future<void> delete(String id) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      throw UnimplementedError('not exercised in the empty-edge test');
+
+  @override
+  Future<void> applyServerPurge(String id) =>
       throw UnimplementedError('not exercised in the empty-edge test');
 }

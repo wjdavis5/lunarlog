@@ -71,6 +71,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
     required String profileId,
     required LifecycleMode mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
   }) async {
     final existing = await _storage.getProfileMode(profileId);
@@ -83,6 +84,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
       profileId: profileId,
       mode: mode.toDb(),
       modeStartedOn: modeStartedOn,
+      estimatedDueDate: estimatedDueDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: startedOn,
       birthControlStoppedOn: stoppedOn,
@@ -92,12 +94,21 @@ class DriftProfileModesRepository implements ProfileModesRepository {
   @override
   Future<ProfileLifecycleMode?> find(String profileId) async {
     final row = await _storage.getProfileMode(profileId);
-    if (row == null) return null;
-    return (
-      mode: LifecycleMode.fromDb(row.mode),
-      birthControlMethod: row.birthControlMethod,
-      birthControlStartedOn: row.birthControlStartedOn,
-      birthControlStoppedOn: row.birthControlStoppedOn,
-    );
+    return _toDomain(row);
   }
+
+  @override
+  Stream<ProfileLifecycleMode?> watch(String profileId) =>
+      _storage.watchProfileMode(profileId).map(_toDomain);
+
+  ProfileLifecycleMode? _toDomain(ProfileModeData? row) => row == null
+      ? null
+      : (
+          mode: LifecycleMode.fromDb(row.mode),
+          modeStartedOn: row.modeStartedOn,
+          estimatedDueDate: row.estimatedDueDate,
+          birthControlMethod: row.birthControlMethod,
+          birthControlStartedOn: row.birthControlStartedOn,
+          birthControlStoppedOn: row.birthControlStoppedOn,
+        );
 }

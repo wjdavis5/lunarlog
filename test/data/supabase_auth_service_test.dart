@@ -480,6 +480,81 @@ class FakeAuthGateway implements AuthGateway {
     emit(AuthChangeEvent.signedIn);
     return AuthResponse(session: session);
   }
+
+  // ------------------------------------------------------------ #268 MFA
+
+  int enrollTotpFactorCalls = 0;
+  final challengeAndVerifyMfaCalls =
+      <({String factorId, String code})>[];
+  int listMfaFactorsCalls = 0;
+  final unenrollMfaFactorCalls = <String>[];
+
+  /// What [enrollTotpFactor] returns.
+  AuthMFAEnrollResponse enrollTotpFactorResponse = AuthMFAEnrollResponse(
+    id: 'factor-1',
+    type: FactorType.totp,
+    totp: const TOTPEnrollment(
+      qrCode: 'data:image/svg+xml;utf-8,<svg></svg>',
+      secret: 'JBSWY3DPEHPK3PXP',
+      uri: 'otpauth://totp/lunarlog:test?secret=JBSWY3DPEHPK3PXP',
+    ),
+  );
+
+  /// What [listMfaFactors] returns.
+  List<Factor> mfaFactors = const [];
+
+  /// What [getAuthenticatorAssuranceLevel] returns.
+  AuthenticatorAssuranceLevels? currentAal;
+
+  @override
+  Future<AuthMFAEnrollResponse> enrollTotpFactor({String? issuer}) async {
+    enrollTotpFactorCalls++;
+    _maybeThrow();
+    return enrollTotpFactorResponse;
+  }
+
+  @override
+  Future<AuthMFAVerifyResponse> challengeAndVerifyMfa({
+    required String factorId,
+    required String code,
+  }) async {
+    challengeAndVerifyMfaCalls.add((factorId: factorId, code: code));
+    _maybeThrow();
+    currentAal = AuthenticatorAssuranceLevels.aal2;
+    return AuthMFAVerifyResponse(
+      accessToken: 'new-access-token',
+      tokenType: 'bearer',
+      expiresIn: const Duration(hours: 1),
+      refreshToken: 'new-refresh-token',
+      user: makeUser(fixedUserId ?? 'mfa-user'),
+    );
+  }
+
+  @override
+  Future<AuthMFAListFactorsResponse> listMfaFactors() async {
+    listMfaFactorsCalls++;
+    _maybeThrow();
+    final totp =
+        mfaFactors.where((f) => f.factorType == FactorType.totp).toList();
+    return AuthMFAListFactorsResponse(all: mfaFactors, totp: totp, phone: const []);
+  }
+
+  @override
+  Future<AuthMFAUnenrollResponse> unenrollMfaFactor(String factorId) async {
+    unenrollMfaFactorCalls.add(factorId);
+    _maybeThrow();
+    mfaFactors = mfaFactors.where((f) => f.id != factorId).toList();
+    return AuthMFAUnenrollResponse(id: factorId);
+  }
+
+  @override
+  AuthMFAGetAuthenticatorAssuranceLevelResponse
+      getAuthenticatorAssuranceLevel() =>
+          AuthMFAGetAuthenticatorAssuranceLevelResponse(
+            currentLevel: currentAal,
+            nextLevel: currentAal,
+            currentAuthenticationMethods: const [],
+          );
 }
 
 /// Records `initialize` arguments and returns a configured credential or
@@ -559,6 +634,9 @@ class FakeLinkSource implements AuthLinkSource {
   FakeLinkSource({this.initial});
 
   Uri? initial;
+  // Issue #548: a per-test fake with no close() call — the test process is
+  // short-lived, so there is no real leak to guard against.
+  // ignore: close_sinks
   final StreamController<Uri> controller = StreamController<Uri>.broadcast();
   int initialLinkCalls = 0;
 
@@ -1192,7 +1270,7 @@ void main() {
       service.states.listen(seen.add);
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, const AppleSignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(seen, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
       expect(gateway.idTokenCalls, isEmpty);
@@ -1211,8 +1289,8 @@ void main() {
       );
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, isA<AppleSignInSession>());
-      expect((result as AppleSignInSession).user.id, 'apple');
+      expect(result, isA<NativeSignInSession>());
+      expect((result as NativeSignInSession).user.id, 'apple');
       expect(receivedNonce,
           sha256.convert(utf8.encode('raw-nonce-123')).toString());
       final call = gateway.idTokenCalls.single;
@@ -1236,8 +1314,8 @@ void main() {
       gateway.nextUpdateUserError = Exception('name write failed');
       final result = await service.signInWithAppleNative();
       await settle();
-      expect(result, isA<AppleSignInSession>());
-      expect((result as AppleSignInSession).user.id, 'apple');
+      expect(result, isA<NativeSignInSession>());
+      expect((result as NativeSignInSession).user.id, 'apple');
       expect(gateway.updateUserCalls, hasLength(1),
           reason: 'the name write was attempted');
       expect(service.state, AuthSessionState.signedIn);
@@ -1322,8 +1400,8 @@ void main() {
 
       final first = await service.signInWithGoogleNative();
       await settle();
-      expect(first, isA<GoogleSignInSession>());
-      expect((first as GoogleSignInSession).user.id, 'google');
+      expect(first, isA<NativeSignInSession>());
+      expect((first as NativeSignInSession).user.id, 'google');
       expect(service.state, AuthSessionState.signedIn);
       expect(client.initializeCalls, hasLength(1));
       expect(client.initializeCalls.single.hashedNonce, hashed('raw-nonce-1'));
@@ -1334,7 +1412,7 @@ void main() {
       expect(hashed(call.nonce!), client.initializeCalls.single.hashedNonce);
 
       final second = await service.signInWithGoogleNative();
-      expect(second, isA<GoogleSignInSession>());
+      expect(second, isA<NativeSignInSession>());
       expect(client.initializeCalls, hasLength(1),
           reason: 'initialize runs once per process');
       expect(client.authenticateCalls, 2);
@@ -1357,7 +1435,7 @@ void main() {
       service.states.listen(seen.add);
       final result = await service.signInWithGoogleNative();
       await settle();
-      expect(result, const GoogleSignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(seen, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
       expect(service.pendingLinkFailure, isNull);
@@ -2271,7 +2349,7 @@ void main() {
 
       final result = await service.signInWithPasskey();
 
-      expect(result, isA<PasskeySignInSession>());
+      expect(result, isA<NativeSignInSession>());
       expect(gateway.startPasskeyAuthenticationCalls, 1);
       expect(ceremony.getCalls.single, gateway.passkeyAuthenticationOptions);
       expect(gateway.verifyPasskeyAuthenticationCalls.single.challengeId,
@@ -2287,7 +2365,7 @@ void main() {
 
       final result = await service.signInWithPasskey();
 
-      expect(result, const PasskeySignInCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(gateway.verifyPasskeyAuthenticationCalls, isEmpty);
       expect(service.state, AuthSessionState.signedOut);
     });
@@ -2354,8 +2432,8 @@ void main() {
 
       final result = await service.registerPasskey();
 
-      expect(result, isA<PasskeyRegistrationSuccess>());
-      final success = result as PasskeyRegistrationSuccess;
+      expect(result, isA<NativeSignInSession>());
+      final success = result as NativeSignInSession;
       expect(success.user, service.currentUser);
       expect(gateway.verifyPasskeyRegistrationCalls.single.challengeId,
           'reg-challenge-1');
@@ -2370,7 +2448,7 @@ void main() {
 
       final result = await service.registerPasskey();
 
-      expect(result, const PasskeyRegistrationCancelled());
+      expect(result, const NativeSignInCancelled());
       expect(gateway.verifyPasskeyRegistrationCalls, isEmpty);
     });
 
@@ -2382,7 +2460,7 @@ void main() {
           passkeysAvailable: true,
           passkeyClient: FakePasskeyCeremonyClient());
 
-      final result = await service.registerPasskey() as PasskeyRegistrationSuccess;
+      final result = await service.registerPasskey() as NativeSignInSession;
 
       expect(result.user.providers, ['email']);
     });
@@ -2410,6 +2488,175 @@ void main() {
       expect(gateway.passkeyRegistrationOptions.containsKey('rpId'), isFalse);
       expect(
           gateway.passkeyAuthenticationOptions.containsKey('rpId'), isFalse);
+    });
+  });
+
+  group('TOTP MFA (issue #268)', () {
+    test('enrollTotp maps the gateway response into the domain offer',
+        () async {
+      gateway.session = makeSession('u1');
+      final service = await started();
+
+      final offer = await service.enrollTotp();
+
+      expect(offer.factorId, gateway.enrollTotpFactorResponse.id);
+      expect(offer.secret, gateway.enrollTotpFactorResponse.totp!.secret);
+      expect(offer.qrCodeDataUri, gateway.enrollTotpFactorResponse.totp!.qrCode);
+      expect(gateway.enrollTotpFactorCalls, 1);
+    });
+
+    test('enrollTotp throws unknown while signed out', () async {
+      final service = await started();
+
+      await expectLater(
+          service.enrollTotp(), throwsA(const AuthFailure.unknown()));
+      expect(gateway.enrollTotpFactorCalls, 0);
+    });
+
+    test('verifyTotpCode calls challengeAndVerify with the factor id and code',
+        () async {
+      gateway.session = makeSession('u1');
+      final service = await started();
+
+      await service.verifyTotpCode(factorId: 'factor-1', code: '123456');
+
+      expect(gateway.challengeAndVerifyMfaCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+    });
+
+    test('mfa_verification_rejected maps to invalidCode, not unknown',
+        () async {
+      gateway.session = makeSession('u1');
+      gateway.nextError = const AuthApiException('rejected',
+          code: 'mfa_verification_rejected');
+      final service = await started();
+
+      await expectLater(
+        service.verifyTotpCode(factorId: 'factor-1', code: '000000'),
+        throwsA(const AuthFailure.invalidCode()),
+      );
+    });
+
+    test('listMfaFactors maps only totp factors into the domain type',
+        () async {
+      gateway.session = makeSession('u1');
+      gateway.mfaFactors = [
+        Factor(
+          id: 'f1',
+          friendlyName: null,
+          factorType: FactorType.totp,
+          status: FactorStatus.verified,
+          createdAt: DateTime.utc(2026),
+          updatedAt: DateTime.utc(2026),
+        ),
+        Factor(
+          id: 'f2',
+          friendlyName: null,
+          factorType: FactorType.totp,
+          status: FactorStatus.unverified,
+          createdAt: DateTime.utc(2026),
+          updatedAt: DateTime.utc(2026),
+        ),
+      ];
+      final service = await started();
+
+      final factors = await service.listMfaFactors();
+
+      expect(factors, hasLength(2));
+      expect(factors[0].id, 'f1');
+      expect(factors[0].status, MfaFactorStatus.verified);
+      expect(factors[1].id, 'f2');
+      expect(factors[1].status, MfaFactorStatus.unverified);
+    });
+
+    test('unenrollMfaFactor calls the gateway with the given factor id',
+        () async {
+      gateway.session = makeSession('u1');
+      final service = await started();
+
+      await service.unenrollMfaFactor('f1');
+
+      expect(gateway.unenrollMfaFactorCalls, ['f1']);
+    });
+
+    test('assuranceLevel maps aal1/aal2/null from the gateway', () async {
+      gateway.session = makeSession('u1');
+      final service = await started();
+
+      gateway.currentAal = AuthenticatorAssuranceLevels.aal1;
+      expect(service.assuranceLevel, AuthAssuranceLevel.aal1);
+
+      gateway.currentAal = AuthenticatorAssuranceLevels.aal2;
+      expect(service.assuranceLevel, AuthAssuranceLevel.aal2);
+
+      gateway.currentAal = null;
+      expect(service.assuranceLevel, isNull);
+    });
+
+    group('requiresMfaStepUp', () {
+      test('false when already aal2, regardless of enrolled factors',
+          () async {
+        gateway.session = makeSession('u1');
+        gateway.currentAal = AuthenticatorAssuranceLevels.aal2;
+        gateway.mfaFactors = [
+          Factor(
+            id: 'f1',
+            friendlyName: null,
+            factorType: FactorType.totp,
+            status: FactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+          ),
+        ];
+        final service = await started();
+
+        expect(await service.requiresMfaStepUp(), isFalse);
+      });
+
+      test('false at aal1 with no verified factor', () async {
+        gateway.session = makeSession('u1');
+        gateway.currentAal = AuthenticatorAssuranceLevels.aal1;
+        final service = await started();
+
+        expect(await service.requiresMfaStepUp(), isFalse);
+      });
+
+      test('true at aal1 with a verified factor', () async {
+        gateway.session = makeSession('u1');
+        gateway.currentAal = AuthenticatorAssuranceLevels.aal1;
+        gateway.mfaFactors = [
+          Factor(
+            id: 'f1',
+            friendlyName: null,
+            factorType: FactorType.totp,
+            status: FactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+          ),
+        ];
+        final service = await started();
+
+        expect(await service.requiresMfaStepUp(), isTrue);
+      });
+
+      test('false at aal1 with only an unverified (pending) factor',
+          () async {
+        gateway.session = makeSession('u1');
+        gateway.currentAal = AuthenticatorAssuranceLevels.aal1;
+        gateway.mfaFactors = [
+          Factor(
+            id: 'f1',
+            friendlyName: null,
+            factorType: FactorType.totp,
+            status: FactorStatus.unverified,
+            createdAt: DateTime.utc(2026),
+            updatedAt: DateTime.utc(2026),
+          ),
+        ];
+        final service = await started();
+
+        expect(await service.requiresMfaStepUp(), isFalse);
+      });
     });
   });
 }

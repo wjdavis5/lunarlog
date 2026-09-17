@@ -47,12 +47,21 @@
 /// check first (`gate.duringSystemUi(gate.reauthenticate)`, mirroring the
 /// add-method ceremony, KTD7) - a decline cancels silently (AE5) - then the
 /// confirmation naming the server rows, the account, and this device's data
-/// (R2), then, only when the account has an Apple identity, a *second*
-/// system-UI window around a fresh Apple authorization-code fetch (KTD3) -
-/// a cancelled Apple sheet also cancels silently - then the service call,
-/// then the one device reset (`_reset`, KTD16). No reset runs on any
-/// failure (R12); each [AccountDeletionFailure] renders its own copy in
-/// `account-delete-error`.
+/// (R2), then the server-informed Apple flow (Issue #605/LLA-052; see
+/// [_deleteAccountServerInformed]): the service is always called first with
+/// no Apple code at all, regardless of platform or linked providers - the
+/// server's own Step 3 fails closed with `apple_code_required` before any
+/// destructive step if one is actually still needed (nothing yet touched),
+/// and a retry after a prior successful revoke needs none at all (#527/
+/// #605's identity-bound deletion-progress marker, a "code-free retry").
+/// Only then, and only when this platform actually has the native Sign in
+/// with Apple ceremony available (`_canAddApple` - an account can carry an
+/// Apple identity linked from a different, iOS device while this one has
+/// none), does a *second* system-UI window fetch a fresh Apple
+/// authorization code (KTD3) and retry once more - a cancelled Apple sheet
+/// cancels silently either way. Then the one device reset (`_reset`,
+/// KTD16). No reset runs on any failure (R12); each [AccountDeletionFailure]
+/// renders its own copy in `account-delete-error`.
 ///
 /// Route naming (U2 Approach 2b): this file's four `showDialog` calls
 /// (remove-method confirm, the two sign-out confirms, sign-out-everywhere
@@ -70,24 +79,30 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
-import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
-import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
+    show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/delete_account_dialog.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
-import 'package:lunarlog/ui/account/sign_in_screen.dart' show authFailureCopy;
+import 'package:lunarlog/ui/account/mfa_settings_section.dart';
+import 'package:lunarlog/ui/account/mfa_step_up_dialog.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -100,43 +115,132 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 /// .appleCodeRequired] gets its own distinct line too (#17 P1 round 2 fix):
 /// unlike [AccountDeletionFailure.appleRevokeFailed], nothing was touched
 /// on this path at all, so its copy must not claim any data was deleted.
+/// [AccountDeletionFailure.appleNativeCeremonyUnavailable] (Issue #605/
+/// LLA-052, client-side only - see [_deleteAccountServerInformed]) gets its
+/// own line too: unlike [AccountDeletionFailure.appleCodeRequired], a bare
+/// retry can never succeed here, since this platform will never grow a
+/// native Apple ceremony on its own - the copy points to another device or
+/// support instead.
+/// [AccountDeletionFailure.appleRevocationMarkerFailed] (Issue #599) gets
+/// its own line too, distinct from [AccountDeletionFailure.appleRevokeFailed]:
+/// Apple DID confirm the revocation here, so that failure's "Apple could
+/// not confirm" claim would be false - only the server's own durable
+/// record of the revocation failed to write.
 /// [AccountDeletionFailure.attachmentCleanupFailed] (Issue #243 round 2
 /// fix, 2026-09-08) gets the same "nothing was touched" treatment as
 /// [AccountDeletionFailure.appleCodeRequired]: the attachment-cleanup step
 /// now runs before the destructive RPC, so a failure there leaves every
 /// row, the Apple grant, and `auth.users` untouched.
+/// [AccountDeletionFailure.attachmentCleanupUnbounded] (Issue #559; Issue
+/// #605/LLA-053) gets its own copy too, distinct from
+/// [AccountDeletionFailure.attachmentCleanupFailed]: it is a bound on the
+/// account's own data, not a transient failure, so its copy must not invite
+/// a bare retry - only support can resolve it.
+///
+/// Split into this dispatcher plus [_nothingWasDeletedCopy]/
+/// [_dataAlreadyDeletedCopy]/[_otherFailureCopy] (review fix: quality
+/// gate's per-method CRAP threshold) - same copy strings, same kinds, no
+/// behavior change. The dispatcher's own `switch` stays exhaustive over
+/// every [AccountDeletionFailure] subtype (a new variant with no arm here
+/// is a compile error), grouped by what each kind's copy actually needs to
+/// say: nothing was touched, the account's data is already gone, or
+/// everything else. Each helper's own `switch` is narrowed to only the
+/// subtypes its dispatcher arm actually sends it, so its `_ =>` default
+/// (unreachable in practice) does not weaken the dispatcher's own
+/// exhaustiveness check.
 String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
+    switch (failure) {
+      AccountDeletionNetworkFailure() ||
+      AccountDeletionAppleCodeRequiredFailure() ||
+      AccountDeletionAppleNativeCeremonyUnavailableFailure() ||
+      AccountDeletionAttachmentCleanupFailedFailure() ||
+      AccountDeletionAttachmentCleanupUnboundedFailure() ||
+      AccountDeletionMfaRequiredFailure() =>
+        _nothingWasDeletedCopy(failure),
+      AccountDeletionAppleRevokeFailedFailure() ||
+      AccountDeletionAppleRevocationMarkerFailedFailure() ||
+      AccountDeletionDeleteUserFailedFailure() =>
+        _dataAlreadyDeletedCopy(failure),
+      AccountDeletionUnauthorizedFailure() ||
+      AccountDeletionTimeoutFailure() ||
+      AccountDeletionUnknownFailure() =>
+        _otherFailureCopy(failure),
+    };
+
+/// The account-deletion call failed closed before touching anything -
+/// nothing was deleted, the account, its rows, and this device's data are
+/// all still intact. [AccountDeletionFailure.appleNativeCeremonyUnavailable]
+/// and [AccountDeletionFailure.attachmentCleanupUnbounded] still belong
+/// here even though a bare retry can never clear either one: "nothing was
+/// touched" is equally true for them, only the next-step guidance differs.
+String _nothingWasDeletedCopy(AccountDeletionFailure failure) =>
     switch (failure) {
       AccountDeletionNetworkFailure() =>
         'Could not reach the server. Check your connection and try again. '
             'Your account was not deleted.',
-      AccountDeletionUnauthorizedFailure() =>
-        'Your session has expired. Sign in again and retry - your account '
-            'was not deleted.',
       AccountDeletionAppleCodeRequiredFailure() =>
         'Nothing was deleted. We couldn\'t confirm your Apple sign-in '
             'before starting, so the deletion never began - please try '
             'again.',
+      AccountDeletionAppleNativeCeremonyUnavailableFailure() =>
+        'Nothing was deleted. This account\'s Apple sign-in link can only '
+            'be removed from a device that supports Sign in with Apple '
+            '(iPhone or iPad) - please finish deleting your account there, '
+            'or contact support to remove the Apple link for you.',
+      AccountDeletionAttachmentCleanupFailedFailure() =>
+        'Nothing was deleted. We couldn\'t remove your support attachments, '
+            'so the deletion never began - please try again.',
+      AccountDeletionAttachmentCleanupUnboundedFailure() =>
+        'Nothing was deleted. Your account has more support attachments '
+            'than we can clean up automatically, so the deletion never '
+            'began. Retrying won\'t help - please contact support so we can '
+            'finish removing your account.',
+      AccountDeletionMfaRequiredFailure() =>
+        'Nothing was deleted. Please confirm your two-factor code and try '
+            'again.',
+      _ => throw StateError(
+          'unreachable: $failure is not a "nothing was deleted" kind'),
+    };
+
+/// The account-deletion call already removed the caller's server-side data
+/// (and, for [AccountDeletionFailure.appleRevocationMarkerFailed], Apple
+/// already confirmed the sign-in revocation too) - only one last step
+/// failed, so the copy must never claim "your account was not deleted".
+String _dataAlreadyDeletedCopy(AccountDeletionFailure failure) =>
+    switch (failure) {
       AccountDeletionAppleRevokeFailedFailure() =>
         'Your account data was deleted, but Apple could not confirm the '
             'sign-in revocation, so your account sign-in itself still '
             'exists. Try again to finish removing it, or contact support if '
             'you\'re concerned about the lingering Apple access.',
-      AccountDeletionAttachmentCleanupFailedFailure() =>
-        'Nothing was deleted. We couldn\'t remove your support attachments, '
-            'so the deletion never began - please try again.',
+      AccountDeletionAppleRevocationMarkerFailedFailure() =>
+        'Your account data was deleted, and Apple confirmed the sign-in '
+            'revocation, but we couldn\'t safely record that on our end. '
+            'Please try again in a moment, or contact support if it keeps '
+            'failing.',
+      AccountDeletionDeleteUserFailedFailure() =>
+        'Your account data has already been deleted, but removing the '
+            'account sign-in itself did not finish. Please try again in a '
+            'moment, or contact support if it keeps failing.',
+      _ => throw StateError(
+          'unreachable: $failure is not a "data already deleted" kind'),
+    };
+
+/// Everything else: an expired session, a call whose outcome is genuinely
+/// unknown (KTD4), or an unclassified error.
+String _otherFailureCopy(AccountDeletionFailure failure) => switch (failure) {
+      AccountDeletionUnauthorizedFailure() =>
+        'Your session has expired. Sign in again and retry - your account '
+            'was not deleted.',
       AccountDeletionTimeoutFailure() =>
         'This is taking longer than expected and we can\'t confirm whether '
             'your account was deleted. Wait a moment and check whether '
             'you\'re still signed in before retrying - retrying is safe '
             'either way.',
-      AccountDeletionDeleteUserFailedFailure() =>
-        'Your account data has already been deleted, but removing the '
-            'account sign-in itself did not finish. Please try again in a '
-            'moment, or contact support if it keeps failing.',
       AccountDeletionUnknownFailure() =>
         'Something went wrong. Your account was not deleted. Please try '
             'again.',
+      _ => throw StateError('unreachable: $failure is not an "other" kind'),
     };
 
 /// Injectable seam for the Apple authorization-code fetch (Issue #17 U6;
@@ -148,6 +252,14 @@ typedef AppleAuthorizationCodeRequest = Future<AuthorizationCredentialAppleID>
 
 Future<AuthorizationCredentialAppleID> _defaultAppleAuthorizationCodeRequest() =>
     SignInWithApple.getAppleIDCredential(scopes: const []);
+
+/// The result of [_AccountSectionState._deleteAccountServerInformed]/
+/// [_AccountSectionState._retryWithFreshAppleCode] (Issue #605/LLA-052):
+/// [cancelled] means an Apple sheet was dismissed mid-flow, which
+/// [_AccountSectionState._performDeletion] treats as a silent abort (no
+/// error copy, no device reset) - distinct from [completed], after which
+/// the caller proceeds to the device reset.
+enum _AppleFlowOutcome { completed, cancelled }
 
 const String kSignOutConsequenceCopy =
     'This removes the data from this device. It stays in your account.';
@@ -269,8 +381,13 @@ class _AccountSectionState extends State<AccountSection> {
         const SyncStatusTile(),
         if (signedIn && sync != null) _buildSyncNowTile(sync),
         if (signedIn) ..._buildSignOutTiles(context),
+        // Issue #268: optional TOTP enrolment/removal, self-contained.
+        // Issue #738: the section self-hides when the build's MFA flag is
+        // off (AuthController.mfaEnabled), so no tile group renders and no
+        // factor call is made in the default build.
+        if (signedIn) MfaSettingsSection(auth: auth),
         if (signedIn && _canExportAndDelete)
-          ..._buildDeleteTile(context, theme, deletionService, providers),
+          ..._buildDeleteTile(context, theme, deletionService),
       ],
     );
   }
@@ -361,7 +478,7 @@ class _AccountSectionState extends State<AccountSection> {
       ];
 
   /// Adapts [AuthController.registerPasskey]'s
-  /// [PasskeyRegistrationResult] to the `Future<AuthUser>` shape
+  /// [NativeSignInResult] to the `Future<AuthUser>` shape
   /// [_addMethod]/[_reauthenticateAndLink] share with [linkGoogle] and
   /// [linkApple] (#30 U4; KTD5). A dismissed ceremony has no fresh user to
   /// report — the controller adopted nothing — so the current user is
@@ -370,8 +487,8 @@ class _AccountSectionState extends State<AccountSection> {
   Future<AuthUser> _registerPasskey(AuthController auth) async {
     final result = await auth.registerPasskey();
     return switch (result) {
-      PasskeyRegistrationSuccess(:final user) => user,
-      PasskeyRegistrationCancelled() => auth.currentUser!,
+      NativeSignInSession(:final user) => user,
+      NativeSignInCancelled() => auth.currentUser!,
     };
   }
 
@@ -422,7 +539,6 @@ class _AccountSectionState extends State<AccountSection> {
     BuildContext context,
     ThemeData theme,
     AccountDeletionService? deletionService,
-    List<String> providers,
   ) {
     return [
       if (deletionService != null)
@@ -441,7 +557,7 @@ class _AccountSectionState extends State<AccountSection> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : null,
-          onTap: !_deleting ? () => _deleteAccount(context, providers) : null,
+          onTap: !_deleting ? () => _deleteAccount(context) : null,
         ),
       if (_deleteError != null)
         Padding(
@@ -540,12 +656,15 @@ class _AccountSectionState extends State<AccountSection> {
       // `Provider.of` in [build], so no local state update is needed here.
       await link();
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+      if (mounted) {
+        setState(() => _linkError =
+            authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog account: link failed (${error.runtimeType})');
       if (mounted) {
-        setState(
-            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _linkError = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busyProvider = null);
@@ -604,12 +723,15 @@ class _AccountSectionState extends State<AccountSection> {
       // finding 2), so no local state update is needed here.
       await auth.unlinkProvider(provider);
     } on AuthFailure catch (failure) {
-      if (mounted) setState(() => _linkError = authFailureCopy(failure));
+      if (mounted) {
+        setState(() => _linkError =
+            authFailureCopy(AppLocalizations.of(context), failure));
+      }
     } catch (error) {
       debugPrint('lunarlog account: unlink failed (${error.runtimeType})');
       if (mounted) {
-        setState(
-            () => _linkError = authFailureCopy(const AuthFailure.unknown()));
+        setState(() => _linkError = authFailureCopy(
+            AppLocalizations.of(context), const AuthFailure.unknown()));
       }
     } finally {
       if (mounted) setState(() => _busyProvider = null);
@@ -621,7 +743,8 @@ class _AccountSectionState extends State<AccountSection> {
   /// root, and a pushed route would otherwise outlive its providers in
   /// harnesses that stub the reset.
   ///
-  /// [reset] may be passed in already resolved (Issue #17 P1 fix) for a
+  /// [reset] may be passed in already resolved (Issue #17 P1 fix, also
+  /// applied to the global sign-out path by Issue #638/LLA-004) for a
   /// caller that must read it from [context] *before* an async gap, so the
   /// actual data-wipe side effect still runs even if [context] is
   /// unmounted by the time this is called - only the UI navigation step is
@@ -724,6 +847,19 @@ class _AccountSectionState extends State<AccountSection> {
     );
     if (confirmed != true || !context.mounted) return;
     final auth = context.read<AuthController>();
+    // #268 D-6: AAL2 step-up before ending every session, for an account
+    // with an enrolled TOTP factor; a no-op otherwise.
+    if (!await ensureAal2(context, auth) || !context.mounted) return;
+    final removeAllRegistrations =
+        context.read<RemoveAllPushRegistrationsCallback?>();
+    // Issue #638 (LLA-004): resolved here, before the awaits below, the
+    // same way _performDeletion resolves it for Issue #17 (see _reset's doc
+    // comment). Settings - and this widget - can unmount mid-flight because
+    // signing out navigates away, so the reset must not depend on [context]
+    // still being valid once signOut() and the push deregistration below
+    // have completed; only the UI feedback (the snackbar, _reset's own pop)
+    // stays gated on context.mounted.
+    final resetCallback = context.read<DeviceResetCallback?>();
     // #1/#9 (review fix): remove *every* device's push registration while
     // the session is still authenticated, before signOut() clears it - see
     // RemoveAllPushRegistrationsCallback's doc comment. This is the global
@@ -734,20 +870,29 @@ class _AccountSectionState extends State<AccountSection> {
     // (resetDevice) also attempts a single-device removal, but by then
     // signOut() has already cleared the session, so that attempt alone runs
     // as anon and is denied.
-    await context.read<RemoveAllPushRegistrationsCallback?>()?.call();
+    await removeAllRegistrations?.call();
     try {
       await auth.signOut(scope: AuthSignOutScope.global);
     } on AuthFailure catch (failure) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '${authFailureCopy(failure)} Other devices were not signed out.'),
-      ));
-      await _reset(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '${authFailureCopy(AppLocalizations.of(context), failure)} '
+              'Other devices were not signed out.'),
+        ));
+      }
+      // Always run, whether or not context is still mounted (Issue #638) -
+      // see _reset's doc comment: [resetCallback] was captured above, so the
+      // data wipe still happens even though the route that started this
+      // flow is gone; only _reset's own UI pop is gated internally.
+      // ignore: use_build_context_synchronously
+      await _reset(context, reset: resetCallback);
       return;
     }
-    if (!context.mounted) return;
-    await _reset(context);
+    // Same reasoning as the catch block above: always run regardless of
+    // context.mounted (Issue #638).
+    // ignore: use_build_context_synchronously
+    await _reset(context, reset: resetCallback);
   }
 
   /// Collects this device's profiles and their entries and hands them to
@@ -758,8 +903,11 @@ class _AccountSectionState extends State<AccountSection> {
   /// the failure its own way.
   Future<void> _runExport(BuildContext context) async {
     final profilesRepo = context.read<ProfilesRepository>();
-    final entriesRepo = context.read<DayEntriesRepository>();
-    final observationsRepo = context.read<ObservationsRepository>();
+    // Issue #140 review, LLA-094: entries/observations (plus, LLA-084,
+    // profileMode/cycleOverrides) are read together per profile through
+    // this one coherent snapshot seam — see
+    // `AccountExportSnapshotRepository`'s own doc comment.
+    final snapshotRepo = context.read<AccountExportSnapshotRepository>();
     final careContentRepo = context.read<CareContentRepository>();
     // Issue #248: read before the first `await` below (not after -
     // `use_build_context_synchronously`). The writer already carries its
@@ -774,11 +922,16 @@ class _AccountSectionState extends State<AccountSection> {
     final observationsByProfile = <String, List<Observation>>{};
     final careNotesByProfile = <String, List<CareNote>>{};
     final visitPrepByProfile = <String, List<VisitPrepItem>>{};
+    final profileModesByProfile = <String, ProfileLifecycleMode?>{};
+    final cycleOverridesByProfile = <String, List<CycleOverride>>{};
+    final mergeEventsByProfile = <String, List<DayEntryMergeEvent>>{};
     for (final profile in profiles) {
-      entriesByProfile[profile.id] =
-          await entriesRepo.listForProfile(profile.id);
-      observationsByProfile[profile.id] =
-          await observationsRepo.listForProfile(profile.id);
+      final snapshot = await snapshotRepo.forProfile(profile.id);
+      entriesByProfile[profile.id] = snapshot.entries;
+      observationsByProfile[profile.id] = snapshot.observations;
+      profileModesByProfile[profile.id] = snapshot.profileMode;
+      cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
+      mergeEventsByProfile[profile.id] = snapshot.mergeEvents;
       careNotesByProfile[profile.id] =
           await careContentRepo.listCareNotes(profile.id);
       visitPrepByProfile[profile.id] =
@@ -791,6 +944,9 @@ class _AccountSectionState extends State<AccountSection> {
       observationsByProfile: observationsByProfile,
       careNotesByProfile: careNotesByProfile,
       visitPrepByProfile: visitPrepByProfile,
+      profileModesByProfile: profileModesByProfile,
+      cycleOverridesByProfile: cycleOverridesByProfile,
+      mergeEventsByProfile: mergeEventsByProfile,
       appVersion: kAppVersionForExport,
     );
   }
@@ -798,12 +954,10 @@ class _AccountSectionState extends State<AccountSection> {
   /// Delete flow (Issue #17 U6; R1-R3, R6, R12, KTD7). In order: a fresh
   /// device credential (declining cancels silently, AE5); the confirmation
   /// naming server rows, the account, and this device's data, with
-  /// "Export first" available without proceeding (R2); when the account
-  /// has an Apple identity, a fresh authorization code (a cancelled Apple
-  /// sheet also cancels silently, KTD3); the service call; then the one
-  /// device reset (KTD16). No reset runs on any failure (R12).
-  Future<void> _deleteAccount(
-      BuildContext context, List<String> providers) async {
+  /// "Export first" available without proceeding (R2); the server-informed
+  /// Apple flow (Issue #605/LLA-052; see [_deleteAccountServerInformed]);
+  /// then the one device reset (KTD16). No reset runs on any failure (R12).
+  Future<void> _deleteAccount(BuildContext context) async {
     if (_deleting) return;
     final gate = context.read<GateController?>();
     if (gate == null) {
@@ -811,8 +965,9 @@ class _AccountSectionState extends State<AccountSection> {
       return;
     }
     setState(() => _deleteError = null);
-    final granted = await gate.duringSystemUi(gate.reauthenticate);
-    if (!granted || !context.mounted) return;
+    if (!await _passesPreDeleteChecks(context, gate) || !context.mounted) {
+      return;
+    }
 
     final decision = await showDeleteAccountDialog(
       context,
@@ -826,14 +981,27 @@ class _AccountSectionState extends State<AccountSection> {
       return;
     }
 
-    await _performDeletion(context, gate, service, providers);
+    await _performDeletion(context, gate, service);
+  }
+
+  /// The device credential and, when the account has an enrolled TOTP
+  /// factor, an AAL2 step-up (#268 D-6) — both must pass before the delete
+  /// confirmation dialog even opens. Split out of [_deleteAccount] to keep
+  /// that method's own cyclomatic complexity under the CRAP gate's budget.
+  Future<bool> _passesPreDeleteChecks(
+    BuildContext context,
+    GateController gate,
+  ) async {
+    final granted = await gate.duringSystemUi(gate.reauthenticate);
+    if (!granted || !context.mounted) return false;
+    final auth = context.read<AuthController>();
+    return await ensureAal2(context, auth) && context.mounted;
   }
 
   /// The service call itself, once the credential and confirmation steps
-  /// have passed: a fresh Apple authorization code first when the account
-  /// carries an Apple identity (a cancelled Apple sheet aborts silently,
-  /// KTD3), then the deletion call, then the one device reset (R6, KTD16).
-  /// No reset runs on any failure (R12).
+  /// have passed - [_deleteAccountServerInformed]'s server-informed Apple
+  /// flow, then the one device reset (R6, KTD16). No reset runs on any
+  /// failure (R12), including a cancelled Apple ceremony mid-flow (KTD3).
   ///
   /// The device reset callback is read from [context] *before* any `await`
   /// below (Issue #17 P1 fix): a confirmed successful deletion must still
@@ -846,17 +1014,12 @@ class _AccountSectionState extends State<AccountSection> {
     BuildContext context,
     GateController gate,
     AccountDeletionService service,
-    List<String> providers,
   ) async {
     final resetCallback = context.read<DeviceResetCallback?>();
     setState(() => _deleting = true);
     try {
-      String? appleCode;
-      if (providers.contains(AuthProviders.apple)) {
-        appleCode = await gate.duringSystemUi(_fetchAppleAuthorizationCode);
-        if (appleCode == null) return; // cancelled Apple sheet: silent abort
-      }
-      await service.deleteAccount(appleAuthorizationCode: appleCode);
+      final outcome = await _deleteAccountServerInformed(gate, service);
+      if (outcome == _AppleFlowOutcome.cancelled) return;
     } on AccountDeletionFailure catch (failure) {
       if (mounted) {
         setState(() => _deleteError = accountDeletionFailureCopy(failure));
@@ -878,6 +1041,52 @@ class _AccountSectionState extends State<AccountSection> {
     // wipe) regardless.
     // ignore: use_build_context_synchronously
     await _reset(context, reset: resetCallback);
+  }
+
+  /// The server-informed Apple flow the finding's own "Response and
+  /// targeted regression" describes (Issue #605/LLA-052). Always calls the
+  /// service first with NO Apple code, regardless of platform or whether
+  /// the account carries an Apple identity at all - the server's own Step 3
+  /// (`delete-account/index.ts`) fails closed with `apple_code_required`
+  /// *before* any destructive step whenever one is actually still needed,
+  /// so nothing is touched by this first attempt either way; and #527/#605's
+  /// identity-bound deletion-progress marker means a retry after a prior
+  /// successful revoke needs no code at all (a "code-free retry" - the
+  /// ceremony is never invoked). Only when the server actually asks for a
+  /// code does [_retryWithFreshAppleCode] run.
+  Future<_AppleFlowOutcome> _deleteAccountServerInformed(
+    GateController gate,
+    AccountDeletionService service,
+  ) async {
+    try {
+      await service.deleteAccount();
+      return _AppleFlowOutcome.completed;
+    } on AccountDeletionAppleCodeRequiredFailure {
+      return _retryWithFreshAppleCode(gate, service);
+    }
+  }
+
+  /// Fetches a fresh Apple authorization code and retries once - reached
+  /// only after the server has just said it still needs one. Throws
+  /// [AccountDeletionFailure.appleNativeCeremonyUnavailable] instead of ever
+  /// invoking the native ceremony on a platform that does not have it
+  /// (Issue #605/LLA-052, `_canAddApple`): `SignInWithApple
+  /// .getAppleIDCredential` throws `SignInWithAppleNotSupportedException`
+  /// there, which used to surface as generic "please try again" copy that
+  /// could never actually succeed by retrying - this account's Apple
+  /// sign-in link can only be removed from a device that has the ceremony,
+  /// or by support.
+  Future<_AppleFlowOutcome> _retryWithFreshAppleCode(
+    GateController gate,
+    AccountDeletionService service,
+  ) async {
+    if (!_canAddApple) {
+      throw const AccountDeletionFailure.appleNativeCeremonyUnavailable();
+    }
+    final appleCode = await gate.duringSystemUi(_fetchAppleAuthorizationCode);
+    if (appleCode == null) return _AppleFlowOutcome.cancelled; // cancelled Apple sheet: silent abort
+    await service.deleteAccount(appleAuthorizationCode: appleCode);
+    return _AppleFlowOutcome.completed;
   }
 
   /// A fresh Sign in with Apple authorization code (#17 KTD3). Null means

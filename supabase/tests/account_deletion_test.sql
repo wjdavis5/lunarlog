@@ -5,7 +5,7 @@
 -- pg_temp-result-table idiom from sync_push_test.sql for snapshot
 -- comparisons.
 begin;
-select plan(69);
+select plan(84);
 
 create temp table snap (name text primary key, v jsonb);
 -- Issue #167: section 12 below is the first place in this file that reads a
@@ -113,6 +113,7 @@ select tests.authenticate_as('user_a');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(2), 'Sam', true, 1, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values
   (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z'),
@@ -120,6 +121,7 @@ values
   (tests.ulid(12), tests.ulid(1), '2026-09-03', 'UTC', 'none', '2026-09-03T00:00:00Z'),
   (tests.ulid(13), tests.ulid(2), '2026-09-01', 'UTC', 'spotting', '2026-09-01T00:00:00Z'),
   (tests.ulid(14), tests.ulid(2), '2026-09-02', 'UTC', 'heavy', '2026-09-02T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 insert into public.settings (user_id, key, value)
 values
@@ -136,8 +138,10 @@ select public.create_guardian_invitation(
 select tests.authenticate_as('user_b');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(3), 'Bailey', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(20), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 insert into public.settings (user_id, key, value)
 values (tests.get_supabase_uid('user_b'), 'k1', 'v1');
 
@@ -162,13 +166,39 @@ select pg_temp.snapshot('a_result', public.delete_account_data());
 -- (the same gap this file's AE3 checks avoid).
 select tests.clear_authentication();
 
+-- Issue #522: delete_account_data() now tombstones (payload cleared,
+-- server_version bumped) rather than hard-deletes A's own profiles and
+-- their day_entries/observations/care_notes/visit_prep_items/
+-- cycle_overrides - the rows must survive so the deletion propagates to
+-- any co-guardian via the ordinary incremental pull (see
+-- 20260913013000_deleted_profiles_tombstone_purge.sql's header). Every
+-- other table below is unchanged - still a real, immediate DELETE.
 select is(
   (select count(*) from public.profiles where user_id = tests.get_supabase_uid('user_a')),
-  0::bigint, 'AE2: zero profiles remain for A'
+  2::bigint, 'AE2: both of A''s profiles SURVIVE, tombstoned rather than deleted (Issue #522)'
+);
+select is(
+  (select count(*) from public.profiles
+    where user_id = tests.get_supabase_uid('user_a') and deleted_at is null),
+  0::bigint, 'AE2: neither of A''s profiles is LIVE any more'
+);
+select is(
+  (select bool_and(display_name = '' and not is_minor)
+     from public.profiles where user_id = tests.get_supabase_uid('user_a')),
+  true, 'AE2: A''s tombstoned profiles carry no payload'
+);
+select is(
+  (select count(*) from public.deleted_profiles where profile_id in (tests.ulid(1), tests.ulid(2))),
+  2::bigint, 'AE2: both profiles are logged in deleted_profiles'
 );
 select is(
   (select count(*) from public.day_entries where profile_id in (tests.ulid(1), tests.ulid(2))),
-  0::bigint, 'AE2: zero day_entries remain for A''s profiles'
+  5::bigint, 'AE2: all five day_entries SURVIVE, tombstoned (Issue #522)'
+);
+select is(
+  (select count(*) from public.day_entries
+    where profile_id in (tests.ulid(1), tests.ulid(2)) and deleted_at is null),
+  0::bigint, 'AE2: zero of A''s day_entries are LIVE any more'
 );
 select is(
   (select count(*) from public.settings where user_id = tests.get_supabase_uid('user_a')),
@@ -201,8 +231,8 @@ select is(
 -- 4. Returned jsonb carries the expected keys and correct counts.
 -- ---------------------------------------------------------------------------
 
-select is(pg_temp.snap('a_result') -> 'profiles', '2'::jsonb, 'result: profiles count is 2');
-select is(pg_temp.snap('a_result') -> 'day_entries', '5'::jsonb, 'result: day_entries count is 5');
+select is(pg_temp.snap('a_result') -> 'profiles', '2'::jsonb, 'result: profiles count is 2 (Issue #522: now tombstoned, not deleted)');
+select is(pg_temp.snap('a_result') -> 'day_entries', '5'::jsonb, 'result: day_entries count is 5 (Issue #522: now tombstoned, not deleted)');
 select is(pg_temp.snap('a_result') -> 'day_entries_rehomed', '0'::jsonb,
   'result: day_entries_rehomed is 0 (A owns every profile these entries are on)');
 select is(pg_temp.snap('a_result') -> 'settings', '3'::jsonb, 'result: settings count is 3');
@@ -227,7 +257,8 @@ select is(
     'profile_guardians', 0, 'profiles', 0, 'settings', 0,
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
-    'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0
+    'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0,
+    'ownership_transfers', 0, 'prediction_connections', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );
@@ -246,8 +277,10 @@ select tests.create_supabase_user('user_d'); -- caregiver
 select tests.authenticate_as('user_c');
 insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
 values (tests.ulid(4), 'Riley C', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(30), tests.ulid(4), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
 
 select public.create_guardian_invitation(
   tests.ulid(4), 'caregiver', 'D',
@@ -262,9 +295,11 @@ select public.accept_guardian_invitation(
 -- D also logs an entry directly on C's shared profile: this row's user_id
 -- defaults to auth.uid() at insert time, i.e. D, per the initial sync
 -- schema's `default auth.uid()` - the exact case R7/AE3 protects.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(31), tests.ulid(4), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z',
         tests.get_supabase_uid('user_d'), tests.get_supabase_uid('user_d'));
+select set_config('role', 'authenticated', true);
 
 select pg_temp.snapshot('d_result', public.delete_account_data());
 
@@ -370,9 +405,11 @@ select public.accept_guardian_invitation(
 -- H logs an entry directly on G's shared profile: user_id defaults to
 -- auth.uid() at insert time (H), per the initial sync schema - the exact
 -- caregiver-on-someone-else's-profile row this fix re-homes.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(40), tests.ulid(6), '2026-09-05', 'UTC', 'medium', '2026-09-05T00:00:00Z',
         tests.get_supabase_uid('user_h'), tests.get_supabase_uid('user_h'));
+select set_config('role', 'authenticated', true);
 
 -- H deletes their account: the RPC first (as the Edge Function does), then
 -- the auth.users row for real (unlike section 6's AE3 fixture above, which
@@ -501,9 +538,11 @@ select public.accept_guardian_invitation(
   'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd', 'J'
 );
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(41), tests.ulid(7), '2026-09-06', 'UTC', 'medium', '2026-09-06T00:00:00Z',
         tests.get_supabase_uid('user_j'), tests.get_supabase_uid('user_j'));
+select set_config('role', 'authenticated', true);
 
 -- The revocation-bypass this round-2 fix closes: J, still authenticated
 -- (not even revoked) with a real JWT, cannot call the function directly
@@ -599,6 +638,7 @@ values
 -- K logs an entry: both guardians have alert_on_log, so L (not the writer)
 -- gets an outbox row.
 select tests.authenticate_as('user_k');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(510), tests.ulid(51), '2026-09-01', 'UTC', 'none', now(),
         tests.get_supabase_uid('user_k'), tests.get_supabase_uid('user_k'));
@@ -726,9 +766,11 @@ values
   (tests.ulid(52), tests.get_supabase_uid('user_o'), '2026-09-09');
 
 select tests.authenticate_as('user_n');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(530), tests.ulid(53), '2026-09-01', 'UTC', 'none', now(),
         tests.get_supabase_uid('user_n'), tests.get_supabase_uid('user_n'));
+select set_config('role', 'authenticated', true);
 
 select public.revoke_guardian(tests.ulid(53), tests.get_supabase_uid('user_o'));
 
@@ -857,6 +899,178 @@ select is(
   (select count(*) from public.import_jobs where created_by = tests.get_supabase_uid('user_q')),
   1::bigint,
   'Issue #167: a different user''s own import job survives untouched'
+);
+
+-- ---------------------------------------------------------------------------
+-- 14. Issue #499: ownership_transfers and prediction_connections explicit
+--     deletions inside delete_account_data().
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_r');
+select tests.create_supabase_user('user_s');
+
+select tests.authenticate_as('user_r');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(70), 'R''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+
+select tests.authenticate_as('user_s');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(71), 'S''s profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(72), 'S''s second profile', true, 0, '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z');
+
+-- No-grant tables (ownership_transfers, prediction_connections): fixture as service_role.
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+insert into public.ownership_transfers
+  (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values
+  (tests.ulid(70), tests.get_supabase_uid('user_r'), repeat('aa', 32), 'viewer', now() + interval '24 hours');
+
+insert into public.prediction_connections
+  (profile_id, owner_user_id, token_hash, expires_at)
+values
+  (tests.ulid(70), tests.get_supabase_uid('user_r'), repeat('bb', 32), now() + interval '24 hours');
+
+insert into public.ownership_transfers
+  (profile_id, initiated_by, token_hash, parent_post_transfer_role, expires_at)
+values
+  (tests.ulid(71), tests.get_supabase_uid('user_s'), repeat('ee', 32), 'viewer', now() + interval '24 hours');
+
+-- S invites R on profile 71, R accepts (recipient_user_id = R)
+insert into public.prediction_connections
+  (profile_id, owner_user_id, recipient_user_id, token_hash, expires_at, accepted_at)
+values
+  (tests.ulid(71), tests.get_supabase_uid('user_s'), tests.get_supabase_uid('user_r'), repeat('cc', 32), now() + interval '24 hours', now());
+
+-- S creates an unaccepted connection on profile 72 (honors prediction_connections_one_live_uq)
+insert into public.prediction_connections
+  (profile_id, owner_user_id, token_hash, expires_at)
+values
+  (tests.ulid(72), tests.get_supabase_uid('user_s'), repeat('dd', 32), now() + interval '24 hours');
+
+-- R deletes account data
+select tests.authenticate_as('user_r');
+select pg_temp.snapshot('r_result', public.delete_account_data());
+
+select is(
+  pg_temp.snap('r_result') -> 'ownership_transfers', '1'::jsonb,
+  'Issue #499: result includes ownership_transfers count of 1'
+);
+select is(
+  pg_temp.snap('r_result') -> 'prediction_connections', '2'::jsonb,
+  'Issue #499: result includes prediction_connections count of 2 (1 owned, 1 received)'
+);
+
+select set_config('request.jwt.claims', '', true);
+select set_config('role', 'service_role', true);
+
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_r')),
+  0::bigint,
+  'Issue #499: after delete_account_data, zero ownership_transfers remain initiated by R'
+);
+select is(
+  (select count(*) from public.prediction_connections
+    where owner_user_id = tests.get_supabase_uid('user_r') or recipient_user_id = tests.get_supabase_uid('user_r')),
+  0::bigint,
+  'Issue #499: after delete_account_data, zero prediction_connections remain where R is owner or recipient'
+);
+select is(
+  (select count(*) from public.ownership_transfers where initiated_by = tests.get_supabase_uid('user_s')),
+  1::bigint,
+  'Issue #499: user S''s ownership transfer survives'
+);
+select is(
+  (select count(*) from public.prediction_connections where owner_user_id = tests.get_supabase_uid('user_s')),
+  1::bigint,
+  'Issue #499: user S''s unrelated prediction connection survives'
+);
+
+select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------
+-- 15. Issue #596: a former co-guardian can still read the owner's
+--     deleted_profiles row after the owner's auth.users row is actually
+--     gone (a REAL cascade via tests.delete_supabase_user(), not merely a
+--     call to delete_account_data() in isolation - unlike section 3's AE2
+--     coverage above, which never removes the auth.users row and so could
+--     never have caught a gap here). Also confirms the documented flip
+--     side: the per-table tombstones delete_account_data() just wrote are
+--     THEMSELVES cascade-hard-deleted by that same auth.users removal (via
+--     profiles.user_id -> auth.users on delete cascade, then
+--     day_entries.profile_id -> profiles on delete cascade) - which is
+--     exactly why deleted_profiles is the client's sole cross-
+--     account-deletion signal (its own CONTRACT section says so - see
+--     20260913013000_deleted_profiles_tombstone_purge.sql), not a per-table
+--     tombstone diff. See 20260915090000_deletion_tombstones_bundle.sql's
+--     header for the full investigation - deleted_profiles carries no
+--     foreign key to auth.users or profiles at all, so nothing cascades
+--     into it, and its RLS policy checks only the guardian_user_ids array
+--     snapshotted at purge time, independent of profile_guardians surviving.
+-- ---------------------------------------------------------------------------
+
+select tests.create_supabase_user('user_t'); -- owner, deleted for real
+select tests.create_supabase_user('user_u'); -- co-guardian, survives
+
+select tests.authenticate_as('user_t');
+insert into public.profiles (id, display_name, is_minor, sort_order, created_at, updated_at)
+values (tests.ulid(8), 'Riley T', true, 0, '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select set_config('role', 'service_role', true);
+insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
+values (tests.ulid(80), tests.ulid(8), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z');
+select set_config('role', 'authenticated', true);
+
+select public.create_guardian_invitation(
+  tests.ulid(8), 'co_parent', 'U',
+  repeat('71', 32), 48
+);
+select tests.authenticate_as('user_u');
+select public.accept_guardian_invitation(
+  repeat('71', 32), 'U'
+);
+
+-- T deletes: the RPC first (as the Edge Function does), then the auth.users
+-- row for real - the exact order the delete-account Edge Function runs in
+-- (KTD4). Clear authentication before the real auth.users delete, mirroring
+-- section 8's H fixture above (production runs this via auth.admin.deleteUser
+-- on GoTrue's own service connection, which carries no JWT claims).
+select tests.authenticate_as('user_t');
+select public.delete_account_data();
+select tests.clear_authentication();
+select tests.delete_supabase_user('user_t');
+
+select is(
+  (select count(*) from public.profiles where id = tests.ulid(8)),
+  0::bigint,
+  '#596: the profile row itself is hard-gone once the owner''s auth.users row is deleted - the cascade the issue describes'
+);
+select is(
+  (select count(*) from public.day_entries where profile_id = tests.ulid(8)),
+  0::bigint,
+  '#596: its day_entries are hard-gone too, cascaded via the profiles delete - the per-table tombstone never reached a co-guardian''s pull'
+);
+
+-- Read as the co-guardian (not service_role), to prove RLS itself - not
+-- merely the row's existence - survives the owner's account being gone.
+select tests.authenticate_as('user_u');
+select is(
+  (select count(*) from public.deleted_profiles where profile_id = tests.ulid(8)),
+  1::bigint,
+  '#596: the co-guardian can still read the deleted_profiles row after the owner''s auth.users row is gone'
+);
+select is(
+  (select tests.get_supabase_uid('user_u') = any(guardian_user_ids)
+     from public.deleted_profiles where profile_id = tests.ulid(8)),
+  true,
+  '#596: the co-guardian is recorded in guardian_user_ids, which is what authorizes the read above'
+);
+select is(
+  (select count(*) from public.profile_guardians where profile_id = tests.ulid(8)),
+  0::bigint,
+  '#596: profile_guardians for this profile is gone too (cascaded via the profiles delete) - '
+  'deleted_profiles'' RLS deliberately does not depend on it surviving'
 );
 
 select tests.clear_authentication();

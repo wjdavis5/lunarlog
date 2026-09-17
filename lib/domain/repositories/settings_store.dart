@@ -29,6 +29,10 @@ abstract final class SettingsKeys {
   static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
 
+  /// Whether the user has acknowledged the minimum-age statement (13+ policy,
+  /// Issue #269). Recorded locally so it is not re-prompted every launch.
+  static const String minimumAgeAcknowledged = 'minimum_age_acknowledged';
+
   /// Email of a sign-up whose confirmation link has not been opened on
   /// this device yet (AS10). Device-local; cleared (set to the empty
   /// string) once a signed-in session arrives.
@@ -110,4 +114,53 @@ abstract final class SettingsKeys {
   /// Device-local, same posture as [reminderConfigs].
   static const String reminderStatisticChangeSignals =
       'reminder_statistic_change_signals';
+
+  /// Issue #568 (b): set to `'true'` once
+  /// `migrateOmittedCyclesToCycleOverrides` (`lib/domain/prediction/
+  /// cycle_history.dart`) has copied every profile's device-local omission
+  /// list (the pre-#568 `omittedCycles.<profileId>` keys) into
+  /// `cycle_overrides` rows, so the one-time migration never re-scans
+  /// every profile's old list on a later launch. The migration itself is
+  /// also idempotent per-date (`CycleOverridesRepository.setExcludedFromAverage`
+  /// is a no-op for an already-excluded date), so this flag is purely a
+  /// fast-path — a device that somehow ran the migration twice would still
+  /// converge on the same result.
+  static const String cycleOverridesMigratedFromOmissionList =
+      'cycle_overrides_migrated_from_omission_list';
+
+  /// Per-profile "recently used tags" (Issue #234), as the JSON document
+  /// `encodeTagRecents` produces: profile id -> most-recent-first taxonomy
+  /// codes, capped per profile (`kTagRecentsCap`). Backs
+  /// `CategoryPicker`'s "Recent" row. Device-local **by design** — a
+  /// per-device logging-UI shortlist, not health data — and never synced,
+  /// the same posture as [reminderConfigs].
+  static const String tagRecents = 'tag_recents';
+
+  /// The device-local appearance override (issue #137): one of `'system'`,
+  /// `'light'`, or `'dark'`, parsed by `themeModeFromStored`
+  /// (`lib/ui/theme/appearance.dart`). Absent — or any unrecognized value,
+  /// so a future value can never wedge the app on a light-only build —
+  /// reads as "follow the system appearance", the issue's own default
+  /// posture. Device-local **by design**: appearance is a property of the
+  /// display this device happens to be on, not of the account, the same
+  /// posture as [relockEnabled].
+  static const String themeMode = 'theme_mode';
+
+  /// The calendar grid's week-start day (Issue #226): `'sunday'` (the
+  /// historical default) or `'monday'`, parsed by
+  /// `CalendarFirstDay.fromStored`
+  /// (`lib/domain/calendar_preferences.dart`). Device-local by design —
+  /// the same display-preference posture as [themeMode]; the month
+  /// calendar watches this key and re-lays-out its grid live.
+  static const String calendarFirstDayOfWeek = 'calendar_first_day_of_week';
+
+  /// The compact date-order preference (Issue #226): `'system'` (the
+  /// locale's own order — the pre-#226 behaviour), `'day_month'` ("5 Sep"),
+  /// or `'month_day'` ("Sep 5"), parsed by
+  /// `DateFormatPreference.fromStored`
+  /// (`lib/domain/calendar_preferences.dart`). Consumed by
+  /// `lib/ui/l10n/dates.dart`'s short-date helpers, so the day sheet's
+  /// date header and every relative-day label follow it. Device-local,
+  /// same posture as [themeMode].
+  static const String dateFormat = 'date_format';
 }

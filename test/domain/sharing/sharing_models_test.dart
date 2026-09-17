@@ -89,6 +89,58 @@ void main() {
     });
   });
 
+  group('InvitePreview equality and hashCode (Issue #594)', () {
+    final expiresAt = DateTime.utc(2026, 9, 20);
+    final preview1 = InvitePreview(
+      profileDisplayName: 'Riley',
+      role: GuardianRole.caregiver,
+      expiresAt: expiresAt,
+    );
+    final preview2 = InvitePreview(
+      profileDisplayName: 'Riley',
+      role: GuardianRole.caregiver,
+      expiresAt: expiresAt,
+    );
+
+    test('identical and equal instances compare equal', () {
+      expect(preview1, preview1);
+      expect(preview1, preview2);
+      expect(preview1.hashCode, preview2.hashCode);
+    });
+
+    test('differing fields compare unequal', () {
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Someone Else',
+          role: GuardianRole.caregiver,
+          expiresAt: expiresAt,
+        )),
+      );
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.viewer,
+          expiresAt: expiresAt,
+        )),
+      );
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.caregiver,
+          expiresAt: expiresAt.add(const Duration(hours: 1)),
+        )),
+      );
+    });
+
+    test('different type is not equal', () {
+      // ignore: unrelated_type_equality_checks
+      expect(preview1 == 'not a preview', isFalse);
+    });
+  });
+
   group('PendingInvite equality and hashCode', () {
     final now = DateTime.utc(2026, 9, 6);
     final expires = DateTime.utc(2026, 9, 8);
@@ -126,7 +178,12 @@ void main() {
       expect(invite() == 'not an invite', isFalse);
     });
 
-    test('isExpired derives from expiresAt vs the current UTC time', () {
+    test('isExpiredAt derives from expiresAt vs the supplied clock reading', () {
+      // Issue #304: `isExpired` (a getter reading `DateTime.now()` itself)
+      // became `isExpiredAt(DateTime now)` so `lib/domain` never reads the
+      // wall clock -- this test pins its own reference instant instead of
+      // racing the real one.
+      final reference = DateTime.utc(2026, 1, 2, 12);
       PendingInvite withExpiry(DateTime expiresAt) => PendingInvite(
             invitationId: 'inv-1',
             profileId: 'p-1',
@@ -136,13 +193,13 @@ void main() {
             expiresAt: expiresAt,
           );
       expect(
-        withExpiry(DateTime.now().toUtc().add(const Duration(hours: 1)))
-            .isExpired,
+        withExpiry(reference.add(const Duration(hours: 1)))
+            .isExpiredAt(reference),
         isFalse,
       );
       expect(
-        withExpiry(DateTime.now().toUtc().subtract(const Duration(hours: 1)))
-            .isExpired,
+        withExpiry(reference.subtract(const Duration(hours: 1)))
+            .isExpiredAt(reference),
         isTrue,
       );
     });
@@ -160,21 +217,10 @@ void main() {
       expect(() => InviteCancellation.fromDb('unknown'), throwsArgumentError);
     });
 
-    test('every outcome has non-empty user-facing copy', () {
-      for (final outcome in InviteCancellation.values) {
-        expect(outcome.userFacingMessage, isNotEmpty);
-      }
-    });
-
-    test('userFacingMessage is pinned per outcome', () {
-      expect(InviteCancellation.revoked.userFacingMessage, 'Invitation cancelled');
-      expect(InviteCancellation.alreadyAccepted.userFacingMessage,
-          'That invitation was already accepted');
-      expect(InviteCancellation.alreadyRevoked.userFacingMessage,
-          'That invitation was already cancelled');
-      expect(InviteCancellation.expired.userFacingMessage,
-          'That invitation had already expired');
-    });
+    // Issue #545: InviteCancellation.userFacingMessage moved to
+    // inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart) — the
+    // domain type is fieldless data now. Copy coverage moved to
+    // test/ui/l10n/sharing_failure_copy_test.dart.
   });
 
   group('SharingFailure types', () {

@@ -80,6 +80,14 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
   }
 
   AccountDeletionFailure _mapFunctionException(FunctionException error) {
+    // #268: `mfa_required` also carries a 401 status - checked first, ahead
+    // of the blanket `error.status == 401` branch below, so it is never
+    // swallowed into the generic AccountDeletionFailure.unauthorized (which
+    // reads as "sign in again", not "step up MFA").
+    final details = error.details;
+    if (details is Map && details['code'] == 'mfa_required') {
+      return const AccountDeletionFailure.mfaRequired();
+    }
     if (error.status == 401) {
       return const AccountDeletionFailure.unauthorized();
     }
@@ -87,7 +95,6 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
       // The request never reached the function (offline, DNS, timeout).
       return const AccountDeletionFailure.network();
     }
-    final details = error.details;
     if (details is Map) {
       return _mapResponseCode(details['code']);
     }
@@ -95,14 +102,31 @@ class SupabaseAccountDeletionService implements AccountDeletionService {
   }
 
   AccountDeletionFailure _mapResponseCode(Object? code) {
+    if (code == 'mfa_required') {
+      return const AccountDeletionFailure.mfaRequired();
+    }
     if (code == 'apple_code_required') {
       return const AccountDeletionFailure.appleCodeRequired();
     }
     if (code == 'apple_revoke_failed') {
       return const AccountDeletionFailure.appleRevokeFailed();
     }
+    if (code == 'apple_revocation_marker_failed') {
+      // Issue #599: distinct from apple_revoke_failed above - Apple DID
+      // confirm the revocation here; only the server's own durable record
+      // of it failed to write.
+      return const AccountDeletionFailure.appleRevocationMarkerFailed();
+    }
     if (code == 'attachment_cleanup_failed') {
       return const AccountDeletionFailure.attachmentCleanupFailed();
+    }
+    if (code == 'attachment_cleanup_unbounded') {
+      // Issue #605/LLA-053: a distinct, terminal code (Issue #559's server
+      // side) - unlike attachment_cleanup_failed above, retrying the exact
+      // same call can never succeed here, so this must not fall through to
+      // _mapResponseCode's unknown() default, whose copy says "please try
+      // again".
+      return const AccountDeletionFailure.attachmentCleanupUnbounded();
     }
     if (code == 'unauthorized') {
       return const AccountDeletionFailure.unauthorized();

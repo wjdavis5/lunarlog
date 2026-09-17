@@ -8,12 +8,16 @@
 /// scrolls the target into view.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
+import 'package:lunarlog/domain/notifications/scheduling.dart'
+    show kReminderBody, kReminderTitle;
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -50,21 +54,25 @@ class _FakeModesRepository implements ProfileModesRepository {
   Future<ProfileLifecycleMode?> find(String profileId) async => row;
 
   @override
+  Stream<ProfileLifecycleMode?> watch(String profileId) => Stream.value(row);
+
+  @override
   Future<void> save({
     required String profileId,
     required LifecycleMode mode,
     String? modeStartedOn,
+    String? estimatedDueDate,
     String? birthControlMethod,
   }) async {}
 }
 
 Profile _profile(String id, String name) => Profile(
-      id: id,
-      displayName: name,
-      isMinor: false,
-      createdAt: DateTime.utc(2026, 1, 1),
-      updatedAt: DateTime.utc(2026, 1, 1),
-    );
+  id: id,
+  displayName: name,
+  isMinor: false,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+);
 
 Future<void> _pump(
   WidgetTester tester,
@@ -84,10 +92,14 @@ Future<void> _pump(
         ),
         Provider<SettingsStore>.value(value: store),
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: _FakeProfilesRepository(profiles),
-            settingsStore: store,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: _FakeProfilesRepository(profiles),
+              settingsStore: store,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
         Provider<ReminderConfigService>.value(
           value: ReminderConfigService(store),
@@ -96,6 +108,15 @@ Future<void> _pump(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        // Issue #554: the screen now renders time via
+        // `TimeOfDay.format(context)` instead of a hand-rolled always-24h
+        // string, so this suite forces 24h explicitly (matching its own
+        // literal '09:00'/'22:00' expectations) rather than depending on
+        // whatever the test-runner locale's default clock convention is.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        ),
         home: ReminderSettingsScreen(timePicker: timePicker ?? _stubPicker),
       ),
     ),
@@ -128,7 +149,8 @@ Future<void> _scrollToTop(WidgetTester tester) async {
         .evaluate()
         .isNotEmpty) {
       final center = tester.getCenter(
-          find.byKey(const ValueKey('reminder-profile-dropdown')));
+        find.byKey(const ValueKey('reminder-profile-dropdown')),
+      );
       if (center.dy > 60) return;
     }
     await tester.drag(find.byType(ListView), const Offset(0, 400));
@@ -147,6 +169,16 @@ String _timeLabel(WidgetTester tester, ReminderKind kind) {
 SwitchListTile _switchOf(WidgetTester tester, String key) =>
     tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
 
+/// The rendered subtitle text inside a type's Notification text row
+/// (Issue #184) — scoped to that one tile, since several text rows share
+/// the default-subtitle copy on screen at once.
+String _textTileSubtitle(WidgetTester tester, ReminderKind kind) {
+  final row = tester.widget<ListTile>(
+    find.byKey(ValueKey('reminder-text-${kind.name}')),
+  );
+  return (row.subtitle as Text).data!;
+}
+
 void main() {
   testWidgets('renders every reminder type with its defaults', (tester) async {
     final store = FakeSettingsStore();
@@ -154,8 +186,10 @@ void main() {
 
     expect(_switchOf(tester, 'reminder-upcoming-switch').value, isTrue);
     expect(
-        _timeLabel(tester, ReminderKind.upcoming), '09:00',
-        reason: 'the stock default time every type ships with');
+      _timeLabel(tester, ReminderKind.upcoming),
+      '09:00',
+      reason: 'the stock default time every type ships with',
+    );
 
     // Below the fold: scroll to the opt-in types.
     for (final kind in [
@@ -181,8 +215,9 @@ void main() {
   });
 
   testWidgets('AC4/#183: the three Clue groups render; the birth-control '
-      'group shows the explainer row when no method is in effect',
-      (tester) async {
+      'group shows the explainer row when no method is in effect', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(tester, [_profile('p1', 'Alice')], store);
@@ -191,22 +226,32 @@ void main() {
     // The cycle group lists its kinds; the fertile-window kind carries a
     // lead row (it is window-anchored), the statistic kind does not.
     await _scrollTo(tester, const ValueKey('reminder-fertileWindowSoon-lead'));
-    expect(
-        find.text('Days before predicted fertile window'), findsOneWidget);
+    expect(find.text('Days before predicted fertile window'), findsOneWidget);
 
     // No birth-control method recorded: the group renders its explainer
     // row, not a toggle for a reminder that could never plan.
     await _scrollTo(tester, const ValueKey('reminder-birth-control-none'));
+    // The #184 text rows made the list taller: nudge back up so the group
+    // header above the (now on-screen) explainer row is built too.
+    await tester.drag(find.byType(ListView), const Offset(0, 200));
+    await tester.pumpAndSettle();
     expect(find.text('Your birth control'), findsOneWidget);
     expect(find.text('Birth-control reminders'), findsOneWidget);
-    expect(find.text(
+    expect(
+      find.text(
         'Follows the birth-control method recorded in this profile\'s '
-        'settings.'), findsOneWidget);
+        'settings.',
+      ),
+      findsOneWidget,
+    );
 
     await _scrollTo(tester, const ValueKey('reminder-log-switch'));
     expect(find.text('Other reminders'), findsOneWidget);
-    expect(await service.load('p1'), isNull,
-        reason: 'rendering the groups stored nothing');
+    expect(
+      await service.load('p1'),
+      isNull,
+      reason: 'rendering the groups stored nothing',
+    );
   });
 
   testWidgets('#183: the recorded method decides which adherence row the '
@@ -220,6 +265,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'patch',
         birthControlStartedOn: today.addDays(-7).iso,
         birthControlStoppedOn: null,
@@ -228,20 +275,31 @@ void main() {
 
     // The patch is the method in effect: its weekly row renders (and the
     // pill's does not — one method, one method-appropriate reminder).
-    await _scrollTo(tester, const ValueKey('reminder-birthControlPatch-switch'));
-    expect(find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
-        findsOneWidget);
+    await _scrollTo(
+      tester,
+      const ValueKey('reminder-birthControlPatch-switch'),
+    );
+    expect(
+      find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
+      findsOneWidget,
+    );
     expect(find.text('Patch reminder'), findsOneWidget);
     expect(find.text('Weekly, on change day'), findsOneWidget);
-    expect(find.byKey(const ValueKey('reminder-birthControlPill-switch')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('reminder-birthControlPill-switch')),
+      findsNothing,
+    );
     // Anchor-based kinds carry no lead row — their due dates come from
     // the method, not a lead setting.
-    expect(find.byKey(const ValueKey('reminder-birthControlPatch-lead')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('reminder-birthControlPatch-lead')),
+      findsNothing,
+    );
 
     // The toggle rides the ordinary per-type persistence.
-    await tester.tap(find.byKey(const ValueKey('reminder-birthControlPatch-switch')));
+    await tester.tap(
+      find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
+    );
     await tester.pumpAndSettle();
     final stored = await service.load('p1');
     expect(stored!.birthControlPatch.enabled, isTrue);
@@ -256,6 +314,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'ring',
         birthControlStartedOn: null,
         birthControlStoppedOn: null,
@@ -266,9 +326,11 @@ void main() {
     final row = tester.widget<SwitchListTile>(
       find.byKey(const ValueKey('reminder-birthControlRing-switch')),
     );
-    expect((row.subtitle as Text).data,
-        'Waits for a start date on the recorded method — re-record the '
-        'method in profile settings to set one');
+    expect(
+      (row.subtitle as Text).data,
+      'Waits for a start date on the recorded method — re-record the '
+      'method in profile settings to set one',
+    );
   });
 
   testWidgets('#183: implant and IUD get no adherence row — the explainer '
@@ -281,26 +343,35 @@ void main() {
         store,
         modeRow: (
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: method,
           birthControlStartedOn: LocalDate.today().iso,
           birthControlStoppedOn: null,
         ),
       );
       await _scrollTo(tester, const ValueKey('reminder-birth-control-none'));
-      expect(find.text('Birth-control reminders'), findsOneWidget,
-          reason: '$method is not user-administered on a schedule');
       expect(
-          find.byKey(const ValueKey('reminder-birthControlPill-switch')),
-          findsNothing);
+        find.text('Birth-control reminders'),
+        findsOneWidget,
+        reason: '$method is not user-administered on a schedule',
+      );
       expect(
-          find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
-          findsNothing);
+        find.byKey(const ValueKey('reminder-birthControlPill-switch')),
+        findsNothing,
+      );
       expect(
-          find.byKey(const ValueKey('reminder-birthControlRing-switch')),
-          findsNothing);
+        find.byKey(const ValueKey('reminder-birthControlPatch-switch')),
+        findsNothing,
+      );
       expect(
-          find.byKey(const ValueKey('reminder-birthControlShot-switch')),
-          findsNothing);
+        find.byKey(const ValueKey('reminder-birthControlRing-switch')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('reminder-birthControlShot-switch')),
+        findsNothing,
+      );
     }
   });
 
@@ -314,6 +385,8 @@ void main() {
       store,
       modeRow: (
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'pill',
         birthControlStartedOn: null,
         birthControlStoppedOn: null,
@@ -323,36 +396,56 @@ void main() {
     await _scrollTo(tester, const ValueKey('reminder-birthControlPill-switch'));
     expect(find.text('Pill reminder'), findsOneWidget);
     expect(find.text('Daily, at the chosen time'), findsOneWidget);
-    expect(_switchOf(tester, 'reminder-birthControlPill-switch').value,
-        isFalse,
-        reason: 'the adherence kinds ship off');
-    expect(find.byKey(const ValueKey('reminder-time-birthControlPill')),
-        findsOneWidget);
+    expect(
+      _switchOf(tester, 'reminder-birthControlPill-switch').value,
+      isFalse,
+      reason: 'the adherence kinds ship off',
+    );
+    expect(
+      find.byKey(const ValueKey('reminder-time-birthControlPill')),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.byKey(const ValueKey('reminder-birthControlPill-switch')));
+    await tester.tap(
+      find.byKey(const ValueKey('reminder-birthControlPill-switch')),
+    );
     await tester.pumpAndSettle();
     expect((await service.load('p1'))!.birthControlPill.enabled, isTrue);
   });
 
-  testWidgets('the #178 toggles persist per profile like the #136 ones',
-      (tester) async {
+  testWidgets('the #178 toggles persist per profile like the #136 ones', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(tester, [_profile('alice', 'Alice')], store);
 
-    await _scrollTo(tester, const ValueKey('reminder-periodStartingSoon-switch'));
-    await tester.tap(find.byKey(const ValueKey('reminder-periodStartingSoon-switch')));
+    await _scrollTo(
+      tester,
+      const ValueKey('reminder-periodStartingSoon-switch'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('reminder-periodStartingSoon-switch')),
+    );
     await tester.pumpAndSettle();
     var stored = await service.load('alice');
     expect(stored!.periodStartingSoon.enabled, isTrue);
 
-    await _scrollTo(tester, const ValueKey('reminder-cycleStatisticChange-switch'));
-    await tester.tap(find.byKey(const ValueKey('reminder-cycleStatisticChange-switch')));
+    await _scrollTo(
+      tester,
+      const ValueKey('reminder-cycleStatisticChange-switch'),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('reminder-cycleStatisticChange-switch')),
+    );
     await tester.pumpAndSettle();
     stored = await service.load('alice');
     expect(stored!.cycleStatisticChange.enabled, isTrue);
-    expect(stored.periodStartingSoon.enabled, isTrue,
-        reason: 'the earlier toggle survived');
+    expect(
+      stored.periodStartingSoon.enabled,
+      isTrue,
+      reason: 'the earlier toggle survived',
+    );
   });
 
   testWidgets('toggling a type persists per profile and keeps other '
@@ -371,8 +464,11 @@ void main() {
 
     final aliceConfig = await service.load('alice');
     expect(aliceConfig, isNotNull);
-    expect(aliceConfig!.log.enabled, isTrue,
-        reason: 'the toggle wrote through the service');
+    expect(
+      aliceConfig!.log.enabled,
+      isTrue,
+      reason: 'the toggle wrote through the service',
+    );
 
     // Back to the top, then switch to Bea: her config is still the
     // untouched default (nudge off) — the schedules are per profile.
@@ -383,12 +479,16 @@ void main() {
     await tester.pumpAndSettle();
 
     await _scrollTo(tester, const ValueKey('reminder-log-switch'));
-    expect(_switchOf(tester, 'reminder-log-switch').value, isFalse,
-        reason: 'Bea never configured anything');
+    expect(
+      _switchOf(tester, 'reminder-log-switch').value,
+      isFalse,
+      reason: 'Bea never configured anything',
+    );
   });
 
-  testWidgets('a stored config renders instead of the defaults', (tester)
-      async {
+  testWidgets('a stored config renders instead of the defaults', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await service.save(
@@ -407,8 +507,9 @@ void main() {
     expect(find.text('20:15'), findsOneWidget);
   });
 
-  testWidgets('quiet hours can be enabled and render their boundaries',
-      (tester) async {
+  testWidgets('quiet hours can be enabled and render their boundaries', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(tester, [_profile('alice', 'Alice')], store);
@@ -428,16 +529,18 @@ void main() {
     expect(stored.quietHours!.endMinutes, 7 * 60);
   });
 
-  testWidgets('an empty profile list shows the create-a-profile note',
-      (tester) async {
+  testWidgets('an empty profile list shows the create-a-profile note', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     await _pump(tester, [], store);
 
     expect(find.text('Create a profile to set up reminders.'), findsOneWidget);
   });
 
-  testWidgets('the Time row opens the picker and stores the picked time',
-      (tester) async {
+  testWidgets('the Time row opens the picker and stores the picked time', (
+    tester,
+  ) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
     await _pump(
@@ -445,12 +548,16 @@ void main() {
       [_profile('alice', 'Alice')],
       store,
       timePicker: (context, initialTime) async {
-        expect(initialTime, const TimeOfDay(hour: 9, minute: 0),
-            reason: 'the prompt starts at the currently configured time');
+        expect(
+          initialTime,
+          const TimeOfDay(hour: 9, minute: 0),
+          reason: 'the prompt starts at the currently configured time',
+        );
         return const TimeOfDay(hour: 8, minute: 15);
       },
     );
 
+    await _scrollTo(tester, const ValueKey('reminder-time-upcoming'));
     await tester.tap(find.byKey(const ValueKey('reminder-time-upcoming')));
     await tester.pumpAndSettle();
 
@@ -469,11 +576,11 @@ void main() {
       timePicker: (context, initialTime) async => null,
     );
 
+    await _scrollTo(tester, const ValueKey('reminder-time-upcoming'));
     await tester.tap(find.byKey(const ValueKey('reminder-time-upcoming')));
     await tester.pumpAndSettle();
 
-    expect(await service.load('alice'), isNull,
-        reason: 'nothing was saved');
+    expect(await service.load('alice'), isNull, reason: 'nothing was saved');
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('reminder-time-upcoming')),
@@ -518,35 +625,307 @@ void main() {
     expect(find.text('06:30'), findsOneWidget);
   });
 
-  testWidgets('#463: log nudge cadence dropdown renders and updates config with anchorDate', (tester) async {
+  testWidgets('issue #184: the Notification text tile defaults to the '
+      'generic copy and opens the editor', (tester) async {
     final store = FakeSettingsStore();
     final service = ReminderConfigService(store);
-    await _pump(tester, [_profile('p1', 'Alice')], store);
+    await _pump(tester, [_profile('alice', 'Alice')], store);
 
-    await _scrollTo(tester, const ValueKey('reminder-log-switch'));
-    expect(find.text('Other reminders'), findsOneWidget);
-    expect(find.byKey(const ValueKey('reminder-log-cadence')), findsOneWidget);
-    expect(find.text('Cadence'), findsOneWidget);
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Using the default text');
 
-    // Switch log nudge on
-    await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('reminder-text-preview')),
+      findsOneWidget,
+      reason: 'the editor opened with its OS-notification-styled preview',
+    );
+
+    // Dismissing without saving stores nothing.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(await service.load('alice'), isNull);
+  });
+
+  testWidgets('issue #184: the live preview renders the generic defaults '
+      'and updates on every keystroke', (tester) async {
+    final store = FakeSettingsStore();
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
     await tester.pumpAndSettle();
 
-    var stored = await service.load('p1');
-    expect(stored!.log.enabled, isTrue);
-    expect(stored.log.cadence, ReminderCadence.daily);
-    expect(stored.log.anchorDate, LocalDate.today());
+    // Empty fields show exactly what the OS will present: the defaults.
+    Text previewTitle() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-title')));
+    Text previewBody() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-body')));
+    expect(previewTitle().data, kReminderTitle);
+    expect(previewBody().data, kReminderBody);
 
-    // Select 'Weekly' from the cadence dropdown
-    await _scrollTo(tester, const ValueKey('reminder-log-cadence-dropdown'));
-    await tester.tap(find.byKey(const ValueKey('reminder-log-cadence-dropdown')));
+    // Typing updates the preview immediately — before any save.
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-title-field')),
+      'Heads up',
+    );
+    await tester.pump();
+    expect(previewTitle().data, 'Heads up');
+    expect(previewBody().data, kReminderBody,
+        reason: 'the untouched half keeps its default');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-body-field')),
+      'Nothing to see here.',
+    );
+    await tester.pump();
+    expect(previewTitle().data, 'Heads up');
+    expect(previewBody().data, 'Nothing to see here.');
+
+    // The preview never shows anything beyond the two fields.
+    expect(find.text('Alice'), findsNothing,
+        reason: 'no profile name in the editor');
+  });
+
+  testWidgets('issue #184: saving persists custom text for that type only '
+      '(per-type independence)', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-title-field')),
+      '  Tea time  ',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('reminder-text-body-field')),
+      'Bring the blue bottle.',
+    );
+    await tester.tap(find.byKey(const ValueKey('reminder-text-save')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Weekly').last);
+    final stored = await service.load('alice');
+    expect(stored!.upcoming.customTitle, 'Tea time',
+        reason: 'saved trimmed');
+    expect(stored.upcoming.customBody, 'Bring the blue bottle.');
+    expect(stored.late.customTitle, isNull,
+        reason: 'editing one type never touches another');
+    expect(stored.log.customTitle, isNull);
+    expect(stored.pms.customTitle, isNull);
+
+    // The row now shows the custom title instead of the default note.
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(find.text('Tea time'), findsOneWidget);
+  });
+
+  testWidgets('issue #184: custom text is per profile — Bea keeps the '
+      'default while Alice carries hers', (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await service.save(
+      'alice',
+      ReminderConfig.standard.copyWith(
+        upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'Alice-only title'),
+      ),
+    );
+    final alice = _profile('alice', 'Alice');
+    final bea = _profile('bea', 'Bea');
+    await store.set(SettingsKeys.lastActiveProfile, 'alice');
+    await _pump(tester, [alice, bea], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Alice-only title');
+
+    await _scrollToTop(tester);
+    await tester.tap(find.byKey(const ValueKey('reminder-profile-dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bea').last);
     await tester.pumpAndSettle();
 
-    stored = await service.load('p1');
-    expect(stored!.log.cadence, ReminderCadence.weekly);
-    expect(stored.log.anchorDate, LocalDate.today());
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    expect(_textTileSubtitle(tester, ReminderKind.upcoming),
+        'Using the default text',
+        reason: 'Bea never configured custom text');
+    final beaConfig = await service.load('bea');
+    expect(beaConfig, isNull,
+        reason: 'switching profiles stored nothing for Bea');
+    expect((await service.load('alice'))!.upcoming.customTitle,
+        'Alice-only title',
+        reason: 'the switch never disturbed Alice text');
+  });
+
+  testWidgets('issue #184: reset to default clears the custom text on save',
+      (tester) async {
+    final store = FakeSettingsStore();
+    final service = ReminderConfigService(store);
+    await service.save(
+      'alice',
+      ReminderConfig.standard.copyWith(
+        upcoming: ReminderTypeConfig.upcoming
+            .copyWith(customTitle: 'Old title', customBody: 'Old body'),
+      ),
+    );
+    await _pump(tester, [_profile('alice', 'Alice')], store);
+
+    await _scrollTo(tester, const ValueKey('reminder-text-upcoming'));
+    await tester.tap(find.byKey(const ValueKey('reminder-text-upcoming')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('reminder-text-reset')));
+    await tester.pumpAndSettle();
+    Text previewTitle() => tester.widget<Text>(
+        find.byKey(const ValueKey('reminder-text-preview-title')));
+    expect(previewTitle().data, kReminderTitle,
+        reason: 'reset shows the default in the live preview');
+
+    await tester.tap(find.byKey(const ValueKey('reminder-text-save')));
+    await tester.pumpAndSettle();
+
+    final stored = await service.load('alice');
+    expect(stored!.upcoming.customTitle, isNull);
+    expect(stored.upcoming.customBody, isNull);
+  });
+
+  testWidgets(
+    '#463: log nudge cadence dropdown renders and updates config with anchorDate',
+    (tester) async {
+      final store = FakeSettingsStore();
+      final service = ReminderConfigService(store);
+      await _pump(tester, [_profile('p1', 'Alice')], store);
+
+      await _scrollTo(tester, const ValueKey('reminder-log-switch'));
+      expect(find.text('Other reminders'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('reminder-log-cadence')),
+        findsOneWidget,
+      );
+      expect(find.text('Cadence'), findsOneWidget);
+
+      // Switch log nudge on
+      await tester.tap(find.byKey(const ValueKey('reminder-log-switch')));
+      await tester.pumpAndSettle();
+
+      var stored = await service.load('p1');
+      expect(stored!.log.enabled, isTrue);
+      expect(stored.log.cadence, ReminderCadence.daily);
+      expect(stored.log.anchorDate, LocalDate.today());
+
+      // Select 'Weekly' from the cadence dropdown
+      await _scrollTo(tester, const ValueKey('reminder-log-cadence-dropdown'));
+      await tester.tap(
+        find.byKey(const ValueKey('reminder-log-cadence-dropdown')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Weekly').last);
+      await tester.pumpAndSettle();
+
+      stored = await service.load('p1');
+      expect(stored!.log.cadence, ReminderCadence.weekly);
+      expect(stored.log.anchorDate, LocalDate.today());
+    },
+  );
+
+  testWidgets('issue #554: the time row honours the device clock convention '
+      'instead of always rendering 24h', (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ProfilesRepository>.value(
+            value: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+          ),
+          Provider<ProfileModesRepository>.value(
+            value: _FakeModesRepository(null),
+          ),
+          Provider<SettingsStore>.value(value: store),
+          ChangeNotifierProvider(
+            create: (_) {
+              final controller = ProfileController(
+                profilesRepository: _FakeProfilesRepository([
+                  _profile('p1', 'Alice'),
+                ]),
+                settingsStore: store,
+              );
+              unawaited(controller.load());
+              return controller;
+            },
+          ),
+          Provider<ReminderConfigService>.value(
+            value: ReminderConfigService(store),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          // Explicitly 12h this time (the opposite of `_pump`'s forced
+          // 24h) -- proves the rendered text now actually depends on the
+          // ambient MediaQuery instead of being a hand-rolled constant.
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+          home: const ReminderSettingsScreen(timePicker: _stubPicker),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
+  });
+
+  testWidgets('issue #554: the time row honours the device clock convention '
+      'instead of always rendering 24h', (tester) async {
+    final store = FakeSettingsStore();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ProfilesRepository>.value(
+            value: _FakeProfilesRepository([_profile('p1', 'Alice')]),
+          ),
+          Provider<ProfileModesRepository>.value(
+            value: _FakeModesRepository(null),
+          ),
+          Provider<SettingsStore>.value(value: store),
+          ChangeNotifierProvider(
+            create: (_) {
+              final controller = ProfileController(
+                profilesRepository: _FakeProfilesRepository([
+                  _profile('p1', 'Alice'),
+                ]),
+                settingsStore: store,
+              );
+              unawaited(controller.load());
+              return controller;
+            },
+          ),
+          Provider<ReminderConfigService>.value(
+            value: ReminderConfigService(store),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          // Explicitly 12h this time (the opposite of `_pump`'s forced
+          // 24h) -- proves the rendered text now actually depends on the
+          // ambient MediaQuery instead of being a hand-rolled constant.
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: false),
+            child: child!,
+          ),
+          home: const ReminderSettingsScreen(timePicker: _stubPicker),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_timeLabel(tester, ReminderKind.upcoming), '9:00 AM');
   });
 }

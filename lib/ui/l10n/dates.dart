@@ -18,9 +18,12 @@
 /// calendar-layout decision, not a formatting one.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart' as date_symbols;
+import 'package:lunarlog/domain/calendar_preferences.dart';
 
 /// Whether [date_symbols.initializeDateFormatting] has run in this isolate.
 /// It is synchronous (it only copies the compiled symbol maps into intl's
@@ -35,7 +38,10 @@ bool _dateSymbolsReady = false;
 
 void _ensureDateSymbols() {
   if (_dateSymbolsReady) return;
-  date_symbols.initializeDateFormatting();
+  // Issue #548: returns a Future for API-compatibility reasons only — see
+  // this field's own doc comment for why it completes synchronously in
+  // practice and is deliberately never awaited here.
+  unawaited(date_symbols.initializeDateFormatting());
   _dateSymbolsReady = true;
 }
 
@@ -57,21 +63,59 @@ String formatMonthDay(DateTime date, {String locale = kFallbackLocale}) {
   return DateFormat('MMMM d', locale).format(date);
 }
 
-/// Short weekday-day-month form, e.g. "Tue 8 Sep": compact rows and the
-/// relative label below.
-String formatShortDayDate(DateTime date, {String locale = kFallbackLocale}) {
+/// Locale-aware short numeric date, e.g. "9/5/2026" for `en` (issue #554):
+/// for the handful of screens that used to assemble a hand-rolled, always
+/// `YYYY-MM-DD` string via manual zero-padding instead of a locale-aware
+/// format.
+String formatShortDate(DateTime date, {String locale = kFallbackLocale}) {
   _ensureDateSymbols();
-  return DateFormat('EEE d MMM', locale).format(date);
+  return DateFormat.yMd(locale).format(date);
 }
+
+/// Short weekday-day-month form, e.g. "Tue 8 Sep": compact rows and the
+/// relative label below. [preference] (Issue #226) reorders the month/day
+/// pair — `monthDay` renders "Tue Sep 8" — while `system` and `dayMonth`
+/// keep this library's established day-first pattern for `en`.
+String formatShortDayDate(
+  DateTime date, {
+  String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) {
+  _ensureDateSymbols();
+  return DateFormat(shortDayDatePattern(preference), locale).format(date);
+}
+
+/// The intl pattern [formatShortDayDate] renders with for [preference]
+/// (Issue #226). Public and pure so a test can pin each preference's
+/// ordering without running a formatter.
+String shortDayDatePattern(DateFormatPreference preference) =>
+    switch (preference) {
+      DateFormatPreference.system => 'EEE d MMM',
+      DateFormatPreference.dayMonth => 'EEE d MMM',
+      DateFormatPreference.monthDay => 'EEE MMM d',
+    };
+
+/// The matching standalone-date pattern [formatWeekdayDayDateYear] renders
+/// with for [preference] (Issue #226): same ordering rule, plus the year.
+String weekdayDayDateYearPattern(DateFormatPreference preference) =>
+    switch (preference) {
+      DateFormatPreference.system => 'EEE d MMM y',
+      DateFormatPreference.dayMonth => 'EEE d MMM y',
+      DateFormatPreference.monthDay => 'EEE MMM d y',
+    };
 
 /// Unambiguous weekday-day-month-year form, e.g. "Tue 8 Sep 2026": the form
 /// used whenever a date stands alone (no surrounding "this week" context).
+/// [preference] (Issue #226) reorders the month/day pair as in
+/// [formatShortDayDate].
 String formatWeekdayDayDateYear(
   DateTime date, {
   String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
 }) {
   _ensureDateSymbols();
-  return DateFormat('EEE d MMM y', locale).format(date);
+  return DateFormat(weekdayDayDateYearPattern(preference), locale)
+      .format(date);
 }
 
 /// Human-readable relative day header, e.g. "Today · Tue 8 Sep",
@@ -79,9 +123,10 @@ String formatWeekdayDayDateYear(
 /// anything further out. Comparison is by civil day (time-of-day ignored).
 ///
 /// The relative words default to their English forms; callers that already
-/// hold localized copies may override them via [todayLabel],
+/// hold localized copy may override them via [todayLabel],
 /// [yesterdayLabel], and [tomorrowLabel] so this helper needs no
-/// `AppLocalizations` dependency of its own.
+/// `AppLocalizations` dependency of its own. [preference] (Issue #226)
+/// reorders the month/day pair inside both absolute forms.
 String relativeDayLabel(
   DateTime date,
   DateTime today, {
@@ -89,16 +134,17 @@ String relativeDayLabel(
   String? todayLabel,
   String? yesterdayLabel,
   String? tomorrowLabel,
+  DateFormatPreference preference = DateFormatPreference.system,
 }) {
   final day = DateTime(date.year, date.month, date.day);
   final reference = DateTime(today.year, today.month, today.day);
   final difference = day.difference(reference).inDays;
   if (difference == 0) {
-    return '${todayLabel ?? 'Today'} · ${formatShortDayDate(date, locale: locale)}';
+    return '${todayLabel ?? 'Today'} · ${formatShortDayDate(date, locale: locale, preference: preference)}';
   }
   if (difference == -1) return yesterdayLabel ?? 'Yesterday';
   if (difference == 1) return tomorrowLabel ?? 'Tomorrow';
-  return formatWeekdayDayDateYear(date, locale: locale);
+  return formatWeekdayDayDateYear(date, locale: locale, preference: preference);
 }
 
 /// Full month names ("January".."December"), locale-derived. Index 0 is

@@ -163,14 +163,20 @@ RemoteProfileGuardianRow remoteGuardian(
 
 /// Storage with test seams in front of two writes: `isEmpty` runs
 /// [beforeIsEmpty] first, so a test can change the session in the middle of
-/// the engine's bind decision, and `markPushed` runs [beforeMarkPushed]
-/// first, so a test can fail a storage apply between two push batches.
+/// the engine's bind decision, and the push-marking writes run
+/// [beforeMarkPushed] / [beforeMarkPushedBatch] first, so a test can fail a
+/// storage apply between two push batches. Issue #42 made the per-batch
+/// marking one batched call ([LunarLogStorage.markPushedBatch]) instead of
+/// one [markPushed] per row, so the between-batches seam moved with it; the
+/// per-row seam stays for tests that still call `markPushed` directly.
 class HookedStorage extends LunarLogStorage {
   HookedStorage(super.db, {super.clock});
 
   Future<void> Function()? beforeIsEmpty;
 
   Future<void> Function(SyncTable table, String id)? beforeMarkPushed;
+
+  Future<void> Function()? beforeMarkPushedBatch;
 
   @override
   Future<bool> isEmpty() async {
@@ -187,6 +193,14 @@ class HookedStorage extends LunarLogStorage {
     await beforeMarkPushed?.call(table, id);
     return super.markPushed(
         table: table, id: id, localRevAtPush: localRevAtPush);
+  }
+
+  @override
+  Future<int> markPushedBatch(
+    List<({SyncTable table, String id, int localRevAtPush})> items,
+  ) async {
+    await beforeMarkPushedBatch?.call();
+    return super.markPushedBatch(items);
   }
 }
 

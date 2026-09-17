@@ -192,6 +192,88 @@ void main() {
     });
   });
 
+  group('previewInvite', () {
+    test('hashes raw token, calls preview_guardian_invitation RPC, and '
+        'parses the returned preview', () async {
+      const rawToken = 'preview-token-value-12345';
+      final expectedHash = sha256.convert(utf8.encode(rawToken)).toString();
+
+      final client = makeClient((req) async {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(req.url.path, '/rest/v1/rpc/preview_guardian_invitation');
+        expect(body['p_token_hash'], expectedHash);
+        expect(body.containsKey('p_guardian_display_name'), isFalse,
+            reason: 'preview never sends a display name - it commits nothing');
+
+        return http.Response(
+          jsonEncode({
+            'profile_display_name': 'Riley',
+            'role': 'caregiver',
+            'expires_at': '2026-09-20T12:00:00.000Z',
+          }),
+          200,
+        );
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      final preview = await service.previewInvite(rawToken: rawToken);
+
+      expect(preview, isNotNull);
+      expect(preview!.profileDisplayName, 'Riley');
+      expect(preview.role, GuardianRole.caregiver);
+      expect(preview.expiresAt, DateTime.utc(2026, 9, 20, 12));
+      expect(syncEngine.fullReconcileCount, 0,
+          reason: 'a preview never triggers a reconcile - it commits nothing');
+    });
+
+    test('returns null for the RPC''s uniform "not available" result '
+        '(SQL null)', () async {
+      final client = makeClient((req) async {
+        return http.Response('null', 200);
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      final preview = await service.previewInvite(rawToken: 'dead-token');
+
+      expect(preview, isNull);
+    });
+
+    test('an unrecognised role string fails closed to viewer (#540\'s '
+        'pattern, same as acceptInvite)', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'profile_display_name': 'Riley',
+            'role': 'some_future_role',
+            'expires_at': '2026-09-20T12:00:00.000Z',
+          }),
+          200,
+        );
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      final preview = await service.previewInvite(rawToken: 'any-token');
+
+      expect(preview!.role, GuardianRole.viewer);
+    });
+
+    test('maps postgrest errors (e.g. the rate limit) to a typed SharingFailure', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'too many preview attempts; wait a moment and try again', 'code': '55000'}),
+          400,
+        );
+      });
+
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+
+      expect(
+        () => service.previewInvite(rawToken: 'any-token'),
+        throwsA(isA<SharingFailure>()),
+      );
+    });
+  });
+
   group('revokeGuardian', () {
     test('calls revoke_guardian RPC and requests sync', () async {
       final client = makeClient((req) async {
@@ -288,7 +370,7 @@ void main() {
       expect(invites.single.recipientLabel, 'Sitter');
       expect(invites.single.createdAt.isUtc, isTrue);
       expect(invites.single.expiresAt.isUtc, isTrue);
-      expect(invites.single.isExpired, isFalse);
+      expect(invites.single.isExpiredAt(DateTime.now().toUtc()), isFalse);
     });
 
     test('filters by the recently-expired cutoff (now - window), not by now, '
@@ -325,7 +407,7 @@ void main() {
       // The expired-within-window row is returned, not filtered out.
       expect(invites, hasLength(1));
       expect(invites.single.invitationId, 'inv-expired');
-      expect(invites.single.isExpired, isTrue);
+      expect(invites.single.isExpiredAt(DateTime.now().toUtc()), isTrue);
 
       // The request admits anything expiring after now - window.
       expect(expiresParam, isNotNull);

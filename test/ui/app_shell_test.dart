@@ -1,6 +1,7 @@
 /// Widget tests for AppShell (issue #182): four bottom-nav destinations,
 /// per-tab state preservation across a switch, the sync glyph on every tab
-/// except More, the profile switcher opening the existing picker, and
+/// except More, the profile switcher's quick-switcher popup and its
+/// "Manage profiles…" route to the existing picker (issue #241), and
 /// Settings reachable from every tab without going through "Switch
 /// profile". Issue #223: the Insights destination now mounts the real
 /// [AnalysisTab] rather than the placeholder `_InsightsTab` #182 shipped —
@@ -61,6 +62,9 @@ import '../support/fake_sync_engine.dart';
 class _NoLockGate implements AppGate {
   @override
   bool get requiresUnlock => false;
+
+  @override
+  Future<bool> canAuthenticate() async => true;
 
   @override
   Future<bool> requestAccess() async => true;
@@ -272,9 +276,71 @@ void main() {
     await h.dispose();
   });
 
+  group('issue #568: sync failure banner', () {
+    testWidgets(
+        'session expired shows banner, tapping action selects More tab',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('sync-failure-banner')),
+        findsOneWidget,
+      );
+      expect(find.text(kSignInAgainCopy), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'persistent error while signed in shows banner, tapping retry requests sync',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.auth.emit(
+        AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'test@example.com'),
+      );
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.network);
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey('sync-failure-banner')),
+        findsOneWidget,
+      );
+      expect(find.text('Retry'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pump();
+
+      expect(h.engine.requestSyncCalls, 1);
+      await h.dispose();
+    });
+
+    testWidgets('idle phase shows no banner', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.idle);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('sync-failure-banner')), findsNothing);
+      await h.dispose();
+    });
+  });
+
   testWidgets(
-      'tapping the profile switcher opens the picker; Settings is reachable '
-      'from the shell app bar without it', (tester) async {
+      'tapping the profile switcher opens the quick-switcher popup, whose '
+      '"Manage profiles…" entry opens the full picker (issue #241)',
+      (tester) async {
     final h = Harness(tester);
     await h.pump();
 
@@ -292,8 +358,21 @@ void main() {
     await tester.tap(switcherFinder);
     await tester.pumpAndSettle();
 
+    // Issue #241: the tap opens the quick-switcher popup over the shell,
+    // not the full picker — the shell (and its tab state) stays mounted.
+    expect(find.byKey(ValueKey('quick-switcher-profile-${h.profileId}')),
+        findsOneWidget,
+        reason: 'the active profile is listed with its avatar');
+    expect(find.byKey(const ValueKey('quick-switcher-manage')),
+        findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget,
+        reason: 'the popup is an overlay; the picker has not replaced home');
+
+    await tester.tap(find.byKey(const ValueKey('quick-switcher-manage')));
+    await tester.pumpAndSettle();
+
     expect(find.text('Profiles'), findsOneWidget,
-        reason: 'the profile switcher opened the existing picker');
+        reason: '"Manage profiles…" opened the existing full picker');
     expect(find.byType(NavigationBar), findsNothing,
         reason: 'the picker is not the shell');
     await h.dispose();
@@ -683,6 +762,105 @@ void main() {
       expect(find.byType(MonthCalendar), findsOneWidget,
           reason: 'an ordinary switch (no launch payload) keeps the tab '
               'the operator was on');
+      await h.dispose();
+    });
+  });
+
+  group('issue #623 (LLA-008): every launch-payload event is routed, not '
+      'deduplicated for the profile\'s whole lifetime', () {
+    testWidgets(
+        'a notification naming the profile that is already active still '
+        'resets the tab to Today', (tester) async {
+      final h = Harness(tester);
+      final gate = GateController(gate: _NoLockGate());
+      addTearDown(gate.dispose);
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<GateController>.value(
+          value: gate,
+          child: LunarLogApp.withCollaborators(
+              db: h.db, authService: h.auth, syncEngine: h.engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      // Alice is already the active profile -- a plain `profile.id`
+      // comparison (the pre-fix `resetToTodayOnProfileSwitch` shape) never
+      // changes here, so AppShell's didUpdateWidget never saw a reason to
+      // reset. A fresh launch token must still force Today.
+      gate.setPendingLaunchProfileId(alice.id);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'a same-active-profile relaunch must still reset to '
+              'Today -- LLA-008');
+      final navBar =
+          tester.widget<NavigationBar>(find.byType(NavigationBar));
+      expect(navBar.selectedIndex, AppTab.today.index);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a repeat notification for a profile is not silently dropped by the '
+        'consumption guard', (tester) async {
+      final h = Harness(tester);
+      final gate = GateController(gate: _NoLockGate());
+      addTearDown(gate.dispose);
+
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final alice =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      final bob = await profiles.create(displayName: 'Bob', isMinor: false);
+      await DriftSettingsStore(h.db.storage)
+          .set(SettingsKeys.lastActiveProfile, alice.id);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<GateController>.value(
+          value: gate,
+          child: LunarLogApp.withCollaborators(
+              db: h.db, authService: h.auth, syncEngine: h.engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // First launch for Bob: consumed, switches to Bob.
+      gate.setPendingLaunchProfileId(bob.id);
+      await tester.pumpAndSettle();
+      expect(find.text('Bob'), findsOneWidget);
+
+      // The operator switches back to Alice by hand (not a notification)
+      // and moves off Today, exactly like the finding's repro.
+      final controller =
+          tester.element(find.byType(NavigationBar)).read<ProfileController>();
+      await controller.selectProfile(alice.id);
+      await tester.pumpAndSettle();
+      await tester.tap(tabKey('calendar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.byType(MonthCalendar), findsOneWidget);
+
+      // A second notification for the *same* profile (Bob) that the first
+      // one already named: pre-fix, `_consuming` was left permanently set
+      // to Bob's id after the first consumption, so this was silently
+      // dropped and the app stayed on Alice/Calendar forever.
+      gate.setPendingLaunchProfileId(bob.id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bob'), findsOneWidget,
+          reason: 'the second Bob notification must still be routed -- '
+              'LLA-008');
+      expect(find.byType(MonthCalendar), findsNothing,
+          reason: 'and it resets to Today like any other launch payload');
       await h.dispose();
     });
   });

@@ -16,6 +16,15 @@
 /// dates the operator has excluded from the averages ("omit from average"
 /// in the history list, "skip this cycle" in the late resolver). Omitted
 /// cycles stay in history; their lengths simply never feed a mean.
+/// Issue #233 (A2-15/A2-3) documents skipping a *withdrawal* bleed while
+/// on hormonal birth control as a canonical case for that exclusion
+/// mechanism: a pill/patch/ring withdrawal bleed that does not arrive
+/// (e.g. running packs together to skip it) is not a real cycle boundary,
+/// so its expected start belongs in the omission set rather than being
+/// averaged as an atypically long cycle once the next bleed lands. The
+/// pack-driven branch ([_packDrivenPrediction]) itself never averages, so
+/// it needs no exclusion; this note is the canonical-case documentation for
+/// the history-based path.
 ///
 /// Issue #213 rebuilds the window/confidence/forecast machinery this file
 /// owns so #132's history/confidence framing and #133's forward calendar
@@ -47,13 +56,46 @@
 /// it) is the *service* (`prediction_service.dart`); this file's
 /// `computePrediction` path is unchanged by #218 — a profile with no
 /// supplied facts gets exactly the same [NotEnoughHistory] it always did.
+///
+/// Issue #233 adds the birth-control branch: an in-effect
+/// ([ActiveBirthControl]) continuous method returns the named
+/// [PredictionsSuppressed] state and a withdrawal-bleed method returns a
+/// pack-schedule-driven [ActivePrediction], so neither falls into
+/// [NotEnoughHistory] or a silent late/paused state. See [computePrediction]
+/// and [_packDrivenPrediction]. This file also owns the prediction
+/// classification of the #260 method enum ([birthControlPredictionKind]).
+///
+/// Issue #528 gives [PredictionsSuppressed] a second reason: a profile's
+/// [LifecycleMode] (`pregnancy`/`postpartum`/`perimenopause`) is not
+/// something this file's pure functions ever see — the resolution lives in
+/// the *service* (`prediction_service.dart`'s `_resolve`, mirroring how
+/// #218's provisional-seeding fallback is a service-level decision too),
+/// which short-circuits before [computePredictionFromEntries] runs at all.
+/// This file only owns the resulting state's shape: exactly one of
+/// [PredictionsSuppressed.method] / [PredictionsSuppressed.lifecycleMode] is
+/// set, never both, never neither.
+///
+/// Issue #693 sizes [ActivePrediction.forecast] by *horizon* instead of a
+/// fixed cycle count: the forecast keeps predicting cycles until a start
+/// passes the end of the month [kPredictionHorizonMonths] (12) after
+/// `today` — the twelve-month horizon the forward calendar navigates —
+/// bounded defensively by [kMaxForecastCycles]. Before #693 the forecast
+/// was always exactly [kPredictionWindowCycles] (12) cycles regardless of
+/// cycle length, so short cycles left the calendar's tail months empty
+/// (twelve 21-day cycles span only ~8.3 months). The confidence-
+/// degradation curve (`_forecastSpreadFor`'s `sqrt(cycleIndex)` widening
+/// and one-step tier degradation) is unchanged — it simply extends across
+/// as many cycles as the horizon needs.
 library;
 
 import 'dart:math' show sqrt;
 
+import '../birth_control.dart';
 import '../episodes/episodes.dart';
 import '../models/day_entry.dart';
+import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
+import '../models/profile.dart';
 import 'pms.dart';
 
 /// A cycle length outside [kMinCycleDays, kMaxCycleDays] is excluded from
@@ -79,7 +121,49 @@ const int kRecencyWindowCycles = 12;
 /// most recent *valid* (and not omitted) ones feed [estimatedNextStart]
 /// and [ActivePrediction.forecast]. Replaces the old `kMaxAveragedCycles`
 /// for prediction purposes (was 3; Clue-matched to 12, synthesis.md #6).
+/// Issue #693 note: this names the *input* window (the mean the forecast
+/// chains off) only — the forecast's own length is sized by
+/// [kPredictionHorizonMonths] now, not by this constant.
 const int kPredictionWindowCycles = 12;
+
+/// The engine's forecast horizon (issue #693): [ActivePrediction.forecast]
+/// covers every cycle whose start falls on or before the last day of the
+/// month this many months after `today`. Deliberately equal to
+/// `forecast.dart`'s `kForecastHorizonMonths` (the twelve months the
+/// forward calendar navigates past the current month) so the single
+/// forecast always covers every navigable month — a profile on steady
+/// 21-day cycles gets ~18 predicted cycles where the pre-#693 fixed
+/// 12-cycle forecast covered only ~8.3 months. Changing either constant
+/// without the other either truncates the calendar short of its navigable
+/// horizon (engine < calendar) or computes cycles the calendar can never
+/// show (engine > calendar).
+const int kPredictionHorizonMonths = 12;
+
+/// Defensive upper bound on [ActivePrediction.forecast]'s cycle count
+/// (issue #693): sizing by horizon means the chain loop's termination
+/// depends on the cycle step actually advancing each start past the
+/// horizon, so a degenerate step length must never be able to loop
+/// forever. 24 covers any realistic cycle length at the 12-month horizon
+/// with headroom (a steady 21-day cycle needs ~18, a steady 35-day cycle
+/// ~11) and even the pathological [kMinCycleDays] (15-day) floor
+/// terminates here — such a profile truncates at 24 cycles (~11.8 months)
+/// rather than iterating toward ~27, a documented, deliberate shortfall
+/// for a length the validity window admits but no real profile sustains.
+const int kMaxForecastCycles = 24;
+
+/// The last day of the month [months] after [today]'s month — where the
+/// forecast horizon ends. Lived as a private helper in `forecast.dart`
+/// until issue #693 made the engine's own forecast horizon-sized; now
+/// defined once here (the module `forecast.dart` already imports) so the
+/// engine's chain loop and the calendar adapter's truncation can never
+/// disagree about where the horizon ends. Pure month arithmetic on
+/// `year * 12 + month` — never [LocalDate.addMonths], whose day-clamping
+/// (Jan 31 + 1 month = Feb 28) would make "last day of the target month"
+/// depend on [today]'s day-of-month.
+LocalDate endOfHorizonMonth(LocalDate today, int months) {
+  final total = today.year * 12 + (today.month - 1) + months + 1;
+  return LocalDate(total ~/ 12, total % 12 + 1, 1).addDays(-1);
+}
 
 /// Of the cycles inside [kRecencyWindowCycles], up to this many of the
 /// most recent *valid* (and not omitted) ones feed the displayed averages:
@@ -99,8 +183,11 @@ const int kMaxOpenCycleDays = 60;
 /// Fallback bleed length used only when the period-length window carries
 /// no episodes at all (see `computePrediction`'s use, below) — unreachable
 /// with an [ActivePrediction] today, kept so that case reads as an honest,
-/// named fallback rather than an unexplained `1`. Mirrors `forecast.dart`'s
-/// own `kDefaultPredictedPeriodDays`.
+/// named fallback rather than an unexplained `1`. Issue #300: this is now
+/// the *only* such named fallback — `forecast.dart`'s former
+/// `kDefaultPredictedPeriodDays` (its own bleed-length fallback for a
+/// pre-#300 `CycleHistoryView` that carried no mean episode length) was
+/// retired along with the rest of that file's duplicate derivation.
 const int kDefaultPeriodLengthDays = 4;
 
 /// Late means today is more than this many days past the estimate.
@@ -114,6 +201,65 @@ const int kLateGraceDays = 2;
 /// skipped cycle's real length is excluded from the average like any other
 /// omitted cycle, so an atypically long cycle never poisons the mean.
 const int kSkipAdvanceCycles = 1;
+
+/// PROVISIONAL (issue #233): the fixed regimen length a withdrawal-bleed
+/// birth-control method's bleed is predicted on — the standard 28-day pack
+/// (21 active + 7 hormone-free) shared by the combined pill, patch, and
+/// ring on a cyclic regimen. The pack schedule is a known, fixed quantity
+/// ("more reliable than statistical inference", A2-15), and lunarlog has no
+/// per-regimen length field in the birth-control state (#188/#260 store
+/// only method + start/stop dates), so this named constant stands in for
+/// one. Pending the same calibration the #213 thresholds carry (Clue does
+/// not publish a regimen length either).
+const int kPackCycleLengthDays = 28;
+
+/// The two prediction-relevant behavioral classes of a tracked
+/// birth-control method (issue #233). The enum vocabulary itself is owned
+/// by #260/#188 — this issue only classifies it for the predictor, and
+/// never renames or stores it.
+enum BirthControlPredictionKind {
+  /// Cyclic methods whose bleed is pack-driven (combined pill, patch, ring
+  /// on a cyclic regimen): the next withdrawal bleed follows the pack
+  /// schedule ([kPackCycleLengthDays]) anchored on the regimen start, not
+  /// follicular statistics.
+  withdrawalBleed,
+
+  /// Methods that typically stop or irregularly affect periods (IUD,
+  /// implant, shot, continuous-regimen pill): period prediction is
+  /// suppressed for the duration the method is active.
+  continuous,
+}
+
+/// Classifies [method] for prediction, or null for the non-tracked answers
+/// ([none]/[condom]/[other]/[unknown]) which never reach the predictor —
+/// the effective-method seam (`birthControlMethodInEffectOn`) returns null
+/// for them, so this null is defensive-only.
+///
+/// Judgment call (documented in issue #233's PR): the stored `pill` value
+/// cannot distinguish a combined (cyclic) pill from a continuous-regimen
+/// pill or the progestin-only minipill, because the #260 enum carries one
+/// `pill` member. This classification treats `pill` as the canonical
+/// combined/cyclic pill (withdrawal-bleed) — the pack-schedule branch —
+/// and leaves `continuous` for the unambiguously continuous methods. A
+/// future #260 vocabulary that splits `pill` by regimen would reclassify
+/// here without touching the predictor's branches.
+BirthControlPredictionKind? birthControlPredictionKind(BirthControlMethod method) =>
+    switch (method) {
+      BirthControlMethod.pill ||
+      BirthControlMethod.patch ||
+      BirthControlMethod.ring =>
+        BirthControlPredictionKind.withdrawalBleed,
+      BirthControlMethod.shot ||
+      BirthControlMethod.implant ||
+      BirthControlMethod.hormonalIud ||
+      BirthControlMethod.copperIud =>
+        BirthControlPredictionKind.continuous,
+      BirthControlMethod.none ||
+      BirthControlMethod.condom ||
+      BirthControlMethod.other ||
+      BirthControlMethod.unknown =>
+        null,
+    };
 
 /// PROVISIONAL (issue #213): the confidence tier thresholds below are named
 /// constants pending calibration against real user histories (A2's own
@@ -275,6 +421,18 @@ sealed class CyclePrediction {
   const CyclePrediction();
 }
 
+/// The set of active profiles to watch, as a live stream (issue #575:
+/// declared once here rather than byte-identically in
+/// `reminder_coordinator.dart`, `reminder_window_publisher.dart`, and
+/// `prediction_projection_publisher.dart` — every background per-profile
+/// watcher fans a prediction stream out over this same shape).
+typedef ActiveProfilesStream = Stream<List<Profile>>;
+
+/// A live [CyclePrediction] stream for one profile, keyed by [profileId]
+/// (issue #575: see [ActiveProfilesStream]'s doc comment for why this is
+/// declared once here).
+typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
+
 /// Too little valid history to estimate anything. Carries only counts of
 /// recorded history — no means, no partial dates.
 class NotEnoughHistory extends CyclePrediction {
@@ -294,6 +452,115 @@ class NotEnoughHistory extends CyclePrediction {
   String toString() => 'NotEnoughHistory(episodes: $episodeCount, '
       'completedCycles: $completedCycleCount, validCycles: $validCycleCount, '
       'status: $statusLabel)';
+}
+
+/// A birth-control method currently in effect, resolved by the service
+/// (issue #233) from the raw `profile_modes` state via the
+/// `birthControlMethodInEffectOn` seam — never re-parsed by the predictor
+/// itself. [startedOn] is the regimen's start date (`birth_control_started_on`,
+/// `yyyy-MM-dd`), the anchor the withdrawal-bleed branch predicts the pack
+/// cadence from. Null when no tracked method is in effect on the date of
+/// interest.
+class ActiveBirthControl {
+  const ActiveBirthControl({required this.method, required this.startedOn});
+
+  final BirthControlMethod method;
+  final LocalDate? startedOn;
+
+  /// Deliberately no `==`/`hashCode`: the prediction service's memo keys on
+  /// the raw `BirthControlState` record (which has structural equality),
+  /// not on this resolved value, so an identity-typed value object needs no
+  /// value equality of its own.
+  @override
+  String toString() =>
+      'ActiveBirthControl(${method.name}, started: ${startedOn?.iso})';
+}
+
+/// Period prediction is deliberately turned off for a profile, for one of
+/// two reasons — this is a distinct, named state in both cases, explicitly
+/// NOT [NotEnoughHistory] (which would read as "log more cycles" even
+/// though logging more won't help) and NOT a silent late/paused state:
+///
+/// 1. [method] (issue #233): the birth-control method in effect on the
+///    date of interest is a continuous one (IUD, implant, shot,
+///    continuous-regimen pill) — these typically stop or irregularly
+///    affect periods, so any follicular-style estimate (or a pack-driven
+///    withdrawal-bleed estimate) would be misleading.
+/// 2. [lifecycleMode] (issue #528): the profile's life-stage mode is
+///    `pregnancy`, `postpartum`, or `perimenopause` — none of these are
+///    the regular ovulatory cycle this file's averaging model assumes, so
+///    a "days late" estimate is not just wrong but actively distressing
+///    (a miscarriage reads as a "late" period in red).
+///
+/// Exactly one of [method] / [lifecycleMode] is set, never both, never
+/// neither — [PredictionsSuppressed.new]'s assert enforces this at
+/// construction so a caller can never accidentally build the ambiguous
+/// "both reasons" or "no reason" state.
+class PredictionsSuppressed extends CyclePrediction {
+  const PredictionsSuppressed({this.method, this.lifecycleMode})
+      : assert(
+          (method == null) != (lifecycleMode == null),
+          'PredictionsSuppressed needs exactly one reason: a birth-control '
+          'method or a lifecycle mode',
+        );
+
+  /// The continuous birth-control method in effect (issue #233), or null
+  /// when this suppression is due to [lifecycleMode] instead.
+  final BirthControlMethod? method;
+
+  /// The life-stage mode in effect (issue #528), or null when this
+  /// suppression is due to [method] instead.
+  final LifecycleMode? lifecycleMode;
+
+  String get statusLabel {
+    final mode = lifecycleMode;
+    return mode != null
+        ? 'predictions suppressed because of ${mode.name} mode'
+        : 'predictions suppressed because of ${method!.name}';
+  }
+
+  @override
+  String toString() {
+    final mode = lifecycleMode;
+    return mode != null
+        ? 'PredictionsSuppressed(lifecycleMode: ${mode.name})'
+        : 'PredictionsSuppressed(${method!.name})';
+  }
+}
+
+/// Period prediction has been turned off for this profile by the user
+/// (issue #225). Logging, history, and statistics remain fully intact,
+/// but estimates, calendar prediction bands, rolled estimates, and
+/// prediction-derived reminders are suppressed.
+class PredictionsDisabled extends CyclePrediction {
+  const PredictionsDisabled();
+
+  String get statusLabel => 'predictions turned off';
+
+  @override
+  String toString() => 'PredictionsDisabled()';
+}
+
+/// What kind of schedule an [ActivePrediction] was derived from (issue
+/// LLA-064). Every consumer that infers something beyond "when is the next
+/// bleed" — most importantly `fertile_window.dart`'s ovulation
+/// back-calculation, which assumes a follicular cycle driving toward a
+/// real ovulation — must check this first: a [regimenSchedule] estimate
+/// carries no ovulatory information at all, so deriving a fertile window
+/// or ovulation date from it would assert a physiological event a fixed
+/// pill/patch/ring pack schedule says nothing about.
+enum PredictionBasis {
+  /// The ordinary history-based estimate (last episode start + mean of
+  /// recent valid cycle lengths) — an ovulatory cycle assumption fertile-
+  /// window back-calculation is entitled to make.
+  statistical,
+
+  /// [_packDrivenPrediction]'s withdrawal-bleed branch (issue #233): the
+  /// next bleed is predicted from a fixed pack cadence, not averaged
+  /// cycles. Combined hormonal contraception typically suppresses
+  /// ovulation, so this basis carries no fertility signal — consumers
+  /// must not back-calculate a fertile window or ovulation day from it.
+  regimenSchedule,
 }
 
 /// A live estimate: last episode start + mean of the most recent usable
@@ -318,6 +585,7 @@ class ActivePrediction extends CyclePrediction {
     this.forecast = const [],
     this.unusuallyLongCycle = false,
     this.pms,
+    this.basis = PredictionBasis.statistical,
   });
 
   final LocalDate today;
@@ -381,9 +649,12 @@ class ActivePrediction extends CyclePrediction {
   /// than one exact date whenever this is not [CycleConfidence.high].
   final CycleConfidence tier;
 
-  /// Up to [kPredictionWindowCycles] forecasted future cycles, each with
-  /// degrading confidence the further out it is (issue #213, item 4).
-  /// `forecast.first.start == estimatedNextStart`.
+  /// The forecasted future cycles, each with degrading confidence the
+  /// further out it is (issue #213, item 4) — sized by *horizon* since
+  /// issue #693: every cycle whose start falls on or before the end of
+  /// the month [kPredictionHorizonMonths] after [today], never more than
+  /// [kMaxForecastCycles] of them. `forecast.first.start ==
+  /// estimatedNextStart`.
   final List<PredictedCycle> forecast;
 
   /// True once the open cycle (today − [lastEpisodeStart]) exceeds
@@ -406,6 +677,16 @@ class ActivePrediction extends CyclePrediction {
   /// seeded/provisional path: an onboarding answer never invents PMS
   /// history the operator did not log.
   final PmsEstimate? pms;
+
+  /// What this estimate is derived from (issue LLA-064) —
+  /// [PredictionBasis.statistical] for the ordinary history-averaged
+  /// estimate, [PredictionBasis.regimenSchedule] for
+  /// [_packDrivenPrediction]'s withdrawal-bleed branch. Fertile-window/
+  /// ovulation consumers ([fertile_window.dart], `forecast.dart`,
+  /// `prediction_projection.dart`, `scheduling.dart`) must check this
+  /// before deriving anything from [estimatedNextStart]/[forecast] — see
+  /// [PredictionBasis]'s own doc comment.
+  final PredictionBasis basis;
 
   /// Whole civil days from today to [estimatedNextStart] (negative when
   /// past). Once late, [estimatedNextStart] is the rolled date, so this
@@ -477,7 +758,20 @@ class ActivePrediction extends CyclePrediction {
 /// current civil date, and (issue #132) the device-local set of omitted
 /// cycle starts.
 ///
+/// Issue #233: when a tracked birth-control method is in effect
+/// ([birthControl]), the predictor branches before any history gate —
+/// a continuous method returns [PredictionsSuppressed] outright, and a
+/// withdrawal-bleed method returns a pack-schedule-driven
+/// [ActivePrediction] (see [_packDrivenPrediction]) — so neither falls
+/// into [NotEnoughHistory] or a silent late/paused state. With no method
+/// in effect the behavior is exactly as before. A withdrawal-bleed method
+/// with no recorded regimen start ([ActiveBirthControl.startedOn] null)
+/// falls through to the history-based path defensively, since there is no
+/// pack anchor to predict from.
+///
 /// Ordering of the gates:
+/// 0. [birthControl] in effect → [PredictionsSuppressed] (continuous) or
+///    [_packDrivenPrediction] (withdrawal-bleed with a start date).
 /// 1. No episodes, or fewer than [kMinCompletedValidCycles] completed
 ///    *usable* cycles (valid per the 15–60 window and not omitted, within
 ///    [kRecencyWindowCycles] of the raw chronological list — issue #213) →
@@ -496,8 +790,32 @@ CyclePrediction computePrediction({
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
   Set<LocalDate> pmsDates = const {},
+  ActiveBirthControl? birthControl,
 }) {
-  final sorted = [...episodes]..sort();
+  final kind = birthControl == null
+      ? null
+      : birthControlPredictionKind(birthControl.method);
+  if (kind == BirthControlPredictionKind.continuous) {
+    return PredictionsSuppressed(method: birthControl!.method);
+  }
+  if (kind == BirthControlPredictionKind.withdrawalBleed &&
+      birthControl!.startedOn != null) {
+    return _packDrivenPrediction(
+      episodes: episodes,
+      startedOn: birthControl.startedOn!,
+      today: today,
+    );
+  }
+  // Issue LLA-071: a future-dated stored episode (a restored export, a
+  // multi-timezone edit, or a device clock rollback) must never anchor
+  // "today's" cycle or inflate history stats — every stat and the
+  // current-cycle anchor below are always as-of [today]. The future row
+  // itself is never discarded from storage; it simply does not exist yet
+  // from this computation's point of view.
+  final sorted = [
+    for (final episode in [...episodes]..sort())
+      if (!episode.start.isAfter(today)) episode,
+  ];
   if (sorted.isEmpty) {
     return const NotEnoughHistory(
         episodeCount: 0, completedCycleCount: 0, validCycleCount: 0);
@@ -548,6 +866,7 @@ CyclePrediction computePrediction({
   );
   final forecast = _buildForecast(
     firstStart: rolledStart,
+    today: today,
     meanCycleDays: estimate.meanDays,
     periodLengthDays: periodLength.periodLengthDays,
     baseTier: tier,
@@ -582,6 +901,92 @@ CyclePrediction computePrediction({
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
     pms: pms,
+  );
+}
+
+/// The withdrawal-bleed branch of the predictor (issue #233): a bleed on a
+/// cyclic combined-pill/patch/ring regimen is pack-driven, not follicular,
+/// so the next withdrawal bleed is predicted from the pack schedule rather
+/// than from a mean-of-valid-cycles calculation. The anchor is the most
+/// recent bleed logged on or after [startedOn] (the regimen start — the
+/// latest such bleed *is* the most recent withdrawal bleed), or [startedOn]
+/// itself when none has been logged yet (the cadence begins with the first
+/// pack). The estimate is [startedOn]/anchor + [kPackCycleLengthDays],
+/// rolled forward in whole pack-length steps once late ([_rollLateEstimate],
+/// issue #221), exactly as the history-based path rolls a mean-cycle-length
+/// step. Confidence is [CycleConfidence.high] with zero spread — the pack
+/// schedule is a known, fixed quantity, the issue's stated reason this
+/// branch exists over statistical inference.
+///
+/// Deliberately independent of [omittedCycleStarts]: omission is an
+/// editorial "don't average this cycle" signal for the statistical
+/// predictor, and this branch averages nothing.
+///
+/// No cycles are claimed to exist by this branch's construction: history
+/// counts are still reported for context, but [averagedCycleLengths] is
+/// empty and [meanCycleLengthDays] carries the fixed regimen length, not a
+/// mean of observed cycles.
+ActivePrediction _packDrivenPrediction({
+  required List<Episode> episodes,
+  required LocalDate startedOn,
+  required LocalDate today,
+}) {
+  // Issue LLA-071 (see computePrediction's own comment): a future-dated
+  // stored episode must never become the withdrawal-bleed anchor either.
+  final sorted = [
+    for (final episode in [...episodes]..sort())
+      if (!episode.start.isAfter(today)) episode,
+  ];
+  final starts = [for (final episode in sorted) episode.start];
+
+  // The most recent withdrawal bleed: the latest episode start on/after the
+  // regimen start, else the regimen start itself.
+  var anchor = startedOn;
+  for (final start in starts) {
+    if (!start.isBefore(startedOn)) anchor = start;
+  }
+
+  final originalEstimate = anchor.addDays(kPackCycleLengthDays);
+  final rolledStart = _rollLateEstimate(
+    original: originalEstimate,
+    today: today,
+    stepDays: kPackCycleLengthDays,
+  );
+  final periodLength = _meanPeriodLength(
+    sorted: sorted,
+    omittedCycleStarts: const {},
+    meanCycleDays: kPackCycleLengthDays,
+  );
+  final forecast = _buildForecast(
+    firstStart: rolledStart,
+    today: today,
+    meanCycleDays: kPackCycleLengthDays,
+    periodLengthDays: periodLength.periodLengthDays,
+    baseTier: CycleConfidence.high,
+    baseSpreadDays: 0,
+  );
+
+  // History-context counts (both windows) — reported but never used for the
+  // estimate, mirroring how the history path separates stats from the mean.
+  final windows = _recentValidCycles(starts, const {});
+
+  return ActivePrediction(
+    today: today,
+    lastEpisodeStart: anchor,
+    estimatedNextStart: forecast.first.start,
+    originalEstimatedNextStart: originalEstimate,
+    averagedCycleLengths: const [],
+    meanCycleLengthDays: kPackCycleLengthDays.toDouble(),
+    cycleDay: today.isBefore(anchor) ? 1 : today.difference(anchor) + 1,
+    duringEpisode: sorted.any((episode) => episode.contains(today)),
+    completedCycleCount: windows.lengths.length,
+    validCycleCount: windows.validLengths.length,
+    meanPeriodLengthDays: periodLength.meanPeriodLengthDays,
+    spreadDays: 0,
+    tier: CycleConfidence.high,
+    forecast: forecast,
+    unusuallyLongCycle: false,
+    basis: PredictionBasis.regimenSchedule,
   );
 }
 
@@ -698,8 +1103,10 @@ _CycleLengthEstimate _cycleLengthEstimate({
   // most kRecencyWindowCycles entries by the recency window above, and
   // kRecencyWindowCycles == kPredictionWindowCycles, so usableLengths can
   // never be longer than kPredictionWindowCycles by the time it gets here.
-  // kPredictionWindowCycles still names the forecast's own cycle count
-  // (_buildForecast, below) — only the redundant second truncation is gone.
+  // (#693: kPredictionWindowCycles now names the *input* window only — the
+  // forecast's own length is horizon-sized in _buildForecast, below — so
+  // this dead branch would have been doubly dead; only the redundant
+  // second truncation is gone, either way.)
   var total = 0;
   for (final length in usableLengths) {
     total += length;
@@ -804,8 +1211,7 @@ _MeanPeriodLength _meanPeriodLength({
   // only from the averages), but a silent `.clamp(1, ...)` on a fake 0.0
   // mean would read as "the app estimated a 1-day period" rather than "no
   // data" if that ever changed. kDefaultPeriodLengthDays names the
-  // fallback honestly instead (mirrors forecast.dart's own
-  // kDefaultPredictedPeriodDays).
+  // fallback honestly instead.
   final maxPeriodLengthDays = meanCycleDays <= 0 ? 1 : meanCycleDays;
   final periodLengthDays = periodWindow.isEmpty
       ? kDefaultPeriodLengthDays.clamp(1, maxPeriodLengthDays)
@@ -816,19 +1222,31 @@ _MeanPeriodLength _meanPeriodLength({
   );
 }
 
-/// Chains [kPredictionWindowCycles] future cycles off [firstStart] by the
-/// (rounded) mean cycle length, degrading confidence further out (issue
-/// #213, item 4).
+/// Chains future cycles off [firstStart] by the (rounded) mean cycle
+/// length, degrading confidence further out (issue #213, item 4). Issue
+/// #693: the chain is sized by *horizon*, not a fixed cycle count — cycle
+/// 1 (the live estimate; `forecast.first.start == estimatedNextStart`
+/// must never depend on horizon math) is always emitted, and the loop
+/// keeps predicting while the next start falls on or before the end of
+/// the month [kPredictionHorizonMonths] after [today], never past
+/// [kMaxForecastCycles].
 List<PredictedCycle> _buildForecast({
   required LocalDate firstStart,
+  required LocalDate today,
   required int meanCycleDays,
   required int periodLengthDays,
   required CycleConfidence baseTier,
   required double baseSpreadDays,
 }) {
+  final horizonEnd = endOfHorizonMonth(today, kPredictionHorizonMonths);
   final cycles = <PredictedCycle>[];
   var start = firstStart;
-  for (var i = 1; i <= kPredictionWindowCycles; i++) {
+  for (var i = 1; i <= kMaxForecastCycles; i++) {
+    // #693: every later cycle past the horizon end is one the calendar
+    // can never render — stop before emitting it. Starts only ever move
+    // forward (or, on a degenerate non-positive step, stay put, where the
+    // kMaxForecastCycles bound above is what terminates the loop).
+    if (i > 1 && start.isAfter(horizonEnd)) break;
     final spread = _forecastSpreadFor(baseSpreadDays, i);
     final tier = spread > kIrregularSpreadThresholdDays
         ? _stepTierDown(baseTier)
@@ -935,8 +1353,9 @@ class CycleFacts {
 /// + [CycleFacts.typicalCycleLengthDays], `meanCycleLengthDays` /
 /// `meanPeriodLengthDays` = the supplied answers, `tier` =
 /// [CycleConfidence.provisional], spread = [kProvisionalSpreadDays], and a
-/// 12-cycle forecast built by the same `_buildForecast` the computed path
-/// uses. No cycles are claimed to exist: `averagedCycleLengths` is empty
+/// horizon-sized forecast (issue #693) built by the same `_buildForecast`
+/// the computed path uses. No cycles are claimed to exist:
+/// `averagedCycleLengths` is empty
 /// and both history counts are zero — the mean fields carry the supplied
 /// *answers*, not averages over observed data (the one place
 /// `meanCycleLengthDays` is not the mean of `averagedCycleLengths`; the
@@ -989,6 +1408,7 @@ CyclePrediction seedProvisionalPrediction({
       unusuallyLongCycle ? CycleConfidence.irregular : CycleConfidence.provisional;
   final forecast = _buildForecast(
     firstStart: rolledStart,
+    today: today,
     meanCycleDays: cycleDays,
     periodLengthDays: periodLengthDays,
     baseTier: tier,
@@ -1020,15 +1440,19 @@ CyclePrediction seedProvisionalPrediction({
 
 /// Convenience: derives episodes from raw entries first, then predicts.
 /// The entries' PMS markers (Issue #220) join the derivation in the same
-/// pass — the PMS estimate rides [ActivePrediction.pms].
+/// pass — the PMS estimate rides [ActivePrediction.pms]. [birthControl]
+/// (issue #233) is the in-effect method the predictor branches on; null
+/// keeps the pre-#233 behavior.
 CyclePrediction computePredictionFromEntries({
   required Iterable<DayEntry> entries,
   required LocalDate today,
   Set<LocalDate> omittedCycleStarts = const {},
+  ActiveBirthControl? birthControl,
 }) =>
     computePrediction(
       episodes: deriveEpisodes(bleedDatesOf(entries)),
       today: today,
       omittedCycleStarts: omittedCycleStarts,
       pmsDates: pmsDatesOf(entries),
+      birthControl: birthControl,
     );

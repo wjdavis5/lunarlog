@@ -32,9 +32,17 @@ select is(
   'Trigger automatically creates primary_guardian entry for profile creator'
 );
 
--- Mom inserts a day entry
+-- Mom inserts a day entry. Issue #201 revoked authenticated's direct
+-- insert/update grant on day_entries entirely (sync_push is the sole
+-- write path now); this file exercises RLS/grant boundaries on the table
+-- directly (not through sync_push), so each fixture write below runs as
+-- service_role for just that one statement (auth.uid() is untouched -- it
+-- reads request.jwt.claims, a separate session GUC from role -- so
+-- attribution and every RLS-visibility assertion around it are unaffected).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, tags, note, updated_at)
 values (tests.ulid(102), tests.ulid(101), '2026-09-01', 'America/New_York', 'medium', '["cramps"]', 'Maya started period', '2026-09-01T08:15:00Z');
+select set_config('role', 'authenticated', true);
 
 select is(
   (select count(*) from public.day_entries where id = tests.ulid(102)),
@@ -96,9 +104,12 @@ select is(
   'Dad (co-parent) can see Maya day entries'
 );
 
--- Dad logs a second day entry
+-- Dad logs a second day entry (issue #201: service_role for the same
+-- reason as Mom's insert above).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, tags, note, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(104), tests.ulid(101), '2026-09-02', 'America/New_York', 'light', '[]', 'Dad logged flow', '2026-09-02T10:00:00Z', tests.get_supabase_uid('dad'), tests.get_supabase_uid('dad'));
+select set_config('role', 'authenticated', true);
 
 select is(
   (select count(*) from public.day_entries where id = tests.ulid(104)),
@@ -137,9 +148,12 @@ select is(
   'Sitter (caregiver) can see Maya profile'
 );
 
--- Sitter logs cramps on 2026-09-03
+-- Sitter logs cramps on 2026-09-03 (issue #201: service_role for the same
+-- reason as Mom's insert above).
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, tags, note, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(105), tests.ulid(101), '2026-09-03', 'America/New_York', 'spotting', '["cramps"]', 'Mild cramps', '2026-09-03T14:00:00Z', tests.get_supabase_uid('sitter'), tests.get_supabase_uid('sitter'));
+select set_config('role', 'authenticated', true);
 
 select is(
   (select count(*) from public.day_entries where id = tests.ulid(105)),
@@ -202,10 +216,14 @@ select throws_ok(
   '42501', null, 'Doctor (viewer) cannot insert day entries'
 );
 
--- Doctor cannot update day entry
-with u as (
-  update public.day_entries set note = 'Doctor changed note' where id = tests.ulid(102) returning 1
-) select is(count(*), 0::bigint, 'Doctor (viewer) cannot update day entries (0 rows updated)') from u;
+-- Doctor cannot update day entry. Issue #201: authenticated holds no
+-- UPDATE grant on day_entries at all any more, so this is now a hard
+-- 42501 at the grant layer rather than the previous "RLS silently filters
+-- the row to zero updated" shape.
+select throws_ok(
+  $$update public.day_entries set note = 'Doctor changed note' where id = tests.ulid(102)$$,
+  '42501', null, 'Doctor (viewer) cannot update day entries'
+);
 
 -- ---------------------------------------------------------------------------
 -- 7. Direct-write negatives on profile_guardians / guardian_invitations

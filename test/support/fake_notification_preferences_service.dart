@@ -37,6 +37,10 @@ class FakeNotificationPreferencesService
 
   @override
   Stream<CaregiverAlertPreferences> watchFor(String profileId) {
+    // Issue #548: close_sinks can't trace that this is the same instance
+    // stored in _controllers and closed by dispose() below — it's reached
+    // through the _controllerFor indirection, not created here directly.
+    // ignore: close_sinks
     final controller = _controllerFor(profileId);
     // Emit the current (or default) value to a fresh subscriber, matching
     // the production service's "fetch on first listen" behavior.

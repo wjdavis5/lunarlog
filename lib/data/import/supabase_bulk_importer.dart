@@ -94,7 +94,17 @@ class SupabaseBulkImporter implements BulkImporter {
       inserted += chunkResult.inserted;
       updated += chunkResult.updated;
       revived += chunkResult.revived;
-      rejected.addAll(chunkResult.rejected);
+      // Issue #140 review, LLA-045: the RPC reports `row_index` as a
+      // 0-based position within the CHUNK it validated, not within the
+      // whole `rows` input -- offsetting it back onto the original list
+      // here is what makes a rejection past the first chunk point at the
+      // row that actually caused it, rather than colliding with (and
+      // misreporting as) whichever row sits at that same offset in chunk
+      // zero.
+      rejected.addAll([
+        for (final r in chunkResult.rejected)
+          BulkImportRejectedRow(rowIndex: r.rowIndex + offset, reason: r.reason),
+      ]);
       processed += chunk.length;
       await _updateProcessedRows(jobId, processed);
       onProgress?.call(processed, rows.length);

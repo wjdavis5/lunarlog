@@ -42,6 +42,10 @@ class FakeSyncTransport implements SyncTransport {
     SyncTable.cycleOverrides: [],
     SyncTable.careNotes: [],
     SyncTable.visitPrepItems: [],
+    SyncTable.dayEntryMergeEvents: [],
+    SyncTable.profileTagRegistry: [],
+    SyncTable.deletedProfiles: [],
+    SyncTable.dayEntryHistory: [],
   };
 
   /// When set, wins over [pages]: computes each page from the call itself
@@ -67,6 +71,27 @@ class FakeSyncTransport implements SyncTransport {
   /// during a specific page).
   FutureOr<void> Function(PullCall call)? onPull;
   FutureOr<void> Function(PushBatch batch)? onPush;
+
+  /// Scripted answer for [fetchWatermark] (issue #521). Defaults to a very
+  /// large sentinel — "every version committed so far is watermark-safe" —
+  /// so every pre-existing pull test's exact `cursor = max(page)`
+  /// expectations keep holding unless a test deliberately narrows this
+  /// (to exercise the clamp) or sets it to `null` (to exercise the
+  /// lookback fallback for a server without the RPC yet).
+  int? watermark = 1 << 40;
+
+  /// Every [fetchWatermark] call, recorded in order.
+  int fetchWatermarkCount = 0;
+
+  /// Issue #42: scripted answers for [fetchMaxVersion], keyed by table. A
+  /// missing table (or a `null` map, the default) answers `null` — the
+  /// conservative "probe failed" answer that keeps the engine's full
+  /// re-pull running, which is also exactly the pre-#42 behavior every
+  /// existing reconcile test pins.
+  Map<SyncTable, int>? maxVersions;
+
+  /// Every [fetchMaxVersion] call, recorded in order.
+  final fetchMaxVersionCalls = <SyncTable>[];
 
   int get pushCount => pushes.length;
   int get pullCount => pulls.length;
@@ -138,5 +163,30 @@ class FakeSyncTransport implements SyncTransport {
     final queue = pages[table]!;
     if (queue.isEmpty) return const [];
     return queue.removeAt(0);
+  }
+
+  @override
+  Future<int?> fetchWatermark() async {
+    fetchWatermarkCount++;
+    return watermark;
+  }
+
+  @override
+  Future<int?> fetchMaxVersion(SyncTable table) async {
+    fetchMaxVersionCalls.add(table);
+    return maxVersions?[table];
+  }
+
+  /// Every [primePullCycle] call, recorded in order (issue #598) so a test
+  /// can assert the engine primed a cycle with the expected starting
+  /// cursors. This fake never actually caches anything for [pullPage] to
+  /// read back — [pages]/[pageResolver] remain the only way to script a
+  /// page — so priming here is purely observable, matching how a real
+  /// transport's priming is invisible to the engine either way.
+  final primePullCycleCalls = <Map<SyncTable, int>>[];
+
+  @override
+  Future<void> primePullCycle(Map<SyncTable, int> cursors) async {
+    primePullCycleCalls.add(Map.unmodifiable(cursors));
   }
 }

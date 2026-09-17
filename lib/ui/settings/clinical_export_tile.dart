@@ -6,16 +6,17 @@
 /// watch, injectable export collaborator, `InlineError` on failure) but
 /// owns its own state independently.
 ///
-/// v1 exports live (non-archived) profiles only, no date-range UI yet —
-/// `buildFhirDocumentBundle` itself is already per-profile/date-range
-/// capable; this tile just doesn't expose the range choice yet. Profile
-/// selection (#157 review fix): with exactly one live profile, the tile's
-/// own subtitle names it and export needs no extra tap; with several, a
-/// [SimpleDialog] chooser runs before the Bundle is built. The exported
-/// *file* still never carries a name (`fhirBundleFileName` stays a bare
-/// date) — the chooser only decides which profile's data goes in, not
-/// what to call the file. See `docs/clinical/fhir-export.md` for the
-/// date-range follow-up this still defers.
+/// v1 exports live (non-archived) profiles only. Profile selection (#157
+/// review fix): with exactly one live profile, the tile's own subtitle
+/// names it and export needs no extra tap; with several, a [SimpleDialog]
+/// chooser runs before the Bundle is built. The exported *file* still never
+/// carries a name (`fhirBundleFileName` stays a bare date) — the chooser
+/// only decides which profile's data goes in, not what to call the file.
+/// Issue #459 added a date-range selection step between the profile choice
+/// and the Bundle build, opening on the six most-recent completed cycles
+/// by default — see `export_range_picker_sheet.dart`,
+/// `domain/export/fhir_export_range.dart`, and
+/// `docs/clinical/fhir-export.md`.
 library;
 
 import 'dart:async';
@@ -26,14 +27,18 @@ import 'package:provider/provider.dart';
 
 import '../../domain/export/fhir_bundle.dart';
 import '../../domain/export/fhir_bundle_writer.dart';
+import '../../domain/export/fhir_export_range.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile.dart';
+import '../../domain/prediction/cycle_history.dart' show CycleExclusionList;
 import '../../domain/prediction/prediction.dart';
 import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
 import '../account/export_account_collaborator.dart' show kAppVersionForExport;
 import '../components/inline_error.dart';
+import 'entry_existence_watch_mixin.dart';
+import 'export_range_picker_sheet.dart';
 
 /// Injectable seam for FHIR delivery (mirrors
 /// `ExportAccountCollaborator`): the default uses the tree-provided
@@ -83,20 +88,12 @@ class ClinicalExportTile extends StatefulWidget {
   State<ClinicalExportTile> createState() => _ClinicalExportTileState();
 }
 
-class _ClinicalExportTileState extends State<ClinicalExportTile> {
+class _ClinicalExportTileState extends State<ClinicalExportTile>
+    with EntryExistenceWatchMixin<ClinicalExportTile> {
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
-  bool _hasEntries = false;
   bool _exporting = false;
   String? _error;
-
-  /// Guards [_refreshHasEntries] against out-of-order completion (#157
-  /// review fix): every profiles emission starts a fresh async scan of
-  /// however many live profiles there are, and a slow older scan finishing
-  /// after a newer one must not clobber the newer result with a stale one.
-  /// Bumped at the *start* of each call; a call only applies its result if
-  /// it is still the most recent one when it finishes.
-  int _hasEntriesGeneration = 0;
 
   @override
   void initState() {
@@ -105,11 +102,15 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
       (profiles) {
         if (!mounted) return;
         setState(() => _profiles = profiles);
-        // Re-evaluated on every emission (#157 review fix), not just once:
-        // a profile being archived/unarchived or a day entry being added
-        // elsewhere changes which live profiles exist and whether any of
-        // them has entries, and the tile's enabled state must track that.
-        unawaited(_refreshHasEntries(profiles));
+        // Issue #642, LLA-010: a bounded existence stream per live profile,
+        // decoupled from this profiles-stream tick — see
+        // `EntryExistenceWatchMixin`'s doc comment for why deriving it from
+        // this tick alone went stale under the app shell's retained
+        // IndexedStack.
+        watchEntryExistence(
+          context.read<DayEntriesRepository?>(),
+          _liveProfiles(profiles).map((profile) => profile.id),
+        );
       },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint(
@@ -119,32 +120,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
     );
   }
 
-  /// Whether *any* live profile has at least one day entry — cheap: an
-  /// `any`-shaped early-exit scan (#157 review fix) rather than always
-  /// awaiting every live profile's full entry list, since the repository
-  /// interface exposes no row-count query to check more cheaply still.
-  Future<void> _refreshHasEntries(List<Profile> profiles) async {
-    final generation = ++_hasEntriesGeneration;
-    final liveProfiles = _liveProfiles(profiles);
-    final hasEntries = await _anyProfileHasEntries(liveProfiles);
-    if (mounted && generation == _hasEntriesGeneration) {
-      setState(() => _hasEntries = hasEntries);
-    }
-  }
-
-  Future<bool> _anyProfileHasEntries(List<Profile> liveProfiles) async {
-    final entriesRepo = context.read<DayEntriesRepository?>();
-    if (entriesRepo == null) return false;
-    for (final profile in liveProfiles) {
-      final entries = await entriesRepo.listForProfile(profile.id);
-      if (entries.isNotEmpty) return true;
-    }
-    return false;
-  }
-
   @override
   void dispose() {
     unawaited(_profilesSub?.cancel());
+    disposeEntryExistenceWatch();
     super.dispose();
   }
 
@@ -160,7 +139,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
     if (profiles == null) return const SizedBox.shrink();
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
-    final canExport = !_exporting && _hasEntries;
+    final canExport = !_exporting && hasAnyEntries;
     final error = _error;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,7 +149,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
           leading: const Icon(Icons.medical_information_outlined),
           title: const Text('Export clinical summary (FHIR)'),
           subtitle: Text(
-            _subtitleFor(hasEntries: _hasEntries, liveProfiles: liveProfiles),
+            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -235,31 +214,64 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
         child: Text(profile.displayName),
       );
 
-  /// Builds the Bundle for [profile] (see [buildFhirDocumentBundle]) and
-  /// hands it to the export collaborator; failures render as copy beneath
-  /// the tile, mirroring `YourDataSection._export`.
+  /// Asks [profile]'s date range first (#459 — see
+  /// `showExportRangePickerSheet`; a cancelled picker does nothing, the
+  /// same "no choice, no export" discipline [_handleTap]'s profile chooser
+  /// already uses), then builds the Bundle (see [buildFhirDocumentBundle])
+  /// and hands it to the export collaborator; failures render as copy
+  /// beneath the tile, mirroring `YourDataSection._export`.
+  ///
+  /// [prediction] is always computed from [profile]'s *full* history
+  /// (independent of the chosen range) — the cycle-length/last-menstrual-
+  /// period statistics it feeds should read the same regardless of how far
+  /// back the exported document's own Observations reach; only the raw
+  /// flow/symptom entries embedded in the document are narrowed to the
+  /// chosen range, via [FhirExportRange.filterEntries]/
+  /// [FhirExportRange.filterObservations].
   Future<void> _export(BuildContext context, Profile profile) async {
     if (_exporting) return;
     // Read before the first `await` below (`use_build_context_synchronously`).
     final fhirWriter = context.read<FhirBundleWriter>();
+    final exclusions = context.read<CycleExclusionList?>();
+    final entriesRepo = context.read<DayEntriesRepository>();
+    final observationsRepo = context.read<ObservationsRepository>();
+
+    // Issue #459 review: the range picker is asked *before* `_exporting`
+    // flips true, not inside the same try/finally as the actual export
+    // work below. `_exporting` drives the tile's indeterminate
+    // `CircularProgressIndicator` (see `build`); that indicator, once
+    // animating, never settles on its own (`pumpAndSettle` has nothing to
+    // wait out), so keeping it running for as long as the picker sheet
+    // sits open waiting on the operator would hang `pumpAndSettle`-driven
+    // tests indefinitely — and would show a spinner over a modal the
+    // operator hasn't dismissed yet, which reads as the export already
+    // running when nothing has started.
+    final dayEntries = await entriesRepo.listForProfile(profile.id);
+    if (!context.mounted) return;
+    final range = await showExportRangePickerSheet(
+      context,
+      entries: dayEntries,
+      today: LocalDate.today(),
+    );
+    if (range == null || !context.mounted) return;
+
     setState(() {
       _exporting = true;
       _error = null;
     });
     try {
-      final entriesRepo = context.read<DayEntriesRepository>();
-      final observationsRepo = context.read<ObservationsRepository>();
-      final dayEntries = await entriesRepo.listForProfile(profile.id);
       final observations = await observationsRepo.listForProfile(profile.id);
       final exportedAt = DateTime.now().toUtc();
+      final omittedCycleStarts = await _omittedCycleStartsFor(exclusions, profile.id);
       final prediction = computePredictionFromEntries(
         entries: dayEntries,
         today: LocalDate.today(),
+        omittedCycleStarts: omittedCycleStarts,
       );
       final bundle = buildFhirDocumentBundle(
         profile: profile,
-        dayEntries: dayEntries,
-        observations: observations,
+        dayEntries: range.filterEntries(dayEntries),
+        observations: range.filterObservations(observations),
         prediction: prediction is ActivePrediction ? prediction : null,
         exportedAt: exportedAt,
         appVersion: kAppVersionForExport,
@@ -275,5 +287,23 @@ class _ClinicalExportTileState extends State<ClinicalExportTile> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Issue #648 review / LLA-067: the same cycle-start exclusion set the
+  /// history list and overview panel already honor (`CycleExclusionList`,
+  /// synced via `cycle_overrides` since issue #568 (b)) — without this, the
+  /// clinical export's own cycle-length/last-menstrual-period statistics
+  /// silently recomputed from every logged cycle, including ones the
+  /// operator explicitly excluded, so the exported document could disagree
+  /// with the very averages the app's own UI displays for the same profile.
+  /// A null [exclusions] (no collaborator wired — a test, or unconfigured
+  /// build) degrades to "nothing excluded", the same fail-open default
+  /// every other optional collaborator in this codebase uses.
+  static Future<Set<LocalDate>> _omittedCycleStartsFor(
+    CycleExclusionList? exclusions,
+    String profileId,
+  ) async {
+    if (exclusions == null) return const {};
+    return exclusions.load(profileId);
   }
 }

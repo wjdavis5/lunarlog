@@ -12,7 +12,11 @@ import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 
-ActivePrediction _prediction(LocalDate today, {PmsEstimate? pms}) {
+ActivePrediction _prediction(
+  LocalDate today, {
+  PmsEstimate? pms,
+  PredictionBasis basis = PredictionBasis.statistical,
+}) {
   // 28-day cycles, 4-day bleed, next start 10 days out; today is mid-luteal
   // and not bleeding.
   const cycle = 28;
@@ -44,6 +48,7 @@ ActivePrediction _prediction(LocalDate today, {PmsEstimate? pms}) {
     tier: CycleConfidence.high,
     forecast: forecast,
     pms: pms,
+    basis: basis,
   );
 }
 
@@ -65,6 +70,25 @@ void main() {
       reason: 'the sharer is not mid-episode, so every period day is '
           'strictly forecast (KTD3 forward-only)',
     );
+  });
+
+  test(
+      'Issue LLA-064: a regimen-schedule (pack-driven) prediction shares no '
+      'fertile/ovulation days, but its period days are unaffected', () {
+    final statistical = buildPredictionProjection(_prediction(today));
+    final regimen = buildPredictionProjection(
+      _prediction(today, basis: PredictionBasis.regimenSchedule),
+    );
+
+    expect(regimen.fertileDays, isEmpty);
+    expect(regimen.ovulationDays, isEmpty);
+    expect(statistical.fertileDays, isNotEmpty,
+        reason: 'sanity check: the statistical fixture does derive fertile '
+            'days, so the regimen case above is a real gate, not a fluke '
+            'of the fixture');
+    expect(regimen.periodDays, statistical.periodDays,
+        reason: 'the prediction basis only gates fertility derivation, '
+            'never the period-day forecast itself');
   });
 
   test('current open episode days are included while duringEpisode', () {
@@ -138,7 +162,18 @@ void main() {
     final projection = buildPredictionProjection(_prediction(today));
     final json = projection.toJson();
 
-    expect(json.keys.toSet(), PredictionProjection.allowedKeys.toSet());
+    // Issue #529: a built projection always carries a confidence tier
+    // (ActivePrediction.tier is non-nullable), so this model's own
+    // toJson() also carries confidenceTierKey. Issue #593 allowlisted the
+    // key server-side too, so this is now also the exact wire payload
+    // `SupabasePredictionConnectionService.publishProjection` sends to
+    // `upsert_prediction_projection` — no strip (see
+    // supabase_prediction_connection_service_test.dart).
+    expect(
+      json.keys.toSet(),
+      {...PredictionProjection.allowedKeys, PredictionProjection.confidenceTierKey},
+    );
+    expect(json[PredictionProjection.confidenceTierKey], 'high');
     expect(json['generated_at'], today.iso);
     expect(json['period_days'], isA<List<Object?>>());
     expect((json['period_days'] as List).first, isA<String>());
@@ -147,6 +182,41 @@ void main() {
           .hasMatch((json['period_days'] as List).first as String),
       isTrue,
     );
+  });
+
+  test('confidenceTier round-trips through toJson/fromJson', () {
+    final projection = buildPredictionProjection(_prediction(today));
+    expect(projection.confidenceTier, CycleConfidence.high);
+
+    final restored = PredictionProjection.fromJson(
+        projection.toJson().cast<String, dynamic>());
+    expect(restored.confidenceTier, CycleConfidence.high);
+    expect(restored, projection);
+  });
+
+  test('an absent confidence_tier key deserializes to null (backwards '
+      'compatibility with a payload published before issue #529)', () {
+    final projection = PredictionProjection.fromJson({
+      'generated_at': '2026-09-07',
+      'period_days': ['2026-09-10'],
+      'fertile_days': const [],
+      'ovulation_days': const [],
+      'pms_days': const [],
+    });
+    expect(projection.confidenceTier, isNull);
+  });
+
+  test('a malformed confidence_tier value deserializes to null rather than '
+      'throwing or guessing a tier', () {
+    final projection = PredictionProjection.fromJson({
+      'generated_at': '2026-09-07',
+      'period_days': const [],
+      'fertile_days': const [],
+      'ovulation_days': const [],
+      'pms_days': const [],
+      'confidence_tier': 'not-a-real-tier',
+    });
+    expect(projection.confidenceTier, isNull);
   });
 
   test('fromJson round-trips a toJson payload', () {

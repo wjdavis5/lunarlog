@@ -221,6 +221,8 @@ class HealthMenstrualFlowWrite {
     required this.tzName,
     required this.flow,
     required this.cycleStart,
+    required this.recordId,
+    required this.recordVersionMs,
   });
 
   final HealthGuardFacts facts;
@@ -228,6 +230,18 @@ class HealthMenstrualFlowWrite {
   final String tzName;
   final HealthFlowValue flow;
   final bool cycleStart;
+
+  /// The lunarlog record id this sample came from (Issue #186 sync
+  /// mechanics): the `day_entry_id` ULID. Becomes Health Connect's
+  /// `clientRecordId` and HealthKit's `HKMetadataKeyExternalUUID`, so the
+  /// write is idempotent (re-writes replace rather than duplicate) and a
+  /// tombstone can delete the exact sample.
+  final String recordId;
+
+  /// `updatedAt.millisecondsSinceEpoch` of the source row — Health
+  /// Connect's `clientRecordVersion` (a higher version replaces on
+  /// re-write).
+  final int recordVersionMs;
 }
 
 /// A `writeIntermenstrualBleeding` payload: one logged day of bleeding
@@ -242,11 +256,70 @@ class HealthIntermenstrualBleedingWrite {
     required this.facts,
     required this.date,
     required this.tzName,
+    required this.recordId,
+    required this.recordVersionMs,
   });
 
   final HealthGuardFacts facts;
   final LocalDate date;
   final String tzName;
+
+  /// As [HealthMenstrualFlowWrite.recordId] — the source observation's
+  /// ULID (for spotting markers this is the observation row id).
+  final String recordId;
+
+  /// As [HealthMenstrualFlowWrite.recordVersionMs].
+  final int recordVersionMs;
+}
+
+/// A `writeMenstrualPeriod` payload (Issue #202): one period episode's
+/// interval boundaries for the bound profile. This is Health Connect's
+/// `MenstruationPeriodRecord` — the interval record HealthKit has no
+/// analogue of (HealthKit encodes episode boundaries via the menstrual-flow
+/// cycle-start metadata instead, #193).
+///
+/// [start]/[end] are the episode's inclusive civil dates from
+/// `lib/domain/episodes/episodes.dart` (a write pass derives episodes from
+/// the bound profile's bleed-day set). The adapter converts them to the
+/// record's instants/offsets through `day_boundary.dart` — `startTime` at
+/// local midnight of [start], `endTime` at the *exclusive* local midnight
+/// after [end], and the matching `zoneOffset`/`endZoneOffset` — the #180
+/// timezone contract, never the device's current zone.
+///
+/// [recordId] is the episode's stable id (the same for the same episode
+/// across re-writes as it extends — Issue #186/HS-11 `clientRecordId`, which
+/// Health Connect upserts by, so an in-progress episode is *updated*, not
+/// duplicated) and [recordVersionMs] a per-write increasing version
+/// (`clientRecordVersion`) so a re-write replaces the prior record.
+class HealthMenstrualPeriodWrite {
+  const HealthMenstrualPeriodWrite({
+    required this.facts,
+    required this.start,
+    required this.end,
+    required this.tzName,
+    required this.recordId,
+    required this.recordVersionMs,
+  });
+
+  final HealthGuardFacts facts;
+
+  /// The episode's first bleed day (inclusive).
+  final LocalDate start;
+
+  /// The episode's last bleed day (inclusive); the record's `endTime` is
+  /// the exclusive local midnight after this date.
+  final LocalDate end;
+
+  /// The episode's IANA zone — from the entries' own `tz` (#180), never the
+  /// device's current zone.
+  final String tzName;
+
+  /// The episode's stable `clientRecordId` (unchanged across re-writes of
+  /// the same episode; see the class doc).
+  final String recordId;
+
+  /// As [HealthMenstrualFlowWrite.recordVersionMs].
+  final int recordVersionMs;
 }
 
 /// The platform-neutral health-store port (see the library doc for the
@@ -302,5 +375,32 @@ abstract interface class HealthPlatformStore {
   /// profile.
   Future<HealthPlatformResult> writeIntermenstrualBleeding(
     HealthIntermenstrualBleedingWrite write,
+  );
+
+  /// Writes one period episode's interval record for the bound profile
+  /// (Issue #202's `MenstruationPeriodRecord`). A platform with no
+  /// period-record type — HealthKit encodes episode boundaries via
+  /// menstrual-flow cycle-start metadata instead (#193) — answers
+  /// `unavailable`, which the caller treats as a graceful skip, never a
+  /// pass-blocking failure.
+  Future<HealthPlatformResult> writeMenstrualPeriod(
+    HealthMenstrualPeriodWrite write,
+  );
+
+  /// Deletes the health-store samples whose recorded external id (Health
+  /// Connect `clientRecordId` / HealthKit `HKMetadataKeyExternalUUID`)
+  /// matches one of [recordIds] — the tombstone-propagation half of issue
+  /// #186's sync mechanics: when a lunarlog entry is tombstoned, the
+  /// corresponding health-store sample is removed rather than orphaned.
+  ///
+  /// Only samples this app itself saved can be deleted (HealthKit's
+  /// `delete(_:withCompletion:)` constraint); a record that never made it to
+  /// the store, or that the platform refuses to delete, reports
+  /// [HealthPlatformResult.allowed] or [HealthPlatformResult.failed] like
+  /// any other write — never throws. Behind the same guard as every write
+  /// (a deletion is a health-API touch, so it is gated identically).
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
   );
 }

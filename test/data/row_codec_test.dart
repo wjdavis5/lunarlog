@@ -7,6 +7,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
+import 'package:drift/native.dart';
 import 'package:lunarlog/data/db/tables.dart';
 import 'package:lunarlog/data/sync/conflict_rules.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
@@ -23,18 +24,25 @@ void main() {
     DateTime? deletedAt,
     DateTime? archivedAt,
     String mode = 'standard',
+    String bbtUnit = 'celsius',
+    String weightUnit = 'kg',
+    bool? unitsUnconfirmed,
     int? birthYear,
     String? relationship,
     DateTime? transferredAt,
     String? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    String? trackingPreferences,
   }) =>
       Profile(
         id: profileId,
         displayName: deletedAt == null ? 'Kid' : '',
         isMinor: true,
         mode: mode,
+        bbtUnit: bbtUnit,
+        weightUnit: weightUnit,
+        unitsUnconfirmed: unitsUnconfirmed,
         sortOrder: 3,
         archivedAt: archivedAt,
         createdAt: micro,
@@ -48,12 +56,14 @@ void main() {
         lastPeriodStart: lastPeriodStart,
         typicalCycleLengthDays: typicalCycleLengthDays,
         typicalPeriodLengthDays: typicalPeriodLengthDays,
+        trackingPreferences: trackingPreferences,
       );
 
   DayEntry makeEntry({
     List<String> tags = const ['cramps', 'headache'],
     String? note = 'a note',
     bool pms = false,
+    bool? pmsUnconfirmed,
     DateTime? deletedAt,
     FlowLevel flow = FlowLevel.medium,
     String source = 'manual',
@@ -69,6 +79,7 @@ void main() {
         tags: tags,
         note: note,
         pms: pms,
+        pmsUnconfirmed: pmsUnconfirmed,
         updatedAt: micro,
         deletedAt: deletedAt,
         dirty: true,
@@ -134,6 +145,8 @@ void main() {
         'updated_at': '2026-09-02T08:30:15.999999Z',
         'deleted_at': null,
         'mode': 'standard',
+        'bbt_unit': 'celsius',
+        'weight_unit': 'kg',
         'birth_year': null,
         'relationship': null,
         'last_period_start': null,
@@ -178,6 +191,79 @@ void main() {
       expect(decoded.typicalPeriodLengthDays, 5);
     });
 
+    test('encode includes the display-unit preferences (Issue #255)', () {
+      final json = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      ));
+      expect(json['bbt_unit'], 'fahrenheit');
+      expect(json['weight_unit'], 'lb');
+    });
+
+    test('display-unit preferences round-trip through decode (Issue #255)',
+        () {
+      final decoded = decodeProfile(encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      )));
+      expect(decoded.bbtUnit, 'fahrenheit');
+      expect(decoded.weightUnit, 'lb');
+    });
+
+    test('an absent or unrecognised display-unit key degrades to the '
+        'column default, like mode (Issue #255)', () {
+      final decoded = decodeProfile({
+        'id': profileId,
+        'display_name': 'Kid',
+        'is_minor': true,
+        'sort_order': 3,
+        'archived_at': null,
+        'created_at': '2026-09-01T10:00:00.123456Z',
+        'updated_at': '2026-09-02T08:30:15.999999Z',
+        'deleted_at': null,
+        'bbt_unit': 'kelvin',
+        // weight_unit absent entirely
+      });
+      expect(decoded.bbtUnit, 'celsius',
+          reason: 'an unrecognised value degrades to the default');
+      expect(decoded.weightUnit, 'kg',
+          reason: 'an absent key falls back to the default');
+    });
+
+    test('issue #637, LLA-039: encode omits bbt_unit/weight_unit while '
+        'unitsUnconfirmed is true — an upgrade-backfilled default is never '
+        'pushed as if it were real data', () {
+      final json = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+        unitsUnconfirmed: true,
+      ));
+      expect(json, isNot(contains('bbt_unit')));
+      expect(json, isNot(contains('weight_unit')));
+      // Every other field still pushes — only the two unconfirmed
+      // preferences are withheld, not the whole row.
+      expect(json['display_name'], 'Kid');
+    });
+
+    test(
+        'issue #637, LLA-039: encode includes bbt_unit/weight_unit again '
+        'once unitsUnconfirmed is false or unset', () {
+      final confirmedFalse = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+        unitsUnconfirmed: false,
+      ));
+      expect(confirmedFalse['bbt_unit'], 'fahrenheit');
+      expect(confirmedFalse['weight_unit'], 'lb');
+
+      final neverSet = encodeProfile(makeProfile(
+        bbtUnit: 'fahrenheit',
+        weightUnit: 'lb',
+      ));
+      expect(neverSet['bbt_unit'], 'fahrenheit');
+      expect(neverSet['weight_unit'], 'lb');
+    });
+
     test('a pre-#218 payload without the fact keys decodes to nulls, and a '
         'malformed date is a typed failure (Issue #218)', () {
       final oldClient = decodeProfile({
@@ -201,6 +287,97 @@ void main() {
           'last_period_start': 'August 14',
         }),
         throwsA(isA<RowCodecError>()),
+      );
+    });
+
+    test('encode OMITS tracking_preferences when locally null (Issue #259): '
+        'a device that has not customized (or not pulled) must never wipe a '
+        'co-guardian\u2019s curated document with an explicit null', () {
+      final json = encodeProfile(makeProfile());
+      expect(json.keys, isNot(contains('tracking_preferences')));
+    });
+
+    test('encode emits an explicitly-cleared document as {} — the '
+        'composition the clear path depends on (Issue #259 review): '
+        'a cleared profile must NOT be wire-indistinguishable from '
+        'never-customized', () async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final p = await db.storage.upsertProfile(displayName: 'P', isMinor: false);
+      await db.storage.setTrackingPreferences(
+          p.id, '{"mood": {"enabled": false, "sort_order": 1}}');
+      final cleared = await db.storage.setTrackingPreferences(p.id, null);
+      expect(cleared!.trackingPreferences, '{}',
+          reason: 'the clear is stored as the empty document');
+      final json = encodeProfile(cleared);
+      expect(json['tracking_preferences'], isNotNull,
+          reason: 'the key IS emitted (non-null), so the server stores the '
+              'clear instead of preserving the stale document');
+      expect(json['tracking_preferences'], isA<Map>());
+      expect((json['tracking_preferences'] as Map), isEmpty);
+    });
+
+    test('encode emits the decoded JSON object, not a doubly-encoded '
+        'string (Issue #259)', () {
+      final json = encodeProfile(makeProfile(
+        trackingPreferences: '{"mood": {"enabled": false, "sort_order": 2}}',
+      ));
+      expect(json['tracking_preferences'],
+          {'mood': {'enabled': false, 'sort_order': 2}});
+    });
+
+    test('unparsable local preferences text is a typed failure attributed '
+        'to profiles.tracking_preferences (Issue #259)', () {
+      expect(
+        () => encodeProfile(makeProfile(trackingPreferences: 'not json')),
+        throwsA(isA<RowCodecError>()),
+      );
+      expect(
+        () => encodeProfile(makeProfile(trackingPreferences: 'not json')),
+        throwsA(predicate((e) =>
+            e is RowCodecError &&
+            e.kind == RowCodecErrorKind.invalidTrackingPreferences &&
+            e.field == 'tracking_preferences')),
+      );
+    });
+
+    test('preferences round-trip: object on the wire, JSON text locally '
+        '(Issue #259)', () {
+      // The wire carries the DECODED object (PostgREST renders jsonb as
+      // JSON), not a doubly-encoded string.
+      final decoded = decodeProfile({
+        ...encodeProfile(makeProfile()),
+        'tracking_preferences': {
+          'pain': {'enabled': true, 'sort_order': 0},
+          'mood': {'enabled': false, 'sort_order': 1},
+        },
+      });
+      expect(decoded.trackingPreferences, isNotNull);
+      expect(decoded.trackingPreferences, isA<String>());
+      final reencoded = encodeProfile(makeProfile(
+        trackingPreferences: decoded.trackingPreferences,
+      ));
+      expect(reencoded['tracking_preferences'], {
+        'pain': {'enabled': true, 'sort_order': 0},
+        'mood': {'enabled': false, 'sort_order': 1},
+      });
+    });
+
+    test('an absent or explicitly-null tracking_preferences decodes to '
+        'null (never customized), and a non-object value is a typed '
+        'failure (Issue #259)', () {
+      final base = encodeProfile(makeProfile());
+      expect(decodeProfile(base).trackingPreferences, isNull);
+      expect(
+        decodeProfile({...base, 'tracking_preferences': null})
+            .trackingPreferences,
+        isNull,
+      );
+      expect(
+        () => decodeProfile({...base, 'tracking_preferences': 'curated'}),
+        throwsA(predicate((e) =>
+            e is RowCodecError &&
+            e.kind == RowCodecErrorKind.invalidTrackingPreferences)),
       );
     });
 
@@ -327,6 +504,8 @@ void main() {
         displayName: 'x',
         isMinor: false,
         mode: 'standard',
+        bbtUnit: 'celsius',
+        weightUnit: 'kg',
         sortOrder: 0,
         createdAt: micro,
         updatedAt: micro,
@@ -422,6 +601,25 @@ void main() {
       // decodes to false rather than failing the pull.
       final stripped = {...json}..remove('pms');
       expect(decodeDayEntry(stripped).pms, false);
+    });
+
+    test('issue #637, LLA-039: encode omits pms while pmsUnconfirmed is '
+        'true — an upgrade-backfilled default is never pushed as if it '
+        'were real data', () {
+      final json = encodeDayEntry(makeEntry(pms: true, pmsUnconfirmed: true));
+      expect(json, isNot(contains('pms')));
+      // Every other field still pushes — only pms is withheld.
+      expect(json['note'], 'a note');
+    });
+
+    test('issue #637, LLA-039: encode includes pms again once '
+        'pmsUnconfirmed is false or unset', () {
+      final confirmedFalse =
+          encodeDayEntry(makeEntry(pms: true, pmsUnconfirmed: false));
+      expect(confirmedFalse['pms'], true);
+
+      final neverSet = encodeDayEntry(makeEntry(pms: true));
+      expect(neverSet['pms'], true);
     });
 
     test(

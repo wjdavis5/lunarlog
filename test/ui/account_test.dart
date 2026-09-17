@@ -27,12 +27,15 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
+import 'package:lunarlog/ui/l10n/auth_failure_copy.dart';
 import 'package:lunarlog/ui/profiles/profile_home_gate.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
@@ -49,6 +52,19 @@ const String kWaitingCopy =
     'Waiting for email confirmation — open the link on this device';
 const String kUploadPendingCopy = 'Upload pending — tap to review';
 
+
+/// Issue #226 made Settings a much taller sectioned list: the Account
+/// section and the relock toggle now sit below the fold of the default
+/// 800x600 test surface (a `ListView` only builds children near the
+/// viewport), so these tests use a tall viewport instead of scrolling
+/// tile by tile.
+void useTallSettingsViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 2400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 class AccountHarness {
   AccountHarness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
 
@@ -57,6 +73,11 @@ class AccountHarness {
   final FakeAuthService auth = FakeAuthService();
   final FakeSyncEngine engine = FakeSyncEngine();
   int resets = 0;
+
+  /// #542: when set, [resetDevice] throws instead of wiping data — lets a
+  /// test simulate a reset failure (disk full, relocation failure, …)
+  /// without ever actually resetting anything.
+  bool failNextReset = false;
 
   /// #1 (review fix): call-order log shared with [auth]'s own recorded
   /// calls (via [FakeAuthService.signOutCalls]) so a test can assert
@@ -67,16 +88,26 @@ class AccountHarness {
   Future<void> pump({
     bool withEngine = true,
     Future<void> Function(LunarLogDatabase db)? seed,
+    bool? mfaEnabled,
   }) async {
+    useTallSettingsViewport(tester);
     if (seed != null) await seed(db);
     await tester.pumpWidget(
       LunarLogApp.withCollaborators(
         db: db,
         authService: auth,
         syncEngine: withEngine ? engine : null,
+        // Issue #738: `true` compiles this harness as the flag-on build
+        // (what LUNARLOG_ENABLE_MFA=true produces) for the AAL2 step-up
+        // tests; the default (null) is the default-off build.
+        mfaEnabled: mfaEnabled,
         // Mirrors the root's reset (test/ui/device_reset_test.dart proves
         // the real order): local wipe first, local sign-out last.
         resetDevice: () async {
+          if (failNextReset) {
+            failNextReset = false;
+            throw StateError('reset failed');
+          }
           resets++;
           pushRemovalOrder.add('reset');
           await db.wipeAllData();
@@ -297,7 +328,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(key('auth-apple'), findsOneWidget);
 
-      h.auth.appleResult = const AppleSignInCancelled();
+      h.auth.appleResult = const NativeSignInCancelled();
       await tester.tap(key('auth-apple'));
       await tester.pumpAndSettle();
       expect(h.auth.appleCalls, 1);
@@ -375,7 +406,7 @@ void main() {
         'spinner, and an editable form (AE2); providerUnavailable shows the '
         'email alternative under auth-error', (tester) async {
       final s = await pumpStandalone(tester, showGoogle: true);
-      s.auth.googleResult = const GoogleSignInCancelled();
+      s.auth.googleResult = const NativeSignInCancelled();
       await tester.tap(key('auth-google'));
       await tester.pumpAndSettle();
       expect(s.auth.googleCalls, 1);
@@ -478,6 +509,136 @@ void main() {
 
   });
 
+  group('passwordless email and code (LLA-006, #2 U4)', () {
+    testWidgets(
+      'the magic-link button is reachable with no build-config gate, and '
+      'the code field is hidden until a link has been sent',
+      (tester) async {
+        await pumpStandalone(tester);
+        expect(key('auth-magic-link'), findsOneWidget);
+        expect(key('auth-code'), findsNothing);
+        expect(key('auth-verify-code'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'tapping it sends for the trimmed email in sign-in mode '
+      '(createAccount: false), latches the pending email, and reveals the '
+      'code field',
+      (tester) async {
+        final s = await pumpStandalone(tester);
+        await tester.enterText(key('auth-email'), '  a@b.c  ');
+        await tester.tap(key('auth-magic-link'));
+        await tester.pumpAndSettle();
+
+        expect(s.auth.magicLinkCalls.single,
+            (email: 'a@b.c', createAccount: false));
+        expect(
+          await s.settings.get(SettingsKeys.awaitingMagicLinkEmail),
+          'a@b.c',
+        );
+        expect(key('auth-code'), findsOneWidget);
+        expect(key('auth-verify-code'), findsOneWidget);
+        expect(
+          find.text('Check your email for a sign-in link or code.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('create mode passes createAccount: true', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'new@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls.single,
+          (email: 'new@b.c', createAccount: true));
+    });
+
+    testWidgets(
+      'the verify-code button stays disabled below 6 digits, accepts a '
+      '6-digit code, and calls verifyEmailCode',
+      (tester) async {
+        final s = await pumpStandalone(tester);
+        await tester.enterText(key('auth-email'), 'a@b.c');
+        await tester.tap(key('auth-magic-link'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(key('auth-code'), '12345');
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNull,
+          reason: '5 digits is not enough',
+        );
+        expect(s.auth.codeCalls, isEmpty);
+
+        await tester.enterText(key('auth-code'), '123456');
+        await tester.pump();
+        expect(
+          tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(key('auth-verify-code'));
+        await tester.pumpAndSettle();
+        expect(s.auth.codeCalls.single, (email: 'a@b.c', code: '123456'));
+        expect(s.controller.signedIn, isTrue);
+      },
+    );
+
+    testWidgets('an 8-digit code is also accepted', (tester) async {
+      await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pump();
+      expect(
+        tester.widget<FilledButton>(key('auth-verify-code')).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('invalidCode shows its copy under auth-error', (
+      tester,
+    ) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-code'), '000000');
+      await tester.pump();
+
+      s.auth.nextFailure = const AuthFailure.invalidCode();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(key('auth-error'), findsOneWidget);
+    });
+
+    testWidgets(
+      'opening the screen with a pending magic-link email pre-fills it '
+      'and reveals the code field without sending a new request',
+      (tester) async {
+        final s = await pumpStandalone(
+          tester,
+          seed: {SettingsKeys.awaitingMagicLinkEmail: 'a@b.c'},
+        );
+
+        expect(
+          tester.widget<TextField>(key('auth-email')).controller!.text,
+          'a@b.c',
+        );
+        expect(key('auth-code'), findsOneWidget);
+        expect(s.auth.magicLinkCalls, isEmpty);
+      },
+    );
+  });
+
   group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
     testWidgets('AE1: showPasskeys false and the null default (empty '
         'config) render no passkey button; true renders it', (tester) async {
@@ -503,7 +664,7 @@ void main() {
         onSignedIn: () => completions++,
       );
       s.auth.passkeySignInResult =
-          const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+          const NativeSignInSession(AuthUser(id: 'user-passkey'));
 
       await tester.tap(key('auth-passkey'));
       await tester.pumpAndSettle();
@@ -698,6 +859,9 @@ void main() {
       );
 
       await tester.enterText(key('recovery-new-password'), 'a brand new pass');
+      // #165: the confirm field must match before the save proceeds.
+      await tester.enterText(
+          key('recovery-confirm-password'), 'a brand new pass');
       await tester.tap(key('recovery-save'));
       await tester.pumpAndSettle();
       await drainIsolateTraffic(tester);
@@ -710,6 +874,36 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
     });
+
+    testWidgets(
+      'LLA-007: a warm recovery link pops a pushed Settings screen so the '
+      'recovery step is visible immediately, not hidden underneath it',
+      (tester) async {
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        expect(find.text('Alice'), findsOneWidget);
+
+        await h.openSettings();
+        expect(find.byType(SettingsScreen), findsOneWidget);
+        expect(key('recovery-new-password'), findsNothing);
+
+        // A warm link: the recovery latch flips on while Settings is still
+        // the top-most pushed route (no gate in this harness, so recovery
+        // is admitted immediately - matches gate == null above).
+        h.auth.latchRecovery();
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byType(SettingsScreen),
+          findsNothing,
+          reason: 'the pushed route must be popped, not left covering '
+              'recovery underneath it (LLA-007)',
+        );
+        expect(key('recovery-new-password'), findsOneWidget);
+
+        await h.dispose();
+      },
+    );
   });
 
   group('first run (AS1, F1, F3, AE13)', () {
@@ -732,6 +926,10 @@ void main() {
 
       expect(key('auth-email'), findsOneWidget, reason: 'account step');
       expect(find.text('Create profile'), findsNothing);
+      // LLA-006 added the passwordless section below the password form,
+      // pushing "Not now" below the fold on this test surface.
+      await tester.ensureVisible(key('first-run-not-now'));
+      await tester.pump();
       await tester.tap(key('first-run-not-now'));
       await tester.pumpAndSettle();
       expect(key('auth-email'), findsNothing);
@@ -966,6 +1164,43 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets('#542: a reset failure shows InlineError with retry and '
+        're-enables both buttons instead of stranding the user', (tester) async {
+      final h = AccountHarness(tester);
+      await h.pump(seed: AccountHarness.seedOneProfile);
+      h.signIn(id: 'u2');
+      h.engine.emitPhase(SyncPhase.accountMismatch, boundUserId: 'u1');
+      await tester.pumpAndSettle();
+
+      h.failNextReset = true;
+      await tester.tap(key('mismatch-remove-data'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('mismatch-remove-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(h.resets, 0, reason: 'the reset threw before wiping anything');
+      expect(key('mismatch-error'), findsOneWidget);
+      expect(
+        tester.widget<OutlinedButton>(key('mismatch-remove-data')).onPressed,
+        isNotNull,
+        reason: 'busy must be cleared even when the reset throws',
+      );
+      expect(
+        tester.widget<FilledButton>(key('mismatch-switch-account')).onPressed,
+        isNotNull,
+      );
+
+      // Retrying (via InlineError's own Retry action) succeeds once the
+      // underlying failure is gone.
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('mismatch-remove-confirm'));
+      await tester.pumpAndSettle();
+      expect(h.resets, 1);
+      expect(key('mismatch-error'), findsNothing);
+      await h.dispose();
+    });
+
     testWidgets('switching accounts clears the process-global breadcrumb '
         'log even though it is a local sign-out and never touches '
         'resetDevice', (tester) async {
@@ -1178,7 +1413,7 @@ void main() {
         find.descendant(
           of: key('account-link-error'),
           matching: find.text(
-            authFailureCopy(const AuthFailure.identityTaken()),
+            authFailureCopy(AppLocalizationsEn(), const AuthFailure.identityTaken()),
           ),
           matchRoot: true,
         ),
@@ -1269,7 +1504,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.unknown())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.unknown())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1302,7 +1537,7 @@ void main() {
         providers: ['email'],
         showAddPasskey: true,
       );
-      s.auth.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+      s.auth.passkeyRegistrationResult = const NativeSignInSession(
         AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']),
       );
 
@@ -1502,7 +1737,7 @@ void main() {
         find.descendant(
           of: key('account-link-error'),
           matching:
-              find.text(authFailureCopy(const AuthFailure.lastSignInMethod())),
+              find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.lastSignInMethod())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1526,7 +1761,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.network())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.network())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1556,7 +1791,7 @@ void main() {
       expect(
         find.descendant(
           of: key('account-link-error'),
-          matching: find.text(authFailureCopy(const AuthFailure.unknown())),
+          matching: find.text(authFailureCopy(AppLocalizationsEn(), const AuthFailure.unknown())),
           matchRoot: true,
         ),
         findsOneWidget,
@@ -1764,6 +1999,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Some entries could not be uploaded'), findsOneWidget);
+      expect(find.text('Tap to retry'), findsOneWidget);
+      await tester.tap(key('sync-status'));
+      await tester.pump();
+      expect(h.engine.retryRejectedCalls, 1);
       await h.dispose();
     });
 
@@ -2150,6 +2389,53 @@ void main() {
       await h.dispose();
     });
 
+    testWidgets(
+        'Sign out everywhere (issue #268 D-6): a verified MFA factor '
+        'requires a correct step-up code before signing out',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final h = AccountHarness(tester);
+      // Issue #738: the flag-on build — #714's behavior exactly.
+      await h.pump(seed: AccountHarness.seedOneProfile, mfaEnabled: true);
+      h.signIn();
+      h.auth
+        ..mfaStepUpRequired = true
+        ..mfaFactors = [
+          MfaFactor(
+            id: 'factor-1',
+            status: MfaFactorStatus.verified,
+            createdAt: DateTime.utc(2026),
+          ),
+        ];
+      h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+      await h.openSettings();
+      await h.settle();
+
+      await tester.tap(key('account-sign-out-everywhere'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('account-sign-out-everywhere-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Confirm it's you"), findsOneWidget);
+      expect(h.auth.signOutCalls, isEmpty,
+          reason: 'signOut must wait for the step-up to succeed');
+
+      await tester.enterText(
+          find.byKey(const ValueKey('mfa-step-up-code-field')), '123456');
+      await tester.tap(find.byKey(const ValueKey('mfa-step-up-confirm')));
+      await h.settle();
+
+      expect(h.auth.verifyTotpCodeCalls.single,
+          (factorId: 'factor-1', code: '123456'));
+      expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+      expect(h.resets, 1);
+      await h.dispose();
+    });
+
     testWidgets('Sign out everywhere when global sign out fails still runs '
         'reset and shows snackbar', (tester) async {
       // Issue #157 review fix (mirrors #325) — see the taller-viewport
@@ -2183,6 +2469,98 @@ void main() {
       expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
       await h.dispose();
     });
+
+    group('resetDevice reliability regardless of widget lifecycle '
+        '(Issue #638, LLA-004)', () {
+      testWidgets('a confirmed "sign out everywhere" still wipes the device '
+          'even if Settings unmounts before signOut(global) resolves', (
+        tester,
+      ) async {
+        // Issue #157 review fix (mirrors #325) — see the taller-viewport
+        // note on the earlier "Sign out everywhere" tests.
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        h.signIn();
+        h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+        await h.openSettings();
+        await h.settle();
+
+        h.auth.hold = Completer<void>();
+        await tester.tap(key('account-sign-out-everywhere'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-sign-out-everywhere-confirm'));
+        await pumpFew(tester); // signOut(global) is now in flight, held open
+
+        // Navigate away: Settings (and AccountSection with it) unmounts,
+        // but the DeviceResetCallback / RemoveAllPushRegistrationsCallback
+        // providers above it (mirroring the app root in production) do
+        // not — see AccountSection._reset's doc comment.
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsScreen), findsNothing);
+
+        h.auth.hold!.complete();
+        h.auth.hold = null;
+        await pumpFew(tester);
+        await h.settle();
+
+        expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+        expect(h.resets, 1,
+            reason: 'the data wipe must run for a confirmed "sign out '
+                'everywhere" even though the Settings route that started '
+                'it is already gone');
+        expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
+        await h.dispose();
+      });
+
+      testWidgets('a failed signOut(global) still wipes the device even if '
+          'Settings unmounts first — no snackbar since nothing is left to '
+          'show it', (tester) async {
+        tester.view.physicalSize = const Size(800, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        final h = AccountHarness(tester);
+        await h.pump(seed: AccountHarness.seedOneProfile);
+        h.signIn();
+        h.engine.emitPhase(SyncPhase.idle, boundUserId: 'u1', dirtyCount: 0);
+        await h.openSettings();
+        await h.settle();
+
+        h.auth.hold = Completer<void>();
+        h.auth.nextFailure = const AuthNetworkFailure();
+        await tester.tap(key('account-sign-out-everywhere'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('account-sign-out-everywhere-confirm'));
+        await pumpFew(tester); // signOut(global) is now in flight, held open
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsScreen), findsNothing);
+
+        h.auth.hold!.complete();
+        h.auth.hold = null;
+        await pumpFew(tester);
+        await h.settle();
+
+        expect(h.auth.signOutCalls.first, AuthSignOutScope.global);
+        expect(h.resets, 1,
+            reason: 'the data wipe must still run on an AuthFailure even '
+                'though Settings is already gone by the time the failure '
+                'arrives');
+        expect(h.pushRemovalOrder, ['push-removed-all', 'reset']);
+        expect(tester.takeException(), isNull,
+            reason: 'the unmounted context must never be touched for the '
+                'failure snackbar');
+        await h.dispose();
+      });
+    });
   });
 
   group('no auth service', () {
@@ -2192,6 +2570,7 @@ void main() {
         (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await AccountHarness.seedOneProfile(db);
+      useTallSettingsViewport(tester);
       await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Settings'));
@@ -2284,6 +2663,8 @@ Future<StandaloneSection> pumpSection(
   addTearDown(gateController.dispose);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthController>.value(value: controller),
@@ -2332,6 +2713,8 @@ Future<StandaloneSignIn> pumpStandalone(
   final settings = MemorySettings(seed);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           ChangeNotifierProvider<AuthController>.value(value: controller),

@@ -431,4 +431,109 @@ void main() {
       );
     });
   });
+
+  group('custom notification text (Issue #184)', () {
+    test('round-trips per type; a pre-#184 document decodes with no custom '
+        'text anywhere', () {
+      final config = ReminderConfig.standard.copyWith(
+        upcoming: ReminderTypeConfig.upcoming.copyWith(
+            customTitle: 'Tea time', customBody: 'Bring the blue bottle.'),
+        log: ReminderTypeConfig.log.copyWith(customTitle: 'Check in'),
+      );
+      final decoded =
+          decodeReminderConfigs(encodeReminderConfigs({'p1': config}));
+      expect(decoded['p1'], config);
+      expect(decoded['p1']!.upcoming.customTitle, 'Tea time');
+      expect(decoded['p1']!.upcoming.customBody, 'Bring the blue bottle.');
+      expect(decoded['p1']!.log.customTitle, 'Check in');
+      expect(decoded['p1']!.log.customBody, isNull,
+          reason: 'an unset half stays unset — the halves are independent');
+      expect(decoded['p1']!.late.customTitle, isNull,
+          reason: 'per-type independence: late was never customized');
+
+      // A document written before #184 has no customText keys at all: it
+      // decodes to the same config it always decoded to.
+      final pre184 = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {
+    "p1": {"upcoming": {"enabled": true, "timeOfDay": 540}}
+  }
+}
+''');
+      expect(pre184['p1'], ReminderConfig.standard);
+    });
+
+    test('decode is tolerant: non-strings ignored, blanks become unset, '
+        'over-length values truncated', () {
+      final decoded = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {
+    "p1": {
+      "upcoming": {"enabled": true, "timeOfDay": 540,
+        "customTitle": "   ", "customBody": 42},
+      "late": {"enabled": true, "timeOfDay": 540,
+        "customTitle": "0123456789"}
+    }
+  }
+}
+''');
+      expect(decoded['p1']!.upcoming.customTitle, isNull,
+          reason: 'a whitespace-only value is unset, never an empty title');
+      expect(decoded['p1']!.upcoming.customBody, isNull,
+          reason: 'a non-string value is unset');
+      expect(decoded['p1']!.late.customTitle, hasLength(10),
+          reason: 'short values pass through untruncated');
+
+      final long = 'x' * (kMaxReminderCustomTextLength + 50);
+      final clamped = decodeReminderConfigs('''
+{
+  "v": 1,
+  "profiles": {
+    "p1": {"upcoming": {"enabled": true, "timeOfDay": 540, "customTitle": "$long"}}
+  }
+}
+''');
+      expect(clamped['p1']!.upcoming.customTitle,
+          hasLength(kMaxReminderCustomTextLength),
+          reason: 'a hand-edited over-length store value is truncated, '
+              'never thrown on');
+    });
+
+    test('copyWith sets and clears each half independently', () {
+      const base = ReminderTypeConfig.upcoming;
+      final set = base.copyWith(
+          customTitle: 'T', customBody: 'B', clearCustomTitle: false);
+      expect(set.customTitle, 'T');
+      expect(set.customBody, 'B');
+
+      final clearedTitle = set.copyWith(clearCustomTitle: true);
+      expect(clearedTitle.customTitle, isNull);
+      expect(clearedTitle.customBody, 'B',
+          reason: 'clearing the title leaves the body');
+
+      final clearedBody = set.copyWith(clearCustomBody: true);
+      expect(clearedBody.customTitle, 'T');
+      expect(clearedBody.customBody, isNull);
+
+      // Equality includes the custom text.
+      expect(set, isNot(base));
+      expect(clearedTitle.copyWith(clearCustomBody: true), base,
+          reason: 'clearing both halves returns to the stock config');
+    });
+
+    test('per-profile documents hold independent custom text', () {
+      final store = decodeReminderConfigs(encodeReminderConfigs({
+        'alice': ReminderConfig.standard.copyWith(
+          upcoming: ReminderTypeConfig.upcoming
+              .copyWith(customTitle: 'Alice title'),
+        ),
+        'bea': ReminderConfig.standard,
+      }));
+      expect(store['alice']!.upcoming.customTitle, 'Alice title');
+      expect(store['bea']!.upcoming.customTitle, isNull,
+          reason: 'two profiles on one device hold independent text');
+    });
+  });
 }

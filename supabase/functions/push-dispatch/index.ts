@@ -41,12 +41,35 @@ export interface OutboxRow {
   profile_id: string;
   recipient_user_id: string;
   kind: string;
+  /** The exact `claimed_at` value this invocation claimed the row with --
+   * threaded back into releaseClaim as an optimistic-lock token (Issue #526
+   * fix (b)) rather than releaseClaim re-reading it itself (the old
+   * non-atomic select-then-update this replaces). */
+  claimed_at: string;
 }
 
 export interface PushDeviceRow {
   id: string;
   token: string;
 }
+
+/** The outcome of re-validating one claimed row right before it actually
+ * reaches a device (Issue #630): "send" (still eligible), "cancel" (the
+ * governing guardian membership or kind/cadence preference has since made
+ * this row undeliverable -- LLA-074/LLA-076), "defer" (quiet hours have
+ * opened since the row became due -- LLA-075, carrying the new
+ * `deliverAfter` to release the claim to), or "retry" (the recheck itself
+ * could not be answered -- an RPC error, no data, or an action string this
+ * client does not recognise). "retry" must never be treated as "send": a
+ * database hiccup on the one check that enforces revocation/opt-out/quiet
+ * hours is exactly the moment those protections matter most, so an
+ * unanswerable recheck fails closed (the row is released for the next
+ * drain to try again) rather than defaulting to delivery. */
+export type DispatchResolution =
+  | { action: "send" }
+  | { action: "cancel"; reason: string }
+  | { action: "defer"; deliverAfter: string }
+  | { action: "retry" };
 
 /** Every real I/O call handlePushDispatch needs, injected so tests can
  * supply fakes instead of a live Supabase project / FCM credential. */
@@ -55,20 +78,65 @@ export interface PushDispatchDeps {
    * config degrades to "nothing dispatched" rather than a visible failure --
    * both callers (webhook, cron) treat this function as best-effort. */
   configured: boolean;
-  /** Atomically claims up to [limit] pending, due, not-yet-exhausted rows.
-   * Implemented as one conditional UPDATE per candidate id (KTD2, mirroring
-   * feedback-notify's single-row claim), so two overlapping invocations
-   * (the webhook and a cron sweep, or two cron sweeps) can never both claim
-   * the same row. */
+  /** Atomically claims up to [limit] pending, due, not-yet-exhausted, not
+   * already-sent rows. Implemented as one conditional UPDATE per candidate
+   * id (KTD2, mirroring feedback-notify's single-row claim), so two
+   * overlapping invocations (the webhook and a cron sweep, or two cron
+   * sweeps) can never both claim the same row. */
   claimBatch(limit: number): Promise<OutboxRow[]>;
   /** The recipient's active (non-disabled) devices. */
   devicesFor(userId: string): Promise<PushDeviceRow[]>;
+  /** Device ids already recorded as successfully delivered for this outbox
+   * row, from this or an earlier claim of it (Issue #526 fix (a): per-device
+   * delivery tracking). A device in this set is never re-sent to on a later
+   * attempt at the same row -- this is what stops one failing device on a
+   * multi-device recipient from causing every already-succeeded device to
+   * be re-alerted on every retry. */
+  deliveredDeviceIds(outboxId: string): Promise<Set<string>>;
+  /** Records a successful delivery to one device for one outbox row.
+   * Idempotent (an upsert) -- recording the same (outboxId, deviceId) pair
+   * twice, e.g. across two overlapping invocations, is harmless. */
+  recordDelivery(outboxId: string, deviceId: string): Promise<void>;
   /** Stamps sent_at, the terminal success state for a row. */
   markSent(id: string): Promise<void>;
-  /** Releases a claim this same invocation just won, after every device
-   * attempt for it failed: clears claimed_at (so a later claim can retry
-   * it), increments attempts, and records last_error_kind. */
-  releaseClaim(id: string, errorKind: string): Promise<void>;
+  /** Atomically releases a claim this same invocation just won, after at
+   * least one device attempt for it failed: clears claimed_at (so a later
+   * claim can retry it), increments attempts, and records last_error_kind --
+   * one `UPDATE ... WHERE id = $1 AND claimed_at = $2` (Issue #526 fix (b)),
+   * replacing a prior non-atomic read-modify-write on `attempts` that could
+   * silently drop an increment or reset the counter to 1 on a failed read. */
+  releaseClaim(id: string, claimedAt: string, errorKind: string): Promise<void>;
+  /** Re-validates a just-claimed row against the current state of the
+   * world (Issue #630, LLA-074/LLA-075/LLA-076) -- deliberately called
+   * fresh per row rather than trusting claimBatch's snapshot, since the
+   * whole point is to catch a change (revocation, an opt-out, quiet hours
+   * opening) that happened after the claim. */
+  resolveDispatch(outboxId: string): Promise<DispatchResolution>;
+  /** Permanently removes a row resolveDispatch found no longer eligible --
+   * revoked, or its governing kind/cadence preference was turned off since
+   * enqueue (LLA-074/LLA-076). Deleting rather than marking sent matches
+   * revoke_guardian's own precedent (Issue #5): a cancelled row was never
+   * delivered, so sent_at would be a false audit signal. `claimedAt` pins
+   * the delete to the row exactly as this invocation claimed it (the same
+   * optimistic-lock shape as releaseClaim/deferClaim), so a cancel can
+   * never delete a row a different drain has since re-claimed (e.g. after
+   * a sweep released it). */
+  cancelRow(outboxId: string, claimedAt: string): Promise<void>;
+  /** Releases a claim without counting it as a failed attempt (LLA-075):
+   * quiet hours re-opened between when the row became due and this
+   * dispatch, so it is deferred to `deliverAfter` rather than sent, and
+   * this is not the kind of failure `releaseClaim`'s attempts/
+   * last_error_kind bookkeeping exists for. */
+  deferClaim(id: string, claimedAt: string, deliverAfter: string): Promise<void>;
+  /** Releases a claim with no attempts increment and no deliver_after
+   * change (Issue #630 review): resolveDispatch itself could not be
+   * answered (an RPC error, no data, or an unrecognised action), which is
+   * a transient infra problem, not a delivery failure charged against
+   * this row's MAX_ATTEMPTS budget the way a real send failure is via
+   * releaseClaim. The row stays exactly as due as it already was, so the
+   * next drain (the webhook's next fire, or the cron sweep) claims it
+   * again and re-runs the recheck. */
+  releaseForRetry(id: string, claimedAt: string): Promise<void>;
   /** Marks a device row disabled after FCM reports its token unregistered --
    * that device stops being returned by devicesFor from then on. */
   disableDevice(deviceId: string): Promise<void>;
@@ -108,40 +176,109 @@ export async function handlePushDispatch(deps: PushDispatchDeps): Promise<Dispat
   let processed = 0;
 
   for (const row of rows) {
-    const devices = await deps.devicesFor(row.recipient_user_id);
-
-    if (devices.length === 0) {
-      // Nothing to send to -- mark sent rather than retrying forever
-      // against a recipient with no registered device.
-      await deps.markSent(row.id);
-      processed++;
-      continue;
-    }
-
-    let anyFailure = false;
-    let lastErrorKind = "";
-
-    for (const device of devices) {
-      const message = buildPushMessage(row.profile_id, device.token);
-      const result = await deps.sendPush(message);
-      if (!result.ok) {
-        anyFailure = true;
-        lastErrorKind = result.reason;
-        if (result.reason === "unregistered") {
-          await deps.disableDevice(device.id);
-        }
-      }
-    }
-
-    if (anyFailure) {
-      await deps.releaseClaim(row.id, lastErrorKind);
-    } else {
-      await deps.markSent(row.id);
-    }
+    await dispatchOneRow(deps, row);
     processed++;
   }
 
   return { processed };
+}
+
+/** Everything this invocation does for one already-claimed row (Issue
+ * #630): re-validate before touching any device, then cancel, defer, or
+ * actually send. Split out of handlePushDispatch's loop to keep each
+ * decision -- revalidate, then send -- its own small function. */
+async function dispatchOneRow(deps: PushDispatchDeps, row: OutboxRow): Promise<void> {
+  const resolution = await deps.resolveDispatch(row.id);
+  if (resolution.action === "cancel") {
+    // LLA-074/LLA-076: the row was claimed, but a revocation or a
+    // preference/cadence turned off since then means the underlying
+    // profile activity signal must never reach this recipient. The
+    // in-flight window between claim and this check is unavoidable (a
+    // send already handed to FCM cannot be recalled either); this closes
+    // it to the smallest possible gap rather than the unbounded one the
+    // pre-fix code left open.
+    await deps.cancelRow(row.id, row.claimed_at);
+    return;
+  }
+  if (resolution.action === "defer") {
+    // LLA-075: quiet hours re-opened between when the row became due and
+    // now (a delayed dispatch, a retry, or a promoted digest). Deferred,
+    // not sent and not counted as a failed attempt.
+    await deps.deferClaim(row.id, row.claimed_at, resolution.deliverAfter);
+    return;
+  }
+  if (resolution.action === "retry") {
+    // Review fix: the recheck itself could not be answered (an RPC error,
+    // no data, or an action this client build does not recognise) --
+    // fails closed rather than defaulting to send, since this is exactly
+    // the check that enforces revocation/opt-out/quiet hours. Released
+    // with no attempts increment: a transient DB hiccup on the recheck is
+    // not a delivery failure against this row.
+    await deps.releaseForRetry(row.id, row.claimed_at);
+    return;
+  }
+  if (resolution.action !== "send") {
+    // Defense in depth: buildDeps' own resolveDispatch already maps any
+    // action string it doesn't recognise to "retry" before it ever
+    // reaches here, but this function's only other caller is a test
+    // double -- never assume every PushDispatchDeps implementation
+    // upholds that mapping. Anything that isn't an explicit "send" is
+    // treated exactly like "retry": never send blind on an ambiguous
+    // resolution to the one check that enforces revocation/opt-out/quiet
+    // hours.
+    await deps.releaseForRetry(row.id, row.claimed_at);
+    return;
+  }
+  await sendToDevices(deps, row);
+}
+
+/** The original per-row send loop (Issue #526): every one of the
+ * recipient's devices not already recorded delivered. A recipient with
+ * zero pending devices is marked sent immediately (nothing to loop on
+ * forever); any device failure releases the claim for a later retry; an
+ * unregistered device is disabled so it stops being tried. */
+async function sendToDevices(deps: PushDispatchDeps, row: OutboxRow): Promise<void> {
+  const devices = await deps.devicesFor(row.recipient_user_id);
+  // Issue #526 fix (a): per-device delivery tracking. A device already
+  // recorded as delivered (from this row's current claim or an earlier
+  // one) is never sent to again -- without this, one failing device on a
+  // multi-device recipient (releaseClaim below) re-triggered a resend to
+  // *every* device on the next retry, including ones that had already
+  // succeeded.
+  const delivered = await deps.deliveredDeviceIds(row.id);
+  const pending = devices.filter((device) => !delivered.has(device.id));
+
+  if (pending.length === 0) {
+    // Nothing left to send to -- either the recipient has zero devices at
+    // all, or every device has already been successfully delivered to on
+    // a prior attempt at this row. Mark sent rather than retrying
+    // forever, or re-sending to devices that already succeeded.
+    await deps.markSent(row.id);
+    return;
+  }
+
+  let anyFailure = false;
+  let lastErrorKind = "";
+
+  for (const device of pending) {
+    const message = buildPushMessage(row.profile_id, device.token);
+    const result = await deps.sendPush(message);
+    if (result.ok) {
+      await deps.recordDelivery(row.id, device.id);
+    } else {
+      anyFailure = true;
+      lastErrorKind = result.reason;
+      if (result.reason === "unregistered") {
+        await deps.disableDevice(device.id);
+      }
+    }
+  }
+
+  if (anyFailure) {
+    await deps.releaseClaim(row.id, row.claimed_at, lastErrorKind);
+  } else {
+    await deps.markSent(row.id);
+  }
 }
 
 export interface PushDispatchEnv {
@@ -183,10 +320,18 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
   return {
     configured,
     claimBatch: async (limit) => {
+      // Issue #526 fix (d): `.is("sent_at", null)` -- without it, a row a
+      // slow/duplicated invocation had already sent (but whose claimed_at
+      // release raced ahead of, or was never reached because of, a
+      // markSent that then also succeeded) could be re-claimed and
+      // re-sent. deliver_after/attempts bound *when* and *how many times*
+      // a row is retried; sent_at is the separate terminal-state guard that
+      // stops an already-delivered row from ever being claimed again.
       const { data: candidates, error } = await client!
         .from("notification_outbox")
-        .select("id, profile_id, recipient_user_id, kind")
+        .select("id, profile_id, recipient_user_id, kind, claimed_at")
         .is("claimed_at", null)
+        .is("sent_at", null)
         .lte("deliver_after", new Date().toISOString())
         .lt("attempts", MAX_ATTEMPTS)
         .order("created_at", { ascending: true })
@@ -200,7 +345,7 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
           .update({ claimed_at: new Date().toISOString() })
           .eq("id", candidate.id)
           .is("claimed_at", null)
-          .select("id, profile_id, recipient_user_id, kind")
+          .select("id, profile_id, recipient_user_id, kind, claimed_at")
           .maybeSingle();
         if (!claimError && data) claimed.push(data as OutboxRow);
       }
@@ -214,20 +359,122 @@ export function buildDeps(env: PushDispatchEnv, clientFactory: SupabaseClientFac
         .is("disabled_at", null);
       return error || !data ? [] : (data as PushDeviceRow[]);
     },
+    deliveredDeviceIds: async (outboxId) => {
+      const { data, error } = await client!
+        .from("notification_outbox_deliveries")
+        .select("device_id")
+        .eq("outbox_id", outboxId);
+      if (error || !data) return new Set<string>();
+      return new Set((data as Array<{ device_id: string }>).map((row) => row.device_id));
+    },
+    recordDelivery: async (outboxId, deviceId) => {
+      const { error } = await client!
+        .from("notification_outbox_deliveries")
+        .upsert({ outbox_id: outboxId, device_id: deviceId, sent_at: new Date().toISOString() });
+      if (error) {
+        console.error(
+          `push-dispatch: failed to record delivery for outbox row ${outboxId} device ${deviceId}: ` +
+            `a retry of this row could re-send to this device (${error.message ?? "unknown error"})`,
+        );
+      }
+    },
     markSent: async (id) => {
       await client!.from("notification_outbox").update({ sent_at: new Date().toISOString() }).eq("id", id);
     },
-    releaseClaim: async (id, errorKind) => {
-      const { data } = await client!
+    releaseClaim: async (id, claimedAt, errorKind) => {
+      // Issue #526 fix (b): one atomic RPC (`UPDATE ... WHERE id = $1 AND
+      // claimed_at = $2`) replaces the old non-atomic
+      // select-then-update -- see the migration for the full rationale.
+      const { error } = await client!.rpc("release_notification_outbox_claim", {
+        p_id: id,
+        p_claimed_at: claimedAt,
+        p_error_kind: errorKind,
+      });
+      if (error) {
+        console.error(`push-dispatch: release_notification_outbox_claim failed for row ${id}: ${error.message ?? "unknown error"}`);
+      }
+    },
+    resolveDispatch: async (outboxId) => {
+      // Issue #630: one round trip that re-joins profile_guardians +
+      // notification_preferences server-side (the SQL function's own
+      // pgTAP coverage proves the eligibility/quiet-hours logic itself;
+      // this closure is just the plumbing to it) rather than duplicating
+      // that join and resolve_deliver_after's zone math here in TS.
+      const { data, error } = await client!.rpc("resolve_notification_outbox_dispatch", {
+        p_id: outboxId,
+      });
+      if (error || !data) {
+        // Review fix: an infra hiccup on the recheck itself must fail
+        // closed, not open -- this is exactly the check that enforces
+        // revocation/opt-out/quiet hours, so defaulting to "send" here
+        // would defeat LLA-074/075/076 precisely when the database is
+        // unhealthy. "retry" releases the claim (no attempts increment;
+        // see releaseForRetry) so the next drain re-runs this same check
+        // rather than either sending blind or burning the row's
+        // MAX_ATTEMPTS budget on a transient DB error.
+        console.error(
+          `push-dispatch: resolve_notification_outbox_dispatch failed for row ${outboxId}, retrying rather ` +
+            `than sending without a recheck: ${error?.message ?? "no data returned"}`,
+        );
+        return { action: "retry" };
+      }
+      const result = data as { action: string; reason?: string; deliver_after?: string };
+      if (result.action === "cancel") return { action: "cancel", reason: result.reason ?? "unknown" };
+      if (result.action === "defer" && result.deliver_after) {
+        return { action: "defer", deliverAfter: result.deliver_after };
+      }
+      if (result.action === "send") return { action: "send" };
+      // An action string this client build does not recognise (e.g. a
+      // newer SQL function deployed ahead of this function revision) gets
+      // the same fail-closed treatment as an outright error -- never
+      // silently treated as "send".
+      console.error(
+        `push-dispatch: resolve_notification_outbox_dispatch returned an unrecognised action ` +
+          `"${result.action}" for row ${outboxId}, retrying rather than sending without a recheck`,
+      );
+      return { action: "retry" };
+    },
+    cancelRow: async (outboxId, claimedAt) => {
+      // Review fix: pinned to claimed_at (the same optimistic-lock shape
+      // as releaseClaim/deferClaim) so a cancel can never delete a row a
+      // different drain has since re-claimed (e.g. after a sweep released
+      // it), and the delete's own error is logged rather than swallowed.
+      const { error } = await client!
         .from("notification_outbox")
-        .select("attempts")
+        .delete()
+        .eq("id", outboxId)
+        .eq("claimed_at", claimedAt);
+      if (error) {
+        console.error(`push-dispatch: cancelRow failed for row ${outboxId}: ${error.message ?? "unknown error"}`);
+      }
+    },
+    deferClaim: async (id, claimedAt, deliverAfter) => {
+      // Same optimistic-lock shape as releaseClaim (WHERE id = $1 AND
+      // claimed_at = $2), but never touches attempts/last_error_kind --
+      // quiet hours re-opening is not a failure.
+      const { error } = await client!
+        .from("notification_outbox")
+        .update({ claimed_at: null, deliver_after: deliverAfter })
         .eq("id", id)
-        .maybeSingle();
-      const attempts = (data?.attempts as number | undefined) ?? 0;
-      await client!
+        .eq("claimed_at", claimedAt);
+      if (error) {
+        console.error(`push-dispatch: deferClaim failed for row ${id}: ${error.message ?? "unknown error"}`);
+      }
+    },
+    releaseForRetry: async (id, claimedAt) => {
+      // Review fix: clears claimed_at only -- no attempts increment (a
+      // failed recheck is a transient infra problem, not a delivery
+      // failure charged against MAX_ATTEMPTS the way releaseClaim's
+      // failures are) and no deliver_after change (the row is exactly as
+      // due as it already was).
+      const { error } = await client!
         .from("notification_outbox")
-        .update({ claimed_at: null, attempts: attempts + 1, last_error_kind: errorKind })
-        .eq("id", id);
+        .update({ claimed_at: null })
+        .eq("id", id)
+        .eq("claimed_at", claimedAt);
+      if (error) {
+        console.error(`push-dispatch: releaseForRetry failed for row ${id}: ${error.message ?? "unknown error"}`);
+      }
     },
     disableDevice: async (deviceId) => {
       await client!.from("push_devices").update({ disabled_at: new Date().toISOString() }).eq("id", deviceId);

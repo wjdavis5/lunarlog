@@ -14,8 +14,10 @@
 ///
 /// The app bar shared by Today/Calendar/Insights (not rebuilt per screen,
 /// and not shown at all on More -- [SettingsScreen] carries its own) holds
-/// the active profile name as a tappable switcher opening the existing
-/// picker ([ProfileController.openPicker], same mechanism
+/// the active profile name as a tappable quick switcher (issue #241: a
+/// popup listing active profiles for in-place switching, with a "Manage
+/// profiles…" entry that opens the existing picker via
+/// [ProfileController.openPicker] -- the same mechanism
 /// `ProfileDetailScreen`'s old "Switch profile" action used), the
 /// [SyncStatusGlyph] (previously picker-only), and a Settings action that
 /// simply switches to the More tab rather than pushing a second copy of
@@ -42,22 +44,32 @@
 /// "up returns to the first destination before exiting" guidance.
 library;
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
+import 'package:lunarlog/ui/components/profile_card.dart' show ProfileAvatar;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 import 'app_shell_scope.dart';
@@ -71,7 +83,7 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.profile,
-    this.resetToTodayOnProfileSwitch = false,
+    this.launchToken,
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
   });
@@ -79,18 +91,28 @@ class AppShell extends StatefulWidget {
   final Profile profile;
 
   /// U7 launch-payload seam (`lib/ui/profiles/profile_home_gate.dart`'s
-  /// `_overviewLaunchId`, unchanged): true when this shell mounted because
-  /// a notification named this profile. Today is already the shell's
-  /// default/first tab regardless (issue #182), so this only matters on an
-  /// in-place profile *switch* (see [_AppShellState.didUpdateWidget]) --
-  /// without it, an operator who was on the Calendar tab for the previous
-  /// profile would stay there for the profile the notification named,
-  /// rather than landing on that profile's Today tab as U7 intends. Issue
-  /// #313 follow-up: renamed from `initiallyShowOverview`, a name left over
-  /// from the pre-#182 `ProfileDetailScreen` seam this replaced -- it never
-  /// affects this shell's *initial* tab (always Today), only whether a
-  /// later in-place profile switch resets back to it.
-  final bool resetToTodayOnProfileSwitch;
+  /// `_overviewLaunchSeq`): non-null, and a fresh value, exactly when this
+  /// rebuild is routing a notification tap to this profile. Today is
+  /// already the shell's default/first tab regardless (issue #182), so
+  /// this only matters for an in-place reset back to it (see
+  /// [_AppShellState.didUpdateWidget]) -- without it, an operator who was
+  /// on the Calendar tab would stay there for the profile the notification
+  /// named, rather than landing on that profile's Today tab as U7 intends.
+  ///
+  /// LLA-008 (issue #623): a plain `bool` here could only ever distinguish
+  /// "this profile" from "not this profile" -- it could not tell "another
+  /// notification just named the profile that is *already* active" from
+  /// "nothing new happened", so a second tap on the same child's alert
+  /// while already viewing them silently failed to reset the tab. Every
+  /// value from [ProfileHomeGate]'s monotonic counter is distinct, so
+  /// [_AppShellState.didUpdateWidget] resets on every genuinely new launch,
+  /// same-profile relaunches included, not only on a profile switch.
+  ///
+  /// Issue #313 follow-up: renamed from `initiallyShowOverview`, a name
+  /// left over from the pre-#182 `ProfileDetailScreen` seam this replaced
+  /// -- it never affects this shell's *initial* tab (always Today), only
+  /// whether an in-place rebuild resets back to it.
+  final int? launchToken;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -118,13 +140,15 @@ class _AppShellState extends State<AppShell> {
   @override
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // The widget is recreated in place when the active profile changes (the
-    // home gate swaps it at the same tree position), so this State survives
-    // -- same shape as the pre-#182 ProfileDetailScreen seam this replaces.
-    // An ordinary profile switch keeps the operator's current tab; only the
-    // U7 launch payload forces the new profile open on Today.
-    if (widget.profile.id != oldWidget.profile.id &&
-        widget.resetToTodayOnProfileSwitch) {
+    // The widget is recreated in place whenever the home gate rebuilds (a
+    // profile switch included), so this State survives -- same shape as
+    // the pre-#182 ProfileDetailScreen seam this replaces. An ordinary
+    // profile switch keeps the operator's current tab; only a genuinely
+    // new launch-payload token forces Today -- LLA-008 (issue #623): a
+    // same-profile relaunch carries a new token with no profile.id change
+    // at all, so the reset can no longer be gated on that id changing.
+    final token = widget.launchToken;
+    if (token != null && token != oldWidget.launchToken) {
       _tab = AppTab.today;
     }
   }
@@ -153,6 +177,8 @@ class _AppShellState extends State<AppShell> {
           OverviewPanel(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            trackingPreferences: widget.profile.trackingPreferences,
+            isMinor: widget.profile.isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
@@ -163,9 +189,13 @@ class _AppShellState extends State<AppShell> {
           MonthCalendar(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            trackingPreferences: widget.profile.trackingPreferences,
+            isMinor: widget.profile.isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
+            bbtUnit: widget.profile.bbtUnit,
+            weightUnit: widget.profile.weightUnit,
           ),
         ),
       AppTab.insights => AnalysisTab(
@@ -173,6 +203,7 @@ class _AppShellState extends State<AppShell> {
           mode: widget.profile.mode,
           todayProvider: widget.todayProvider,
           guardiansRepository: guardiansRepository,
+          bbtUnit: widget.profile.bbtUnit,
         ),
       AppTab.more => const SettingsScreen(),
     };
@@ -228,11 +259,22 @@ class _AppShellState extends State<AppShell> {
           appBar: _tab == AppTab.more
               ? null
               : _shellAppBar(hasSync, guardiansRepository, activityRepository),
-          body: IndexedStack(
-            index: _tab.index,
+          body: Column(
             children: [
-              for (final tab in AppTab.values)
-                _tabContent(tab, guardiansRepository),
+              // Issue #568: a persistent banner when the sync session is
+              // expired or the engine has a non-transient error. Watches
+              // its own controller so it never forces the IndexedStack to
+              // rebuild on every snapshot.
+              const _SyncFailureBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _tab.index,
+                  children: [
+                    for (final tab in AppTab.values)
+                      _tabContent(tab, guardiansRepository),
+                  ],
+                ),
+              ),
             ],
           ),
           // Issue #209 item 4a: "Log today" opens the day sheet directly,
@@ -243,9 +285,13 @@ class _AppShellState extends State<AppShell> {
               ? TodayLogFab(
                   profileId: widget.profile.id,
                   mode: widget.profile.mode,
+                  trackingPreferences: widget.profile.trackingPreferences,
+                  isMinor: widget.profile.isMinor,
                   todayProvider: widget.todayProvider,
                   timezoneProvider: widget.timezoneProvider,
                   guardiansRepository: guardiansRepository,
+                  bbtUnit: widget.profile.bbtUnit,
+                  weightUnit: widget.profile.weightUnit,
                 )
               : null,
           bottomNavigationBar: NavigationBar(
@@ -297,7 +343,7 @@ class _AppShellState extends State<AppShell> {
       AppBar(
         title: _ProfileSwitcher(
           profile: widget.profile,
-          onTap: _openPicker,
+          onManageProfiles: _openPicker,
           guardiansRepository: guardiansRepository,
         ),
         actions: [
@@ -311,7 +357,7 @@ class _AppShellState extends State<AppShell> {
           if (hasSync) SyncStatusGlyph(onPressed: _openMoreTab),
           IconButton(
             key: const ValueKey('app-shell-settings-action'),
-            tooltip: 'Settings',
+            tooltip: AppLocalizations.of(context).settingsTooltip,
             icon: const Icon(Icons.settings),
             onPressed: _openMoreTab,
           ),
@@ -319,10 +365,13 @@ class _AppShellState extends State<AppShell> {
       );
 }
 
-/// The active profile name as a tappable switcher (issue #182 AC2): opens
-/// the existing picker via [ProfileController.openPicker], the same
-/// mechanism `ProfileDetailScreen`'s "Switch profile" `IconButton` used --
-/// wrapped in the same [Tooltip] message so it stays findable the same way.
+/// The active profile name as a tappable quick switcher (issue #182 AC2;
+/// issue #241 B-16 makes it a popup): tapping opens a menu listing every
+/// active profile with its [ProfileAvatar] -- selecting one makes it
+/// active in place, replacing the three-tap round trip through the
+/// full-screen picker -- plus a "Manage profiles…" entry that opens the
+/// full picker via [ProfileController.openPicker] (create, rename,
+/// archive, sharing -- everything the menu does not do).
 ///
 /// Issue #126: carries the co-managed mark ([_SharedMark]) right after the
 /// name, so a co-managed record always reads as one without opening any
@@ -330,24 +379,121 @@ class _AppShellState extends State<AppShell> {
 class _ProfileSwitcher extends StatelessWidget {
   const _ProfileSwitcher(
       {required this.profile,
-      required this.onTap,
+      required this.onManageProfiles,
       required this.guardiansRepository});
 
+  /// The menu value of the "Manage profiles…" entry. Profile ids are
+  /// ULIDs, so this can never collide with a real id.
+  static const String _kManageProfilesValue = '__manage__';
+
   final Profile profile;
-  final VoidCallback onTap;
+
+  /// Opens the full picker ([_AppShellState._openPicker]).
+  final VoidCallback onManageProfiles;
+
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// The popup's position: a [RelativeRect] anchoring the menu directly
+  /// under this button, in the Overlay's coordinate space.
+  RelativeRect _menuPosition(BuildContext context) {
+    final box = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    return RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(
+            box.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+  }
+
+  /// One menu row per active profile (avatar, name, a check on the
+  /// active one), then the divider and the "Manage profiles…" entry.
+  List<PopupMenuEntry<String>> _menuItems(
+    BuildContext context,
+    List<Profile> active,
+  ) =>
+      [
+        for (final other in active)
+          PopupMenuItem<String>(
+            key: ValueKey('quick-switcher-profile-${other.id}'),
+            value: other.id,
+            height: 56,
+            child: Row(
+              children: [
+                ProfileAvatar(profileId: other.id, radius: 14),
+                const SizedBox(width: LLSpace.space3),
+                Expanded(
+                  child: Text(
+                    other.displayName,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Fixed-width slot either way, so every name aligns in
+                // one column whether or not the check renders.
+                other.id == profile.id
+                    ? const Icon(Icons.check, size: 18)
+                    : const SizedBox(width: 18),
+              ],
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          key: const ValueKey('quick-switcher-manage'),
+          value: _kManageProfilesValue,
+          child: Row(
+            children: [
+              const Icon(Icons.manage_accounts_outlined),
+              const SizedBox(width: LLSpace.space3),
+              // Flexible + ellipsis: the label never forces the menu wider
+              // than its bounded item width (a wide locale or the test
+              // binding's wide Ahem font).
+              Flexible(
+                child: Text(
+                  AppLocalizations.of(context).quickSwitcherManageProfiles,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ];
+
+  /// Shows the switcher menu and applies the selection: a profile id
+  /// makes that profile active in place; the manage entry opens the full
+  /// picker. The menu itself is named (issue #313's route-name
+  /// discipline) so the popup shows in the Sentry navigation trail.
+  Future<void> _showMenu(BuildContext context) async {
+    final controller = context.read<ProfileController>();
+    final selected = await showMenu<String>(
+      context: context,
+      routeSettings:
+          const RouteSettings(name: kRouteQuickProfileSwitcherMenu),
+      position: _menuPosition(context),
+      items: _menuItems(context, controller.activeProfiles),
+    );
+    if (selected == null || !context.mounted) return;
+    if (selected == _kManageProfilesValue) {
+      onManageProfiles();
+      return;
+    }
+    await context.read<ProfileController>().selectProfile(selected);
+  }
 
   @override
   Widget build(BuildContext context) {
     final repository = guardiansRepository;
     return Tooltip(
-      message: 'Switch profile',
+      message: AppLocalizations.of(context).appShellProfileSwitcherTooltip,
       child: InkWell(
         key: const ValueKey('app-shell-profile-switcher'),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
         onTap: () {
           LLHaptics.selection();
-          onTap();
+          unawaited(_showMenu(context));
         },
         child: ConstrainedBox(
           constraints: const BoxConstraints(
@@ -355,7 +501,10 @@ class _ProfileSwitcher extends StatelessWidget {
             minHeight: kMinInteractiveDimension,
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(
+              horizontal: LLSpace.space2,
+              vertical: LLSpace.space1,
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -368,7 +517,7 @@ class _ProfileSwitcher extends StatelessWidget {
                 if (repository != null)
                   _SharedMark(
                       repository: repository, profileId: profile.id),
-                const SizedBox(width: 4),
+                const SizedBox(width: LLSpace.space1),
                 const Icon(Icons.expand_more, size: 20),
               ],
             ),
@@ -392,7 +541,7 @@ class _SharedMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<ProfileGuardian>>(
-      stream: repository.watchForProfile(profileId),
+      stream: watchGuardiansForProfileSafely(repository, profileId),
       builder: (context, snapshot) {
         final accepted = [
           for (final guardian
@@ -403,7 +552,7 @@ class _SharedMark extends StatelessWidget {
         return Tooltip(
           message: 'Shared · ${accepted.length} guardians',
           child: const Padding(
-            padding: EdgeInsets.only(left: 4),
+            padding: EdgeInsets.only(left: LLSpace.space1),
             child: Icon(
               Icons.people_outline,
               key: ValueKey('profile-shared-indicator'),
@@ -413,6 +562,71 @@ class _SharedMark extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Issue #568: a persistent [MaterialBanner] above the shell body when the
+/// sync engine has a problem that won't resolve on its own (an expired
+/// session needs re-sign-in; a persistent error kind may need a retry or
+/// attention). Renders [SizedBox.shrink] when no sync controller exists,
+/// when the session is fine, or when the engine is idle/running/paused
+/// without error — so an unconfigured build, or a build in normal sync,
+/// shows nothing extra.
+///
+/// Watches [SyncStatusController] with `listen: true` so that only this
+/// widget rebuilds on a snapshot change, not the entire [IndexedStack] body.
+class _SyncFailureBanner extends StatelessWidget {
+  const _SyncFailureBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Provider.of<SyncStatusController?>(context);
+    if (sync == null) return const SizedBox.shrink();
+    final snapshot = sync.snapshot;
+    final auth = Provider.of<AuthController?>(context);
+
+    // Session expired: the operator needs to sign in again.
+    if (snapshot.sessionExpired) {
+      return MaterialBanner(
+        key: const ValueKey('sync-failure-banner'),
+        leading: const Icon(Icons.cloud_off_outlined),
+        content: const Text(kSignInAgainCopy),
+        actions: [
+          TextButton(
+            key: const ValueKey('sync-failure-banner-action'),
+            onPressed: () {
+              // Navigate to More tab (Settings) where the sign-in tile is.
+              AppShellScope.maybeOf(context)?.select(AppTab.more);
+            },
+            child: const Text('Go to Settings'),
+          ),
+        ],
+      );
+    }
+
+    // Persistent error (network/other) while signed in: show a softer
+    // banner with a "Sync now" retry action.
+    if (snapshot.phase == SyncPhase.error &&
+        auth?.state.hasUsableSession == true) {
+      return MaterialBanner(
+        key: const ValueKey('sync-failure-banner'),
+        leading: const Icon(Icons.cloud_off_outlined),
+        content: Text(syncStatusCopy(
+          snapshot: snapshot,
+          authState: auth?.state,
+          now: DateTime.now(),
+        )),
+        actions: [
+          TextButton(
+            key: const ValueKey('sync-failure-banner-action'),
+            onPressed: sync.requestSync,
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }
 

@@ -15,9 +15,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/feedback/attachment_field.dart';
 import 'package:lunarlog/ui/feedback/feedback_controller.dart';
+import 'package:lunarlog/ui/l10n/feedback_failure_copy.dart';
 import 'package:provider/provider.dart';
 
 /// The support address shown when no feedback form is available (R23).
@@ -110,7 +113,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     } on FeedbackFailure catch (failure) {
       if (mounted) {
         setState(() {
-          _error = failure.userFacingMessage;
+          _error = feedbackFailureCopy(AppLocalizations.of(context), failure);
           if (failure is FeedbackAttachmentUploadFailedFailure) {
             // The ticket row already committed with this message text —
             // unlike every other FeedbackFailure case, a retry here is not
@@ -129,7 +132,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     } catch (error) {
       debugPrint('lunarlog feedback: submit failed (${error.runtimeType})');
       if (mounted) {
-        setState(() => _error = const FeedbackFailure.other().userFacingMessage);
+        setState(() => _error = feedbackFailureCopy(
+            AppLocalizations.of(context), const FeedbackFailure.other()));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -192,6 +196,9 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         enabled: !_busy,
         maxLines: 6,
         minLines: 3,
+        // #165: multiline — the honest keyboard action is "newline" (a
+        // "done" action would steal the enter key from line breaks).
+        textInputAction: TextInputAction.newline,
         decoration: const InputDecoration(
           labelText: 'What happened?',
           alignLabelWithHint: true,
@@ -199,12 +206,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
         onChanged: (_) => setState(() {}),
       );
 
+  /// #165: the form's last single-line field — `email` is the honest
+  /// autofill hint, and "done" submits (the Send feedback action).
   Widget _buildReplyEmailField() => TextField(
         key: const ValueKey('feedback-reply-email'),
         controller: _replyEmail,
         enabled: !_busy,
         keyboardType: TextInputType.emailAddress,
         autocorrect: false,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+        autofillHints: const [AutofillHints.email],
         decoration: const InputDecoration(labelText: 'Reply email'),
       );
 
@@ -249,10 +261,11 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
   List<Widget> _buildStatusMessages() => [
         if (_error != null) ...[
           const SizedBox(height: 12),
-          Text(
-            _error!,
+          InlineError(
             key: const ValueKey('feedback-error'),
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            message: _error!,
+            onRetry:
+                _busy || _message.text.trim().isEmpty ? null : _submit,
           ),
         ],
         if (_info != null) ...[

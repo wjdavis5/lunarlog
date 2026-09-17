@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/composition/app_dependencies.dart';
+import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
@@ -25,6 +26,7 @@ import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
@@ -42,20 +44,24 @@ import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/reminder_window_remote.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
@@ -66,6 +72,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart'
     show confirmedHealthSyncUserId;
+import 'package:lunarlog/ui/startup/qa_build_banner.dart';
 import 'package:lunarlog/observability/sentry_bootstrap.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -75,6 +82,7 @@ import 'package:lunarlog/ui/sharing/accept_prediction_connection_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/prediction_connection_calendar_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:lunarlog/ui/web/dev_banner.dart';
 import 'package:provider/provider.dart';
 
@@ -92,6 +100,8 @@ class LunarLogApp extends StatefulWidget {
     this.removePushRegistration,
     this.removeAllPushRegistrations,
     this.showWebBanner = kIsWeb,
+    this.mfaEnabled,
+    this.showQaBanner,
   });
 
   final LunarLogDatabase db;
@@ -119,6 +129,7 @@ class LunarLogApp extends StatefulWidget {
     AccountDeletionService? accountDeletionService,
     OwnershipTransferService? ownershipTransferService,
     PredictionConnectionService? predictionConnectionService,
+    ProfileErasureService? profileErasureService,
     NotificationPreferencesService? notificationPreferencesService,
     AccountExportRemoteSource? accountExportRemoteSource,
     ReminderWindowRemote? reminderWindowUpsert,
@@ -132,6 +143,8 @@ class LunarLogApp extends StatefulWidget {
     RemovePushRegistrationCallback? removePushRegistration,
     RemoveAllPushRegistrationsCallback? removeAllPushRegistrations,
     bool showWebBanner = kIsWeb,
+    bool? mfaEnabled,
+    bool? showQaBanner,
   }) =>
       LunarLogApp(
         key: key,
@@ -145,6 +158,7 @@ class LunarLogApp extends StatefulWidget {
           accountDeletionService: accountDeletionService,
           ownershipTransferService: ownershipTransferService,
           predictionConnectionService: predictionConnectionService,
+          profileErasureService: profileErasureService,
           notificationPreferencesService: notificationPreferencesService,
           accountExportRemoteSource: accountExportRemoteSource,
           reminderWindowUpsert: reminderWindowUpsert,
@@ -162,6 +176,10 @@ class LunarLogApp extends StatefulWidget {
         removePushRegistration: removePushRegistration,
         removeAllPushRegistrations: removeAllPushRegistrations,
         showWebBanner: showWebBanner,
+        mfaEnabled: mfaEnabled,
+        // Passed through unresolved (null stays null): the State's
+        // `_showQaBanner` is the single resolution point.
+        showQaBanner: showQaBanner,
       );
 
   /// `lunarlog://invite?code=...` links — or their HTTPS universal-link twin
@@ -210,6 +228,24 @@ class LunarLogApp extends StatefulWidget {
   /// KTD9 web guardrail flag; injectable for tests.
   final bool showWebBanner;
 
+  /// Issue #738: forwarded to the [AuthController] this widget constructs
+  /// (`_initAuthController`), whose `mfaEnabled` — and with it the whole
+  /// MFA client surface (tile group, enrolment screen, AAL2 step-up) —
+  /// follows the build's `LUNARLOG_ENABLE_MFA` define. Null means the
+  /// const default (off in every CI/workflow build); a test passes `true`
+  /// to exercise #714's MFA-on behavior through the real app shell.
+  final bool? mfaEnabled;
+
+  /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
+  /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
+  /// null-means-AppConfig idiom (the `showWebBanner = kIsWeb` shape
+  /// cannot express "not injected", which the root's own pass-through
+  /// needs). While true the persistent [QaBuildBanner] renders above
+  /// every screen and the task-switcher title carries the QA suffix (see
+  /// [_appTitle]). The gate/relock/re-auth halves of the flag live in
+  /// [GateController] and `ensureAal2`, not here.
+  final bool? showQaBanner;
+
   @override
   State<LunarLogApp> createState() => _LunarLogAppState();
 }
@@ -228,6 +264,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final DayEntriesRepository _dayEntries;
   late final ObservationsRepository _observations;
   late final CareContentRepository _careContent;
+
+  /// Issue #257: the per-profile custom-tag registry.
+  late final TagRegistryRepository _tagRegistry;
   late final SettingsStore _settings;
   late final CyclePredictionService _prediction;
   late final CycleHistoryService _cycleHistory;
@@ -247,6 +286,13 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final OnboardingCycleAnswersRecorder _onboardingCycleAnswers;
   late final DeviceDiagnosticsCollector _deviceDiagnostics;
   late final AccountExportWriter _accountExportWriter;
+
+  /// Issue #140 review, LLA-084/LLA-094: the coherent point-in-time export
+  /// read (entries/observations/profileMode/cycleOverrides together, one
+  /// transaction) both export call sites (`YourDataSection`,
+  /// `AccountSection`'s "Export first") read through instead of separate,
+  /// independently-timed repository calls.
+  late final AccountExportSnapshotRepository _exportSnapshot;
   late final FhirBundleWriter _fhirBundleWriter;
   late final CsvExportWriter _csvExportWriter;
   late final AttachmentSource _attachmentSource;
@@ -274,12 +320,32 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderWindowPublisher? _reminderWindowPublisher;
   PredictionProjectionPublisher? _predictionProjectionPublisher;
   HealthFlowWriteCoordinator? _healthFlowCoordinator;
+  HealthSyncTombstoneCoordinator? _healthSyncTombstoneCoordinator;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
   String? _profileIdOfPendingInvite;
   String? _pendingInviteKind;
   bool _inviteSheetOpen = false;
+
+  /// Issue #137: the resolved appearance override for this widget's
+  /// `MaterialApp.themeMode`. `ThemeMode.system` (follow the OS) until the
+  /// settings watch's first emission says otherwise — the store's own
+  /// seed emission arrives within a frame or two of mounting, and the
+  /// gate is still locked for the whole cold-start window before that.
+  ThemeMode _themeMode = ThemeMode.system;
+  StreamSubscription<String?>? _themeModeSub;
+
+  /// Issue #739: the `MaterialApp.title` (OS task-switcher label) —
+  /// `lunarlog`, with the QA suffix on a QA build. Computed once as a
+  /// field so the flag branch never counts against [build]'s CRAP budget.
+  late final String _appTitle =
+      _showQaBanner ? 'lunarlog$kQaBuildVersionSuffix' : 'lunarlog';
+
+  /// Issue #739: [widget.showQaBanner] resolved once (null means the
+  /// build's [AppConfig.qaBuild] const) — read through this field, never
+  /// the widget member, so the resolution genuinely happens once.
+  late final bool _showQaBanner = widget.showQaBanner ?? AppConfig.qaBuild;
 
   /// The repositories below capture [LunarLogApp.db] once, so swapping the
   /// database on a *mounted* app would leave them bound to the old (closed)
@@ -300,6 +366,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void initState() {
     super.initState();
+    unawaited(resolveCurrentTimeZone());
     // AC1: the one bundle this widget's lifetime is bound to, supplied by
     // the composition root. No fallback construction here.
     _deps = widget.dependencies;
@@ -307,6 +374,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _dayEntries = _deps.dayEntries;
     _observations = _deps.observations;
     _careContent = _deps.careContent;
+    _tagRegistry = _deps.tagRegistry;
     _settings = _deps.settings;
     // Issue #132: the device-local omission list joins both streams, so
     // estimates and history re-derive (and reminders replan) whenever the
@@ -316,6 +384,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // prediction (and re-derives whenever the facts are edited).
     _prediction = _deps.prediction;
     _profileModes = _deps.profileModes;
+    _exportSnapshot = _deps.exportSnapshot;
     _cycleHistory = _deps.cycleHistory;
     _cycleExclusions = _deps.cycleExclusions;
     _permissionState = NotificationPermissionState(
@@ -335,6 +404,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _accountImportCoordinator = _deps.accountImportCoordinator;
     _initAuthController();
     _initHealthFlowWriter();
+    _initHealthSyncTombstonePropagation();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -342,6 +412,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // every build with a Supabase client (web and no-push included), so
     // its publisher must start on every one of them too.
     _startPredictionProjectionPublisher();
+    _watchAppearanceSetting();
     WidgetsBinding.instance.addObserver(this);
     // U8/R9: invite deep links. The cold-start code is latched here; live
     // links arrive on the stream. Presentation waits for a signed-in
@@ -356,8 +427,11 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _initAuthController() {
     final authService = _deps.authService;
     if (authService == null) return;
-    final controller = AuthController(authService: authService)
-      ..addListener(_onAuthChanged);
+    // Issue #738: `widget.mfaEnabled` (null in production) resolves to the
+    // build's `LUNARLOG_ENABLE_MFA` const inside the controller.
+    final controller =
+        AuthController(authService: authService, mfaEnabled: widget.mfaEnabled)
+          ..addListener(_onAuthChanged);
     _authController = controller;
     if (controller.signedIn) _clearAwaitingConfirmation();
   }
@@ -396,23 +470,30 @@ class _LunarLogAppState extends State<LunarLogApp>
     final coordinator = buildReminderCoordinator(
       scheduler: scheduler,
       permissionState: _permissionState,
-      activeProfiles: _profiles.watch(),
+      // Issue #634, LLA-098: `ProfilesRepository.watch()` deliberately
+      // includes archived profiles (other consumers filter for display in
+      // the UI — see that method's own doc comment), but the reminder
+      // coordinator's "active profiles" input must mean genuinely active:
+      // an archived profile must drop out of every prediction/birth-
+      // control subscription here, not just stop being newly configured.
+      activeProfiles:
+          _profiles.watch().map((profiles) => [
+                for (final profile in profiles)
+                  if (profile.archivedAt == null) profile,
+              ]),
       predictionFor: _prediction.watch,
       localSettings: configService,
-      // Issue #183: the raw profile_modes birth-control row feeds the
-      // adherence kinds. The watcher rides the drift row stream, so a
-      // recorded-method change (onboarding answer, profile-settings edit,
-      // sync pull) replans and re-routes the reminder onto the new
-      // method's cadence.
-      birthControlStateFor: (profileId) => widget.db.storage
-          .watchProfileMode(profileId)
-          .map((row) => row == null
-              ? null
-              : (
-                    method: row.birthControlMethod,
-                    startedOn: row.birthControlStartedOn,
-                    stoppedOn: row.birthControlStoppedOn,
-                  )),
+      // Issue #183: the profile_modes birth-control row feeds the
+      // adherence kinds. The watcher rides ProfileModesRepository.watch
+      // (issue #551 — no longer `widget.db.storage.watchProfileMode`
+      // directly), so a recorded-method change (onboarding answer,
+      // profile-settings edit, sync pull) replans and re-routes the
+      // reminder onto the new method's cadence. Mirrors AppDependencies'
+      // own prediction-service wiring via the same
+      // birthControlStateFromProfileMode mapper.
+      birthControlStateFor: (profileId) => _profileModes
+          .watch(profileId)
+          .map(birthControlStateFromProfileMode),
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
@@ -508,7 +589,89 @@ class _LunarLogAppState extends State<LunarLogApp>
     coordinator.start();
   }
 
+  /// Issue #186, AC6: tombstone propagation — a soft-deleted bound-profile
+  /// entry's ULID (the recorded health-store external id) is deleted from
+  /// the OS health store so a deleted entry never leaves an orphaned
+  /// sample. AC2: construction lives in `lib/composition/` (which owns the
+  /// same iOS-only gating as the write flow); this only starts it.
+  void _initHealthSyncTombstonePropagation() {
+    final coordinator = buildHealthSyncTombstoneCoordinator(
+      settings: _settings,
+      profiles: _profiles,
+      tombstoneSource: _deps.healthSyncTombstoneSource,
+      guardiansForProfile: _profileGuardians.getForProfile,
+      signedInUserId: () => confirmedHealthSyncUserId(_authController),
+    );
+    if (coordinator == null) return;
+    _healthSyncTombstoneCoordinator = coordinator;
+    coordinator.start();
+  }
+
   bool _isSignedIn() => _authController?.signedIn ?? false;
+
+  /// Issue #137: subscribes to the persisted appearance override. The
+  /// store's `watch` seeds the current value on subscribe (null when
+  /// unset), then re-emits on every change — so the Settings picker's
+  /// `store.set` is the *only* write path and this subscription is the
+  /// *only* read path the `MaterialApp` needs: no controller, no
+  /// duplicate initial `get`. Extracted out of [initState] (the issue
+  /// #168 CRAP-gate discipline the neighbouring `_init*` methods follow).
+  void _watchAppearanceSetting() {
+    _themeModeSub = _settings.watch(SettingsKeys.themeMode).listen((value) {
+      if (!mounted) return;
+      setState(() => _themeMode = themeModeFromStored(value));
+    });
+  }
+
+  /// Issue #535 (b): a latched cold-start/live invite code (see
+  /// [_maybePresentInvite]) is otherwise consumed exactly once, silently,
+  /// by [_onAuthChanged] — a signed-out recipient who doesn't sign in right
+  /// away gets no feedback at all that an invite is waiting. True for as
+  /// long as the code stays latched and the recipient remains signed out;
+  /// [_onAuthChanged] clears it (by presenting the sheet) the moment a
+  /// session appears, so this also gates the banner's disappearance.
+  bool get _showPendingInviteSignInBanner =>
+      _pendingInviteCode != null && !_isSignedIn();
+
+  /// Wraps [child] with the persistent "Sign in to accept your invite"
+  /// banner (Issue #535 (b)) whenever [_showPendingInviteSignInBanner]
+  /// holds. Placed in `MaterialApp.builder` (see [build]) — above the
+  /// Navigator, alongside [WebGuardrails] — so it renders over whatever the
+  /// signed-out flow already shows, rather than only inside one screen.
+  Widget _wrapWithPendingInviteBanner(Widget child) {
+    if (!_showPendingInviteSignInBanner) return child;
+    return Column(
+      children: [
+        _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
+  /// QA build; a no-op (the child, unchanged) on every store build. Same
+  /// `MaterialApp.builder` placement — above the Navigator — as the web
+  /// banner beside it, so the marker renders over whatever screen is
+  /// showing.
+  Widget _wrapWithQaBanner(Widget child) {
+    if (!_showQaBanner) return child;
+    return Column(
+      children: [
+        const QaBuildBanner(),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  /// The banner's tap action: pushes the same named [kRouteSignInScreen]
+  /// destination the Account section's "Sign in" tile already uses. Reached
+  /// through [_navigatorKey] (like [_showInviteSheet] and friends) because
+  /// this banner sits above the Navigator, so its own context has none.
+  void _goToSignInForPendingInvite() {
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+    unawaited(pushNamedScreen<void>(ctx, kRouteSignInScreen));
+  }
 
   /// Schedules the cold-start invite presentation, if `main.dart` (or a
   /// test) passed an initial invite code. Extracted out of [initState]
@@ -768,12 +931,37 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// device) retires the device-local "awaiting confirmation" note, and
   /// the passwordless "sign-in email sent" note with it (#2 U4; KTD3).
   /// A latched invite code (R9) is presented once the session exists.
+  ///
+  /// LLA-005: `_authController` is built in [initState] (`_initAuthController`),
+  /// before any screen the operator later navigates to (in particular
+  /// [SignInScreen], pushed from [_goToSignInForPendingInvite]) registers
+  /// its own listener on the same controller — so this listener always
+  /// runs first inside one `notifyListeners()` call. Presenting the sheet
+  /// synchronously here used to push it onto the navigator *before*
+  /// `SignInScreen`'s own listener called `Navigator.of(context)
+  /// .maybePop()`, which then popped the just-presented sheet (now the
+  /// top-most route) instead of the sign-in screen underneath it — the
+  /// invitation the recipient just triggered disappeared as soon as it
+  /// appeared. A `scheduleMicrotask` deferral is not enough: `maybePop()`
+  /// only *requests* removal from `Navigator`'s route history — its actual
+  /// flush is itself scheduled for later in the microtask queue, so a
+  /// same-batch microtask still races it, and pushing the sheet in the
+  /// middle of that in-flight pop can leave `SignInScreen`'s route stuck
+  /// (observed directly: still present after `pumpAndSettle()`). Waiting
+  /// for the next built frame instead ([WidgetsBinding.addPostFrameCallback])
+  /// guarantees the pop has been fully flushed by the time the sheet is
+  /// presented, so it is pushed onto whatever route is genuinely on top.
   void _onAuthChanged() {
     if (_authController?.signedIn ?? false) {
       _clearAwaitingConfirmation();
       final code = _pendingInviteCode;
       if (code != null) {
-        _presentSheet(code, _profileIdOfPendingInvite, _pendingInviteKind);
+        final profileId = _profileIdOfPendingInvite;
+        final kind = _pendingInviteKind;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _presentSheet(code, profileId, kind);
+        });
       }
     }
   }
@@ -786,8 +974,13 @@ class _LunarLogAppState extends State<LunarLogApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _inviteSub?.cancel();
+    unawaited(_inviteSub?.cancel());
     _inviteSub = null;
+    // Issue #137: cancelled here rather than leaked, mirroring the invite
+    // subscription above — this widget's unmount (a device reset,
+    // KTD16) always precedes the database closing underneath the store.
+    unawaited(_themeModeSub?.cancel());
+    _themeModeSub = null;
     _authController?.dispose();
     _authController = null;
     _actionExecutor?.dispose();
@@ -802,12 +995,25 @@ class _LunarLogAppState extends State<LunarLogApp>
     _predictionProjectionPublisher = null;
     final healthFlowTeardown =
         _healthFlowCoordinator?.dispose() ?? Future<void>.value();
+    final healthSyncTeardown =
+        _healthSyncTombstoneCoordinator?.dispose() ?? Future<void>.value();
     _healthFlowCoordinator = null;
+    _healthSyncTombstoneCoordinator = null;
+    // Issue #541: the reminder coordinator above is disposed first (so its
+    // `changes` subscription is already gone), then the service's own
+    // remaining watch subscriptions and its broadcast controller are torn
+    // down — otherwise a device reset (KTD16) would leave them attached to
+    // a since-closed, deleted database.
+    final reminderConfigTeardown =
+        _reminderConfigService?.dispose() ?? Future<void>.value();
+    _reminderConfigService = null;
     final teardown = Future.wait([
       coordinatorTeardown,
       publisherTeardown,
       projectionPublisherTeardown,
       healthFlowTeardown,
+      healthSyncTeardown,
+      reminderConfigTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {
@@ -868,6 +1074,8 @@ class _LunarLogAppState extends State<LunarLogApp>
             value: _onboardingCycleAnswers),
         Provider<DeviceDiagnosticsCollector>.value(value: _deviceDiagnostics),
         Provider<AccountExportWriter>.value(value: _accountExportWriter),
+        Provider<AccountExportSnapshotRepository>.value(
+            value: _exportSnapshot),
         Provider<FhirBundleWriter>.value(value: _fhirBundleWriter),
         Provider<CsvExportWriter>.value(value: _csvExportWriter),
         Provider<AttachmentSource>.value(value: _attachmentSource),
@@ -882,6 +1090,9 @@ class _LunarLogAppState extends State<LunarLogApp>
         if (_deps.predictionConnectionService != null)
           Provider<PredictionConnectionService>.value(
               value: _deps.predictionConnectionService!),
+        if (_deps.profileErasureService != null)
+          Provider<ProfileErasureService>.value(
+              value: _deps.profileErasureService!),
         if (_predictionProjectionPublisher != null)
           Provider<PredictionProjectionPublisher>.value(
               value: _predictionProjectionPublisher!),
@@ -900,6 +1111,10 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<CareContentRepository>.value(value: _careContent),
+        // Issue #257: the day sheet's tag picker reads/writes the
+        // custom-tag registry through this domain seam, never the raw
+        // storage object.
+        Provider<TagRegistryRepository>.value(value: _tagRegistry),
         Provider<SettingsStore>.value(value: _settings),
         // Issue #136: the per-profile reminder configuration store. Present
         // whenever reminders are (a scheduler was provided); the reminder
@@ -937,18 +1152,30 @@ class _LunarLogAppState extends State<LunarLogApp>
             updateShouldNotify: (_, _) => false,
           ),
         ChangeNotifierProvider(
-          create: (context) => ProfileController(
-            profilesRepository: context.read<ProfilesRepository>(),
-            settingsStore: context.read<SettingsStore>(),
-            profileModesRepository: context.read<ProfileModesRepository>(),
-          )..load(),
+          create: (context) {
+            final controller = ProfileController(
+              profilesRepository: context.read<ProfilesRepository>(),
+              settingsStore: context.read<SettingsStore>(),
+              profileModesRepository: context.read<ProfileModesRepository>(),
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,
         navigatorObservers: _navigatorObservers,
-        title: 'lunarlog',
+        title: _appTitle,
         theme: AppTheme.lightTheme,
+        // Issue #137: the app follows the OS appearance by default
+        // (`ThemeMode.system`, this state field's value until the settings
+        // watch's first emission) and honours the in-app override after
+        // that. `darkTheme` is the #176 factory's dark scheme — same seed
+        // token, same `LunarLogColors` derivation contract, so
+        // theme-driven consumers needed zero changes for dark mode.
+        darkTheme: AppTheme.darkTheme,
+        themeMode: _themeMode,
         // Issue #160: localization scaffolding. `en` is the only supported
         // locale today; the delegates (AppLocalizations plus Flutter's own
         // material/cupertino/widgets delegates) make every screen's copy
@@ -962,7 +1189,13 @@ class _LunarLogAppState extends State<LunarLogApp>
           showBanner: widget.showWebBanner,
           onWipe: resetDevice ?? widget.db.wipeAllData,
           navigatorKey: _navigatorKey,
-          child: child ?? const SizedBox.shrink(),
+          // Issue #739: the QA banner wraps outside the invite banner so
+          // it stays the topmost strip on every screen — a persistent
+          // marker, never dismissed by an auth change like the invite
+          // banner below it can be.
+          child: _wrapWithQaBanner(
+            _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+          ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
         // always built with WidgetsApp.defaultRouteName, `/`, which
@@ -981,6 +1214,52 @@ class _LunarLogAppState extends State<LunarLogApp>
                 builder: (_) => const ProfileHomeGate(),
               )
             : null,
+      ),
+    );
+  }
+}
+
+/// Issue #535 (b): persistent, non-dismissible banner surfacing a latched
+/// invite code while the recipient is signed out — mirrors [WebDevBanner]'s
+/// shape (a colored [Material] strip above the app content) but stays
+/// mounted for as long as the invite is waiting rather than for the whole
+/// build, and clears itself the moment [_LunarLogAppState._onAuthChanged]
+/// consumes the code on sign-in.
+class _PendingInviteSignInBanner extends StatelessWidget {
+  const _PendingInviteSignInBanner({required this.onSignIn});
+
+  final VoidCallback onSignIn;
+
+  @visibleForTesting
+  static const Key bannerKey = Key('pending-invite-sign-in-banner');
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      key: bannerKey,
+      color: theme.colorScheme.primaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sign in to accept your invite',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: onSignIn,
+                child: const Text('Sign In'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
+import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
@@ -50,6 +51,8 @@ Future<void>? openManageGuardians(BuildContext context, Profile profile) {
         ownershipTransferService: ownershipTransfer,
         predictionConnectionService:
             Provider.of<PredictionConnectionService?>(context, listen: false),
+        profileErasureService:
+            Provider.of<ProfileErasureService?>(context, listen: false),
         onPredictionConnectionChanged: (profileId) =>
             Provider.of<PredictionProjectionPublisher?>(
                   context,

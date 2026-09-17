@@ -20,10 +20,12 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart'
     show kEstimateDisclaimer;
+import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// Issue #160: month names are locale-derived (`lib/ui/l10n/dates.dart`),
 /// replacing the `kMonthNames` list this file used to import from the
@@ -92,11 +94,11 @@ class _LateResolverState extends State<LateResolver> {
     final theme = Theme.of(context);
     return Padding(
       key: const ValueKey('late-snoozed'),
-      padding: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: LLSpace.space2),
       child: Row(
         children: [
           Icon(Icons.alarm, size: 18, color: theme.colorScheme.tertiary),
-          const SizedBox(width: 8),
+          const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
               'We will check back on ${_formatDate(until, context)}.',
@@ -126,24 +128,26 @@ class _LateResolverState extends State<LateResolver> {
   /// [ActivePrediction.daysLate] has not yet crossed [kLateGraceDays] (an
   /// unusually long mean cycle length pushed the due date out far enough
   /// that sixty open days alone has not yet cleared the grace window).
-  String get _lateLine {
+  String _lateLine(AppLocalizations l10n) {
     final daysLate = widget.prediction.daysLate;
     if (daysLate != null) {
       return '$daysLate day${daysLate == 1 ? '' : 's'} late';
     }
+    // Issue #545: routed through the shared ICU-plural daysCount key
+    // instead of a bare "N days" interpolation (fixes "1 days").
     return 'No period logged for '
-        '${widget.prediction.daysSinceLastEpisodeStart} days';
+        '${l10n.daysCount(widget.prediction.daysSinceLastEpisodeStart)}';
   }
 
   Widget _resolverCard(BuildContext context, ThemeData theme, bool wasSnoozed) {
-    final lateLine = _lateLine;
+    final lateLine = _lateLine(AppLocalizations.of(context));
     return Container(
       key: const ValueKey('late-resolver'),
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(top: LLSpace.space3),
+      padding: const EdgeInsets.all(LLSpace.space3),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,7 +160,7 @@ class _LateResolverState extends State<LateResolver> {
                 size: 18,
                 color: theme.colorScheme.onErrorContainer,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: LLSpace.space2),
               Flexible(
                 child: Text(
                   lateLine,
@@ -168,7 +172,7 @@ class _LateResolverState extends State<LateResolver> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: LLSpace.space1),
           Text(
             wasSnoozed
                 ? 'Still nothing logged — what would you like to do?'
@@ -179,10 +183,10 @@ class _LateResolverState extends State<LateResolver> {
             ),
           ),
           if (!widget.readOnly) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
             Wrap(
-              spacing: 8,
-              runSpacing: 4,
+              spacing: LLSpace.space2,
+              runSpacing: LLSpace.space1,
               children: [
                 _option(
                   key: 'resolver-log',
@@ -211,7 +215,7 @@ class _LateResolverState extends State<LateResolver> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: LLSpace.space2),
           ],
           Text(
             kEstimateDisclaimer,

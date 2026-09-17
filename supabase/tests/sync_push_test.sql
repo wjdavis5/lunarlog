@@ -404,11 +404,13 @@ select is((select count(*) from pg_proc p
 -- p_profile_modes/p_cycle_overrides the same way (dropping the 3-arg
 -- overload first - see 20260909000000's header); Issue #128 adds
 -- p_care_notes/p_visit_prep_items the same way (dropping the 5-arg overload
--- first) - the signature this literal must resolve is now the 7-arg one.
-select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
+-- first) - the signature this literal must resolve is now the 9-arg one
+-- (Issue #130 added p_merge_events, dropping the 7-arg overload first;
+-- Issue #257 added p_tag_registry, dropping the 8-arg overload first).
+select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
   'authenticated can execute sync_push');
 select is((select prosecdef from pg_proc where proname = 'sync_push' and pronamespace = 'public'::regnamespace),
-  false, 'sync_push is security invoker');
+  true, 'sync_push is security definer (issue #201: day_entries'' sole write path)');
 
 -- ---------------------------------------------------------------------------
 -- advisory transaction lock (Issue #14)
@@ -442,6 +444,11 @@ select is(jsonb_array_length(pg_temp.resp('bad_tags') -> 'rejected'), 2,
 select is((select count(*) from public.day_entries where id = tests.ulid(118)), 1::bigint,
   'valid string array tags in same batch lands');
 
+-- Issue #201 revoked authenticated's insert/update grant on day_entries
+-- entirely, so this direct proof of the table CHECK constraint runs as
+-- service_role to actually reach it (otherwise it would hit the revoked
+-- grant first and get 42501, not 23514).
+select set_config('role', 'service_role', true);
 select throws_ok(
   $$ insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, tags, updated_at)
      values (tests.ulid(119), tests.get_supabase_uid('user_a'), tests.ulid(1), '2026-09-19', 'UTC', 'none', '[1, 2]'::jsonb, now()) $$,
@@ -449,6 +456,7 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects non-string tags'
 );
+select set_config('role', 'authenticated', true);
 
 -- Issue #94: per-element length bound (char_length <= 64).
 select is(public.is_valid_tags_array(jsonb_build_array(repeat('x', 65))), false,
@@ -484,6 +492,8 @@ select is(jsonb_array_length(pg_temp.resp('long_tags') -> 'rejected'), 2,
 select is((select count(*) from public.day_entries where id = tests.ulid(132)), 1::bigint,
   'valid tags in the same batch still lands');
 
+-- Issue #201: service_role for the same reason as the tags-check proof above.
+select set_config('role', 'service_role', true);
 select throws_ok(
   $$ insert into public.day_entries (id, user_id, profile_id, local_date, tz, flow, tags, updated_at)
      values (tests.ulid(133), tests.get_supabase_uid('user_a'), tests.ulid(1), '2026-09-29', 'UTC', 'none', jsonb_build_array(repeat('x', 65)), now()) $$,
@@ -491,6 +501,7 @@ select throws_ok(
   null,
   'table check constraint day_entries_tags_check rejects an over-length tag element'
 );
+select set_config('role', 'authenticated', true);
 
 -- ---------------------------------------------------------------------------
 -- Issue #96: RPC-level is_valid_tags_array validation inside sync_push
@@ -520,7 +531,7 @@ select is(jsonb_array_length(pg_temp.resp('tags_rpc_validation') -> 'rejected'),
 select is((select count(*) from public.day_entries where id = tests.ulid(142)), 1::bigint,
   '#96: the valid-tags row in the same batch still lands');
 select ok(
-  pg_get_functiondef(to_regprocedure('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'))
+  pg_get_functiondef(to_regprocedure('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'))
     like '%is_valid_tags_array%',
   '#96: sync_push calls is_valid_tags_array itself instead of relying on the table CHECK alone');
 

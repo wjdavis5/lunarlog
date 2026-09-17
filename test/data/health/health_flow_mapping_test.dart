@@ -113,4 +113,67 @@ void main() {
       expect(kSpottingObservationCategory, 'spotting');
     });
   });
+
+  group('Health Connect flow-constant correspondence (#202 AC1)', () {
+    // #202 reuses #193's pure mapping verbatim for Health Connect — the only
+    // delta is the OS constants (MenstruationFlowRecord.FLOW_* vs HealthKit's
+    // HKCategoryValueVaginalBleeding), handled by the native adapters. These
+    // tests pin that the shared function's outputs map 1:1 onto Health
+    // Connect's constants, so the two platforms can never disagree about what
+    // intensity a logged bleed level writes.
+    test('light/medium/heavy correspond to the FLOW_LIGHT/FLOW_MEDIUM/'
+        'FLOW_HEAVY constants the Kotlin adapter stamps', () {
+      const hcConstants = <HealthFlowValue, String>{
+        HealthFlowValue.light: 'FLOW_LIGHT',
+        HealthFlowValue.medium: 'FLOW_MEDIUM',
+        HealthFlowValue.heavy: 'FLOW_HEAVY',
+      };
+      for (final entry in hcConstants.entries) {
+        final value = entry.key; // HealthFlowValue
+        final constant = entry.value; // e.g. 'FLOW_LIGHT'
+        // The transport wire string is the constant without the FLOW_
+        // prefix, lowercased — the exact strings the Kotlin handler maps to
+        // MenstruationFlowRecord.
+        expect(
+          value.toWire(),
+          constant.substring('FLOW_'.length).toLowerCase(),
+          reason: '$constant must match the wire value the native side maps',
+        );
+      }
+    });
+
+    test('bleed levels map through the shared function to their Health '
+        'Connect constants', () {
+      expect(
+        mapFlowToHealthWrite(FlowLevel.light, inPeriodEpisode: false),
+        const HealthFlowMenstrualSample(HealthFlowValue.light),
+      );
+      expect(
+        mapFlowToHealthWrite(FlowLevel.medium, inPeriodEpisode: false),
+        const HealthFlowMenstrualSample(HealthFlowValue.medium),
+      );
+      expect(
+        mapFlowToHealthWrite(FlowLevel.heavy, inPeriodEpisode: false),
+        const HealthFlowMenstrualSample(HealthFlowValue.heavy),
+      );
+      // #247's documented collapse: superHeavy writes the heavy constant.
+      expect(
+        mapFlowToHealthWrite(FlowLevel.superHeavy, inPeriodEpisode: false),
+        const HealthFlowMenstrualSample(HealthFlowValue.heavy),
+      );
+    });
+
+    test('spotting inside an episode writes the light constant; outside one '
+        'it is intermenstrual — the A3-4 rule shared with #193 verbatim',
+        () {
+      expect(
+        mapSpottingToHealthWrite(inPeriodEpisode: true),
+        const HealthFlowMenstrualSample(HealthFlowValue.light),
+      );
+      expect(
+        mapSpottingToHealthWrite(inPeriodEpisode: false),
+        isA<HealthFlowIntermenstrualMarker>(),
+      );
+    });
+  });
 }

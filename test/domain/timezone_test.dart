@@ -12,24 +12,64 @@ void main() {
   });
 
   group('resolveCurrentTimeZone', () {
-    test('returns canonical IANA timezone identifier', () {
-      final initial = resolveCurrentTimeZone();
+    test('returns canonical IANA timezone identifier', () async {
+      final initial = await resolveCurrentTimeZone();
       expect(initial, isNotEmpty);
       expect(isValidIanaTimeZone(initial), isTrue);
     });
 
-    test('reflects location configured via tz.setLocalLocation', () {
+    test('reflects location configured via tz.setLocalLocation', () async {
       final ny = tz.getLocation('America/New_York');
       tz.setLocalLocation(ny);
-      expect(resolveCurrentTimeZone(), 'America/New_York');
+      expect(await resolveCurrentTimeZone(), 'America/New_York');
 
       final paris = tz.getLocation('Europe/Paris');
       tz.setLocalLocation(paris);
-      expect(resolveCurrentTimeZone(), 'Europe/Paris');
+      expect(await resolveCurrentTimeZone(), 'Europe/Paris');
 
       final tokyo = tz.getLocation('Asia/Tokyo');
       tz.setLocalLocation(tokyo);
-      expect(resolveCurrentTimeZone(), 'Asia/Tokyo');
+      expect(await resolveCurrentTimeZone(), 'Asia/Tokyo');
+    });
+
+    test('queries platform timezone provider directly even without scheduler',
+        () async {
+      // Acceptance criterion 2: resolveCurrentTimeZone() returns OS-reported
+      // current zone even when scheduler has never run.
+      final zone = await resolveCurrentTimeZone(
+        platformTimeZoneProvider: () async => 'America/Chicago',
+      );
+      expect(zone, 'America/Chicago');
+      expect(tz.local.name, 'America/Chicago');
+    });
+
+    test('falls back to tz.local.name when platform provider throws', () async {
+      final tokyo = tz.getLocation('Asia/Tokyo');
+      tz.setLocalLocation(tokyo);
+      final zone = await resolveCurrentTimeZone(
+        platformTimeZoneProvider: () async =>
+            throw Exception('channel failed'),
+      );
+      expect(zone, 'Asia/Tokyo');
+    });
+
+    test(
+        'falls back to tz.local.name when platform provider returns invalid timezone',
+        () async {
+      final tokyo = tz.getLocation('Asia/Tokyo');
+      tz.setLocalLocation(tokyo);
+      final zone = await resolveCurrentTimeZone(
+        platformTimeZoneProvider: () async => 'Invalid/Zone',
+      );
+      expect(zone, 'Asia/Tokyo');
+    });
+  });
+
+  group('resolveCurrentTimeZoneSync', () {
+    test('returns tz.local.name synchronously', () {
+      final paris = tz.getLocation('Europe/Paris');
+      tz.setLocalLocation(paris);
+      expect(resolveCurrentTimeZoneSync(), 'Europe/Paris');
     });
   });
 

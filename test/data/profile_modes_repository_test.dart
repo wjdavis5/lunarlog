@@ -62,10 +62,14 @@ void main() {
     await modes.save(
         profileId: profile.id,
         mode: LifecycleMode.tracking,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: 'pill');
     await modes.save(
         profileId: profile.id,
         mode: LifecycleMode.perimenopause,
+        modeStartedOn: null,
+        estimatedDueDate: null,
         birthControlMethod: null);
     final found = await modes.find(profile.id);
     expect(found!.mode, LifecycleMode.perimenopause);
@@ -83,6 +87,56 @@ void main() {
     expect((await modes.find(a.id))!.mode, LifecycleMode.pregnancy);
   });
 
+  group('watch (issue #551)', () {
+    test('emits null on listen for a profile with no row', () async {
+      final profile =
+          await db.storage.upsertProfile(displayName: 'A', isMinor: false);
+      expect(await modes.watch(profile.id).first, isNull);
+    });
+
+    test('emits the current row on listen, then again on every save',
+        () async {
+      final profile =
+          await db.storage.upsertProfile(displayName: 'A', isMinor: false);
+      final events = <LifecycleMode?>[];
+      final sub = modes.watch(profile.id).listen((row) => events.add(row?.mode));
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      expect(events, [null]);
+
+      await modes.save(profileId: profile.id, mode: LifecycleMode.conceive);
+      await pumpEventQueue();
+      expect(events, [null, LifecycleMode.conceive]);
+
+      await modes.save(
+          profileId: profile.id, mode: LifecycleMode.perimenopause);
+      await pumpEventQueue();
+      expect(events, [null, LifecycleMode.conceive, LifecycleMode.perimenopause]);
+    });
+
+    test(
+        'scoped to one profile — another profile\'s save never leaks its '
+        'value into this one\'s watch', () async {
+      final a = await db.storage.upsertProfile(displayName: 'A', isMinor: false);
+      final b = await db.storage.upsertProfile(displayName: 'B', isMinor: false);
+      final events = <LifecycleMode?>[];
+      final sub = modes.watch(a.id).listen((row) => events.add(row?.mode));
+      addTearDown(sub.cancel);
+
+      await pumpEventQueue();
+      await modes.save(profileId: b.id, mode: LifecycleMode.conceive);
+      await pumpEventQueue();
+
+      // The underlying drift query re-runs on any write to the table
+      // (table-level invalidation), so a same-value re-emission is
+      // possible — the invariant is that every emission for a's watch
+      // stays null, never picking up b's conceive.
+      expect(events, everyElement(isNull),
+          reason: 'profile b\'s save must never leak its value into a\'s watch');
+    });
+  });
+
   group('birth-control effective-date stamping (Issue #183)', () {
     test('a tracked method stamps started_on with today on first record',
         () async {
@@ -91,6 +145,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-09-07');
@@ -104,6 +160,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       // The first save stamped 2026-09-07; back-date it to simulate an
       // older anchor, then re-save the same answer.
@@ -116,6 +174,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-08-01',
@@ -137,6 +197,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'shot');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-06-01');
@@ -156,6 +218,8 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'ring');
       final found = await modes.find(profile.id);
       expect(found!.birthControlStartedOn, '2026-09-07',
@@ -168,10 +232,14 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'shot');
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'none');
       final found = await modes.find(profile.id);
       expect(found!.birthControlMethod, 'none');
@@ -186,10 +254,14 @@ void main() {
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'patch');
       await modes.save(
           profileId: profile.id,
           mode: LifecycleMode.tracking,
+          modeStartedOn: null,
+          estimatedDueDate: null,
           birthControlMethod: 'ring');
       final found = await modes.find(profile.id);
       expect(found!.birthControlMethod, 'ring');

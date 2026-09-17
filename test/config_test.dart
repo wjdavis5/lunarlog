@@ -347,6 +347,13 @@ void main() {
       // (server-side consent) land and the guard's remaining gap is
       // closed. Denies-by-default is the safe direction.
       expect(AppConfig.healthSyncMinorBindingAllowed, isFalse);
+      // Issue #738: this test run passes no dart-defines, so the MFA
+      // client surface is off — the compile-time default every
+      // CI/workflow build ships. Turning it on is a deliberate
+      // `--dart-define=LUNARLOG_ENABLE_MFA=true` release action (plus the
+      // #730 dashboard TOTP toggle); flipping the default in config.dart
+      // must update this pin consciously.
+      expect(AppConfig.mfaEnabled, isFalse);
     });
 
     test('hasSupabase agrees with the pure function for this platform', () {

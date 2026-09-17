@@ -20,6 +20,7 @@ import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
 import '../../domain/repositories/settings_store.dart';
 import '../components/inline_error.dart';
+import 'entry_existence_watch_mixin.dart';
 
 /// Injectable seam for CSV delivery: tests pass a fake recording the call.
 typedef CsvExportCollaborator = Future<void> Function({
@@ -56,13 +57,12 @@ class CsvExportTile extends StatefulWidget {
   State<CsvExportTile> createState() => _CsvExportTileState();
 }
 
-class _CsvExportTileState extends State<CsvExportTile> {
+class _CsvExportTileState extends State<CsvExportTile>
+    with EntryExistenceWatchMixin<CsvExportTile> {
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
-  bool _hasEntries = false;
   bool _exporting = false;
   String? _error;
-  int _hasEntriesGeneration = 0;
 
   @override
   void initState() {
@@ -71,7 +71,15 @@ class _CsvExportTileState extends State<CsvExportTile> {
       (profiles) {
         if (!mounted) return;
         setState(() => _profiles = profiles);
-        unawaited(_refreshHasEntries(profiles));
+        // Issue #642, LLA-010: a bounded existence stream per live profile,
+        // decoupled from this profiles-stream tick — see
+        // `EntryExistenceWatchMixin`'s doc comment for why deriving it from
+        // this tick alone went stale under the app shell's retained
+        // IndexedStack.
+        watchEntryExistence(
+          context.read<DayEntriesRepository?>(),
+          _liveProfiles(profiles).map((profile) => profile.id),
+        );
       },
       onError: (Object error, StackTrace stackTrace) {
         debugPrint('lunarlog csv-export: profiles watch failed (${error.runtimeType})');
@@ -80,28 +88,10 @@ class _CsvExportTileState extends State<CsvExportTile> {
     );
   }
 
-  Future<void> _refreshHasEntries(List<Profile> profiles) async {
-    final generation = ++_hasEntriesGeneration;
-    final liveProfiles = _liveProfiles(profiles);
-    final hasEntries = await _anyProfileHasEntries(liveProfiles);
-    if (mounted && generation == _hasEntriesGeneration) {
-      setState(() => _hasEntries = hasEntries);
-    }
-  }
-
-  Future<bool> _anyProfileHasEntries(List<Profile> liveProfiles) async {
-    final entriesRepo = context.read<DayEntriesRepository?>();
-    if (entriesRepo == null) return false;
-    for (final profile in liveProfiles) {
-      final entries = await entriesRepo.listForProfile(profile.id);
-      if (entries.isNotEmpty) return true;
-    }
-    return false;
-  }
-
   @override
   void dispose() {
     unawaited(_profilesSub?.cancel());
+    disposeEntryExistenceWatch();
     super.dispose();
   }
 
@@ -112,7 +102,7 @@ class _CsvExportTileState extends State<CsvExportTile> {
     if (profiles == null) return const SizedBox.shrink();
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
-    final canExport = !_exporting && _hasEntries;
+    final canExport = !_exporting && hasAnyEntries;
     final error = _error;
 
     return Column(
@@ -123,7 +113,7 @@ class _CsvExportTileState extends State<CsvExportTile> {
           leading: const Icon(Icons.table_view_outlined),
           title: const Text('Export as CSV'),
           subtitle: Text(
-            _subtitleFor(hasEntries: _hasEntries, liveProfiles: liveProfiles),
+            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -205,6 +195,12 @@ class _CsvExportTileState extends State<CsvExportTile> {
       final dailyLogCsv = buildDailyLogCsv(
         entries: dayEntries,
         observations: observations,
+        // Issue #612, LLA-093: normalize bbt/weight to the profile's own
+        // display-unit preference, the same numbers the app's own UI would
+        // show for this profile (once that reading path itself exists —
+        // see `measurement_unit.dart`'s doc comment).
+        bbtUnit: profile.bbtUnit,
+        weightUnit: profile.weightUnit,
       );
 
       final collaborator = widget.exportCsv;

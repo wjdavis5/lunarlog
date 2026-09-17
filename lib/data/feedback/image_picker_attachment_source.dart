@@ -3,10 +3,15 @@
 /// UI layers only ever see [AttachmentSource]/[FeedbackAttachment]. Only the
 /// plugin call itself is untestable under `flutter test`; every decision
 /// around it runs against the injected [PickGalleryImage] seam (see
-/// `test/data/feedback/image_picker_attachment_source_test.dart`, #207).
+/// `test/data/feedback/image_picker_attachment_source_test.dart`, #207), and
+/// the name-based mime fallback is the pure domain function
+/// `attachmentMimeTypeFromFilename()` in
+/// `lib/domain/feedback/attachment_mime.dart` with its own direct unit
+/// tests (#215).
 library;
 
 import 'package:image_picker/image_picker.dart';
+import 'package:lunarlog/domain/feedback/attachment_mime.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 
 /// Longest edge the plugin downscales a pick to before the bytes cross into
@@ -75,24 +80,11 @@ class ImagePickerAttachmentSource implements AttachmentSource {
     final bytes = await file.readAsBytes();
     return FeedbackAttachment(
       bytes: bytes,
-      mimeType: file.mimeType ?? _mimeTypeFromName(file.name),
+      // Issue #215: the name-based fallback mapping lives in
+      // lib/domain/feedback/attachment_mime.dart
+      // (attachmentMimeTypeFromFilename), directly unit-tested there.
+      mimeType: file.mimeType ?? attachmentMimeTypeFromFilename(file.name),
       filename: file.name,
     );
-  }
-
-  /// Name-based fallback for platforms whose [XFile.mimeType] comes back
-  /// null. `.heic`/`.heif` map to `image/jpeg`, not `application/octet-stream`
-  /// (#207): with [kAttachmentJpegQuality] passed, the plugin has already
-  /// re-encoded the image as JPEG before the bytes cross into Dart, so an
-  /// HEIC pick whose extension and null mime still say HEIC is a JPEG
-  /// attachment — labelling it octet-stream made the UI reject it as an
-  /// unsupported type with no way to comply from the gallery.
-  String _mimeTypeFromName(String name) {
-    final lower = name.toLowerCase();
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/jpeg';
-    return 'application/octet-stream';
   }
 }

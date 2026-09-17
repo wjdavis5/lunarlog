@@ -315,12 +315,12 @@ void main() {
       '(#30 U4)', () async {
     final c = controller();
     service.passkeySignInResult =
-        const PasskeySignInSession(AuthUser(id: 'user-passkey'));
+        const NativeSignInSession(AuthUser(id: 'user-passkey'));
 
     final result = await c.signInWithPasskey();
     await Future<void>.delayed(Duration.zero);
 
-    expect(result, isA<PasskeySignInSession>());
+    expect(result, isA<NativeSignInSession>());
     expect(service.passkeySignInCalls, 1);
     expect(c.state, AuthSessionState.signedIn);
   });
@@ -333,11 +333,11 @@ void main() {
     var notifications = 0;
     c.addListener(() => notifications++);
 
-    service.passkeyRegistrationResult = const PasskeyRegistrationSuccess(
+    service.passkeyRegistrationResult = const NativeSignInSession(
         AuthUser(id: 'u1', email: 'a@b.c', providers: ['email']));
     final result = await c.registerPasskey();
 
-    expect(result, isA<PasskeyRegistrationSuccess>());
+    expect(result, isA<NativeSignInSession>());
     expect(service.registerPasskeyCalls, 1);
     expect(c.currentUser?.email, 'a@b.c');
     expect(c.currentUser?.providers, ['email'],
@@ -355,7 +355,7 @@ void main() {
 
     final result = await c.registerPasskey();
 
-    expect(result, const PasskeyRegistrationCancelled());
+    expect(result, const NativeSignInCancelled());
     expect(notifications, 0);
   });
 
@@ -367,5 +367,36 @@ void main() {
     service.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'u1'));
     await Future<void>.delayed(Duration.zero);
     expect(notifications, 0);
+  });
+
+  group('MFA feature flag (issue #738)', () {
+    test('mfaEnabled defaults to the build flag (off in this test run)', () {
+      expect(controller().mfaEnabled, isFalse);
+    });
+
+    test('mfaEnabled is injectable for the flag-on build', () {
+      final c = AuthController(authService: service, mfaEnabled: true);
+      addTearDown(c.dispose);
+      expect(c.mfaEnabled, isTrue);
+    });
+
+    test('requiresMfaStepUp is always false while the flag is off, and '
+        'never consults the service', () async {
+      service.mfaStepUpRequired = true;
+      final c = controller();
+      expect(await c.requiresMfaStepUp(), isFalse);
+      expect(service.requiresMfaStepUpCalls, 0);
+    });
+
+    test('requiresMfaStepUp follows the service while the flag is on '
+        '(#714 behavior unchanged)', () async {
+      final c = AuthController(authService: service, mfaEnabled: true);
+      addTearDown(c.dispose);
+      service.mfaStepUpRequired = true;
+      expect(await c.requiresMfaStepUp(), isTrue);
+      expect(service.requiresMfaStepUpCalls, 1);
+      service.mfaStepUpRequired = false;
+      expect(await c.requiresMfaStepUp(), isFalse);
+    });
   });
 }

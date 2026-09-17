@@ -22,6 +22,7 @@ import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -39,6 +40,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -48,6 +50,7 @@ import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
+import '../support/erroring_day_entries_repository.dart';
 import '../support/fake_auth_service.dart';
 
 /// Fixed "today" so every derived number is deterministic.
@@ -225,10 +228,14 @@ class Harness {
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
         ChangeNotifierProvider(
-          create: (_) => ProfileController(
-            profilesRepository: profiles,
-            settingsStore: _settings,
-          )..load(),
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: profiles,
+              settingsStore: _settings,
+            );
+            unawaited(controller.load());
+            return controller;
+          },
         ),
       ],
       child: MaterialApp(
@@ -535,17 +542,15 @@ void main() {
           findsOneWidget);
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions (coming soon)'), findsOneWidget);
+      expect(find.text('Turn off predictions'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
               find.byKey(const ValueKey('long-cycle-predictions-off')),
             )
             .onPressed,
-        isNull,
-        reason: 'issue #225 is not built yet -- the button is an honestly '
-            'disabled placeholder, not a live one that only shows a '
-            'snackbar',
+        isNotNull,
+        reason: 'issue #225: button is wired to open Settings',
       );
       expect(find.text(kDisclaimer), findsWidgets,
           reason: 'the Today card and the resolver each carry it');
@@ -694,6 +699,104 @@ void main() {
       // Same teardown discipline as disposeOverview: unmount, let the
       // drift stream store's close-timer fire, then close the database —
       // otherwise the pending FakeTimer fails the test's invariants.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('a continuous birth-control method surfaces the explicit '
+        'suppressed state, never the not-enough card (issue #233)',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final entries = DriftDayEntriesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final profile = await DriftProfilesRepository(db.storage)
+          .create(displayName: 'Alice', isMinor: false);
+      final profileId = profile.id;
+      // Production-shaped provider: drift's replaying watchProfileMode row
+      // mapped onto the BirthControlState shape (app_dependencies.dart).
+      Stream<BirthControlState?> birthControlStateFor(String profileId) => db
+          .storage
+          .watchProfileMode(profileId)
+          .map((row) => row == null
+              ? null
+              : (
+                  method: row.birthControlMethod,
+                  startedOn: row.birthControlStartedOn,
+                  stoppedOn: row.birthControlStoppedOn,
+                ));
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<SettingsStore>.value(value: settings),
+            Provider<CyclePredictionService>.value(
+              value: CyclePredictionService(
+                entries,
+                settings: settings,
+                birthControlStateFor: birthControlStateFor,
+              ),
+            ),
+            Provider<CycleExclusionList>.value(
+              value: CycleExclusionList(settings),
+            ),
+            ChangeNotifierProvider<NotificationPermissionState>.value(
+              value: NotificationPermissionState(
+                  NotificationAvailability.available),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: OverviewPanel(
+                profileId: profileId,
+                todayProvider: () => kToday,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // No method row yet -> the ordinary not-enough state.
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+
+      // Continuous method (implant) in effect -> explicit suppressed card.
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: BirthControlMethod.implant.toDb(),
+        birthControlStartedOn: '2026-01-01',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('predictions-suppressed-body')),
+        findsOneWidget,
+      );
+
+      // Clearing the method returns the not-enough state (no logged cycles).
+      await db.storage.upsertProfileMode(
+        profileId: profileId,
+        mode: 'tracking',
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const ValueKey('predictions-suppressed')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+
+      // Same teardown discipline as the seeded-provisional test above.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
@@ -1602,6 +1705,68 @@ void main() {
         reason: 'trailingChildren is appended inside the panel\'s own '
             'ListView -- one scroll region, not a second scrollable',
       );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
+
+  group('issue #543: prediction stream error', () {
+    testWidgets(
+        'a thrown error on the prediction stream shows InlineError with '
+        'retry instead of a permanent spinner', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final profiles = DriftProfilesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+      final innerEntries = DriftDayEntriesRepository(db.storage);
+      final entries = ErroringDayEntriesRepository(innerEntries);
+      final profile =
+          await profiles.create(displayName: 'Alice', isMinor: false);
+      await seedEpisodes(innerEntries, profile.id, kActiveStarts);
+
+      await tester.pumpWidget(MultiProvider(
+        providers: [
+          Provider<DayEntriesRepository>.value(value: entries),
+          Provider<SettingsStore>.value(value: settings),
+          Provider<CyclePredictionService>.value(
+            value: CyclePredictionService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value:
+                NotificationPermissionState(NotificationAvailability.available),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.lightTheme,
+          home: Scaffold(
+            body: OverviewPanel(profileId: profile.id, todayProvider: () => kToday),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'sanity: healthy before the break');
+
+      entries.broken = true;
+      // Forces the watched stream to re-emit (and now throw).
+      await entries.save((await entries.find(profile.id, kActiveStarts.last))!);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InlineError), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      entries.broken = false;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears');
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

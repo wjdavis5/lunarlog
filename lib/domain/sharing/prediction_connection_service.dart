@@ -179,30 +179,28 @@ sealed class PredictionConnectionFailure implements Exception {
   const PredictionConnectionFailure();
 
   const factory PredictionConnectionFailure.network() =
-      _PredictionNetworkFailure;
+      PredictionNetworkFailure;
   const factory PredictionConnectionFailure.notFound() =
-      _PredictionNotFoundFailure;
+      PredictionNotFoundFailure;
   const factory PredictionConnectionFailure.expired() =
-      _PredictionExpiredFailure;
+      PredictionExpiredFailure;
   const factory PredictionConnectionFailure.alreadyAccepted() =
-      _PredictionAlreadyAcceptedFailure;
+      PredictionAlreadyAcceptedFailure;
   const factory PredictionConnectionFailure.alreadyGuardian() =
-      _PredictionAlreadyGuardianFailure;
+      PredictionAlreadyGuardianFailure;
   const factory PredictionConnectionFailure.unauthorized() =
-      _PredictionUnauthorizedFailure;
+      PredictionUnauthorizedFailure;
   const factory PredictionConnectionFailure.invalidToken() =
-      _PredictionInvalidTokenFailure;
+      PredictionInvalidTokenFailure;
   const factory PredictionConnectionFailure.pregnancyMode() =
-      _PredictionPregnancyModeFailure;
+      PredictionPregnancyModeFailure;
   const factory PredictionConnectionFailure.alreadyConnected() =
-      _PredictionAlreadyConnectedFailure;
+      PredictionAlreadyConnectedFailure;
   const factory PredictionConnectionFailure.oneDirectional() =
-      _PredictionOneDirectionalFailure;
+      PredictionOneDirectionalFailure;
   const factory PredictionConnectionFailure.minorProfile() =
-      _PredictionMinorProfileFailure;
-  const factory PredictionConnectionFailure.other() = _PredictionOtherFailure;
-
-  String get userFacingMessage;
+      PredictionMinorProfileFailure;
+  const factory PredictionConnectionFailure.other() = PredictionOtherFailure;
 
   @override
   bool operator ==(Object other) => other.runtimeType == runtimeType;
@@ -211,95 +209,68 @@ sealed class PredictionConnectionFailure implements Exception {
   int get hashCode => runtimeType.hashCode;
 }
 
-final class _PredictionNetworkFailure extends PredictionConnectionFailure {
-  const _PredictionNetworkFailure();
-  @override
-  String get userFacingMessage => 'Network error. Please check your connection.';
+final class PredictionNetworkFailure extends PredictionConnectionFailure {
+  const PredictionNetworkFailure();
   @override
   String toString() => 'PredictionConnectionFailure.network';
 }
 
-final class _PredictionNotFoundFailure extends PredictionConnectionFailure {
-  const _PredictionNotFoundFailure();
-  @override
-  String get userFacingMessage => 'That code is not valid.';
+final class PredictionNotFoundFailure extends PredictionConnectionFailure {
+  const PredictionNotFoundFailure();
   @override
   String toString() => 'PredictionConnectionFailure.notFound';
 }
 
-final class _PredictionExpiredFailure extends PredictionConnectionFailure {
-  const _PredictionExpiredFailure();
-  @override
-  String get userFacingMessage => 'That code has expired.';
+final class PredictionExpiredFailure extends PredictionConnectionFailure {
+  const PredictionExpiredFailure();
   @override
   String toString() => 'PredictionConnectionFailure.expired';
 }
 
-final class _PredictionAlreadyAcceptedFailure
+final class PredictionAlreadyAcceptedFailure
     extends PredictionConnectionFailure {
-  const _PredictionAlreadyAcceptedFailure();
-  @override
-  String get userFacingMessage => 'That code was already used.';
+  const PredictionAlreadyAcceptedFailure();
   @override
   String toString() => 'PredictionConnectionFailure.alreadyAccepted';
 }
 
-final class _PredictionAlreadyGuardianFailure
+final class PredictionAlreadyGuardianFailure
     extends PredictionConnectionFailure {
-  const _PredictionAlreadyGuardianFailure();
-  @override
-  String get userFacingMessage =>
-      'You already have full guardian access to this profile.';
+  const PredictionAlreadyGuardianFailure();
   @override
   String toString() => 'PredictionConnectionFailure.alreadyGuardian';
 }
 
-final class _PredictionUnauthorizedFailure extends PredictionConnectionFailure {
-  const _PredictionUnauthorizedFailure();
-  @override
-  String get userFacingMessage => 'You do not have permission for this action.';
+final class PredictionUnauthorizedFailure extends PredictionConnectionFailure {
+  const PredictionUnauthorizedFailure();
   @override
   String toString() => 'PredictionConnectionFailure.unauthorized';
 }
 
-final class _PredictionInvalidTokenFailure
+final class PredictionInvalidTokenFailure
     extends PredictionConnectionFailure {
-  const _PredictionInvalidTokenFailure();
-  @override
-  String get userFacingMessage => 'Invalid connection code.';
+  const PredictionInvalidTokenFailure();
   @override
   String toString() => 'PredictionConnectionFailure.invalidToken';
 }
 
-final class _PredictionPregnancyModeFailure
+final class PredictionPregnancyModeFailure
     extends PredictionConnectionFailure {
-  const _PredictionPregnancyModeFailure();
-  @override
-  String get userFacingMessage =>
-      'Prediction sharing is unavailable while this profile is in '
-      'Pregnancy mode.';
+  const PredictionPregnancyModeFailure();
   @override
   String toString() => 'PredictionConnectionFailure.pregnancyMode';
 }
 
-final class _PredictionAlreadyConnectedFailure
+final class PredictionAlreadyConnectedFailure
     extends PredictionConnectionFailure {
-  const _PredictionAlreadyConnectedFailure();
-  @override
-  String get userFacingMessage =>
-      'This profile already has a prediction connection. Revoke it before '
-      'sharing with someone else.';
+  const PredictionAlreadyConnectedFailure();
   @override
   String toString() => 'PredictionConnectionFailure.alreadyConnected';
 }
 
-final class _PredictionOneDirectionalFailure
+final class PredictionOneDirectionalFailure
     extends PredictionConnectionFailure {
-  const _PredictionOneDirectionalFailure();
-  @override
-  String get userFacingMessage =>
-      'You cannot share and view predictions with the same person at the '
-      'same time.';
+  const PredictionOneDirectionalFailure();
   @override
   String toString() => 'PredictionConnectionFailure.oneDirectional';
 }
@@ -307,21 +278,15 @@ final class _PredictionOneDirectionalFailure
 /// Issue #373: PRIVACY.md's "minor profiles are never shared" rule, which
 /// the server enforces at create AND at accept (`is_minor` can change
 /// between arming a code and its redemption, like the life-stage mode).
-final class _PredictionMinorProfileFailure
+final class PredictionMinorProfileFailure
     extends PredictionConnectionFailure {
-  const _PredictionMinorProfileFailure();
-  @override
-  String get userFacingMessage =>
-      "Prediction sharing is not available for a minor's profile.";
+  const PredictionMinorProfileFailure();
   @override
   String toString() => 'PredictionConnectionFailure.minorProfile';
 }
 
-final class _PredictionOtherFailure extends PredictionConnectionFailure {
-  const _PredictionOtherFailure();
-  @override
-  String get userFacingMessage =>
-      'Something went wrong. Please try again.';
+final class PredictionOtherFailure extends PredictionConnectionFailure {
+  const PredictionOtherFailure();
   @override
   String toString() => 'PredictionConnectionFailure.other';
 }
@@ -348,6 +313,14 @@ abstract interface class PredictionConnectionService {
   /// guardian may call it; idempotent; the recipient's next fetch already
   /// returns nothing.
   Future<void> revokeConnection({required String connectionId});
+
+  /// Ends the connection from the RECIPIENT's side (issue #462): only the
+  /// connection's own accepted recipient may call this successfully — the
+  /// sharer, a guardian, or an unrelated account is refused. Idempotent;
+  /// reaches the identical terminal state and projection cleanup as
+  /// [revokeConnection], so the sharer's device sees the connection end the
+  /// same way either side ending it looks.
+  Future<void> leaveConnection({required String connectionId});
 
   /// The sharer's live (pending or active) connection for [profileId], or
   /// null. Read on demand from the server — never synced locally.
@@ -377,4 +350,16 @@ abstract interface class PredictionConnectionService {
     required String profileId,
     required PredictionProjection projection,
   });
+
+  /// Deletes [profileId]'s stored projection, if any (issue LLA-061): a
+  /// suppression transition (Pregnancy/Postpartum/Perimenopause, a
+  /// continuous birth-control method, or predictions turned off) leaves
+  /// no live estimate to publish, but the connection itself is still
+  /// active — unlike revocation or the minor gate, nothing server-side
+  /// automatically clears a stored snapshot in this case, so the
+  /// publisher calls this explicitly the moment it observes the
+  /// transition, rather than leaving a previously published snapshot
+  /// readable indefinitely. Idempotent: retracting an already-empty
+  /// projection is a no-op, not an error.
+  Future<void> retractProjection({required String profileId});
 }

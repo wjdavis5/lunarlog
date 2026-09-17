@@ -17,6 +17,8 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/domain/logging/tracking_preferences.dart';
+import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
 
 import '../support/fake_settings_store.dart';
@@ -37,11 +39,18 @@ class FakeProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       throw UnimplementedError();
 
   @override
   Future<void> delete(String id) => throw UnimplementedError();
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      throw UnimplementedError();
 
   @override
   Future<Profile?> findById(String id) async {
@@ -63,6 +72,9 @@ class FakeProfilesRepository implements ProfilesRepository {
 
   @override
   Stream<List<Profile>> watch() => Stream.value(profiles);
+
+  @override
+  Future<void> applyServerPurge(String id) => throw UnimplementedError();
 }
 
 /// A repository whose `list()` always throws — exercises `_load()`'s
@@ -80,11 +92,18 @@ class ThrowingProfilesRepository implements ProfilesRepository {
     LocalDate? lastPeriodStart,
     int? typicalCycleLengthDays,
     int? typicalPeriodLengthDays,
+    BbtUnit bbtUnit = BbtUnit.celsius,
+    WeightUnit weightUnit = WeightUnit.kg,
   }) =>
       throw UnimplementedError();
 
   @override
   Future<void> delete(String id) => throw UnimplementedError();
+
+  @override
+  Future<Profile?> setTrackingPreferences(
+          String id, TrackingPreferences? preferences) =>
+      throw UnimplementedError();
 
   @override
   Future<Profile?> findById(String id) => throw UnimplementedError();
@@ -102,6 +121,9 @@ class ThrowingProfilesRepository implements ProfilesRepository {
 
   @override
   Stream<List<Profile>> watch() => throw UnimplementedError();
+
+  @override
+  Future<void> applyServerPurge(String id) => throw UnimplementedError();
 }
 
 /// A binding whose `canBind` always allows but whose `bind` always denies
@@ -187,6 +209,12 @@ void main() {
     String? signedInUserId = 'u1',
     ProfilesRepository? profilesRepository,
   }) async {
+    // Issue #186 added revocation/30-day-limit copy above the profile
+    // picker, so give the lazy ListView a tall viewport to keep every
+    // profile tile and the unbind action inside the build window.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
         home: HealthSyncScreen(

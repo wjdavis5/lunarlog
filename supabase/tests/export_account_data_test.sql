@@ -3,7 +3,7 @@
 -- create_supabase_user / authenticate_as handshake and the pg_temp snapshot
 -- idiom already established in account_deletion_test.sql.
 begin;
-select plan(73);
+select plan(80);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -111,8 +111,12 @@ select tests.clear_authentication();
 -- ---------------------------------------------------------------------------
 
 select tests.authenticate_as('user_a');
-insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, relationship, created_at, updated_at)
-values (tests.ulid(1), 'Riley A', true, 0, 2015, 'daughter', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+-- Issue #648: a curated tracking_preferences document on the owned profile
+-- exercises the new export projection line end to end.
+insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, relationship, tracking_preferences, created_at, updated_at)
+values (tests.ulid(1), 'Riley A', true, 0, 2015, 'daughter',
+        '{"mood": {"enabled": false, "sort_order": 1}}'::jsonb,
+        '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
 
 select public.create_guardian_invitation(
   tests.ulid(1), 'co_parent', 'B',
@@ -128,14 +132,18 @@ select public.accept_guardian_invitation(
 -- profile - the exact "entries they authored" case the shared-profile
 -- scoping must isolate.
 select tests.authenticate_as('user_a');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(10), tests.ulid(1), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_a'));
+select set_config('role', 'authenticated', true);
 
 select tests.authenticate_as('user_b');
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(11), tests.ulid(1), '2026-09-02', 'UTC', 'medium', '2026-09-02T00:00:00Z',
         tests.get_supabase_uid('user_b'), tests.get_supabase_uid('user_b'));
+select set_config('role', 'authenticated', true);
 
 -- B (co_parent) may invite a caregiver/viewer (R3) - a second, distinct
 -- inviter on the same profile, exercising the "invitations the caller
@@ -157,9 +165,17 @@ values (tests.get_supabase_uid('user_a'), tests.ulid(1), true, 2);
 insert into public.push_devices (id, user_id, token, platform)
 values ('00000000-0000-0000-0000-0000000000a1'::uuid, tests.get_supabase_uid('user_a'), 'token-family-a-AAAA1111', 'ios');
 
+-- Issue #292: A's own settings row. Same key ('theme') as B's row below,
+-- different value -- proves the per-user scoping distinguishes rows by
+-- (user_id, key), not just by key.
+insert into public.settings (key, value) values ('theme', 'dark');
+
 select tests.authenticate_as('user_b');
 insert into public.push_devices (id, user_id, token, platform)
 values ('00000000-0000-0000-0000-0000000000b1'::uuid, tests.get_supabase_uid('user_b'), 'token-family-b-BBBB2222', 'android');
+
+-- Issue #292: B's own settings row, same key as A's, different value.
+insert into public.settings (key, value) values ('theme', 'light');
 
 -- Issue #167: B (co_parent, non-owner) creates their own import job on the
 -- shared profile - proves the "caller personally ran" half of import_jobs'
@@ -228,9 +244,11 @@ select public.accept_guardian_invitation(
   'd0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0', 'D'
 );
 
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(20), tests.ulid(2), '2026-09-01', 'UTC', 'heavy', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_d'), tests.get_supabase_uid('user_d'));
+select set_config('role', 'authenticated', true);
 
 insert into public.notification_preferences (user_id, profile_id, alert_on_log, missed_entry_days)
 values (tests.get_supabase_uid('user_d'), tests.ulid(2), true, 3);
@@ -244,6 +262,10 @@ values (tests.get_supabase_uid('user_c'), tests.ulid(2), true, 3);
 
 insert into public.push_devices (id, user_id, token, platform)
 values ('00000000-0000-0000-0000-0000000000c1'::uuid, tests.get_supabase_uid('user_c'), 'token-family-c-CCCC8888', 'ios');
+
+-- Issue #292: C's own settings row -- must never leak into A's or B's
+-- export (isolation target, mirroring every other table's own fixture).
+insert into public.settings (key, value) values ('secret', 'family-c-secret-value');
 
 select public.upsert_reminder_window(tests.ulid(2), '2026-09-20', false);
 
@@ -282,7 +304,9 @@ select is(
   (select array_agg(k order by k) from jsonb_object_keys(pg_temp.snap('a_result')) k),
   array['exported_at', 'feedback_tickets', 'guardian_invitations', 'import_jobs',
         'missed_entry_alert_state', 'notification_preferences', 'ownership_transfers',
-        'profile_guardians', 'profile_reminder_windows', 'profiles', 'push_devices', 'schema_version'],
+        'profile_guardians', 'profile_reminder_windows', 'profiles', 'push_devices',
+        -- Issue #292: settings joins the document.
+        'schema_version', 'settings'],
   'A: export document has exactly the expected top-level keys'
 );
 
@@ -293,6 +317,12 @@ select is(
   pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1)) ->> 'owned',
   'true',
   'A: owned profile is marked owned = true'
+);
+
+select is(
+  pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1)) -> 'tracking_preferences',
+  '{"mood": {"enabled": false, "sort_order": 1}}'::jsonb,
+  'A: owned profile carries its curated tracking_preferences document (Issue #648)'
 );
 
 select is(
@@ -394,6 +424,22 @@ select is(
      from jsonb_array_elements(pg_temp.snap('a_result') -> 'import_jobs')),
   pg_temp.sorted_uuids(tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_b')),
   'A: the two import_jobs rows were created by A and B, never C'
+);
+
+-- Issue #292: settings is scoped to the caller's own rows only.
+select is(pg_temp.count_in(pg_temp.snap('a_result'), 'settings'), 1::bigint,
+  'A: settings includes only A''s own row, never B''s (same key, different value)');
+
+select is(
+  (pg_temp.snap('a_result') -> 'settings') -> 0,
+  jsonb_build_object('key', 'theme', 'value', 'dark',
+    'updated_at', ((pg_temp.snap('a_result') -> 'settings') -> 0 ->> 'updated_at')),
+  'A: the one settings row is A''s own (key=theme, value=dark, not B''s light)'
+);
+
+select ok(
+  position('family-c-secret-value' in pg_temp.snap('a_result')::text) = 0,
+  'A: export contains none of family C''s settings value anywhere'
 );
 
 select ok(
@@ -503,6 +549,17 @@ select is(
   'B: the one import_jobs row was created by B, never A''s'
 );
 
+-- Issue #292: same scoping check from B's side -- proves the boundary
+-- runs both ways, not just A's.
+select is(pg_temp.count_in(pg_temp.snap('b_result'), 'settings'), 1::bigint,
+  'B: settings includes only B''s own row, never A''s (same key, different value)');
+
+select is(
+  ((pg_temp.snap('b_result') -> 'settings') -> 0 ->> 'value'),
+  'light',
+  'B: the one settings row is B''s own (value=light, not A''s dark)'
+);
+
 select ok(
   not jsonb_path_exists(pg_temp.snap('b_result'), '$.**.token_hash'),
   'B: no token_hash anywhere in the export document'
@@ -548,6 +605,7 @@ values (tests.ulid(3), 'Riley E', false, 0, '2026-09-01T00:00:00Z', '2026-09-01T
 
 -- E's own caregiver-authored entry on C's shared profile - must survive
 -- scoping alongside C's and D's entries (ulid(20)), which must not.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(21), tests.ulid(2), '2026-09-03', 'UTC', 'spotting', '2026-09-03T00:00:00Z',
         tests.get_supabase_uid('user_e'), tests.get_supabase_uid('user_e'));
@@ -556,6 +614,7 @@ values (tests.ulid(21), tests.ulid(2), '2026-09-03', 'UTC', 'spotting', '2026-09
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(30), tests.ulid(3), '2026-09-01', 'UTC', 'light', '2026-09-01T00:00:00Z',
         tests.get_supabase_uid('user_e'), tests.get_supabase_uid('user_e'));
+select set_config('role', 'authenticated', true);
 
 -- Distinct value from both C's (3) and D's (3) rows on the same profile so
 -- "whose row is this" stays provable by content.
@@ -659,6 +718,42 @@ select ok(
 );
 
 select tests.clear_authentication();
+
+-- ---------------------------------------------------------------------------
+-- 8. Issue #292 guard: every public table with a user_id column is either
+--    covered by export_account_data() above, or explicitly excluded here
+--    with a documented reason -- so a future user-keyed table cannot
+--    silently fall outside the right-of-access document. A new table with
+--    a user_id column fails this test the moment it appears, until it is
+--    triaged into export_account_data() (and this file) or added below
+--    with a reason.
+-- ---------------------------------------------------------------------------
+select set_eq(
+  $$ select table_name from information_schema.columns
+      where table_schema = 'public' and column_name = 'user_id' $$,
+  $$ values
+      -- Exported (each has its own projection in export_account_data(),
+      -- exercised by this file's own assertions above):
+      ('profiles'), ('day_entries'), ('settings'),
+      ('profile_guardians'), ('notification_preferences'),
+      ('push_devices'), ('missed_entry_alert_state'), ('feedback_tickets'),
+      -- Excluded, with a documented reason (never exported):
+      -- account_deletion_progress: transient deletion-attempt bookkeeping
+      -- written only by the delete-account Edge Function's service-role
+      -- client (20260913021000_account_deletion_progress.sql); it
+      -- cascades away with auth.users on success, and a never-retried
+      -- failed attempt holds nothing beyond a revoke timestamp for an
+      -- in-flight deletion -- not user content.
+      ('account_deletion_progress'),
+      -- guardian_invitation_preview_attempts: write-only rate-limit
+      -- bookkeeping (Issue #594, 20260915060000_guardian_invitation_preview.sql)
+      -- with no authenticated/anon grant at all -- not even the owning
+      -- user can select it, so it cannot appear in a right-of-access
+      -- document regardless.
+      ('guardian_invitation_preview_attempts')
+  $$,
+  'every public table with a user_id column is accounted for above: exported by export_account_data(), or excluded here with a reason (Issue #292)'
+);
 
 select * from finish();
 rollback;

@@ -1,12 +1,26 @@
 name: CI failure watch
 
-# Files or updates one prioritized issue whenever `CI` fails on `main`, so a red
-# main is never silent even when no Claude Code session is running. Triage and
-# fix happen through the normal issue pipeline.
+# Files or updates one prioritized issue whenever a watched workflow fails on
+# `main`, so a red main -- or a silently-broken release/ops pipeline -- is
+# never silent even when no Claude Code session is running. Triage and fix
+# happen through the normal issue pipeline.
+#
+# Issue #537: this used to watch only "CI". supabase-migrate.yml,
+# supabase-reconcile.yml, ios-release.yml, and play-store-release.yml failing
+# on main produced no issue and no notification -- the direct cause of a
+# 43-run supabase-migrate failure streak (issue #513) going unnoticed for the
+# workflow's entire life. ci_watch.py now labels and titles by the failing
+# workflow's own name so ops/release failures triage separately from app CI
+# (see its `labels_for`/`issue_title`).
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows:
+      - "CI"
+      - "Supabase migrate"
+      - "Supabase Realtime reconciliation"
+      - "iOS Release"
+      - "Play Store Release"
     types: [completed]
     branches: [main]
 
@@ -29,4 +43,13 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          # LLA-114: the `branches: [main]` filter above matches on
+          # head_branch alone, which a fork controls (its own default
+          # branch is usually also named "main") -- ci_watch.py's
+          # is_trusted_source re-validates that this run's code actually
+          # came from this repository's own main, not a fork's
+          # identically-named branch, before ever filing an issue.
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: python3 tool/orchestrator/ci_watch.py

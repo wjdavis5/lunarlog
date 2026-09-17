@@ -31,20 +31,21 @@ import '../../config.dart';
 import '../../domain/health/health_sync_binding.dart';
 import '../../domain/health/health_sync_policy.dart';
 import '../../domain/models/profile.dart';
-import '../../domain/models/profile_guardian.dart';
+import '../../domain/repositories/profile_guardians_repository.dart'
+    show GuardiansForProfile;
 import '../../domain/repositories/profiles_repository.dart';
 import '../../observability/route_names.dart';
 
-/// Resolves the guardian rows for one profile, mapped to the domain model.
-/// Production wiring passes `ProfileGuardiansRepository.getForProfile`
-/// directly (a plain method tear-off satisfies this exactly); this is a
-/// bare function type rather than the concrete repository so the widget
-/// can be tested with a simple fake, no database required (R14/R16 —
-/// storage types never cross into `lib/ui/`; this goes one step further
-/// and drops the repository *class* dependency too, since nothing here
-/// needs anything else it exposes).
-typedef GuardiansForProfile = Future<List<ProfileGuardian>> Function(
-    String profileId);
+// [GuardiansForProfile] (issue #575: declared once, next to
+// ProfileGuardiansRepository, rather than redeclared in every one of its
+// four call sites) resolves the guardian rows for one profile, mapped to
+// the domain model. Production wiring passes
+// `ProfileGuardiansRepository.getForProfile` directly (a plain method
+// tear-off satisfies this exactly); this is a bare function type rather
+// than the concrete repository so the widget can be tested with a simple
+// fake, no database required (R14/R16 — storage types never cross into
+// `lib/ui/`; this goes one step further and drops the repository *class*
+// dependency too, since nothing here needs anything else it exposes).
 
 class HealthSyncScreen extends StatefulWidget {
   const HealthSyncScreen({
@@ -291,6 +292,33 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               'Spotting logged inside a period is written as Light '
               'bleeding; spotting between periods is written as '
               'intermenstrual bleeding.',
+            ),
+          ),
+          // Issue #186 (AC7): what happens on revocation/unmapping. Stopping
+          // sync or revoking this phone's Health app permission never deletes
+          // what was already written — the samples stay in the Health app,
+          // which may consider them theirs.
+          const Padding(
+            key: ValueKey('health-sync-revocation-copy'),
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Turning sync off, or later revoking this phone\'s Health app '
+              'permission, leaves everything already written in the Health '
+              'app in place. To remove it, delete it in the Health app '
+              'itself.',
+            ),
+          ),
+          // Issue #186 (AC9): the v1 scope decision, stated plainly.
+          // History import reads only the last 30 days (Health Connect's
+          // token window); full-history import (READ_HEALTH_DATA_HISTORY)
+          // and background sync (READ_HEALTH_DATA_IN_BACKGROUND) are
+          // deliberately deferred for v1.
+          const Padding(
+            key: ValueKey('health-sync-30-day-limit-copy'),
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Health Connect reads sync the last 30 days only. Full history '
+              'import and background sync are not available yet.',
             ),
           ),
           for (final profile in _profiles) _profileTile(profile),

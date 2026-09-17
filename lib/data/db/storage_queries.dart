@@ -16,6 +16,11 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorCycleOverrides: 0,
   cursorCareNotes: 0,
   cursorVisitPrepItems: 0,
+  cursorProfileGuardians: 0,
+  cursorDeletedProfiles: 0,
+  cursorDayEntryMergeEvents: 0,
+  cursorProfileTagRegistry: 0,
+  cursorDayEntryHistory: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
@@ -70,6 +75,38 @@ mixin LunarLogStorageQueries {
     ).get();
   }
 
+  /// Whether [profileId] has any live day entry at all (issue #549):
+  /// `SELECT ... LIMIT 1` over just the id column, short-circuiting on the
+  /// first row via `ix_day_entries_profile_date` rather than decoding the
+  /// full history the way `getDayEntries(...).isNotEmpty` would. Existing
+  /// callers that only needed a non-emptiness check (the export tiles) were
+  /// paying for a full profile read on every `profiles` stream tick.
+  Future<bool> hasAnyEntries(String profileId) async {
+    final row = await (db.selectOnly(db.dayEntries)
+          ..addColumns([db.dayEntries.id])
+          ..where(db.dayEntries.profileId.equals(profileId) &
+              db.dayEntries.deletedAt.isNull())
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  /// Reactive variant of [hasAnyEntries] (issue #642, LLA-010): the same
+  /// bounded `LIMIT 1` existence check, re-run on every write or tombstone
+  /// affecting [profileId]'s day entries via Drift's own query-invalidation
+  /// (table-level, like every other `.watch()` in this file) rather than by
+  /// piggy-backing on some other table's stream re-emitting. Never emits the
+  /// entries themselves — only whether the row exists — so it stays cheap
+  /// however large the profile's history grows.
+  Stream<bool> watchHasAnyEntries(String profileId) {
+    final query = db.selectOnly(db.dayEntries)
+      ..addColumns([db.dayEntries.id])
+      ..where(db.dayEntries.profileId.equals(profileId) &
+          db.dayEntries.deletedAt.isNull())
+      ..limit(1);
+    return query.watchSingleOrNull().map((row) => row != null);
+  }
+
   /// The live day entry for (profileId, localDate), or null when that date
   /// holds no entry — including when its only row is a tombstone, which
   /// [getDayEntries] excludes for UI reads too. Scoped to the one
@@ -91,6 +128,24 @@ mixin LunarLogStorageQueries {
     ).get();
     return rows.isEmpty ? null : rows.first;
   }
+
+  /// The day entry row for [id], live or tombstoned, or null if no such row
+  /// exists. Issue #549: the single-row lookup
+  /// `DriftObservationsRepository.listForDayEntryWithLegacyAlias` uses to
+  /// check whether a specific day entry needs its `flow = 'spotting'` alias
+  /// observation synthesised, without a full-profile scan.
+  Future<DayEntry?> getDayEntryById(String id) => _dayEntryOrNull(id);
+
+  /// The observation row for [id], live or tombstoned (any profile), or
+  /// null if no such row exists. Issue #140 review, LLA-086: the
+  /// importer's own id-conflict check — reusing an imported file's own
+  /// observation id for a fresh `add` is only safe when nothing already
+  /// occupies it, never just because `planImport`'s semantic (profileId,
+  /// localDate, category, code) key found no collision (a stored
+  /// observation's category/code can change since an earlier backup was
+  /// taken, sharing no semantic key with the file's row despite sharing
+  /// its raw id).
+  Future<Observation?> getObservationById(String id) => _observationOrNull(id);
 
   /// The day entry (live OR tombstoned) for (profileId, source, sourceId),
   /// or null when none exists — Issue #140 review, item 5: an importer must
@@ -216,6 +271,25 @@ mixin LunarLogStorageQueries {
     return query.get();
   }
 
+  /// Stream variant of [getObservationsForProfile] (Issue #619, LLA-020):
+  /// the health tombstone coordinator needs `includeTombstones: true` to
+  /// see a spotting observation's own deletion — cascade or direct —
+  /// which [watchObservationsForDayEntry]'s per-entry scope and the
+  /// default tombstone filter both hide from UI reads.
+  Stream<List<Observation>> watchObservationsForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    final query = db.select(db.observations)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        return condition;
+      })
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.watch();
+  }
+
   /// The profile's mode row, or null when none was ever written (which
   /// means `tracking` — the lazy-default contract; callers fall back to
   /// [LifecycleMode.tracking] rather than storing a default row).
@@ -227,6 +301,19 @@ mixin LunarLogStorageQueries {
       (db.select(db.profileModes)
             ..where((t) => t.profileId.equals(profileId)))
           .watchSingleOrNull();
+
+  /// The cycle override row for the composite key (Issue #140 review,
+  /// LLA-084: the importer's own id-conflict check, mirroring
+  /// [getObservationById]'s role for observations) — [id]/[profileId], live
+  /// or tombstoned, or null if no such row exists. `cycle_overrides` keys
+  /// by `(id, profile_id)` (not `id` alone, unlike day_entries/
+  /// observations), so reusing the file's own id for a NEW override under
+  /// this exact profile is only unsafe when this composite pair already
+  /// exists — a different profile holding the same raw id is a distinct
+  /// row by construction, not a conflict.
+  Future<CycleOverrideData?> getCycleOverrideById(
+          String id, String profileId) =>
+      _cycleOverrideOrNull(id, profileId);
 
   /// A profile's manual cycle corrections — UI reads (default) filter
   /// tombstones; `includeTombstones: true` gives full-fidelity reads for
@@ -426,7 +513,172 @@ mixin LunarLogStorageQueries {
     return query.get();
   }
 
-  /// Number of rows, live and tombstoned, in every synced table that still
+  /// Merge events with unpushed local changes, ordered by id (Issue #130;
+  /// no tombstone on this table). Same keyset-paging contract as
+  /// [readDirtyProfiles].
+  Future<List<DayEntryMergeEventData>> readDirtyDayEntryMergeEvents(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// The recorded merge disclosures for (profile, date), ordered by id
+  /// (Issue #130) — the day sheet's notice read. Filtered to the same
+  /// 30-day recovery window the server's `enforce_retention()` purge
+  /// enforces (`kDayEntryMergeEventRetention`), so a locally-held event
+  /// stops rendering in lockstep with the server-side purge and the notice
+  /// never outlives its documented retention on either side.
+  Future<List<DayEntryMergeEventData>> getDayEntryMergeEventsForDay(
+    String profileId,
+    String localDate, {
+    DateTime? now,
+  }) {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryMergeEventRetention);
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.localDate.equals(localDate) &
+          t.createdAt.isBiggerThanValue(windowStart))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
+  }
+
+  /// Every recorded merge disclosure for the profile, ordered by id
+  /// (Issue #130) — the local JSON export's read. The SAME 30-day window
+  /// filter as [getDayEntryMergeEventsForDay]: the export must not carry
+  /// retained losing text the server has already purged (and the day sheet
+  /// has already stopped showing), or the file would silently extend the
+  /// documented retention. NOT filtered on dismissals — a dismissed notice
+  /// is a per-device display choice, not a deletion of the record.
+  Future<List<DayEntryMergeEventData>> getDayEntryMergeEventsForProfile(
+    String profileId, {
+    DateTime? now,
+  }) {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryMergeEventRetention);
+    final query = db.select(db.dayEntryMergeEvents)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.createdAt.isBiggerThanValue(windowStart))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    return query.get();
+  }
+
+  /// Merge event by id or null (Issue #130) — the live fallback behind
+  /// `storage_remote_apply.dart`'s cached own-row lookup (Issue #42's
+  /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
+  Future<DayEntryMergeEventData?> _dayEntryMergeEventOrNull(String id) =>
+      (db.select(db.dayEntryMergeEvents)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// The change-history feed read (Issue #170): every history row for one
+  /// profile, newest first, filtered to the same 90-day window the
+  /// server's `enforce_retention()` purge enforces
+  /// ([kDayEntryHistoryRetention]) so a locally-held row stops rendering
+  /// in lockstep with the server-side purge and the feed never outlives
+  /// its documented retention on either side. #124's activity feed is the
+  /// future consumer; this seam exists so the pulled rows are readable
+  /// (and testable) today.
+  Future<List<DayEntryHistoryChange>> getDayEntryHistoryForProfile(
+    String profileId, {
+    DateTime? now,
+    int? limit,
+  }) async {
+    final windowStart =
+        (now ?? DateTime.now().toUtc()).subtract(kDayEntryHistoryRetention);
+    final query = db.select(db.dayEntryHistory)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.changedAt.isBiggerThanValue(windowStart))
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.changedAt, mode: OrderingMode.desc)
+      ]);
+    if (limit != null) query.limit(limit);
+    final rows = await query.get();
+    return [
+      for (final row in rows)
+        DayEntryHistoryChange(
+          id: row.id,
+          entryId: row.entryId,
+          profileId: row.profileId,
+          changedByUserId: row.changedByUserId,
+          changedAt: row.changedAt,
+          kind: DayEntryChangeKind.fromDb(row.changeKind),
+          changedFields: row.changedFields,
+        ),
+    ];
+  }
+
+  /// Change-history row by id or null (Issue #170) — the live fallback
+  /// behind `storage_remote_apply.dart`'s cached own-row lookup (Issue
+  /// #42's `_lookupCached` pattern, same shape as
+  /// `_dayEntryMergeEventOrNull`).
+  Future<DayEntryHistoryData?> _dayEntryHistoryOrNull(String id) =>
+      (db.select(db.dayEntryHistory)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// Registry entries with unpushed local changes, ordered by id (Issue
+  /// #257). Same keyset-paging contract as [readDirtyProfiles].
+  Future<List<ProfileTagRegistryEntry>> readDirtyProfileTagRegistry(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// The profile's LIVE registry entries (tombstoned rows excluded),
+  /// retired entries included — retirement is a picker concern, not a read
+  /// filter (a retired tag still resolves stored codes to display names).
+  /// Ordered by code for a stable list (Issue #257).
+  Future<List<ProfileTagRegistryEntry>> getProfileTagRegistry(
+      String profileId) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.profileId.equals(profileId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.code)]);
+    return query.get();
+  }
+
+  /// Stream variant of [getProfileTagRegistry] for reactive UI (Issue
+  /// #257) — the day sheet re-renders when a co-guardian's registry write
+  /// syncs in.
+  Stream<List<ProfileTagRegistryEntry>> watchProfileTagRegistry(
+      String profileId) {
+    final query = db.select(db.profileTagRegistry)
+      ..where((t) =>
+          t.profileId.equals(profileId) & t.deletedAt.isNull())
+      ..orderBy([(t) => OrderingTerm(expression: t.code)]);
+    return query.watch();
+  }
+
+  /// Registry entry by id or null (Issue #257) — the live fallback behind
+  /// `storage_remote_apply.dart`'s cached own-row lookup (Issue #42's
+  /// `_lookupCached` pattern, same shape as `_careNoteOrNull`).
+  Future<ProfileTagRegistryEntry?> _profileTagRegistryOrNull(String id) =>
+      (db.select(db.profileTagRegistry)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// Registry entry by id, tombstones included (Issue #257) — the
+  /// repository's rename path reads the row this way to learn its
+  /// profileId and immutable code without a second query surface.
+  Future<ProfileTagRegistryEntry?> getProfileTagRegistryEntriesById(
+          String id) =>
+      (db.select(db.profileTagRegistry)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();  /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
     final p = await _count(db.profiles, db.profiles.id,
@@ -443,7 +695,11 @@ mixin LunarLogStorageQueries {
         db.careNotes, db.careNotes.id, db.careNotes.dirty.equals(true));
     final vp = await _count(db.visitPrepItems, db.visitPrepItems.id,
         db.visitPrepItems.dirty.equals(true));
-    return p + d + o + pm + co + cn + vp;
+    final me = await _count(db.dayEntryMergeEvents, db.dayEntryMergeEvents.id,
+        db.dayEntryMergeEvents.dirty.equals(true));
+    final tr = await _count(db.profileTagRegistry, db.profileTagRegistry.id,
+        db.profileTagRegistry.dirty.equals(true));
+    return p + d + o + pm + co + cn + vp + me + tr;
   }
 
   /// Row counts, live and tombstoned, of the two synced tables the upload-
@@ -482,6 +738,15 @@ mixin LunarLogStorageQueries {
     final row = await (db.select(db.syncState)..where((t) => t.id.equals(1)))
         .getSingleOrNull();
     return row ?? kDefaultSyncState;
+  }
+
+  /// The device-local `health_sync_state` anchor for [platform], or null
+  /// when never written (Issue #186 — never synced to the server).
+  Future<HealthSyncStateRow?> readHealthSyncAnchor(String platform) async {
+    final row = await (db.select(db.healthSyncState)
+          ..where((t) => t.platform.equals(platform)))
+        .getSingleOrNull();
+    return row;
   }
 
   Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>
@@ -588,6 +853,13 @@ mixin LunarLogStorageQueries {
       (db.select(db.dayEntries)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
+  /// Issue #42: the per-row live fallback behind
+  /// `LunarLogStorageRemoteApply`'s batched guardians prefetch — the exact
+  /// select `_applyProfileGuardian` used to issue inline.
+  Future<ProfileGuardianData?> _guardianOrNull(String id) => (db.select(
+    db.profileGuardians,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
   Future<Profile?> _profileOrNull(String id) =>
       (db.select(db.profiles)..where((t) => t.id.equals(id))).getSingleOrNull();
 
@@ -622,6 +894,14 @@ mixin LunarLogStorageQueries {
       (db.select(db.cycleOverrides)
             ..where((t) => t.id.equals(id) & t.profileId.equals(profileId)))
           .getSingleOrNull();
+
+  /// Issue #42: the single-argument live fallback behind the batched
+  /// cycle-overrides prefetch — ids are client ULIDs, globally unique in
+  /// practice (the same id-alone-identifies-the-row precedent `markPushed`
+  /// uses), so the id alone reaches at most one row.
+  Future<CycleOverrideData?> _cycleOverrideOrNullById(String id) => (db.select(
+    db.cycleOverrides,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<CycleOverrideData> _cycleOverrideById(
       String id, String profileId) async {

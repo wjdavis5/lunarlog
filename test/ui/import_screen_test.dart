@@ -17,6 +17,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -191,7 +192,7 @@ void main() {
 
     testWidgets('malformed bytes show a clear parse error and never call '
         'the coordinator', (tester) async {
-      var buildPlanCalls = 0;
+      const buildPlanCalls = 0;
       await _pump(
         tester,
         pickFile:
@@ -240,6 +241,29 @@ void main() {
           matching: find.byType(Text),
         )).data,
         kImportApplyFailureCopy,
+      );
+    });
+
+    testWidgets(
+        'an oversized-file rejection from the picker (Issue #626, LLA-089) '
+        'surfaces the same friendly copy parseAccountImport itself would '
+        "have shown — not the generic picker-failure copy above, and not an "
+        'unhandled exception', (tester) async {
+      await _pump(
+        tester,
+        pickFile: _FakeReader(
+            () async => throw const ImportFileTooLargeException()),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+
+      expect(key('import-pick-error'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.descendant(
+          of: key('import-pick-error'),
+          matching: find.byType(Text),
+        )).data,
+        const ImportFileTooLargeException().message,
       );
     });
   });
@@ -358,6 +382,41 @@ void main() {
         kImportApplyFailureCopy,
       );
       expect(key('import-result-summary'), findsNothing);
+    });
+
+    testWidgets(
+        'a stale-plan apply resets all the way to the pick step with its '
+        'own copy, not the generic apply-failure one (Issue #140 review, '
+        'LLA-085)', (tester) async {
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => _validBytes()),
+        coordinator: _FakeCoordinator(
+          storage,
+          planResult: _plan(),
+          applyError: const StaleImportPlanException(),
+        ),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      expect(key('import-preview-summary'), findsOneWidget);
+
+      await tester.tap(key('import-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      // Back on the pick step entirely, not left on preview with an inline
+      // error (a rebuilt plan needs a fresh pick+parse+plan, not a retry of
+      // apply against the same now-known-stale plan).
+      expect(key('import-pick-button'), findsOneWidget);
+      expect(key('import-preview-summary'), findsNothing);
+      expect(key('import-pick-error'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.descendant(
+          of: key('import-pick-error'),
+          matching: find.byType(Text),
+        )).data,
+        kImportStalePlanCopy,
+      );
     });
   });
 

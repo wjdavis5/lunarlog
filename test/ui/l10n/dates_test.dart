@@ -8,6 +8,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart'
     show kFirstDayOfWeek, leadingBlanksFor, weekdayHeaderLabels;
@@ -19,6 +20,13 @@ void main() {
       expect(formatMonthDay(DateTime(2026, 8, 30)), 'August 30');
       expect(formatShortDayDate(DateTime(2026, 9, 8)), 'Tue 8 Sep');
       expect(formatWeekdayDayDateYear(DateTime(2026, 9, 8)), 'Tue 8 Sep 2026');
+    });
+
+    test(
+        'formatShortDate is locale-aware numeric, replacing the '
+        'hand-rolled YYYY-MM-DD several screens used to assemble '
+        '(issue #554)', () {
+      expect(formatShortDate(DateTime(2026, 9, 5)), '9/5/2026');
     });
 
     test('relativeDayLabel: today/yesterday/tomorrow, full form otherwise',
@@ -167,6 +175,61 @@ void main() {
         ),
       );
       expect(resolved, kFallbackLocale);
+    });
+  });
+
+  group('Issue #226 date-format preference', () {
+    test('each preference pins its month/day pattern', () {
+      expect(
+          shortDayDatePattern(DateFormatPreference.system), 'EEE d MMM');
+      expect(
+          shortDayDatePattern(DateFormatPreference.dayMonth), 'EEE d MMM');
+      expect(
+          shortDayDatePattern(DateFormatPreference.monthDay), 'EEE MMM d');
+      expect(weekdayDayDateYearPattern(DateFormatPreference.system),
+          'EEE d MMM y');
+      expect(weekdayDayDateYearPattern(DateFormatPreference.monthDay),
+          'EEE MMM d y');
+    });
+
+    test('formatShortDayDate reorders per preference', () {
+      final date = DateTime(2026, 9, 8);
+      expect(formatShortDayDate(date), 'Tue 8 Sep');
+      expect(
+        formatShortDayDate(date, preference: DateFormatPreference.dayMonth),
+        'Tue 8 Sep',
+      );
+      expect(
+        formatShortDayDate(date, preference: DateFormatPreference.monthDay),
+        'Tue Sep 8',
+      );
+    });
+
+    test('formatWeekdayDayDateYear reorders per preference', () {
+      final date = DateTime(2026, 9, 8);
+      expect(formatWeekdayDayDateYear(date), 'Tue 8 Sep 2026');
+      expect(
+        formatWeekdayDayDateYear(
+          date,
+          preference: DateFormatPreference.monthDay,
+        ),
+        'Tue Sep 8 2026',
+      );
+    });
+
+    test('relativeDayLabel forwards the preference into both absolute forms',
+        () {
+      final today = DateTime(2026, 9, 8);
+      expect(
+        relativeDayLabel(today, today,
+            preference: DateFormatPreference.monthDay),
+        'Today · Tue Sep 8',
+      );
+      expect(
+        relativeDayLabel(DateTime(2026, 9, 5), today,
+            preference: DateFormatPreference.monthDay),
+        'Sat Sep 5 2026',
+      );
     });
   });
 }

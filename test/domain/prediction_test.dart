@@ -86,6 +86,10 @@ void main() {
       expect(p.daysUntilNextStart, 21);
       expect(p.duringEpisode, isFalse);
       expect(p.isLate, isFalse);
+      expect(p.basis, PredictionBasis.statistical,
+          reason: 'Issue LLA-064: the ordinary history-averaged estimate '
+              'is an ovulatory-cycle assumption fertile-window consumers '
+              'are entitled to make');
     });
 
     test('cycle day 1 and "period" phase during the latest episode', () {
@@ -110,6 +114,55 @@ void main() {
       ) as ActivePrediction;
       expect(p.daysUntilNextStart, 1);
       expect(p.untilNextPeriodLabel, '≈1 day until next period');
+    });
+  });
+
+  group('future-dated episodes never anchor "today" (issue LLA-071)', () {
+    test(
+        'a future-dated stored episode (a restored export, a multi-timezone '
+        'edit, a clock rollback) is ignored for the current-cycle anchor and '
+        'every history stat — identical output to the same history without '
+        'it', () {
+      final withoutFuture = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 28), d(2026, 4, 1)]),
+        today: d(2026, 4, 10),
+      ) as ActivePrediction;
+
+      final withFuture = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 1, 1),
+          d(2026, 1, 29),
+          d(2026, 2, 28),
+          d(2026, 4, 1),
+          d(2026, 4, 26), // future relative to `today` below
+        ]),
+        today: d(2026, 4, 10),
+      ) as ActivePrediction;
+
+      expect(withFuture.lastEpisodeStart, withoutFuture.lastEpisodeStart);
+      expect(withFuture.cycleDay, withoutFuture.cycleDay);
+      expect(withFuture.cycleDay, greaterThan(0),
+          reason: 'the whole point: a future anchor used to produce a '
+              'zero or negative cycle day');
+      expect(
+          withFuture.completedCycleCount, withoutFuture.completedCycleCount);
+      expect(withFuture.estimatedNextStart, withoutFuture.estimatedNextStart);
+    });
+
+    test(
+        'every logged episode in the future (a wholesale clock rollback or a '
+        'restored future export) reads as NotEnoughHistory, never a negative '
+        'cycle day', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 5, 1), d(2026, 5, 29), d(2026, 6, 28), d(2026, 7, 26)]),
+        today: d(2026, 3, 20),
+      );
+      expect(result, isA<NotEnoughHistory>());
+      expect((result as NotEnoughHistory).episodeCount, 0,
+          reason: 'nothing has happened yet as of today, even though rows '
+              'are stored for a later date');
     });
   });
 
@@ -409,6 +462,10 @@ void main() {
           case ActivePrediction(:final phaseLabel, :final untilNextPeriodLabel):
             outputs.addAll([phaseLabel, untilNextPeriodLabel]);
           case NotEnoughHistory(:final statusLabel):
+            outputs.add(statusLabel);
+          case PredictionsSuppressed(:final statusLabel):
+            outputs.add(statusLabel);
+          case PredictionsDisabled(:final statusLabel):
             outputs.add(statusLabel);
         }
       }
@@ -884,7 +941,7 @@ void main() {
   group('forecast sequence (issue #213, item 4)', () {
     test('a steady, high-tier history (six 30-day cycles — a full '
         'kAverageWindowCycles window, issue #213 item 5) forecasts '
-        'kPredictionWindowCycles cycles, all at high tier, with a floored '
+        'through the 12-month horizon, all at high tier, with a floored '
         'spread that strictly widens', () {
       // Six identical 30-day cycles: p.spreadDays (the exact, unfloored
       // population std-dev) is 0 — but a zero *base* would leave every
@@ -892,10 +949,18 @@ void main() {
       // widening and never able to degrade the tier. The floor
       // (item 4: max(spreadDays, 1.0)) makes each forecast cycle's own
       // spread exactly sqrt(cycleIndex): strictly increasing, but here it
-      // never exceeds sqrt(kPredictionWindowCycles) = sqrt(12) ≈ 3.464 —
-      // comfortably under kIrregularSpreadThresholdDays (7) — so this
-      // particular (perfectly steady) profile's tier never crosses into a
-      // lower one, however far out the forecast goes.
+      // never exceeds sqrt(13) ≈ 3.606 — comfortably under
+      // kIrregularSpreadThresholdDays (7) — so this particular (perfectly
+      // steady) profile's tier never crosses into a lower one, however
+      // far out the forecast goes.
+      //
+      // Issue #693: the forecast is sized by horizon now, not by the old
+      // fixed kPredictionWindowCycles(12) count. today 2026-07-05 → the
+      // horizon ends 2027-07-31; the estimate is 2026-07-30 (last start
+      // 2026-06-30 + the 30-day mean) and starts chain in 30-day steps:
+      // 30*(i-1) ≤ 366 days of headroom → 13 cycles, the last starting
+      // 2026-07-30 + 12*30 = 2027-07-25 (a 14th would start 2027-08-24,
+      // past the horizon).
       final starts = [for (var i = 0; i < 7; i++) d(2026, 1, 1).addDays(30 * i)];
       final result = computePrediction(
         episodes: episodesFromStarts(starts),
@@ -906,7 +971,7 @@ void main() {
       expect(p.spreadDays, 0,
           reason: "the floor only affects the forecast's own widening, "
               'never the displayed ActivePrediction.spreadDays');
-      expect(p.forecast, hasLength(kPredictionWindowCycles));
+      expect(p.forecast, hasLength(13));
       expect(p.forecast.first.start, p.estimatedNextStart);
       for (var i = 0; i < p.forecast.length; i++) {
         final cycle = p.forecast[i];
@@ -919,7 +984,7 @@ void main() {
                   'cycle, even from a perfectly steady history');
         }
         expect(cycle.tier, CycleConfidence.high,
-            reason: 'sqrt(12) ≈ 3.464 stays under the 7-day threshold for '
+            reason: 'sqrt(13) ≈ 3.606 stays under the 7-day threshold for '
                 'this steady profile');
       }
     });
@@ -930,8 +995,9 @@ void main() {
       // under the 7-day threshold, so the base tier is high — a full
       // 6-cycle window, all valid, ratio 1.0): spread(i) = 3 *
       // sqrt(cycleIndex). sqrt(i) exceeds 7/3 ≈ 2.333 once i > 5.44 —
-      // from cycleIndex 6 on — so forecast[5..11] (cycleIndex 6..12) step
-      // down to learning; forecast[0..4] (cycleIndex 1..5) stay high.
+      // from cycleIndex 6 on — so forecast[5..12] (cycleIndex 6..13, the
+      // horizon-sized #693 forecast) step down to learning;
+      // forecast[0..4] (cycleIndex 1..5) stay high.
       final starts = [
         d(2026, 1, 1),
         d(2026, 1, 28), // 27
@@ -981,7 +1047,12 @@ void main() {
       );
       final p = result as ActivePrediction;
       expect(p.tier, CycleConfidence.irregular);
-      expect(p.forecast, hasLength(kPredictionWindowCycles));
+      // Issue #693: horizon-sized, not the fixed 12 — today 2026-03-16 →
+      // horizon ends 2027-03-31; estimate 2026-04-08 (last start 2026-03-11
+      // + the 28-day mean of 24/28/32) chains in 28-day steps: 28*(i-1) ≤
+      // 357 days of headroom → 13 cycles, the last starting exactly on the
+      // horizon end (2027-03-31); a 14th (2027-04-28) would be past it.
+      expect(p.forecast, hasLength(13));
       for (final cycle in p.forecast) {
         expect(cycle.tier, CycleConfidence.irregular,
             reason: 'irregular never upgrades with distance');
@@ -992,6 +1063,132 @@ void main() {
         reason: 'spread still widens geometrically even once already '
             'irregular',
       );
+    });
+  });
+
+  group('horizon-sized forecast (issue #693)', () {
+    // Shared shape: six completed cycles plus the open seventh, today five
+    // days into the open cycle. The horizon always ends on the last day of
+    // the month kPredictionHorizonMonths(12) after today's month — the
+    // same endOfHorizonMonth the engine itself chains against, so these
+    // assertions read the contract, not a re-implementation.
+    test('a 21-day profile forecasts through month 12 (18 cycles, where '
+        'the pre-#693 fixed 12-cycle cap covered only ~8.3 months), with '
+        'the tail tier still following the sqrt formula', () {
+      // Lengths 18, 18, 18, 24, 24, 24: mean 21, population std-dev
+      // exactly 3.0 (under 7, ratio 6/6) → base tier high. Estimate =
+      // 2026-05-11 + 21 = 2026-06-01; today 2026-05-16 → horizon ends
+      // 2027-05-31; 21*(i-1) ≤ 364 days of headroom → 18 cycles, the
+      // last starting 2026-06-01 + 21*17 = 2027-05-24 (a 19th would start
+      // 2027-06-14, past the horizon).
+      final starts = [
+        d(2026, 1, 5),
+        d(2026, 1, 23), // 18
+        d(2026, 2, 10), // 18
+        d(2026, 2, 28), // 18
+        d(2026, 3, 24), // 24
+        d(2026, 4, 17), // 24
+        d(2026, 5, 11), // 24, open
+      ];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 5, 16),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.high);
+      expect(p.forecast.first.start, p.estimatedNextStart);
+      expect(p.forecast, hasLength(18));
+      expect(p.forecast.last.start, d(2027, 5, 24));
+
+      // AC: the last cycle reaches the horizon minus at most one cycle
+      // length — it starts inside month 12 (May 2027 = today's month +
+      // 12), no later than the horizon end, and the *next* cycle would
+      // start past it (so no gap a 13th navigable month could show).
+      final horizonEnd = endOfHorizonMonth(d(2026, 5, 16), kPredictionHorizonMonths);
+      expect(horizonEnd, d(2027, 5, 31));
+      expect(p.forecast.last.start.isAfter(horizonEnd), isFalse,
+          reason: 'every emitted cycle starts on or before the horizon '
+              'end');
+      expect(
+        p.forecast.last.start.addDays(21).isAfter(horizonEnd),
+        isTrue,
+        reason: 'one more cycle would start past the horizon — the '
+            'forecast spans the full 12 months with at most one cycle '
+            'length of tail slack',
+      );
+
+      // AC: the tail tier is exactly what the pre-#693 formula gives for
+      // that cycleIndex — spread(i) = 3*sqrt(i), stepping down one rung
+      // (high → learning) once it crosses 7 (i ≥ 6). The formula itself
+      // is unchanged; only how far it runs changed.
+      for (final cycle in p.forecast) {
+        expect(cycle.spreadDays, closeTo(3.0 * sqrt(cycle.cycleIndex), 1e-9));
+      }
+      expect(p.forecast[4].tier, CycleConfidence.high);
+      expect(p.forecast[5].tier, CycleConfidence.learning);
+      expect(p.forecast.last.tier, CycleConfidence.learning,
+          reason: 'cycleIndex 18: spread 3*sqrt(18) ≈ 12.7 is far past 7, '
+              'and degradation is one rung, never more');
+    });
+
+    test('a 35-day profile forecasts through month 12 (11 cycles — more '
+        'than 12 months would need, so the horizon, not the defensive '
+        'bound, stops it), tail still high per the formula', () {
+      // Steady 35-day cycles: std-dev 0 → the spread floor makes
+      // spread(i) = sqrt(i) ≤ sqrt(11) ≈ 3.32, never crossing 7, so
+      // every cycle stays high. Estimate = 2026-08-03 + 35 = 2026-09-07;
+      // today 2026-08-08 → horizon ends 2027-08-31; 35*(i-1) ≤ 358 → 11
+      // cycles, the last starting 2026-09-07 + 35*10 = 2027-08-23 (a
+      // 12th would start 2027-09-27, past the horizon).
+      final starts = [for (var i = 0; i < 7; i++) d(2026, 1, 5).addDays(35 * i)];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 8, 8),
+      );
+      final p = result as ActivePrediction;
+      expect(p.tier, CycleConfidence.high);
+      expect(p.forecast.first.start, p.estimatedNextStart);
+      expect(p.forecast, hasLength(11));
+      expect(p.forecast.last.start, d(2027, 8, 23));
+
+      final horizonEnd = endOfHorizonMonth(d(2026, 8, 8), kPredictionHorizonMonths);
+      expect(horizonEnd, d(2027, 8, 31));
+      expect(p.forecast.last.start.isAfter(horizonEnd), isFalse);
+      expect(p.forecast.last.start.addDays(35).isAfter(horizonEnd), isTrue);
+      expect(p.forecast.last.spreadDays, closeTo(sqrt(11), 1e-9));
+      expect(p.forecast.last.tier, CycleConfidence.high,
+          reason: 'sqrt(11) ≈ 3.32 stays under 7 — the tail tier is '
+              'whatever the existing formula says for that index, no '
+              'further');
+    });
+
+    test('a degenerate kMinCycleDays(15)-day profile terminates at the '
+        'kMaxForecastCycles defensive bound instead of looping forever',
+        () {
+      // Steady 15-day cycles (valid: kMinCycleDays is inclusive) would
+      // need 26 cycles to cover the horizon (15*(i-1) ≤ 375 days of
+      // headroom) — past the bound. The bound caps the forecast at 24
+      // cycles (~11.8 months), a documented deliberate shortfall for a
+      // length no real profile sustains; the point of this test is that
+      // the loop *terminates* and never exceeds the bound.
+      final starts = [for (var i = 0; i < 7; i++) d(2026, 1, 5).addDays(15 * i)];
+      final result = computePrediction(
+        episodes: episodesFromStarts(starts),
+        today: d(2026, 4, 10),
+      );
+      final p = result as ActivePrediction;
+      expect(p.forecast.first.start, p.estimatedNextStart);
+      expect(p.forecast, hasLength(kMaxForecastCycles));
+      expect(p.forecast.last.start, d(2027, 3, 31),
+          reason: 'estimate 2026-04-20 + 15 * 23');
+
+      // The bound, not the horizon, stopped it: the next cycle would
+      // still start inside the horizon (2027-04-15 ≤ 2027-04-30), which
+      // is exactly the degenerate-input case the bound exists for.
+      final horizonEnd = endOfHorizonMonth(d(2026, 4, 10), kPredictionHorizonMonths);
+      expect(horizonEnd, d(2027, 4, 30));
+      expect(p.forecast.last.start.addDays(15).isAfter(horizonEnd), isFalse);
+      expect(p.forecast.last.cycleIndex, kMaxForecastCycles);
     });
   });
 }

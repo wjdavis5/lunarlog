@@ -5,10 +5,12 @@ Run with: python -m unittest discover -s tool/orchestrator/tests
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -90,8 +92,14 @@ class CiWatchTests(unittest.TestCase):
         ]}
         self.assertEqual(ci_watch.failing_jobs(payload), ["Analyze", "iOS"])
 
-    def test_title_uses_short_sha(self):
-        self.assertEqual(ci_watch.issue_title("abcdef1234567890"), "CI failing on main at abcdef1")
+    def test_title_has_no_sha(self):
+        self.assertEqual(ci_watch.issue_title(), "CI failing on main")
+
+    def test_title_uses_the_given_workflow_name(self):
+        self.assertEqual(
+            ci_watch.issue_title("Supabase migrate"),
+            "Supabase migrate failing on main",
+        )
 
     def test_body_contains_marker_and_sha(self):
         body = ci_watch.issue_body("https://run", "abcdef1234567890", ["Analyze"])
@@ -99,13 +107,113 @@ class CiWatchTests(unittest.TestCase):
         self.assertIn("abcdef1234567890", body)
         self.assertIn("Analyze", body)
 
-    def test_find_existing_matches_full_sha_only(self):
+    def test_labels_for_ci_has_no_ops_label(self):
+        self.assertEqual(ci_watch.labels_for("CI"), ["P1", "bug"])
+
+    def test_labels_for_ops_workflow_adds_ops_label(self):
+        self.assertEqual(ci_watch.labels_for("Supabase migrate"), ["P1", "bug", "ops"])
+        self.assertEqual(ci_watch.labels_for("iOS Release"), ["P1", "bug", "ops"])
+        self.assertEqual(ci_watch.labels_for("Play Store Release"), ["P1", "bug", "ops"])
+        self.assertEqual(
+            ci_watch.labels_for("Supabase Realtime reconciliation"), ["P1", "bug", "ops"]
+        )
+
+    def test_find_existing_reuses_the_open_issue_across_shas(self):
+        """A new failing SHA on the same workflow comments on the existing
+        open issue instead of opening a duplicate per merge."""
         issues = [
-            {"number": 1, "body": f"{ci_watch.MARKER}\nsha abcdef1234567890"},
             {"number": 2, "body": "no marker"},
+            {
+                "number": 1,
+                "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nsha abcdef1234567890",
+            },
         ]
-        self.assertEqual(ci_watch.find_existing_number(issues, "abcdef1234567890"), 1)
-        self.assertIsNone(ci_watch.find_existing_number(issues, "deadbeef00000000"))
+        self.assertEqual(ci_watch.find_existing_number(issues), 1)
+        self.assertIsNone(ci_watch.find_existing_number([{"number": 2, "body": "no marker"}]))
+
+    def test_main_comments_on_existing_issue_for_a_new_sha(self):
+        env = {
+            "RUN_ID": "1",
+            "HEAD_SHA": "deadbeef00000000",
+            "RUN_URL": "https://run",
+            "GITHUB_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_BRANCH": "main",
+            "WORKFLOW_NAME": "Supabase migrate",
+        }
+        existing = [{
+            "number": 7,
+            "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('Supabase migrate')}\nsha abcdef1234567890",
+        }]
+
+        def fake_run(args, input_text=None):
+            if args[0] == "api":
+                return '{"jobs": []}'
+            if args[:2] == ["issue", "list"]:
+                return json.dumps(existing)
+            return ""
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(ci_watch, "_run", side_effect=fake_run) as run_mock:
+                self.assertEqual(ci_watch.main(), 0)
+        calls = [c.args[0] for c in run_mock.call_args_list]
+        self.assertIn(["issue", "comment", "7", "--body", "Still failing at `deadbeef00000000`.\n\nhttps://run"], calls)
+        self.assertFalse(any(c[:2] == ["issue", "create"] for c in calls))
+
+    def test_is_trusted_source_accepts_the_repos_own_main(self):
+        self.assertTrue(
+            ci_watch.is_trusted_source("wjdavis5/lunarlog", "wjdavis5/lunarlog", "main")
+        )
+
+    def test_is_trusted_source_rejects_a_fork_branch_named_main(self):
+        """LLA-114: a PR opened straight from a fork's own "main" branch
+        must not be mistaken for this repository's own main failing --
+        head_repository differs from repo even though head_branch matches."""
+        self.assertFalse(
+            ci_watch.is_trusted_source("wjdavis5/lunarlog", "someforker/lunarlog", "main")
+        )
+
+    def test_is_trusted_source_rejects_a_non_main_branch_even_from_this_repo(self):
+        self.assertFalse(
+            ci_watch.is_trusted_source(
+                "wjdavis5/lunarlog", "wjdavis5/lunarlog", "some-feature-branch"
+            )
+        )
+
+    def test_is_trusted_source_rejects_missing_fields(self):
+        self.assertFalse(ci_watch.is_trusted_source("wjdavis5/lunarlog", "", "main"))
+        self.assertFalse(ci_watch.is_trusted_source("wjdavis5/lunarlog", "wjdavis5/lunarlog", ""))
+        self.assertFalse(ci_watch.is_trusted_source("", "wjdavis5/lunarlog", "main"))
+
+    def test_main_skips_filing_for_an_untrusted_fork_run(self):
+        """End-to-end LLA-114 regression: main() must return 0 without
+        shelling out to `gh` at all -- a fork's own "main" branch failing
+        must never touch the issue tracker."""
+        env = {
+            "RUN_ID": "1",
+            "HEAD_SHA": "abcdef1234567890",
+            "RUN_URL": "https://run",
+            "GITHUB_REPOSITORY": "wjdavis5/lunarlog",
+            "HEAD_REPOSITORY": "someforker/lunarlog",
+            "HEAD_BRANCH": "main",
+            "WORKFLOW_NAME": "CI",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            with mock.patch.object(ci_watch, "_run") as run_mock:
+                self.assertEqual(ci_watch.main(), 0)
+                run_mock.assert_not_called()
+
+    def test_find_existing_scopes_by_workflow(self):
+        """Two different workflows failing on the same SHA must not collide
+        into one issue (issue #537: ops failures triage separately)."""
+        issues = [
+            {
+                "number": 1,
+                "body": f"{ci_watch.MARKER}\n{ci_watch.workflow_marker('CI')}\nsha abcdef1234567890",
+            },
+        ]
+        self.assertEqual(ci_watch.find_existing_number(issues, "CI"), 1)
+        self.assertIsNone(ci_watch.find_existing_number(issues, "Supabase migrate"))
 
 
 if __name__ == "__main__":

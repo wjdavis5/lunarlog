@@ -75,11 +75,15 @@ user-facing truth. STATE.md remains the detailed record (worktree, PR, attempts)
    (`.worktrees/claude-orch/<n>-<slug>` on `claude-orch/<n>-<slug>` — see "Transition note" for
    already-live work), max 3 parallel.
 5. **Review**: confirm the PR carries the `owner:claude-orch` label (or a pre-transition
-   `feat/`/`fix/` head branch already tracked in STATE.md) before touching it at all. Then: CI on
-   the PR's *head SHA* (verify check-runs exist — a GitHub event gap can skip `ci.yml` entirely; if
-   missing, force a `synchronize` via branch update), diff scope, ACs walked against the diff,
-   correctness (mobile state, sync/offline, RLS never weakened, migrations additive), tests
-   required. Merge squash + good title; clean worktree; update STATE/log.
+   `feat/`/`fix/` head branch already tracked in STATE.md) before touching it at all. Capture the
+   head SHA at review start (`gh pr view <pr> --json headRefOid`) — everything reviewed is that
+   SHA. Then: CI on the PR's *head SHA* (verify check-runs exist — a GitHub event gap can skip
+   `ci.yml` entirely; if missing, force a `synchronize` via branch update), diff scope, ACs walked
+   against the diff, correctness (mobile state, sync/offline, RLS never weakened, migrations
+   additive), tests required. Merge squash + good title with `gh pr merge <pr> --squash
+   --match-head-commit <sha>` pinned to the SHA captured at review start (a push after review
+   makes the merge refuse instead of merging unreviewed commits; on refusal, restart review at the
+   new head — never re-pin); clean worktree; update STATE/log.
 6. **Discoveries**: unrelated bugs found in review → new issues with priority labels, never fixed
    in passing. Product questions → `needs-human-review`.
 7. **Stop conditions**: no eligible issues; three consecutive blocks; CI failing on `main` after a
@@ -104,7 +108,8 @@ files under `docs/coordinator/` (e.g. `opencode-muse/`); never `git add` the dir
   total + branch's new files/counts (filenames are backtick-quoted — regex accordingly).
 - Migration filenames must sort after the current tip; renumber on the PR branch if a parallel
   merge took the timestamp.
-- Self-approval is impossible on the owner's own PRs: record the review as a comment, then merge.
+- Self-approval is impossible on the owner's own PRs: record the review as a comment, then merge —
+  with the same `--match-head-commit <sha>` pin on the SHA captured at review start.
 - Any schemaVersion bump requires ALL of: build_runner regen, drift_schemas/drift_schema_v<N>.json
   dump, AND the filename bump in ci.yml's codegen-freshness step (missed twice: #344, #356 — put
   it in every schema-touching brief).

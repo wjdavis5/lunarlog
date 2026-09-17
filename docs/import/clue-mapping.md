@@ -186,6 +186,16 @@ option set. A `type` string this table doesn't recognise — whether one of
 the remaining ones or a genuinely new Clue category — escapes to the
 `ClueUnknownDatapoint` hatch below rather than being guessed at.
 
+Hot flashes/perimenopause is the same shape as Supplements since issue
+#456: five of its options (`hot_flashes`/`night_sweats`/`brain_fog`/
+`hrt`/`vaginal_dryness`) are now attested lunarlog taxonomy codes (see
+`docs/clinical/terminology.md`'s "#456" section for the attestation gap
+on the other ~9), but no source consulted for #190 or #456 attests a
+`hot_flashes` (or `perimenopause`) export `type` string, so it stays on
+this list with **no** `kClueTypeMap` entry — the same lossless
+`ClueUnknownDatapoint` escape hatch applies until a real export pins the
+type string.
+
 ## Negative assertions — never a positive symptom
 
 `period/none`, `pain/pain_free`, `sex_life/no_sex_today`, and

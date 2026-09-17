@@ -24,12 +24,15 @@ import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
+import 'package:lunarlog/ui/insights/cycle_comparison_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/sharing/activity_feed_screen.dart';
+import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
 import 'package:provider/provider.dart';
 
@@ -130,7 +133,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             )
           else
             IconButton(
-              tooltip: 'Switch profile',
+              tooltip: AppLocalizations.of(context).profileDetailSwitchProfileTooltip,
               icon: const Icon(Icons.swap_horiz),
               onPressed: context.read<ProfileController>().openPicker,
             ),
@@ -169,9 +172,13 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     profileId: widget.profile.id,
                     readOnly: widget.readOnly,
                     mode: widget.profile.mode,
+                    trackingPreferences: widget.profile.trackingPreferences,
+                    isMinor: widget.profile.isMinor,
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
                     guardiansRepository: guardiansRepository,
+                    bbtUnit: widget.profile.bbtUnit,
+                    weightUnit: widget.profile.weightUnit,
                   ),
           ),
         ],
@@ -188,7 +195,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     ProfileGuardiansRepository guardiansRepository,
   ) {
     return StreamBuilder<List<ProfileGuardian>>(
-      stream: guardiansRepository.watchForProfile(widget.profile.id),
+      stream: watchGuardiansForProfileSafely(
+          guardiansRepository, widget.profile.id),
       builder: (context, snapshot) {
         final accepted = [
           for (final guardian in snapshot.data ?? const <ProfileGuardian>[])
@@ -225,6 +233,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     return OverviewPanel(
       profileId: widget.profile.id,
       mode: widget.profile.mode,
+      trackingPreferences: widget.profile.trackingPreferences,
+      isMinor: widget.profile.isMinor,
       todayProvider: widget.todayProvider,
       readOnly: widget.readOnly,
       timezoneProvider: widget.timezoneProvider,
@@ -238,6 +248,19 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 readOnly: true,
                 showStatistics: true,
                 showDisclaimer: true,
+                // Issue #235: an archived profile has no Insights tab of
+                // its own to reach the comparison feature through (see
+                // this screen's own doc comment), so this mount wires it
+                // directly, the same as AnalysisTab's does.
+                onCompareSelected: (cycleAStart, cycleBStart) =>
+                    Navigator.of(context).push(
+                      CycleComparisonScreen.route(
+                        profileId: widget.profile.id,
+                        cycleAStart: cycleAStart,
+                        cycleBStart: cycleBStart,
+                        todayProvider: widget.todayProvider,
+                      ),
+                    ),
               ),
             ],
     );

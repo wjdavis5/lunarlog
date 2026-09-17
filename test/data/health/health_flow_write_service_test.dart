@@ -51,6 +51,19 @@ ProfileGuardian _ownerRow() => ProfileGuardian(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
+/// The accepted `primary_guardian` row after an ownership transfer away
+/// from [_ownerId] — used by the mid-pass authority-drift regression
+/// (Issue #620, LLA-023) to simulate a transfer completing between two of
+/// the same pass's writes.
+ProfileGuardian _transferredRow() => ProfileGuardian(
+      id: 'g2',
+      profileId: _profileId,
+      userId: 'new-owner',
+      role: GuardianRole.primaryGuardian,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+
 DayEntry _entry(
   String isoDay,
   FlowLevel flow,
@@ -93,9 +106,12 @@ class _FakePlatform implements HealthPlatformStore {
   List<HealthPlatformResult> writeResults = [];
   final List<HealthMenstrualFlowWrite> flowWrites = [];
   final List<HealthIntermenstrualBleedingWrite> markerWrites = [];
+  final List<HealthMenstrualPeriodWrite> periodWrites = [];
+  final List<List<String>> deleteCalls = [];
   int bindCalls = 0;
   int authCalls = 0;
   int unbindCalls = 0;
+  HealthPlatformResult deleteResult = const HealthPlatformAllowed();
 
   HealthPlatformResult _nextWriteResult() => writeResults.isEmpty
       ? const HealthPlatformAllowed()
@@ -140,6 +156,23 @@ class _FakePlatform implements HealthPlatformStore {
     markerWrites.add(write);
     return _nextWriteResult();
   }
+
+  @override
+  Future<HealthPlatformResult> writeMenstrualPeriod(
+    HealthMenstrualPeriodWrite write,
+  ) async {
+    periodWrites.add(write);
+    return _nextWriteResult();
+  }
+
+  @override
+  Future<HealthPlatformResult> deleteRecords(
+    HealthGuardFacts facts,
+    List<String> recordIds,
+  ) async {
+    deleteCalls.add(List.of(recordIds));
+    return deleteResult;
+  }
 }
 
 class _FakeProfiles implements ProfilesRepository {
@@ -153,8 +186,29 @@ class _FakeProfiles implements ProfilesRepository {
       throw UnimplementedError('${invocation.memberName}');
 }
 
+/// A [ProfilesRepository] whose [findById] answer is driven by a callback
+/// invoked on every call — for the mid-pass authority-drift regression
+/// (Issue #620, LLA-023) that needs the profile lookup to change its
+/// answer partway through a single sync pass.
+class _FlakyProfiles implements ProfilesRepository {
+  _FlakyProfiles({required this.onFind});
+
+  final Profile? Function() onFind;
+
+  @override
+  Future<Profile?> findById(String id) async => onFind();
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
+}
+
 class _FakeDayEntries implements DayEntriesRepository {
   List<DayEntry> entries = const [];
+  // Issue #548: a per-test fake with no close() call — the test process is
+  // short-lived and nothing in this file ever emits on it, so there is no
+  // real leak to guard against.
+  // ignore: close_sinks
   final _changes = StreamController<List<DayEntry>>.broadcast();
 
   @override
@@ -463,7 +517,9 @@ void main() {
       expect(write.flow, HealthFlowValue.heavy);
     });
 
-    test('none and notBleeding produce no sample', () async {
+    test('none and notBleeding produce no sample, and each issues a '
+        'reconciliation delete for its own recordId (issue #619, LLA-024)',
+        () async {
       final grant = DateTime.utc(2026, 6, 1, 12);
       await seedGranted(grant);
       dayEntries.entries = [
@@ -479,6 +535,70 @@ void main() {
       expect(report.daysWithoutSample, 2);
       expect(platform.flowWrites, isEmpty);
       expect(platform.markerWrites, isEmpty);
+      // A day that was never exported has no matching store sample, so
+      // this delete is a documented no-op — issued unconditionally rather
+      // than only when a prior export is known to have happened (see
+      // _resolveNoWriteOutcome's doc comment).
+      expect(report.samplesReconciled, 2);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02'],
+        ['entry-2026-06-03'],
+      ]);
+    });
+
+    test(
+        'issue #619, LLA-024: a day exported as bleeding then edited to '
+        'notBleeding reconciles away the prior sample by its own recordId',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      // First pass: an exportable day is actually written to the store.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      final service = buildService();
+      final firstReport = await service.syncNow();
+      expect(firstReport.samplesWritten, 1);
+      expect(platform.flowWrites.single.recordId, 'entry-2026-06-02');
+
+      // Second pass: the SAME entry is edited to notBleeding after the
+      // first pass's cursor — pre-#619 fix, the writer silently skipped
+      // this instead of reconciling the now-stale sample it had written.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.notBleeding,
+            grant.add(const Duration(hours: 3))),
+      ];
+      final secondReport = await service.syncNow();
+
+      expect(secondReport.samplesWritten, 0);
+      expect(secondReport.samplesReconciled, 1);
+      expect(platform.deleteCalls, [
+        ['entry-2026-06-02']
+      ]);
+    });
+
+    test(
+        'issue #619, LLA-024: a refused reconciliation delete blocks the '
+        'pass and leaves the cursor for a retry, like any other failure',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      platform.deleteResult =
+          const HealthPlatformResult.failed('store unavailable');
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.none,
+            grant.add(const Duration(hours: 1))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformFailed>());
+      expect(
+        await settings.get(_cursorKey),
+        '${grant.millisecondsSinceEpoch}',
+        reason: 'a failed reconciliation must not advance the cursor',
+      );
     });
 
     test('superHeavy is written as heavy (the documented collapse)',
@@ -663,6 +783,263 @@ void main() {
       // 05-31 is outside the episode → intermenstrual, never menstrual.
       expect(platform.markerWrites, hasLength(1));
       expect(platform.flowWrites, hasLength(2));
+    });
+  });
+
+  group('period-episode interval writes (#202 AC3/AC7)', () {
+    test('a still-open episode is updated (not duplicated) as new days are '
+        'logged, and its final write is the finalized closed record',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      final service = buildService();
+
+      // Pass 1: an in-progress episode 06-01..06-02.
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      final first = await service.syncNow();
+      expect(first.periodRecordsWritten, 1);
+      final firstWrite = platform.periodWrites.single;
+      expect(firstWrite.start, LocalDate.fromIso('2026-06-01'));
+      expect(firstWrite.end, LocalDate.fromIso('2026-06-02'));
+      expect(firstWrite.recordId, 'period-$_profileId-2026-06-01');
+      final firstVersion = firstWrite.recordVersionMs;
+
+      // Pass 2: the episode extends to 06-03 — the SAME clientRecordId (an
+      // update, never a duplicate), a later end, a higher version.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-03', FlowLevel.light,
+            grant.add(const Duration(hours: 3))),
+      ];
+      final second = await service.syncNow();
+      expect(second.periodRecordsWritten, 1);
+      final secondWrite = platform.periodWrites.last;
+      expect(secondWrite.recordId, 'period-$_profileId-2026-06-01',
+          reason: 'the same episode must reuse the same clientRecordId');
+      expect(secondWrite.end, LocalDate.fromIso('2026-06-03'));
+      expect(secondWrite.recordVersionMs, greaterThan(firstVersion),
+          reason: 'an extending episode carries a higher clientRecordVersion');
+
+      // Pass 3: no new days — the now-closed episode is not re-written, so
+      // its last write (pass 2) is the finalized record.
+      final third = await service.syncNow();
+      expect(third.periodRecordsWritten, 0);
+      expect(platform.periodWrites, hasLength(2));
+    });
+
+    test('a closed episode that receives no new days is not re-written; a '
+        'later new episode gets its own separate record', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      final service = buildService();
+
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+      await service.syncNow();
+      expect(platform.periodWrites.single.recordId,
+          'period-$_profileId-2026-06-01');
+
+      // A distinct episode (gap > 1 day) starts 06-10.
+      dayEntries.entries = [
+        ...dayEntries.entries,
+        _entry('2026-06-10', FlowLevel.heavy,
+            grant.add(const Duration(hours: 4))),
+      ];
+      final second = await service.syncNow();
+      expect(second.periodRecordsWritten, 1);
+      expect(platform.periodWrites.last.recordId,
+          'period-$_profileId-2026-06-10',
+          reason: 'a distinct episode must get its own clientRecordId');
+      expect(platform.periodWrites.last.start, LocalDate.fromIso('2026-06-10'));
+    });
+
+    test('an episode entirely before the grant cursor is never written '
+        '(forward-only applies to period records too)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-05-30', FlowLevel.heavy,
+            grant.subtract(const Duration(hours: 1))),
+        _entry('2026-05-31', FlowLevel.medium,
+            grant.subtract(const Duration(minutes: 30))),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.periodRecordsWritten, 0);
+      expect(platform.periodWrites, isEmpty);
+    });
+
+    test('the interval record derives its instants from the entry\'s own '
+        'zone, carried through the write (#180)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      await buildService().syncNow();
+
+      final write = platform.periodWrites.single;
+      expect(write.tzName, _tz);
+      expect(write.start, LocalDate.fromIso('2026-06-01'));
+      expect(write.end, LocalDate.fromIso('2026-06-02'));
+      expect(write.recordVersionMs, isPositive);
+    });
+
+    test('a platform that answers unavailable for the period record is '
+        'skipped gracefully, not a pass-blocking failure (HealthKit has no '
+        'period-record type, #193)', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      // Flow writes succeed; the period record is unavailable.
+      platform.writeResults = [
+        const HealthPlatformAllowed(),
+        const HealthPlatformUnavailable(),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.samplesWritten, 1);
+      expect(report.periodRecordsWritten, 0);
+      expect(report.blocked, isNull,
+          reason: 'unavailable period-record support must not block the pass');
+    });
+
+    test('a failing period write blocks the pass like any failing write',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-01', FlowLevel.heavy,
+            grant.add(const Duration(hours: 1))),
+      ];
+      platform.writeResults = [
+        const HealthPlatformAllowed(), // flow write
+        const HealthPlatformPermissionDenied(), // period write
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      // The cursor does not advance (blocked), so the next pass retries.
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
+    });
+  });
+
+  group('mid-pass authority drift (issue #620, LLA-023)', () {
+    test(
+        'ownership transferred away between two writes cancels the rest of '
+        'the pass instead of writing the second day under the stale owner',
+        () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      // `guardiansForProfile` is consulted once to resolve the pass's
+      // starting facts, then again before each write's fresh recheck
+      // (Issue #620, LLA-023). The first two calls (pass start, first
+      // write's recheck) still see the original owner; from the third
+      // call on — the SECOND write's recheck — ownership has moved to a
+      // different account, simulating a transfer that completed while
+      // the pass was suspended between platform calls.
+      var guardianCalls = 0;
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        guardiansForProfile: (_) async {
+          guardianCalls++;
+          return guardianCalls <= 2 ? [_ownerRow()] : [_transferredRow()];
+        },
+        signedInUserId: () => _ownerId,
+        now: () => clock,
+      );
+
+      final report = await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(1),
+          reason: 'the second write must be cancelled once the recheck '
+              'observes the ownership change, not sent under stale facts');
+      expect(
+          platform.flowWrites.single.date, LocalDate.fromIso('2026-06-02'));
+      expect(report.blocked, isA<HealthPlatformRefused>());
+      expect((report.blocked! as HealthPlatformRefused).check,
+          HealthSyncCheck.notOwner);
+      // A blocked pass never advances the cursor: the whole batch,
+      // including the day that DID get written before the drift was
+      // observed, is retried by the next pass under fresh facts.
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
+    });
+
+    test(
+        'the bound profile being deleted mid-pass cancels the rest of the '
+        'pass', () async {
+      final grant = DateTime.utc(2026, 6, 1, 12);
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+        _entry('2026-06-03', FlowLevel.heavy,
+            grant.add(const Duration(hours: 2))),
+      ];
+
+      var findCalls = 0;
+      final flakyProfiles = _FlakyProfiles(
+        onFind: () {
+          findCalls++;
+          // Call 1 is the pass's own `_resolveBound`; call 2 is the first
+          // write's recheck — both still resolve. From call 3 on (the
+          // second write's recheck) the profile row is gone.
+          return findCalls <= 2 ? _profile() : null;
+        },
+      );
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: flakyProfiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        guardiansForProfile: (_) async => [_ownerRow()],
+        signedInUserId: () => _ownerId,
+        now: () => clock,
+      );
+
+      final report = await service.syncNow();
+
+      expect(platform.flowWrites, hasLength(1));
+      expect(report.blocked, isA<HealthPlatformFailed>());
+      expect(await settings.get(_cursorKey),
+          '${grant.millisecondsSinceEpoch}');
     });
   });
 

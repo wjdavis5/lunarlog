@@ -8,6 +8,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.IntermenstrualBleedingRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
+import androidx.health.connect.client.records.MenstruationPeriodRecord
 import androidx.health.connect.client.records.Record
 // Aliased because a plain `Metadata` import resolves to the compiler's
 // own kotlin.Metadata annotation in constructor-argument position here.
@@ -84,6 +85,11 @@ class HealthConnectAdapter(context: Context) {
     // createWritePermission(KClass)-returns-Permission API is gone.
     private val writePermissions = setOf(
         HealthPermission.getWritePermission(MenstruationFlowRecord::class),
+        // #202: the interval MenstruationPeriodRecord is governed by the
+        // same WRITE_MENSTRUATION permission as the flow record — declared
+        // explicitly so the prompt covers the type; setOf dedupes the
+        // underlying permission string.
+        HealthPermission.getWritePermission(MenstruationPeriodRecord::class),
         HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class),
     )
 
@@ -98,6 +104,11 @@ class HealthConnectAdapter(context: Context) {
         val isMinor: Boolean,
         val birthYear: Int?,
         val transferredAtMs: Long?,
+        // Issue #619, LLA-031: the server-stamped transfer target, mirroring
+        // HealthSyncBinding._minorTransferExceptionHolds's `target ==
+        // signedInUserId` leg — without this, guardDecision could only see
+        // THAT a transfer happened, never WHOM it named.
+        val transferredToUserId: String?,
         val minorBindingAllowed: Boolean,
     ) {
         companion object {
@@ -113,6 +124,7 @@ class HealthConnectAdapter(context: Context) {
                     isMinor = isMinor,
                     birthYear = number(args, "birthYear")?.toInt(),
                     transferredAtMs = number(args, "transferredAtMs"),
+                    transferredToUserId = args["transferredToUserId"] as? String,
                     minorBindingAllowed = minorBindingAllowed,
                 )
             }
@@ -207,24 +219,39 @@ class HealthConnectAdapter(context: Context) {
                     "heavy" -> MenstruationFlowRecord.FLOW_HEAVY
                     else -> null
                 }
-                if (instantMs == null || zoneOffsetMs == null || flow == null) {
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null || flow == null ||
+                    recordId == null || recordVersionMs == null) {
                     return result.error(
                         "bad_args",
-                        "writeMenstrualFlow requires instantMs/zoneOffsetMs/flow",
+                        "writeMenstrualFlow requires instantMs/zoneOffsetMs/flow/recordId/recordVersionMs",
                         null)
                 }
                 // Health Connect's menstruation record is instantaneous:
                 // `time` at local midnight plus the entry's own
-                // zoneOffset (from the #180 contract — never the device's
+                // zoneOffset (from the #180 contract -- never the device's
                 // current zone).
+                // #186 sync mechanics: the lunarlog record id becomes
+                // clientRecordId and the row's updatedAt-ms becomes
+                // clientRecordVersion -- a higher version replaces on
+                // re-write (idempotent writes) and a tombstone can delete
+                // by clientRecordId.
                 val record = MenstruationFlowRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
                     flow = flow,
-                    // User-logged cycle data: the 1.1.0 public factory for
-                    // a manual-entry record (the raw constructor is
-                    // internal).
-                    metadata = HcMetadata.manualEntry(),
+                    // User-logged cycle data (issue #254: never a derived
+                    // value). Health Connect stamps dataOrigin itself from
+                    // the calling package. The Metadata constructor is
+                    // internal in connect-client 1.1.0, so the public
+                    // companion factory is used instead — it supplies the
+                    // manual-entry recording method itself; this app writes
+                    // only manually-entered data.
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
                 )
                 insert(client, listOf(record), result)
             }
@@ -245,20 +272,145 @@ class HealthConnectAdapter(context: Context) {
                 }
                 val instantMs = GuardArgs.number(args, "instantMs")
                 val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
-                if (instantMs == null || zoneOffsetMs == null) {
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null ||
+                    recordId == null || recordVersionMs == null) {
                     return result.error(
                         "bad_args",
-                        "writeIntermenstrualBleeding requires instantMs/zoneOffsetMs",
+                        "writeIntermenstrualBleeding requires instantMs/zoneOffsetMs/recordId/recordVersionMs",
                         null)
                 }
-                // No value field at all — the record's existence is the
+                // No value field at all -- the record's existence is the
                 // datum (#193/A3-4, #202/A3-23).
+                // #186 sync mechanics: clientRecordId/version, as for
+                // writeMenstrualFlow.
                 val record = IntermenstrualBleedingRecord(
                     time = Instant.ofEpochMilli(instantMs),
                     zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
-                    metadata = HcMetadata.manualEntry(),
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
                 )
                 insert(client, listOf(record), result)
+            }
+
+            "writeMenstrualPeriod" -> {
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeMenstrualPeriod requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val startMs = GuardArgs.number(args, "startMs")
+                val startZoneOffsetMs = GuardArgs.number(args, "startZoneOffsetMs")
+                val endMs = GuardArgs.number(args, "endMs")
+                val endZoneOffsetMs = GuardArgs.number(args, "endZoneOffsetMs")
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (startMs == null || startZoneOffsetMs == null || endMs == null ||
+                    endZoneOffsetMs == null || recordId == null || recordVersionMs == null) {
+                    return result.error(
+                        "bad_args",
+                        "writeMenstrualPeriod requires startMs/startZoneOffsetMs/endMs/endZoneOffsetMs/recordId/recordVersionMs",
+                        null)
+                }
+                // #202: the interval record for one period episode. startTime
+                // at the episode's first-day local midnight; endTime at the
+                // *exclusive* local midnight after its last day — both instants
+                // and their offsets computed on the Dart side from the entry's
+                // own tz (#180's timezone contract, never the device's current
+                // zone; on a DST-transition day endZoneOffset differs from
+                // startZoneOffset, which is exactly why they ride separately).
+                // #186 sync mechanics: the episode's stable clientRecordId plus
+                // an increasing clientRecordVersion make a re-write of an
+                // extending episode an upsert (update), not a duplicate, and a
+                // closed episode's final write carries the complete interval.
+                val record = MenstruationPeriodRecord(
+                    startTime = Instant.ofEpochMilli(startMs),
+                    startZoneOffset = ZoneOffset.ofTotalSeconds((startZoneOffsetMs / 1000).toInt()),
+                    endTime = Instant.ofEpochMilli(endMs),
+                    endZoneOffset = ZoneOffset.ofTotalSeconds((endZoneOffsetMs / 1000).toInt()),
+                    // User-logged cycle data (issue #254). The Metadata
+                    // constructor is internal in connect-client 1.1.0, so the
+                    // public companion factory is used, as for the flow record.
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
+                )
+                insert(client, listOf(record), result)
+            }
+
+            "deleteRecords" -> {
+                // Issue #186 tombstone propagation: delete the records whose
+                // clientRecordId is one of the supplied lunarlog record ids.
+                // Behind the same guard as every write.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "deleteRecords requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val recordIds = args?.get("recordIds") as? List<*>
+                    ?: return result.error(
+                        "bad_args", "deleteRecords requires recordIds", null)
+                val ids = recordIds.mapNotNull { it as? String }
+                if (ids.isEmpty()) {
+                    result.success("allowed")
+                    return
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        // connect-client 1.1.0's delete-by-identifier overload
+                        // takes (recordType, recordIdsList, clientRecordIdsList)
+                        // — no dataOrigin argument in this version (deletion is
+                        // automatically scoped to the calling app's own
+                        // records). We delete purely by our lunarlog
+                        // clientRecordIds, so the record-id list is empty.
+                        client.deleteRecords(
+                            MenstruationFlowRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
+                        client.deleteRecords(
+                            IntermenstrualBleedingRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
+                        // Issue #619, LLA-030: MenstruationPeriodRecord (#202's
+                        // interval record) is a third type this adapter writes
+                        // under its own clientRecordId
+                        // ("period-<profile>-<start>", a distinct id scheme from
+                        // day-entry/observation ids — see
+                        // health_flow_write_service.dart's _periodWritesFor) and
+                        // was missing here entirely: a caller deleting a period
+                        // record's own id got a false "allowed" with nothing
+                        // actually removed.
+                        client.deleteRecords(
+                            MenstruationPeriodRecord::class,
+                            recordIdsList = emptyList(),
+                            clientRecordIdsList = ids)
+                        result.success("allowed")
+                    } catch (e: SecurityException) {
+                        result.success("permissionDenied")
+                    } catch (e: Exception) {
+                        result.error("writeFailed", e.message, null)
+                    }
+                }
             }
 
             else -> result.notImplemented()
@@ -302,7 +454,14 @@ class HealthConnectAdapter(context: Context) {
             g.signedInUserId == g.ownerUserId
 
         if (isMinorNow(g.isMinor, g.birthYear)) {
-            val transferredToOwnAccount = g.transferredAtMs != null && isOwner
+            // Issue #619, LLA-031: every leg of
+            // HealthSyncBinding._minorTransferExceptionHolds — a transfer
+            // happened, the caller is the resolved owner, AND it named
+            // exactly the signed-in account — not merely "some transfer
+            // happened and the caller happens to pass isOwner".
+            val transferredToOwnAccount = g.transferredAtMs != null && isOwner &&
+                g.transferredToUserId != null &&
+                g.transferredToUserId == g.signedInUserId
             if (!g.minorBindingAllowed || !transferredToOwnAccount) {
                 return "minorRequiresOwnershipTransfer"
             }
@@ -311,13 +470,18 @@ class HealthConnectAdapter(context: Context) {
         return if (!isOwner) "notOwner" else "allowed"
     }
 
-    // Native mirror of HealthSyncBinding._isMinorNow: flagged directly,
-    // or under 18 by birth year (coarse same-calendar-year comparison —
-    // birthYear carries no month/day).
+    // Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or
+    // AT MOST 18 whole years since birthYear (issue #619, LLA-031: `<=`,
+    // not `<` — matching the Dart side's Issue #296 tightening, where a
+    // year-only birthYear can't see the birthday so the whole calendar
+    // year someone turns 18 still fails closed. The pre-fix `< 18` here
+    // let a birth year exactly 18 years back read as an adult while Dart
+    // still denied it — a defense-in-depth gap, not a live bypass, since
+    // the Dart guard already covered it.
     private fun isMinorNow(isMinor: Boolean, birthYear: Int?): Boolean {
         if (isMinor) return true
         val year = birthYear ?: return false
-        return Calendar.getInstance().get(Calendar.YEAR) - year < 18
+        return Calendar.getInstance().get(Calendar.YEAR) - year <= 18
     }
 
     private fun isAvailable(): Boolean =

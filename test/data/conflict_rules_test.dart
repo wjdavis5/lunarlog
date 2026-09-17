@@ -44,6 +44,30 @@ void main() {
     }
   });
 
+  group('per-id-by-version rule (LLA-035, issue #635)', () {
+    final cases = <({String name, int local, int remote, bool remoteWins})>[
+      (name: 'remote higher version wins', local: 5, remote: 6, remoteWins: true),
+      (name: 'remote lower version loses', local: 6, remote: 5, remoteWins: false),
+      (name: 'equal: remote wins', local: 5, remote: 5, remoteWins: true),
+      (
+        name: 'a never-synced local row (version 0) always loses to any '
+            'real remote version',
+        local: 0,
+        remote: 1,
+        remoteWins: true,
+      ),
+    ];
+    for (final c in cases) {
+      test(c.name, () {
+        expect(
+          remoteWinsByVersion(
+              localServerVersion: c.local, remoteServerVersion: c.remote),
+          c.remoteWins,
+        );
+      });
+    }
+  });
+
   group('same-date rule', () {
     DayEntryCandidate live(String id, DateTime at) =>
         DayEntryCandidate(id: id, updatedAt: at);

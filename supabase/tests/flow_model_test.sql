@@ -52,12 +52,16 @@ select is((select display_name from public.profiles where id = tests.ulid(24700)
 -- 1. day_entries_flow_check: super_heavy/not_bleeding accepted, garbage
 --    still rejected, every previously-accepted value still accepted.
 -- ---------------------------------------------------------------------------
+-- Issue #303: day_entries_flow_check was collapsed into the flow_level
+-- domain (20260915130000_data_consistency_bundle.sql) -- the domain, not
+-- this table CHECK, is now what enforces the allow-list this section's
+-- own raw-insert assertions below exercise; flow_level_domain_test.sql
+-- covers the domain itself.
 select is(
-  (select count(*) from pg_catalog.pg_constraint
-    where conrelid = 'public.day_entries'::regclass
-      and conname = 'day_entries_flow_check'),
-  1::bigint,
-  'day_entries_flow_check exists on public.day_entries');
+  (select domain_name from information_schema.columns
+    where table_schema = 'public' and table_name = 'day_entries' and column_name = 'flow'),
+  'flow_level',
+  'day_entries.flow is the flow_level domain (Issue #303), not a plain text CHECK');
 
 select tests.clear_authentication();
 insert into public.day_entries
@@ -325,8 +329,10 @@ select tests.authenticate_as('flow247');
 -- be treated as a bleed at all -- before this fix, v_is_bleed was
 -- `flow <> 'none'`, which wrongly counted not_bleeding (and the deprecated
 -- spotting) as a bleed and fired a false cycle_start.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24720), tests.ulid(24700), '2026-09-20', 'UTC', 'not_bleeding', now());
+select set_config('role', 'authenticated', true);
 select is(
   pg_temp.flow_outbox_count(tests.ulid(24700), tests.get_supabase_uid('flow247_dad'), 'cycle_start'),
   0::bigint,
@@ -348,6 +354,7 @@ select tests.authenticate_as('flow247');
 
 -- A light bleed day the day before: not high severity, so it is filtered
 -- out for dad even though it is itself a cycle_start.
+select set_config('role', 'service_role', true);
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24721), tests.ulid(24700), '2026-09-21', 'UTC', 'light', now());
 
@@ -355,6 +362,7 @@ values (tests.ulid(24721), tests.ulid(24700), '2026-09-21', 'UTC', 'light', now(
 -- not a cycle_start either -- isolating the high-severity classification.
 insert into public.day_entries (id, profile_id, local_date, tz, flow, updated_at)
 values (tests.ulid(24722), tests.ulid(24700), '2026-09-22', 'UTC', 'super_heavy', now());
+select set_config('role', 'authenticated', true);
 
 select is(
   pg_temp.flow_outbox_count(tests.ulid(24700), tests.get_supabase_uid('flow247_dad'), 'high_severity'),

@@ -71,7 +71,7 @@ class ReminderActionExecutor {
         _configService = configService,
         _isUnlocked = isUnlocked,
         _today = today ?? LocalDate.today,
-        _timezone = timezoneProvider ?? resolveCurrentTimeZone {
+        _timezone = timezoneProvider ?? resolveCurrentTimeZoneSync {
     if (addUnlockListener != null) {
       addUnlockListener(_onGateChanged);
       _removeUnlockListener = removeUnlockListener;
@@ -91,6 +91,11 @@ class ReminderActionExecutor {
   @visibleForTesting
   bool get hasPending => _pending != null;
   _PendingAction? _pending;
+
+  /// Set by [dispose] (Issue #634, LLA-099): a write already queued
+  /// behind an earlier one on the drain queue must never land after this
+  /// executor has been torn down (its repositories may be closing).
+  bool _disposed = false;
 
   /// The tail of the serialized execution queue; null when idle.
   Future<void>? _draining;
@@ -131,12 +136,26 @@ class ReminderActionExecutor {
     final previous = _draining ?? Future<void>.value();
     final run = previous.then((_) => _execute(pending));
     _draining = run;
-    run.whenComplete(() {
+    unawaited(run.whenComplete(() {
       if (identical(_draining, run)) _draining = null;
-    });
+    }));
   }
 
   Future<void> _execute(_PendingAction pending) async {
+    // Issue #634, LLA-099: this action was already queued (behind an
+    // earlier one on the drain chain) by the time its turn comes up —
+    // state can have moved on since `handleAction` admitted it. Recheck
+    // both before writing anything.
+    if (_disposed) return;
+    if (!_unlocked) {
+      // The gate relocked (the app backgrounded) while this action
+      // waited its turn: relatch instead of writing behind the lock,
+      // same as the already-locked path in `handleAction`. A fresher tap
+      // that latched in the meantime already wins (freshest-intent
+      // semantics) — never overwrite it with this older one.
+      _pending ??= pending;
+      return;
+    }
     try {
       switch (pending.actionId) {
         case kReminderActionStarted:
@@ -221,7 +240,11 @@ class ReminderActionExecutor {
   }
 
   /// Detaches the gate listener. Call when the owning widget tears down.
+  /// Marks this executor disposed first (Issue #634, LLA-099) so any
+  /// action still queued behind an earlier one on the drain chain finds
+  /// itself disposed at its turn and never writes.
   void dispose() {
+    _disposed = true;
     _removeUnlockListener?.call(_onGateChanged);
     _removeUnlockListener = null;
     _pending = null;
