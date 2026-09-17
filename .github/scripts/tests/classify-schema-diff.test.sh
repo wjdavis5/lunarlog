@@ -67,25 +67,33 @@ assert_real "a drop/create pair for two DIFFERENT trigger names is not treated a
   $'DROP TRIGGER "trigger_a" ON "public"."day_entries";\n\nCREATE TRIGGER trigger_b AFTER INSERT ON public.day_entries FOR EACH ROW EXECUTE FUNCTION public.fn();' \
   "REAL: DROP TRIGGER"
 
-# --- the narrow pg_net-in-public exception (issue #194, #513) -----------
-# Issue #194's own pg_net relocation is deferred (production's pg_net is
-# supabase_admin-owned and confirmed non-relocatable -- see the migration
-# and check-advisor-gate.sh for the full story), so this exception stays
-# the single pre-existing shape rather than widening for a relocation that
-# has not happened.
+# --- the narrow pg_net shadow-image exception (issue #194, #513) ---------
+# The local shadow image lacks pg_net, so the linked-vs-shadow diff carries a
+# CREATE EXTENSION statement for it that the shadow cannot have -- image gap,
+# not drift. Issue #194's relocation runbook (20260918120000 + docs/ops/
+# supabase-go-live.md) moves the linked project's registration from public to
+# extensions via the support-assisted catalog update, so BOTH exact shapes
+# are the known gap: `with schema public` before the runbook lands,
+# `with schema extensions` after. Anything else still fails.
 
-assert_noise "CREATE EXTENSION pg_net WITH SCHEMA public, quoted, is the one allowed shape" \
+assert_noise "CREATE EXTENSION pg_net WITH SCHEMA public, quoted, is one allowed shape" \
   'create extension if not exists "pg_net" with schema "public";'
 
-assert_noise "the same statement unquoted and re-cased still matches" \
+assert_noise "the public form unquoted and re-cased still matches" \
   'CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA public;'
+
+assert_noise "CREATE EXTENSION pg_net WITH SCHEMA extensions (the post-runbook shape) is the other allowed shape" \
+  'create extension if not exists "pg_net" with schema "extensions";'
+
+assert_noise "the extensions form unquoted and re-cased still matches" \
+  'CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA EXTENSIONS;'
 
 assert_real "pg_cron is NOT covered by the pg_net exception" \
   'create extension if not exists "pg_cron" with schema "public";' \
   "REAL: create extension"
 
-assert_real "pg_net in a schema other than public is NOT covered" \
-  'create extension if not exists "pg_net" with schema "extensions";' \
+assert_real "pg_net in a schema other than public/extensions is NOT covered" \
+  'create extension if not exists "pg_net" with schema "net";' \
   "REAL: create extension"
 
 # --- any other statement type is real schema drift and fails closed -----
