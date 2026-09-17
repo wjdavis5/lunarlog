@@ -50,6 +50,14 @@ jobs:
       # that was the P1 bug: a single red step used to short-circuit every
       # step after it, leaving the release gate with zero executed coverage
       # in CI. Every step's own pass/fail is now always visible.
+      # The shared assertion helpers every suite below sources. Runs
+      # first: a bug in lib/assert.sh reports a wrong verdict in the
+      # voice of whichever suite called it, so its own coverage has to
+      # land before the suites that trust it.
+      - name: Run assert.sh helper tests
+        if: always()
+        run: bash .github/scripts/tests/lib/assert.test.sh
+
       - name: Run extract-marketing-version tests
         if: always()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
@@ -191,6 +199,14 @@ jobs:
 
       # Same rationale as the release-guards job above: keep every script's
       # result visible instead of letting an earlier failure hide the rest.
+      # The shared assertion helpers every suite below sources. Runs
+      # first: a bug in lib/assert.sh reports a wrong verdict in the
+      # voice of whichever suite called it, so its own coverage has to
+      # land before the suites that trust it.
+      - name: Run assert.sh helper tests
+        if: always()
+        run: bash .github/scripts/tests/lib/assert.test.sh
+
       - name: Run extract-marketing-version tests
         if: always()
         run: bash .github/scripts/tests/extract-marketing-version.test.sh
