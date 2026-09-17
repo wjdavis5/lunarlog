@@ -483,10 +483,10 @@ jobs:
           # remove the key).
           for key in NSHealthShareUsageDescription NSHealthUpdateUsageDescription; do
             value="$(plutil -extract "$key" raw -o - "$plist" 2>/dev/null || echo "MISSING")"
-            [ "$value" != "MISSING" ] && [ -n "$value" ] || {
+            if [ "$value" = "MISSING" ] || [ -z "$value" ]; then
               echo "::error::$key is missing from the exported Info.plist. It is required while Runner.entitlements declares com.apple.developer.healthkit (ITMS-90683, issue #766) -- an empty read: set does not exempt the bundle."
               exit 1
-            }
+            fi
           done
 
           [ "$encryption" = "false" ] || { echo "::error::ITSAppUsesNonExemptEncryption is '$encryption' in the exported Info.plist, expected false (see docs/ops/ios-export-compliance.md)"; exit 1; }
