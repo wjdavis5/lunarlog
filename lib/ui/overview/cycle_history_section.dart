@@ -3,7 +3,7 @@
 /// average, automatic outlier flags, the statistics row (average cycle
 /// length, average period length, variation), and the confidence framing.
 ///
-/// Omissions are device-local (KTD2) — stated in a caption, not hidden.
+/// Omissions sync across devices via `cycle_overrides` (issue #568).
 /// Read-only callers (archived profile, viewer-role guardian) see the
 /// history without omit affordances. Every statistic sits under the fixed
 /// non-medical disclaimer (R17), and the vocabulary is cycle-only (R13).
@@ -247,8 +247,8 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
             for (final item in view.items) _itemRow(context, item),
             const SizedBox(height: LLSpace.space1),
             Text(
-              'Omissions stay on this device — other devices are not affected.',
-              key: const ValueKey('history-device-local-note'),
+              'Omissions sync across your devices.',
+              key: const ValueKey('history-sync-note'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

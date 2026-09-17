@@ -319,6 +319,8 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
           );
           final pendingConsent =
               snapshot?.phase == SyncPhase.awaitingUploadConsent;
+          final hasRejected =
+              snapshot != null && snapshot.rejectedCount > 0;
           final awaitingEmail =
               isAwaitingConfirmation(
                 authState: auth?.state,
@@ -344,6 +346,9 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
                     ),
                   ),
             title: Text(copy),
+            subtitle: hasRejected && !pendingConsent
+                ? const Text('Tap to retry')
+                : null,
             onTap: pendingConsent
                 ? () => Navigator.of(context).push(
                     buildNamedRoute<void>(
@@ -353,7 +358,9 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
                       ),
                     ),
                   )
-                : null,
+                : hasRejected
+                    ? () => sync!.retryRejected()
+                    : null,
           );
         },
       ),

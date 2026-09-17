@@ -54,7 +54,10 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
+import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/components/profile_card.dart' show ProfileAvatar;
@@ -256,11 +259,22 @@ class _AppShellState extends State<AppShell> {
           appBar: _tab == AppTab.more
               ? null
               : _shellAppBar(hasSync, guardiansRepository, activityRepository),
-          body: IndexedStack(
-            index: _tab.index,
+          body: Column(
             children: [
-              for (final tab in AppTab.values)
-                _tabContent(tab, guardiansRepository),
+              // Issue #568: a persistent banner when the sync session is
+              // expired or the engine has a non-transient error. Watches
+              // its own controller so it never forces the IndexedStack to
+              // rebuild on every snapshot.
+              const _SyncFailureBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _tab.index,
+                  children: [
+                    for (final tab in AppTab.values)
+                      _tabContent(tab, guardiansRepository),
+                  ],
+                ),
+              ),
             ],
           ),
           // Issue #209 item 4a: "Log today" opens the day sheet directly,
@@ -548,6 +562,71 @@ class _SharedMark extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Issue #568: a persistent [MaterialBanner] above the shell body when the
+/// sync engine has a problem that won't resolve on its own (an expired
+/// session needs re-sign-in; a persistent error kind may need a retry or
+/// attention). Renders [SizedBox.shrink] when no sync controller exists,
+/// when the session is fine, or when the engine is idle/running/paused
+/// without error — so an unconfigured build, or a build in normal sync,
+/// shows nothing extra.
+///
+/// Watches [SyncStatusController] with `listen: true` so that only this
+/// widget rebuilds on a snapshot change, not the entire [IndexedStack] body.
+class _SyncFailureBanner extends StatelessWidget {
+  const _SyncFailureBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Provider.of<SyncStatusController?>(context);
+    if (sync == null) return const SizedBox.shrink();
+    final snapshot = sync.snapshot;
+    final auth = Provider.of<AuthController?>(context);
+
+    // Session expired: the operator needs to sign in again.
+    if (snapshot.sessionExpired) {
+      return MaterialBanner(
+        key: const ValueKey('sync-failure-banner'),
+        leading: const Icon(Icons.cloud_off_outlined),
+        content: const Text(kSignInAgainCopy),
+        actions: [
+          TextButton(
+            key: const ValueKey('sync-failure-banner-action'),
+            onPressed: () {
+              // Navigate to More tab (Settings) where the sign-in tile is.
+              AppShellScope.maybeOf(context)?.select(AppTab.more);
+            },
+            child: const Text('Go to Settings'),
+          ),
+        ],
+      );
+    }
+
+    // Persistent error (network/other) while signed in: show a softer
+    // banner with a "Sync now" retry action.
+    if (snapshot.phase == SyncPhase.error &&
+        auth?.state.hasUsableSession == true) {
+      return MaterialBanner(
+        key: const ValueKey('sync-failure-banner'),
+        leading: const Icon(Icons.cloud_off_outlined),
+        content: Text(syncStatusCopy(
+          snapshot: snapshot,
+          authState: auth?.state,
+          now: DateTime.now(),
+        )),
+        actions: [
+          TextButton(
+            key: const ValueKey('sync-failure-banner-action'),
+            onPressed: sync.requestSync,
+            child: const Text('Retry'),
+          ),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }
 

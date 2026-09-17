@@ -1999,6 +1999,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Some entries could not be uploaded'), findsOneWidget);
+      expect(find.text('Tap to retry'), findsOneWidget);
+      await tester.tap(key('sync-status'));
+      await tester.pump();
+      expect(h.engine.retryRejectedCalls, 1);
       await h.dispose();
     });
 
