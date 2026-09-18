@@ -490,7 +490,7 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   'great_digestion': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'great_digestion',
-    display: 'Great digestion',
+    display: 'Great',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
   'normal': ClinicalCode(
@@ -508,7 +508,7 @@ const Map<String, ClinicalCode> kTagClinicalCodes = {
   'great_stool': ClinicalCode(
     system: kSystemLunarlogLocal,
     code: 'great_stool',
-    display: 'Great stool',
+    display: 'Great',
     provenanceUrl: '$kLocalCodeDocPath#local-code-policy',
   ),
   'diarrhea': ClinicalCode(

@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/tags.dart';
 
 void main() {
@@ -348,8 +350,9 @@ void main() {
           'categories',
     );
     // The medication `pain` option keeps the attested code; its display
-    // is qualified so it can never be mistaken for the Pain category
-    // heading ("Cravings (unspecified)" precedent).
+    // is qualified so it can never be mistaken for the *separate* Pain
+    // category heading (a different category's heading — issue #817's
+    // display rule), not because its own code was qualified.
     expect(tagByCode('pain')!.category, TagCategory.medication);
     expect(tagByCode('pain')!.display, 'Pain (medication)');
     expect(tagByCode('cold_flu_medication')!.display, 'Cold/flu (medication)');
@@ -395,7 +398,12 @@ void main() {
     }
     expect(tagByCode('back_pain')!.display, 'Back pain');
     expect(tagByCode('sleep_trouble')!.display, 'Sleep trouble');
-    expect(tagByCode('cravings')!.display, 'Cravings (unspecified)');
+    // Issue #817: a code-collision suffix never reaches the chip label, and
+    // "(unspecified)" was implementation vocabulary — not something a
+    // person would tap.
+    expect(tagByCode('cravings')!.display, 'Other craving');
+    expect(tagByCode('great_digestion')!.display, 'Great');
+    expect(tagByCode('great_stool')!.display, 'Great');
     // Issue #251: Clue's attested "big night" option is snake_cased for
     // the flat code namespace, display keeps the attested phrasing.
     expect(tagByCode('big_night')!.display, 'Big night');
@@ -404,12 +412,72 @@ void main() {
     expect(tagByCode('rest_day')!.display, 'Rest day');
   });
 
-  test('displays are unique across the taxonomy (no ambiguous chips)', () {
-    final displays = kTagTaxonomy.map((t) => t.display).toList();
+  test('displays are unique within each category (no ambiguous chips under '
+      'one heading)', () {
+    // Issue #817: uniqueness is per category, not global. Chips render
+    // under their category heading, so two categories may legitimately
+    // share a display (the two "Great" chips — digestion and stool) while
+    // two chips under one heading may not.
+    for (final category in TagCategory.values) {
+      final displays = kTagTaxonomy
+          .where((tag) => tag.category == category)
+          .map((tag) => tag.display)
+          .toList();
+      expect(
+        displays.toSet(),
+        hasLength(displays.length),
+        reason: '$category renders two indistinguishable chips: $displays',
+      );
+    }
+  });
+
+  // Issue #817's guard: a code-collision suffix ("Great stool", the
+  // qualified `great_stool` code) must never be copied onto the display
+  // label. A blanket "no display contains its category name" rule would
+  // flag a dozen labels where the category word is genuinely part of the
+  // option's own attested phrase ("Back pain", "Good skin", "Sleep
+  // trouble"), or where a *different* category's heading would otherwise
+  // collide ("Pain (medication)"). So the guard pins the exact set of
+  // labels allowed to contain their own category heading and fails on any
+  // new one — re-adding "Great stool" fails.
+  test('no display label repeats its own category heading except the '
+      'documented attested/collision exceptions', () {
+    final standard = careModeCopyFor(ProfileMode.standard);
+    const documentedExceptions = <String>{
+      // Category word is the phrase's own subject, not a qualifier.
+      'back_pain', // "Back pain" (Pain)
+      'pain_free', // "Pain free" (Pain)
+      'ovulation', // "Ovulation pain" (Pain)
+      'sleep_trouble', // "Sleep trouble" (Sleep)
+      // Clue's own attested export spellings; the display is the phrase.
+      'good_skin',
+      'oily_skin',
+      'dry_skin',
+      'good_hair',
+      'bad_hair',
+      'oily_hair',
+      'dry_hair',
+      // A different category's heading is the collision being avoided.
+      'pain', // "Pain (medication)"
+      'cold_flu_medication', // "Cold/flu (medication)"
+      'cold_flu_ailments', // "Cold/flu (ailments)"
+      'none', // "No discharge" — never "None" (flow's own value)
+    };
+
+    final offenders = <String>{
+      for (final tag in kTagTaxonomy)
+        if (tag.display
+            .toLowerCase()
+            .contains(standard.categoryLabel(tag.category).toLowerCase()))
+          tag.code,
+    };
+
     expect(
-      displays.toSet(),
-      hasLength(displays.length),
-      reason: 'a duplicated display renders two indistinguishable chips',
+      offenders,
+      documentedExceptions,
+      reason: 'a display must not repeat its own category heading unless it '
+          'is on this documented list; the great_digestion/great_stool code '
+          'suffix must never leak back into the chip label',
     );
   });
 
