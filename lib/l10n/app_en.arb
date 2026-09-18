@@ -676,6 +676,43 @@
   "@overviewTurnOnReminders": {
     "description": "Action on the denied-permission reminder hint."
   },
+  "overviewAboutThisEstimate": "About this estimate",
+  "@overviewAboutThisEstimate": {
+    "description": "Label for the expandable section on the Today card explaining the estimate tier and PMS."
+  },
+  "todayCardLogPeriodStartedToday": "Period started today",
+  "@todayCardLogPeriodStartedToday": {
+    "description": "Button label on the Today card to quickly log that a period started today."
+  },
+  "todayCardRecordEntryError": "Couldn't record today's entry — try again.",
+  "@todayCardRecordEntryError": {
+    "description": "Error message shown on the Today card when recording today's entry fails."
+  },
+  "cycleWheelDaysUntilUnit": "{count, plural, =1{day} other{days}}",
+  "@cycleWheelDaysUntilUnit": {
+    "description": "Unit label beneath the days-until count in the cycle wheel centre.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleWheelDaysLateUnit": "{count, plural, =1{day late} other{days late}}",
+  "@cycleWheelDaysLateUnit": {
+    "description": "Unit label beneath the days-late count in the cycle wheel centre when overdue.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleWheelBleedDayHero": "Day {day}",
+  "@cycleWheelBleedDayHero": {
+    "description": "Top line in the cycle wheel centre during a bleed episode.",
+    "placeholders": {
+      "day": {"type": "int"}
+    }
+  },
+  "cycleWheelBleedOfPeriod": "of period",
+  "@cycleWheelBleedOfPeriod": {
+    "description": "Bottom line in the cycle wheel centre during a bleed episode."
+  },
   "cycleWheelCenterCycleDay": "Cycle day {day}",
   "@cycleWheelCenterCycleDay": {
     "description": "The overview wheel's centre label mid-cycle.",
@@ -695,6 +732,35 @@
     "description": "The phase half of the overview wheel's screen-reader label during a bleed episode.",
     "placeholders": {
       "day": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsBleed": "Day {day} of period. Cycle of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsBleed": {
+    "description": "The overview wheel's screen-reader label during a bleed episode.",
+    "placeholders": {
+      "day": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsMidCycle": "{daysUntil, plural, =1{About 1 day until next period.} other{About {daysUntil} days until next period.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsMidCycle": {
+    "description": "The overview wheel's screen-reader label mid-cycle, leading with the days-until figure.",
+    "placeholders": {
+      "daysUntil": {"type": "int"},
+      "cycleDay": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsLate": "{daysLate, plural, =1{1 day late.} other{{daysLate} days late.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsLate": {
+    "description": "The overview wheel's screen-reader label when overdue.",
+    "placeholders": {
+      "daysLate": {"type": "int"},
+      "cycleDay": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
     }
   },
   "cycleWheelSemanticsBody": "{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.",

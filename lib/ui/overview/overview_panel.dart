@@ -238,6 +238,7 @@ class _OverviewPanelState extends State<OverviewPanel>
 
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
+  bool _aboutEstimateExpanded = false;
   AuthController? _auth;
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
@@ -556,6 +557,7 @@ class _OverviewPanelState extends State<OverviewPanel>
     CyclePrediction prediction,
     NotificationAvailability availability,
   ) {
+    final theme = Theme.of(context);
     // Issue #196: in Perimenopause mode the Cycle View leads with the
     // current-vs-previous cycle comparison instead of the days-late
     // countdown (prediction is already suppressed for this mode by #528, so
@@ -617,6 +619,16 @@ class _OverviewPanelState extends State<OverviewPanel>
         if (availability == NotificationAvailability.denied)
           const _ReminderHint(),
         ...widget.trailingChildren,
+        Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space3),
+          child: Text(
+            kEstimateDisclaimer,
+            key: const ValueKey('overview-disclaimer'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -749,6 +761,14 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// long-cycle prompt are unchanged.
   Widget _activeCard(BuildContext context, ActivePrediction prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final aboutSection = _aboutEstimateSection(
+      context,
+      prediction,
+      theme,
+      l10n,
+    );
+
     return Card(
       key: const ValueKey('overview-active'),
       child: Padding(
@@ -761,6 +781,7 @@ class _OverviewPanelState extends State<OverviewPanel>
               duringEpisode: prediction.duringEpisode,
               cycleLengthDays: prediction.meanCycleLengthDays.round(),
               periodLengthDays: prediction.meanPeriodLengthDays.round(),
+              daysUntilNextPeriod: prediction.daysUntilNextPeriod,
               estimateText:
                   '${_copy.nextEstimateLabel} ${_estimateDateText(prediction, dates.calendarLocale(context))}',
               tier: prediction.tier,
@@ -768,28 +789,9 @@ class _OverviewPanelState extends State<OverviewPanel>
               canLog: !_effectiveReadOnly,
               onLogToday: _logPeriodStartedToday,
             ),
-            const SizedBox(height: LLSpace.space3),
-            // Issue #213: below `high` confidence (`learning` included —
-            // #213 item 5), the estimate above is already a range rather
-            // than one exact date; this caption names why (no numbers,
-            // matching the rest of R11's no-partial-numbers framing).
-            // Issue #131 cheap fix: routed through CareModeCopy so
-            // `irregular` care mode — which already replaces the late
-            // banner with its own quiet, non-numeric framing — can silence
-            // this caption rather than showing it twice over.
-            // Issue #218: the label/summary route through AppLocalizations
-            // (via the shared tier-vocabulary mapper) so the new
-            // `provisional` tier renders localized copy, not a hardcoded
-            // literal.
-            if (_copy.showsTierCaption &&
-                prediction.tier != CycleConfidence.high) ...[
-              Text(
-                '${tierLabel(AppLocalizations.of(context), prediction.tier)}'
-                ' — ${tierSummary(AppLocalizations.of(context), prediction.tier)}',
-                key: const ValueKey('overview-tier-caption'),
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: LLSpace.space1),
+            if (aboutSection != null) ...[
+              const SizedBox(height: LLSpace.space2),
+              aboutSection,
             ],
             // Issue #225: auto-suggest turning off predictions when confidence is irregular.
             if (prediction.tier == CycleConfidence.irregular &&
@@ -797,25 +799,10 @@ class _OverviewPanelState extends State<OverviewPanel>
               _irregularSuggestionCard(context, theme),
               const SizedBox(height: LLSpace.space2),
             ],
-            // Issue #220: the predicted PMS phase — only when the profile
-            // has the 3+ logged PMS intervals the hard minimum requires
-            // (below that `pms` is null and nothing renders, never a
-            // noisy partial band). The band carries the period estimate's
-            // own tier, and — R17, "the disclaimer stays next to every
-            // estimate in every mode, without exception" — its own
-            // disclaimer line.
-            if (prediction.pms != null) ...[
-              _pmsSection(context, prediction.pms!, theme),
+            if (prediction.isLate || prediction.unusuallyLongCycle) ...[
               const SizedBox(height: LLSpace.space2),
+              _lateSectionFor(prediction, theme),
             ],
-            if (prediction.isLate || prediction.unusuallyLongCycle)
-              _lateSectionFor(prediction, theme)
-            else
-              Text(
-                prediction.untilNextPeriodLabel,
-                key: const ValueKey('overview-days-until'),
-                style: theme.textTheme.bodyLarge,
-              ),
             if (prediction.unusuallyLongCycle) ...[
               const SizedBox(height: LLSpace.space2),
               _longCycleSection(context, prediction, theme),
@@ -826,10 +813,76 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
+  /// Issue #807: collapsible "About this estimate" section folding the tier
+  /// caption and PMS details into an expandable row. Null when neither exists.
+  Widget? _aboutEstimateSection(
+    BuildContext context,
+    ActivePrediction prediction,
+    ThemeData theme,
+    AppLocalizations l10n,
+  ) {
+    final hasTierCaption =
+        _copy.showsTierCaption && prediction.tier != CycleConfidence.high;
+    final hasPms = prediction.pms != null;
+    if (!hasTierCaption && !hasPms) return null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          key: const ValueKey('overview-about-estimate-toggle'),
+          borderRadius: BorderRadius.circular(LLRadius.rSm),
+          onTap: () =>
+              setState(() => _aboutEstimateExpanded = !_aboutEstimateExpanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: LLSpace.space1),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    l10n.overviewAboutThisEstimate,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: LLSpace.space1),
+                Icon(
+                  _aboutEstimateExpanded
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_aboutEstimateExpanded) ...[
+          const SizedBox(height: LLSpace.space1),
+          if (hasTierCaption) ...[
+            Text(
+              '${tierLabel(l10n, prediction.tier)}'
+              ' — ${tierSummary(l10n, prediction.tier)}',
+              key: const ValueKey('overview-tier-caption'),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: LLSpace.space1),
+          ],
+          if (hasPms) ...[
+            _pmsSection(context, prediction.pms!, theme),
+            const SizedBox(height: LLSpace.space2),
+          ],
+        ],
+      ],
+    );
+  }
+
   /// Issue #220: the predicted PMS phase line — band range, the 6-cycle
   /// averages behind it, the shared tier vocabulary (the period estimate's
-  /// own tier, so no second confidence system), and the fixed
-  /// non-medical disclaimer. Rendered only when
+  /// own tier, so no second confidence system). Disclaimer rendered once per
+  /// screen at the bottom of the overview (issue #807). Rendered only when
   /// `ActivePrediction.pms` is non-null.
   Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
@@ -859,11 +912,6 @@ class _OverviewPanelState extends State<OverviewPanel>
         Text(
           key: const ValueKey('overview-pms-tier'),
           tierLabel(l10n, pms.tier),
-          style: theme.textTheme.bodySmall,
-        ),
-        Text(
-          kEstimateDisclaimer,
-          key: const ValueKey('overview-pms-disclaimer'),
           style: theme.textTheme.bodySmall,
         ),
       ],
@@ -961,63 +1009,67 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
-  /// Issue #225: dismissible suggestion card offered when confidence tier is
-  /// irregular. Matches Clue's "offer, do not force" posture; navigating to
-  /// Settings lets the user decide without the banner flipping the toggle itself.
+  /// Issue #225: dismissible suggestion callout offered when confidence tier is
+  /// irregular (issue #807: tinted Container callout rather than a nested Card).
   Widget _irregularSuggestionCard(BuildContext context, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
-    return Card(
+    return Container(
       key: const ValueKey('overview-irregular-prediction-suggestion'),
-      color: theme.colorScheme.surfaceContainerHighest,
       margin: const EdgeInsets.only(top: LLSpace.space2),
-      child: Padding(
-        padding: const EdgeInsets.all(LLSpace.space3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.lightbulb_outline,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: LLSpace.space2),
-                Expanded(
-                  child: Text(
-                    l10n.overviewIrregularSuggestionTitle,
-                    key: const ValueKey('irregular-suggestion-title'),
-                    style: theme.textTheme.titleSmall,
+      padding: const EdgeInsets.all(LLSpace.space3),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(LLRadius.rMd),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.lightbulb_outline,
+                size: 20,
+                color: theme.colorScheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: LLSpace.space2),
+              Expanded(
+                child: Text(
+                  l10n.overviewIrregularSuggestionTitle,
+                  key: const ValueKey('irregular-suggestion-title'),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
                   ),
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: LLSpace.space1),
+          Text(
+            l10n.overviewIrregularSuggestionBody,
+            key: const ValueKey('irregular-suggestion-body'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSecondaryContainer,
             ),
-            const SizedBox(height: LLSpace.space1),
-            Text(
-              l10n.overviewIrregularSuggestionBody,
-              key: const ValueKey('irregular-suggestion-body'),
-              style: theme.textTheme.bodySmall,
-            ),
-            const SizedBox(height: LLSpace.space2),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  key: const ValueKey('irregular-suggestion-dismiss'),
-                  onPressed: _dismissIrregularSuggestion,
-                  child: Text(l10n.overviewIrregularSuggestionDismiss),
-                ),
-                const SizedBox(width: LLSpace.space2),
-                OutlinedButton(
-                  key: const ValueKey('irregular-suggestion-settings'),
-                  onPressed: () =>
-                      pushNamedScreen<void>(context, kRouteSettingsScreen),
-                  child: Text(l10n.overviewIrregularSuggestionSettings),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: LLSpace.space2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                key: const ValueKey('irregular-suggestion-dismiss'),
+                onPressed: _dismissIrregularSuggestion,
+                child: Text(l10n.overviewIrregularSuggestionDismiss),
+              ),
+              const SizedBox(width: LLSpace.space2),
+              OutlinedButton(
+                key: const ValueKey('irregular-suggestion-settings'),
+                onPressed: () =>
+                    pushNamedScreen<void>(context, kRouteSettingsScreen),
+                child: Text(l10n.overviewIrregularSuggestionSettings),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

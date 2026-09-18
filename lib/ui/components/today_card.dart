@@ -31,8 +31,6 @@ import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/tiers.dart';
-import 'package:lunarlog/ui/overview/estimate_copy.dart'
-    show kEstimateDisclaimer;
 
 import '../theme/haptics.dart';
 import '../theme/lunarlog_colors.dart';
@@ -47,6 +45,7 @@ class TodayCard extends StatefulWidget {
     required this.duringEpisode,
     required this.cycleLengthDays,
     required this.periodLengthDays,
+    this.daysUntilNextPeriod,
     required this.estimateText,
     required this.tier,
     required this.showConfidenceChip,
@@ -66,6 +65,9 @@ class TodayCard extends StatefulWidget {
 
   /// The typical bleed length in days -- [CycleWheel]'s predicted band.
   final int periodLengthDays;
+
+  /// Days until next period (issue #807).
+  final int? daysUntilNextPeriod;
 
   /// The fully-formatted next-period estimate line (issue #131/#213: the
   /// mode's own label plus either the single date or the range), computed
@@ -121,6 +123,7 @@ class _TodayCardState extends State<TodayCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Column(
       key: const ValueKey('today-card'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,24 +134,31 @@ class _TodayCardState extends State<TodayCard> {
             duringEpisode: widget.duringEpisode,
             cycleLengthDays: widget.cycleLengthDays,
             periodLengthDays: widget.periodLengthDays,
+            daysUntilNextPeriod: widget.daysUntilNextPeriod,
           ),
         ),
+        if (!widget.duringEpisode) ...[
+          const SizedBox(height: LLSpace.space2),
+          Center(
+            child: Text(
+              l10n.cycleWheelCenterCycleDay(widget.cycleDay),
+              key: const ValueKey('today-card-cycle-day'),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: LLSpace.space3),
         _estimateRow(theme),
-        const SizedBox(height: LLSpace.space2),
-        Text(
-          kEstimateDisclaimer,
-          key: const ValueKey('overview-disclaimer'),
-          style: theme.textTheme.bodySmall,
-        ),
         if (widget.canLog) ...[
           const SizedBox(height: LLSpace.space3),
-          _logTodayButton(),
+          _logTodayButton(l10n),
           if (_error != null) ...[
             const SizedBox(height: LLSpace.space1),
             InlineError(
               key: const ValueKey('today-card-error'),
-              message: "Couldn't record today's entry — try again.",
+              message: l10n.todayCardRecordEntryError,
               onRetry: _busy ? null : _handleTap,
             ),
           ],
@@ -190,7 +200,7 @@ class _TodayCardState extends State<TodayCard> {
   /// writes ([kQuickLogFlowLevel], read rather than a literal) via a
   /// [Tooltip], which doubles as its semantics label -- the button's
   /// visible "Period started today" copy never names a flow level itself.
-  Widget _logTodayButton() {
+  Widget _logTodayButton(AppLocalizations l10n) {
     return Tooltip(
       message: 'Logs a ${kQuickLogFlowLevel.name}-flow period start for '
           'today',
@@ -204,7 +214,7 @@ class _TodayCardState extends State<TodayCard> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.water_drop_outlined, size: 18),
-        label: const Text('Period started today'),
+        label: Text(l10n.todayCardLogPeriodStartedToday),
       ),
     );
   }
@@ -235,7 +245,10 @@ class _ConfidenceChip extends StatelessWidget {
         : _colorFor(colors);
     return Container(
       key: const ValueKey('today-card-confidence-chip'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: LLSpace.space1),
+      padding: const EdgeInsets.symmetric(
+        horizontal: LLSpace.space2,
+        vertical: LLSpace.space1,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(LLRadius.rFull),

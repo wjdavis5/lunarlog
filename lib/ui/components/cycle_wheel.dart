@@ -74,18 +74,37 @@ List<double> predictedBandDashes(double sweep, double dashLen, double gapLen) {
 /// Screen-reader label for the whole wheel (R13: date-based vocabulary
 /// only). Public so it is directly unit-testable without a `Semantics`
 /// pump. #138: the phrases come from [AppLocalizations] (#340's rule),
-/// same strings the centre label renders for `en`.
+/// leading with the focal-point hero fact (issue #807).
 String cycleWheelSemanticsLabel({
   required int cycleDay,
   required bool duringEpisode,
   required int cycleLengthDays,
   required int periodLengthDays,
   required AppLocalizations l10n,
+  int? daysUntilNextPeriod,
 }) {
-  final phase = duringEpisode
-      ? l10n.cycleWheelPhasePeriodDay(cycleDay)
-      : l10n.cycleWheelCenterCycleDay(cycleDay);
-  return l10n.cycleWheelSemanticsBody(phase, cycleLengthDays, periodLengthDays);
+  if (duringEpisode) {
+    return l10n.cycleWheelSemanticsBleed(
+      cycleDay,
+      cycleLengthDays,
+      periodLengthDays,
+    );
+  }
+  final days = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
+  if (days < 0) {
+    return l10n.cycleWheelSemanticsLate(
+      -days,
+      cycleDay,
+      cycleLengthDays,
+      periodLengthDays,
+    );
+  }
+  return l10n.cycleWheelSemanticsMidCycle(
+    days,
+    cycleDay,
+    cycleLengthDays,
+    periodLengthDays,
+  );
 }
 
 class CycleWheel extends StatelessWidget {
@@ -95,6 +114,7 @@ class CycleWheel extends StatelessWidget {
     required this.duringEpisode,
     required this.cycleLengthDays,
     required this.periodLengthDays,
+    this.daysUntilNextPeriod,
     this.diameter = 200,
   });
 
@@ -112,11 +132,59 @@ class CycleWheel extends StatelessWidget {
   /// top of the ring.
   final int periodLengthDays;
 
+  /// Days until next period (issue #807). When omitted, falls back to
+  /// `cycleLengthDays - cycleDay`.
+  final int? daysUntilNextPeriod;
+
   final double diameter;
 
-  String _centerLabel(AppLocalizations l10n) => duringEpisode
-      ? l10n.cycleWheelCenterPeriodDay(cycleDay)
-      : l10n.cycleWheelCenterCycleDay(cycleDay);
+  Widget _centerContent(ThemeData theme, AppLocalizations l10n) {
+    if (duringEpisode) {
+      return Column(
+        key: const ValueKey('cycle-wheel-center-label'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            l10n.cycleWheelBleedDayHero(cycleDay),
+            key: const ValueKey('cycle-wheel-bleed-hero'),
+            style: theme.textTheme.displaySmall,
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            l10n.cycleWheelBleedOfPeriod,
+            key: const ValueKey('cycle-wheel-bleed-unit'),
+            style: theme.textTheme.labelLarge,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      );
+    }
+    final effectiveDays = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
+    final isLate = effectiveDays < 0;
+    final displayCount = isLate ? -effectiveDays : effectiveDays;
+    final unit = isLate
+        ? l10n.cycleWheelDaysLateUnit(displayCount)
+        : l10n.cycleWheelDaysUntilUnit(displayCount);
+
+    return Column(
+      key: const ValueKey('cycle-wheel-center-label'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$displayCount',
+          key: const ValueKey('overview-days-until'),
+          style: theme.textTheme.displayMedium,
+          textAlign: TextAlign.center,
+        ),
+        Text(
+          unit,
+          key: const ValueKey('cycle-wheel-center-unit'),
+          style: theme.textTheme.labelLarge,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,12 +197,12 @@ class CycleWheel extends StatelessWidget {
         duringEpisode: duringEpisode,
         cycleLengthDays: cycleLengthDays,
         periodLengthDays: periodLengthDays,
+        daysUntilNextPeriod: daysUntilNextPeriod,
         l10n: l10n,
       ),
-      // The centre label `Text` below is purely visual duplication of this
-      // node's own label -- without this, a screen reader would announce
-      // the cycle day twice (once from this label, once from the child
-      // Text's own auto-generated semantics).
+      // The centre label below is purely visual duplication of this node's
+      // own label -- without this, a screen reader would announce the
+      // cycle figures twice.
       excludeSemantics: true,
       child: SizedBox(
         width: diameter,
@@ -157,12 +225,7 @@ class CycleWheel extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: LLSpace.space5),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Text(
-                  _centerLabel(l10n),
-                  key: const ValueKey('cycle-wheel-center-label'),
-                  style: theme.textTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
+                child: _centerContent(theme, l10n),
               ),
             ),
           ),

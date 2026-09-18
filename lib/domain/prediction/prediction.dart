@@ -747,6 +747,14 @@ class ActivePrediction extends CyclePrediction {
     return '≈$days day${days == 1 ? '' : 's'} until next period';
   }
 
+  /// Whole civil days until next period start, or negative if overdue
+  /// (issue #807): feeds the Today card hero count.
+  int get daysUntilNextPeriod {
+    final daysPastDue = today.difference(originalEstimatedNextStart);
+    if (daysPastDue > 0) return -daysPastDue;
+    return daysUntilNextStart;
+  }
+
   /// The estimate rendered as a range rather than one exact date
   /// (`estimatedNextStart ± spreadDays.round()`) — the display #213
   /// prescribes whenever [tier] is not [CycleConfidence.high].

@@ -976,6 +976,7 @@ void main() {
                 duringEpisode: false,
                 cycleLengthDays: 30,
                 periodLengthDays: 4,
+                daysUntilNextPeriod: 9,
                 estimateText: 'Next period estimate: September 4, 2026',
                 tier: CycleConfidence.learning,
                 showConfidenceChip: true,
@@ -989,14 +990,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the wheel, estimate, and disclaimer read in that order, '
+    testWidgets('the wheel, cycle day, estimate, and log action read in that order, '
         'and the confidence chip announces its phrase', (tester) async {
       final handle = tester.ensureSemantics();
       await pumpTodayCard(tester);
 
       expect(
         tester.getSemantics(find.byType(CycleWheel)).label,
-        'Cycle day 14 of about 30 days. Period usually runs about 4 days.',
+        'About 9 days until next period. Cycle day 14 of about 30 days. Period usually runs about 4 days.',
       );
       expect(
         find.bySemanticsLabel('Estimate confidence: learning.'),
@@ -1004,14 +1005,18 @@ void main() {
         reason: 'the bare tier word alone is ambiguous to a screen reader',
       );
       final wheel = tester.getTopLeft(find.byType(CycleWheel)).dy;
+      final cycleDay = tester
+          .getTopLeft(find.byKey(const ValueKey('today-card-cycle-day')))
+          .dy;
       final estimate = tester
           .getTopLeft(find.byKey(const ValueKey('overview-next-period')))
           .dy;
-      final disclaimer = tester
-          .getTopLeft(find.byKey(const ValueKey('overview-disclaimer')))
+      final logAction = tester
+          .getTopLeft(find.byKey(const ValueKey('today-card-log-action')))
           .dy;
-      expect(wheel, lessThan(estimate));
-      expect(estimate, lessThan(disclaimer));
+      expect(wheel, lessThan(cycleDay));
+      expect(cycleDay, lessThan(estimate));
+      expect(estimate, lessThan(logAction));
       handle.dispose();
     });
 
@@ -1077,7 +1082,6 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-
         expect(tester.takeException(), isNull);
         expect(
           find.byKey(const ValueKey('overview-active')),

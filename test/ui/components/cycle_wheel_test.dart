@@ -34,7 +34,8 @@ void main() {
 
         expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey('cycle-wheel-center-label')), findsOneWidget);
-        expect(find.text('Cycle day 14'), findsOneWidget);
+        expect(find.text('14'), findsOneWidget);
+        expect(find.text('days'), findsOneWidget);
       });
 
       testWidgets('renders bleed phase without overflow at ${scale}x text scaler', (tester) async {
@@ -62,7 +63,8 @@ void main() {
 
         expect(tester.takeException(), isNull);
         expect(find.byKey(const ValueKey('cycle-wheel-center-label')), findsOneWidget);
-        expect(find.text('Period · day 3'), findsOneWidget);
+        expect(find.text('Day 3'), findsOneWidget);
+        expect(find.text('of period'), findsOneWidget);
       });
     }
   });

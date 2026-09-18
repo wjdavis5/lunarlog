@@ -364,7 +364,9 @@ void main() {
       expect(find.text('Cycle day 26'), findsOneWidget);
       expect(find.text('Next period estimate: September 4, 2026'),
           findsOneWidget);
-      expect(find.text('≈5 days until next period'), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-days-until')), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+      expect(find.text('days'), findsOneWidget);
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'not late: estimate is 5 days ahead');
       // Issue #314: CycleHistorySection no longer mounts on Overview --
@@ -412,6 +414,10 @@ void main() {
         },
       );
 
+      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
       // The range joins with an en dash (see _pmsSection's formatter).
       expect(find.textContaining('Predicted PMS: September 1, 2026'),
@@ -421,10 +427,9 @@ void main() {
           'lasts about 3 days'), findsOneWidget);
       // Same tier vocabulary as the period estimate - never a second one.
       expect(find.byKey(const ValueKey('overview-pms-tier')), findsOneWidget);
-      // R17: the disclaimer sits next to this estimate too.
-      expect(
-          find.byKey(const ValueKey('overview-pms-disclaimer')), findsOneWidget);
-      expect(find.text(kEstimateDisclaimer), findsWidgets);
+      // Issue #807: single disclaimer per screen at the bottom of overview.
+      expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
+      expect(find.text(kEstimateDisclaimer), findsOneWidget);
       await disposeOverview(tester, h);
 
       // Below the hard minimum: two logged intervals produce no PMS
@@ -442,8 +447,6 @@ void main() {
         },
       );
       expect(find.byKey(const ValueKey('overview-pms-band')), findsNothing);
-      expect(find.byKey(const ValueKey('overview-pms-disclaimer')),
-          findsNothing);
       await disposeOverview(tester, h2);
     });
 
@@ -539,6 +542,10 @@ void main() {
           findsOneWidget,
           reason: 'rolled forward twice (30-day mean) from the original '
               'Jul 26 estimate');
+      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
       expect(
         find.text('Irregular — Cycles vary a lot — treat estimates as '
             'rough guides.'),
@@ -566,7 +573,7 @@ void main() {
         reason: 'issue #225: button is wired to open Settings',
       );
       expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the Today card and the resolver each carry it');
+          reason: 'the late resolver and the overview each carry it');
       expectNoFertilityVocabulary(tester, 'unusually long cycle');
 
       // Issue #132 (AC7)/#314: the resolver's "log it" is the way through
@@ -697,17 +704,22 @@ void main() {
         find.text('Next period estimate: August 31, 2026 – September 8, 2026'),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Provisional — Based on your onboarding answers — '
           'estimates improve once real cycles are logged.'), findsOneWidget);
-      expect(find.text('≈5 days until next period'), findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-days-until')), findsOneWidget);
+      expect(find.text('5'), findsOneWidget);
+      expect(find.text('days'), findsOneWidget);
       expect(find.text('Provisional'), findsOneWidget,
           reason: 'the Today card confidence chip');
       expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
       expect(find.byKey(const ValueKey('overview-tier-caption')),
           findsOneWidget);
-      // R17: the disclaimer sits next to the seeded estimate like any
-      // other.
-      expect(find.text(kDisclaimer), findsWidgets);
+      // Issue #807: single disclaimer per screen.
+      expect(find.text(kDisclaimer), findsOneWidget);
 
       // Same teardown discipline as disposeOverview: unmount, let the
       // drift stream store's close-timer fire, then close the database —
@@ -959,8 +971,9 @@ void main() {
             seedEpisodes(entries, profileId, kDuringEpisodeStarts),
       );
 
-      // Issue #209: the wheel's centre label carries the day count too.
-      expect(find.text('Period · day 3'), findsOneWidget);
+      // Issue #807: the wheel's centre displays Day N / of period.
+      expect(find.text('Day 3'), findsOneWidget);
+      expect(find.text('of period'), findsOneWidget);
       expect(find.textContaining('Cycle day'), findsNothing);
       expect(find.text('Next period estimate: September 27, 2026'),
           findsOneWidget);
@@ -977,6 +990,10 @@ void main() {
             seedEpisodes(entries, profileId, kIrregularSpreadStarts),
       );
 
+      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('overview-tier-caption')),
           findsOneWidget);
       expect(
@@ -1009,6 +1026,10 @@ void main() {
       // exactly 0, so estimatedRangeStart == estimatedRangeEnd. The
       // estimate line must still show the single date, never
       // "September 4, 2026 – September 4, 2026".
+      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('overview-tier-caption')),
           findsOneWidget);
       expect(
@@ -1181,12 +1202,9 @@ void main() {
 
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
           reason: 'the new episode resets the open cycle');
-      expect(find.text('Period · day 1'), findsOneWidget,
+      expect(find.text('Day 1'), findsOneWidget,
           reason: 'today is now day 1 of the new episode');
-      expect(find.text('≈34 days until next period'), findsOneWidget,
-          reason: 'issue #213 widened the prediction window to 12 cycles '
-              '(was 3): mean of all five lengths [28, 28, 28, 28, 56] is '
-              '33.6, rounding to 34 from 2026-08-30');
+      expect(find.text('of period'), findsOneWidget);
       await disposeOverview(tester, h);
     });
   });
@@ -1202,12 +1220,14 @@ void main() {
               seedEpisodes(entries, profileId, kActiveStarts),
         );
         expect(
-          find.descendant(
-            of: find.byKey(const ValueKey('overview-active')),
-            matching: find.text(kDisclaimer),
-          ),
+          find.byKey(const ValueKey('overview-disclaimer')),
           findsOneWidget,
-          reason: 'mode ${mode.name} must carry the disclaimer (R17/#131)',
+          reason: 'mode ${mode.name} must carry the disclaimer (R17/#131/#807)',
+        );
+        expect(
+          find.text(kDisclaimer),
+          findsOneWidget,
+          reason: 'mode ${mode.name} must carry the disclaimer (R17/#131/#807)',
         );
         await disposeOverview(tester, h);
       }
@@ -1311,10 +1331,12 @@ void main() {
           findsOneWidget,
           reason: 'issue #221: rolled forward one 28-day mean cycle');
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('overview-active')),
-          matching: find.text(kDisclaimer),
-        ),
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+        reason: 'silencing the banner never silences the disclaimer',
+      );
+      expect(
+        find.text(kDisclaimer),
         findsOneWidget,
         reason: 'silencing the banner never silences the disclaimer',
       );
@@ -1347,10 +1369,11 @@ void main() {
       expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
           findsOneWidget);
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('overview-active')),
-          matching: find.text(kDisclaimer),
-        ),
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(kDisclaimer),
         findsOneWidget,
       );
       await disposeOverview(tester, h);
@@ -1391,10 +1414,11 @@ void main() {
             'window (issue #213 item 5)',
       );
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('today-card')),
-          matching: find.text(kDisclaimer),
-        ),
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(kDisclaimer),
         findsOneWidget,
       );
       await disposeOverview(tester, h);
@@ -1417,8 +1441,9 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved, isNotNull);
       expect(saved!.flow, FlowLevel.medium);
-      expect(find.text('Period · day 1'), findsOneWidget,
+      expect(find.text('Day 1'), findsOneWidget,
           reason: 'the new episode recomputes the prediction stream');
+      expect(find.text('of period'), findsOneWidget);
       await disposeOverview(tester, h);
     });
 

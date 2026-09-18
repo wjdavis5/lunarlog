@@ -536,6 +536,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewTurnOnReminders => 'Turn on reminders';
 
   @override
+  String get overviewAboutThisEstimate => 'About this estimate';
+
+  @override
+  String get todayCardLogPeriodStartedToday => 'Period started today';
+
+  @override
+  String get todayCardRecordEntryError =>
+      'Couldn\'t record today\'s entry — try again.';
+
+  @override
+  String cycleWheelDaysUntilUnit(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleWheelDaysLateUnit(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days late',
+      one: 'day late',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleWheelBleedDayHero(int day) {
+    return 'Day $day';
+  }
+
+  @override
+  String get cycleWheelBleedOfPeriod => 'of period';
+
+  @override
   String cycleWheelCenterCycleDay(int day) {
     return 'Cycle day $day';
   }
@@ -548,6 +588,43 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String cycleWheelPhasePeriodDay(int day) {
     return 'Period, day $day';
+  }
+
+  @override
+  String cycleWheelSemanticsBleed(int day, int cycleDays, int periodDays) {
+    return 'Day $day of period. Cycle of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
+
+  @override
+  String cycleWheelSemanticsMidCycle(
+    int daysUntil,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      daysUntil,
+      locale: localeName,
+      other: 'About $daysUntil days until next period.',
+      one: 'About 1 day until next period.',
+    );
+    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
+
+  @override
+  String cycleWheelSemanticsLate(
+    int daysLate,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      daysLate,
+      locale: localeName,
+      other: '$daysLate days late.',
+      one: '1 day late.',
+    );
+    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
   }
 
   @override
