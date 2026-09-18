@@ -180,9 +180,11 @@ String _number(double value) {
   return fixed.endsWith('.00') ? fixed.substring(0, fixed.length - 3) : fixed;
 }
 
-/// [text] as a PDF literal string body, WinAnsi-encoded and escaped.
+/// [text] as a complete PDF literal string — WinAnsi-encoded, escaped, and
+/// wrapped in the `(`/`)` delimiters the syntax (and a `Tj` operand)
+/// requires.
 List<int> _pdfString(String text) {
-  final bytes = <int>[];
+  final bytes = <int>[0x28]; // opening `(`
   for (final unit in text.codeUnits) {
     final mapped = _winAnsiByte(unit);
     if (mapped == 0x28 || mapped == 0x29 || mapped == 0x5C) {
@@ -190,6 +192,7 @@ List<int> _pdfString(String text) {
     }
     bytes.add(mapped);
   }
+  bytes.add(0x29); // closing `)`
   return bytes;
 }
 

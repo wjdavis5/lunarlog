@@ -75,13 +75,44 @@ void main() {
       expect(text, contains('/Type /Page '));
     });
 
-    test('escapes parentheses and backslashes', () {
+    test('escapes parentheses and backslashes inside a delimited string', () {
       final text = _decode(
         buildPdfBytes([
           PdfPage([const PdfTextLine(r'a (b) \ c', x: 50, y: 800)]),
         ]),
       );
-      expect(text, contains(r'a \(b\) \\ c'));
+      // The delimiters are part of the assertion, not just the escapes: an
+      // unwrapped operand leaves `Tj` with nothing to draw (issue #788).
+      expect(text, contains(r'(a \(b\) \\ c)'));
+    });
+
+    test('every Tj carries a delimited literal-string operand', () {
+      final text = _decode(
+        buildPdfBytes([
+          PdfPage([
+            const PdfTextLine('Clinical summary', x: 50, y: 800),
+            const PdfTextLine(r'Hello (world) \ parens', x: 50, y: 780),
+          ]),
+        ]),
+      );
+      // A well-formed operand is `(` … `)` immediately followed by `Tj`,
+      // where the body is escaped characters or non-delimiter bytes. An
+      // operand left unwrapped (the #788 regression) yields zero operand
+      // matches while `Tj` still appears in the stream.
+      final operands = RegExp(r'\((?:\\.|[^()\\])*\) Tj');
+      final operators = RegExp(r'\bTj\b');
+      expect(operands.allMatches(text), hasLength(2));
+      expect(
+        operators.allMatches(text).length,
+        operands.allMatches(text).length,
+        reason: 'every Tj must be preceded by a delimited string operand',
+      );
+    });
+
+    test('an empty document emits no Tj and still has a stream', () {
+      final text = _decode(buildPdfBytes(const []));
+      expect(RegExp(r'\bTj\b').hasMatch(text), isFalse);
+      expect(text, contains('<< /Length 0 >>'));
     });
 
     test('maps the em dash to its WinAnsi byte rather than a fallback', () {
