@@ -223,6 +223,26 @@ class RealtimeSyncCoordinator {
         .subscribe((status, _) => _onSubscribeStatus(profileId, channel, status));
   }
 
+  /// Whether a reported [RealtimeSubscribeStatus.subscribed] may clear the
+  /// retry backoff (issue #771).
+  ///
+  /// `RealtimeChannel.subscribe` reports `subscribed` from the Phoenix join's
+  /// *optimistic* ack, before the server has finished setting up the
+  /// `postgres_changes` replication. If that setup then fails — which is
+  /// guaranteed while there is no authorized identity, because RLS rejects
+  /// every subscription — the realtime client forwards the failure as
+  /// `channelError` on the same channel (its `onSystemEvents` handler). A
+  /// `subscribed` that is followed by such a rejection proves nothing about
+  /// recovery: if it cleared the counter, every retry's fresh channel would
+  /// reset the backoff and the delay would stay pinned at
+  /// [kRealtimeRetryBase] forever.
+  ///
+  /// So with an auth source, only a bound (signed-in) identity can produce a
+  /// channel that actually delivers and only then is `subscribed` treated as
+  /// recovery. A coordinator built without an auth source has no identity
+  /// concept and keeps its previous trust-the-status behavior.
+  bool get _canTrustSubscribed => auth == null || _boundUserId != null;
+
   /// Records a subscription status (AC1) and, on a terminal failure,
   /// logs the kind and schedules a bounded retry (AC2/AC3).
   ///
@@ -239,11 +259,19 @@ class RealtimeSyncCoordinator {
     if (!identical(_channels[profileId], channel)) return;
     _statuses[profileId] = status;
     if (status == RealtimeSubscribeStatus.subscribed) {
-      _retryAttempts.remove(profileId);
       _cancelRetry(profileId);
+      if (_canTrustSubscribed) {
+        _retryAttempts.remove(profileId);
+      }
       return;
     }
-    _logSubscribeStatus(status);
+    // Log only the first failure of a degradation episode: each later retry
+    // in the same episode is the same problem, so a line per attempt is the
+    // unbounded log spam issue #771 reports. A trusted `subscribed` clears
+    // the counter above and so starts a fresh episode.
+    if ((_retryAttempts[profileId] ?? 0) == 0) {
+      _logSubscribeStatus(status);
+    }
     _scheduleRetry(profileId);
   }
 
