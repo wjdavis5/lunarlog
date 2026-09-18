@@ -51,10 +51,12 @@ abstract final class AppTheme {
     );
   }
 
-  /// The type ramp (B-4), matching issue #176's table. `display*` and the
-  /// unused `headlineLarge` slot are left at Flutter's M3 default.
+  /// The type ramp (B-4), matching issue #176's table and #807. `displayLarge`
+  /// and the unused `headlineLarge` slot are left at Flutter's M3 default.
   static TextTheme _textTheme() {
     return TextTheme(
+      displayMedium: LLType.displayMedium.toTextStyle(),
+      displaySmall: LLType.displaySmall.toTextStyle(),
       headlineMedium: LLType.headlineMedium.toTextStyle(),
       headlineSmall: LLType.headlineSmall.toTextStyle(),
       titleLarge: LLType.titleLarge.toTextStyle(),

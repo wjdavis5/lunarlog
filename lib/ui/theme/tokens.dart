@@ -88,9 +88,19 @@ class LLTypeSlot {
 }
 
 /// The type ramp (B-4): explicit M3 slot sizes/weights, auditable against
-/// issue #176's table. `display*` and the unused `headlineLarge` slot are
-/// deliberately absent — `app_theme.dart` leaves them at Flutter's default.
+/// issue #176's table and #807. `displayLarge` and the unused `headlineLarge`
+/// slot are unconfigured — `app_theme.dart` leaves them at Flutter's default.
 abstract final class LLType {
+  static const displayMedium = LLTypeSlot(
+    fontSize: 45,
+    lineHeight: 52,
+    fontWeight: FontWeight.w600,
+  );
+  static const displaySmall = LLTypeSlot(
+    fontSize: 36,
+    lineHeight: 44,
+    fontWeight: FontWeight.w600,
+  );
   static const headlineMedium = LLTypeSlot(fontSize: 28, lineHeight: 36);
   static const headlineSmall = LLTypeSlot(fontSize: 24, lineHeight: 32);
   static const titleLarge = LLTypeSlot(

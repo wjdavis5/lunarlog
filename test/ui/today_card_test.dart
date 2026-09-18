@@ -94,20 +94,21 @@ void main() {
   });
 
   group('cycleWheelSemanticsLabel', () {
-    test('mid-cycle names the cycle day, not the period', () {
+    test('mid-cycle leads with days until next period', () {
       expect(
         cycleWheelSemanticsLabel(
           cycleDay: 14,
           duringEpisode: false,
           cycleLengthDays: 30,
           periodLengthDays: 4,
+          daysUntilNextPeriod: 9,
           l10n: kL10n,
         ),
-        'Cycle day 14 of about 30 days. Period usually runs about 4 days.',
+        'About 9 days until next period. Cycle day 14 of about 30 days. Period usually runs about 4 days.',
       );
     });
 
-    test('during an episode the label leads with "Period"', () {
+    test('during an episode the label leads with "Day N of period"', () {
       expect(
         cycleWheelSemanticsLabel(
           cycleDay: 2,
@@ -116,7 +117,21 @@ void main() {
           periodLengthDays: 5,
           l10n: kL10n,
         ),
-        'Period, day 2 of about 28 days. Period usually runs about 5 days.',
+        'Day 2 of period. Cycle of about 28 days. Period usually runs about 5 days.',
+      );
+    });
+
+    test('when overdue the label leads with days late', () {
+      expect(
+        cycleWheelSemanticsLabel(
+          cycleDay: 32,
+          duringEpisode: false,
+          cycleLengthDays: 30,
+          periodLengthDays: 4,
+          daysUntilNextPeriod: -2,
+          l10n: kL10n,
+        ),
+        '2 days late. Cycle day 32 of about 30 days. Period usually runs about 4 days.',
       );
     });
 
@@ -135,7 +150,7 @@ void main() {
   });
 
   group('CycleWheel widget', () {
-    testWidgets('renders "Cycle day N" mid-cycle', (tester) async {
+    testWidgets('renders hero count and days unit mid-cycle', (tester) async {
       await _pump(
         tester,
         const CycleWheel(
@@ -143,13 +158,15 @@ void main() {
           duringEpisode: false,
           cycleLengthDays: 30,
           periodLengthDays: 4,
+          daysUntilNextPeriod: 9,
         ),
       );
 
-      expect(find.text('Cycle day 14'), findsOneWidget);
+      expect(find.text('9'), findsOneWidget);
+      expect(find.text('days'), findsOneWidget);
     });
 
-    testWidgets('renders "Period · day N" during an episode', (tester) async {
+    testWidgets('renders "Day N" and "of period" during an episode', (tester) async {
       await _pump(
         tester,
         const CycleWheel(
@@ -160,7 +177,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Period · day 2'), findsOneWidget);
+      expect(find.text('Day 2'), findsOneWidget);
+      expect(find.text('of period'), findsOneWidget);
     });
 
     testWidgets('carries a screen-reader semantics label', (tester) async {
@@ -172,12 +190,15 @@ void main() {
           duringEpisode: false,
           cycleLengthDays: 30,
           periodLengthDays: 4,
+          daysUntilNextPeriod: 9,
         ),
       );
 
       final node = tester.getSemantics(find.byType(CycleWheel));
-      expect(node.label,
-          'Cycle day 14 of about 30 days. Period usually runs about 4 days.');
+      expect(
+        node.label,
+        'About 9 days until next period. Cycle day 14 of about 30 days. Period usually runs about 4 days.',
+      );
       handle.dispose();
     });
 
@@ -195,7 +216,8 @@ void main() {
       );
 
       expect(find.byType(CycleWheel), findsOneWidget);
-      expect(find.text('Cycle day 5'), findsOneWidget);
+      expect(find.text('23'), findsOneWidget);
+      expect(find.text('days'), findsOneWidget);
     });
   });
 
@@ -211,6 +233,7 @@ void main() {
         duringEpisode: false,
         cycleLengthDays: 30,
         periodLengthDays: 4,
+        daysUntilNextPeriod: 9,
         estimateText: 'Next period estimate: September 4, 2026',
         tier: tier,
         showConfidenceChip: showConfidenceChip,
@@ -219,19 +242,20 @@ void main() {
       );
     }
 
-    testWidgets('renders the wheel, estimate, chip, and disclaimer',
+    testWidgets('renders the wheel, cycle day line, estimate, chip, and button',
         (tester) async {
       await _pump(tester, cardFor());
 
       expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
+      expect(find.text('9'), findsOneWidget);
+      expect(find.text('days'), findsOneWidget);
+      expect(find.byKey(const ValueKey('today-card-cycle-day')), findsOneWidget);
       expect(find.text('Cycle day 14'), findsOneWidget);
       expect(find.text('Next period estimate: September 4, 2026'),
           findsOneWidget);
       expect(find.byKey(const ValueKey('today-card-confidence-chip')),
           findsOneWidget);
       expect(find.text('Learning'), findsOneWidget);
-      expect(find.text('Estimates only — not medical advice.'),
-          findsOneWidget);
       expect(find.byKey(const ValueKey('today-card-log-action')),
           findsOneWidget);
       expect(find.text('Period started today'), findsOneWidget);

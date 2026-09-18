@@ -1012,6 +1012,48 @@ abstract class AppLocalizations {
   /// **'Turn on reminders'**
   String get overviewTurnOnReminders;
 
+  /// Label for the expandable section on the Today card explaining the estimate tier and PMS.
+  ///
+  /// In en, this message translates to:
+  /// **'About this estimate'**
+  String get overviewAboutThisEstimate;
+
+  /// Button label on the Today card to quickly log that a period started today.
+  ///
+  /// In en, this message translates to:
+  /// **'Period started today'**
+  String get todayCardLogPeriodStartedToday;
+
+  /// Error message shown on the Today card when recording today's entry fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t record today\'s entry — try again.'**
+  String get todayCardRecordEntryError;
+
+  /// Unit label beneath the days-until count in the cycle wheel centre.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{day} other{days}}'**
+  String cycleWheelDaysUntilUnit(int count);
+
+  /// Unit label beneath the days-late count in the cycle wheel centre when overdue.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{day late} other{days late}}'**
+  String cycleWheelDaysLateUnit(int count);
+
+  /// Top line in the cycle wheel centre during a bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day}'**
+  String cycleWheelBleedDayHero(int day);
+
+  /// Bottom line in the cycle wheel centre during a bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'of period'**
+  String get cycleWheelBleedOfPeriod;
+
   /// The overview wheel's centre label mid-cycle.
   ///
   /// In en, this message translates to:
@@ -1029,6 +1071,34 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Period, day {day}'**
   String cycleWheelPhasePeriodDay(int day);
+
+  /// The overview wheel's screen-reader label during a bleed episode.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {day} of period. Cycle of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsBleed(int day, int cycleDays, int periodDays);
+
+  /// The overview wheel's screen-reader label mid-cycle, leading with the days-until figure.
+  ///
+  /// In en, this message translates to:
+  /// **'{daysUntil, plural, =1{About 1 day until next period.} other{About {daysUntil} days until next period.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsMidCycle(
+    int daysUntil,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
+
+  /// The overview wheel's screen-reader label when overdue.
+  ///
+  /// In en, this message translates to:
+  /// **'{daysLate, plural, =1{1 day late.} other{{daysLate} days late.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsLate(
+    int daysLate,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
 
   /// The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.
   ///
