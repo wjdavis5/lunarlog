@@ -54,6 +54,7 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/perimenopause.dart' show suppressesFertileWindow;
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
@@ -836,6 +837,16 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// `CareModeCopy` consumer.
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
+  /// Issue #196 AC1: the fertile-window display is also suppressed by the
+  /// Perimenopause life-stage mode, on top of the care-mode gate — a
+  /// precise-looking ovulation window is false precision for cycles that
+  /// are legitimately, naturally irregular. Prediction is already
+  /// suppressed for this mode (#528), so this is the explicit belt-and-
+  /// braces gate the issue names; it governs the same three surfaces the
+  /// care-mode flag does (cell band, legend entry, explainer).
+  bool get _showsFertileWindow =>
+      _copy.showsFertileWindow && !suppressesFertileWindow(widget.lifecycleMode);
+
   /// Care-mode gate for a forecast cell's fertile-window flag (issue #143):
   /// when the mode hides the estimate, this strips [ForecastDayCell
   /// .fertileWindow] before the cell reaches [_dayCircle], [_futureMarkers],
@@ -851,7 +862,7 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// [_hasAnyMarker]) makes a hidden fertile-only day render and explain
   /// exactly like any other plain future day.
   ForecastDayCell? _cellForMode(ForecastDayCell? cell) {
-    if (cell == null || _copy.showsFertileWindow || !cell.fertileWindow) {
+    if (cell == null || _showsFertileWindow || !cell.fertileWindow) {
       return cell;
     }
     final stripped = ForecastDayCell(
@@ -1812,7 +1823,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         l10n.calendarLegendPredicted,
         style: _LegendSwatchStyle.hatched,
       ),
-      if (_copy.showsFertileWindow)
+      if (_showsFertileWindow)
         _LegendEntry(
           'fertile',
           colors.fertileBorder,

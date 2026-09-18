@@ -2124,6 +2124,65 @@
         "type": "int"
       }
     }
+  },
+
+  "perimenopauseTitle": "Cycle changes",
+  "@perimenopauseTitle": {
+    "description": "Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196)."
+  },
+  "perimenopauseBody": "In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.",
+  "@perimenopauseBody": {
+    "description": "Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196)."
+  },
+  "perimenopauseNotEnoughTitle": "Nothing to compare yet",
+  "@perimenopauseNotEnoughTitle": {
+    "description": "Heading of the Perimenopause-mode Cycle View card's honest empty state, shown with fewer than two logged cycles (Issue #196)."
+  },
+  "perimenopauseNotEnoughBody": "Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.",
+  "@perimenopauseNotEnoughBody": {
+    "description": "Body of the Perimenopause-mode Cycle View card's empty state (Issue #196)."
+  },
+  "perimenopauseLengthLonger": "This cycle is {days} longer than the last",
+  "@perimenopauseLengthLonger": {
+    "description": "Perimenopause comparison line when the current cycle is longer than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "perimenopauseLengthShorter": "This cycle is {days} shorter than the last",
+  "@perimenopauseLengthShorter": {
+    "description": "Perimenopause comparison line when the current cycle is shorter than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "perimenopauseLengthSame": "This cycle is the same length as the last",
+  "@perimenopauseLengthSame": {
+    "description": "Perimenopause comparison line when the two compared cycles are the same length (Issue #196)."
+  },
+  "perimenopauseLengthUnknown": "This cycle is still in progress — compare it once it ends",
+  "@perimenopauseLengthUnknown": {
+    "description": "Perimenopause comparison line when the current cycle has not finished, so no length difference can honestly be stated (Issue #196)."
+  },
+  "perimenopauseBleedDays": "Bleeding days: {current} this cycle, {previous} last cycle",
+  "@perimenopauseBleedDays": {
+    "description": "Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts.",
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "previous": {
+        "type": "String"
+      }
+    }
+  },
+  "perimenopauseCompareButton": "Compare cycles",
+  "@perimenopauseCompareButton": {
+    "description": "Button on the Perimenopause-mode Cycle View card that opens the full side-by-side cycle comparison (Issue #196, reusing Issue #235's screen)."
   }
 
 }

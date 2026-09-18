@@ -53,6 +53,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/perimenopause.dart' show isPerimenopauseMode;
 import 'package:lunarlog/domain/postpartum.dart'
     show daysSincePostpartumStart, hasLoggedBleedSince;
 import 'package:lunarlog/domain/pregnancy.dart' show pregnancyWeekOf;
@@ -78,6 +79,7 @@ import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
 import 'package:lunarlog/ui/components/postpartum_card.dart';
 import 'package:lunarlog/ui/components/pregnancy_card.dart';
+import 'package:lunarlog/ui/components/perimenopause_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -554,6 +556,18 @@ class _OverviewPanelState extends State<OverviewPanel>
     CyclePrediction prediction,
     NotificationAvailability availability,
   ) {
+    // Issue #196: in Perimenopause mode the Cycle View leads with the
+    // current-vs-previous cycle comparison instead of the days-late
+    // countdown (prediction is already suppressed for this mode by #528, so
+    // there is no countdown left to show). The card owns its own entries /
+    // exclusions watch and reuses #235's comparison screen; null in every
+    // other mode.
+    final perimenopauseCard = isPerimenopauseMode(_modeRow?.mode)
+        ? PerimenopauseCard(
+            profileId: widget.profileId,
+            todayProvider: widget.todayProvider,
+          )
+        : null;
     // Issue #204: in Conceive mode the fertility curve is the Cycle View's
     // headline, rendered above the ordinary period estimate (which stays —
     // Conceive does not suppress prediction). Null in every other mode,
@@ -565,6 +579,7 @@ class _OverviewPanelState extends State<OverviewPanel>
     return ListView(
       padding: const EdgeInsets.all(LLSpace.space4),
       children: [
+        ?perimenopauseCard,
         ?conceiveCard,
         // Issue #192: while the profile is in Pregnancy mode, the
         // week-of-pregnancy counter replaces the ordinary cycle countdown

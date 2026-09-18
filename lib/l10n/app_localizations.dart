@@ -2985,6 +2985,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Most likely day: {date} (about {percent}% in one study)'**
   String conceivePeakDay(String date, int percent);
+
+  /// Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle changes'**
+  String get perimenopauseTitle;
+
+  /// Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.'**
+  String get perimenopauseBody;
+
+  /// Heading of the Perimenopause-mode Cycle View card's honest empty state, shown with fewer than two logged cycles (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to compare yet'**
+  String get perimenopauseNotEnoughTitle;
+
+  /// Body of the Perimenopause-mode Cycle View card's empty state (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.'**
+  String get perimenopauseNotEnoughBody;
+
+  /// Perimenopause comparison line when the current cycle is longer than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle is {days} longer than the last'**
+  String perimenopauseLengthLonger(String days);
+
+  /// Perimenopause comparison line when the current cycle is shorter than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle is {days} shorter than the last'**
+  String perimenopauseLengthShorter(String days);
+
+  /// Perimenopause comparison line when the two compared cycles are the same length (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle is the same length as the last'**
+  String get perimenopauseLengthSame;
+
+  /// Perimenopause comparison line when the current cycle has not finished, so no length difference can honestly be stated (Issue #196).
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle is still in progress — compare it once it ends'**
+  String get perimenopauseLengthUnknown;
+
+  /// Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts.
+  ///
+  /// In en, this message translates to:
+  /// **'Bleeding days: {current} this cycle, {previous} last cycle'**
+  String perimenopauseBleedDays(String current, String previous);
+
+  /// Button on the Perimenopause-mode Cycle View card that opens the full side-by-side cycle comparison (Issue #196, reusing Issue #235's screen).
+  ///
+  /// In en, this message translates to:
+  /// **'Compare cycles'**
+  String get perimenopauseCompareButton;
 }
 
 class _AppLocalizationsDelegate

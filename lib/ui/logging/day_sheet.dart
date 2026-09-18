@@ -82,6 +82,8 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/measurement_validation.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
+import 'package:lunarlog/domain/perimenopause.dart'
+    show isPerimenopauseMode, perimenopauseCategoryOrder;
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
@@ -538,14 +540,25 @@ class _DaySheetState extends State<DaySheet> {
   /// Discharge) when [DaySheet.lifecycleMode] is [LifecycleMode.conceive].
   /// `conceiveCategoryOrder` only reorders; it never drops a category, so
   /// Conceive mode still logs everything the other modes do.
+  ///
+  /// Issue #196: Perimenopause mode applies the same reorder-only rule with
+  /// `perimenopauseCategoryOrder` (hot flashes, then the sleep/energy/mind/
+  /// feelings cluster), so the mode's symptom vocabulary is what the sheet
+  /// leads with. The two life-stage reorderings are mutually exclusive —
+  /// [DaySheet.lifecycleMode] is a single mode.
   List<TagCategory> _resolveCategoriesInOrder() {
     final resolved = resolveTrackingCategories(
       defaultOrder: _copy.categoriesInOrder,
       preferences: widget.trackingPreferences,
       isMinor: widget.isMinor,
     );
-    if (widget.lifecycleMode != LifecycleMode.conceive) return resolved;
-    return conceiveCategoryOrder(resolved);
+    if (widget.lifecycleMode == LifecycleMode.conceive) {
+      return conceiveCategoryOrder(resolved);
+    }
+    if (isPerimenopauseMode(widget.lifecycleMode)) {
+      return perimenopauseCategoryOrder(resolved);
+    }
+    return resolved;
   }
 
   /// Stored codes absent from [kTagTaxonomy] at load time (#237): the chip

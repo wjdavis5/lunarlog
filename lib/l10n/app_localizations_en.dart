@@ -1675,4 +1675,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String conceivePeakDay(String date, int percent) {
     return 'Most likely day: $date (about $percent% in one study)';
   }
+
+  @override
+  String get perimenopauseTitle => 'Cycle changes';
+
+  @override
+  String get perimenopauseBody =>
+      'In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.';
+
+  @override
+  String get perimenopauseNotEnoughTitle => 'Nothing to compare yet';
+
+  @override
+  String get perimenopauseNotEnoughBody =>
+      'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.';
+
+  @override
+  String perimenopauseLengthLonger(String days) {
+    return 'This cycle is $days longer than the last';
+  }
+
+  @override
+  String perimenopauseLengthShorter(String days) {
+    return 'This cycle is $days shorter than the last';
+  }
+
+  @override
+  String get perimenopauseLengthSame =>
+      'This cycle is the same length as the last';
+
+  @override
+  String get perimenopauseLengthUnknown =>
+      'This cycle is still in progress — compare it once it ends';
+
+  @override
+  String perimenopauseBleedDays(String current, String previous) {
+    return 'Bleeding days: $current this cycle, $previous last cycle';
+  }
+
+  @override
+  String get perimenopauseCompareButton => 'Compare cycles';
 }
