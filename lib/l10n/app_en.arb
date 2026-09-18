@@ -730,9 +730,31 @@
   "@settingsRelockTitle": {
     "description": "Settings switch controlling the inactivity auto-relock."
   },
-  "settingsRelockSubtitle": "Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.",
+  "settingsRelockSubtitle": "Locks the app after {duration} without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.",
   "@settingsRelockSubtitle": {
-    "description": "Subtitle of the inactivity auto-relock switch."
+    "description": "Subtitle of the inactivity auto-relock switch; {duration} is the selected timeout label (e.g. 1 hour).",
+    "placeholders": {
+      "duration": {
+        "type": "String",
+        "example": "1 hour"
+      }
+    }
+  },
+  "settingsRelockTimeoutTitle": "Inactivity timeout",
+  "@settingsRelockTimeoutTitle": {
+    "description": "Title of the relock-duration picker tile (issue #762)."
+  },
+  "settingsRelockTimeout2Minutes": "2 minutes",
+  "@settingsRelockTimeout2Minutes": {
+    "description": "Relock-duration picker option: 2 minutes (issue #762)."
+  },
+  "settingsRelockTimeout15Minutes": "15 minutes",
+  "@settingsRelockTimeout15Minutes": {
+    "description": "Relock-duration picker option: 15 minutes (issue #762)."
+  },
+  "settingsRelockTimeout1Hour": "1 hour",
+  "@settingsRelockTimeout1Hour": {
+    "description": "Relock-duration picker option: 1 hour, the default (issue #762)."
   },
   "settingsAppearanceTitle": "Appearance",
   "@settingsAppearanceTitle": {

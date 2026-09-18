@@ -267,12 +267,22 @@ void main() {
       );
       expect(l10n.settingsRelockTitle, 'Relock after inactivity');
       expect(
-        l10n.settingsRelockSubtitle,
-        'Locks the app after 2 minutes without input. Backgrounding '
+        l10n.settingsRelockSubtitle('1 hour'),
+        'Locks the app after 1 hour without input. Backgrounding '
         'relocks immediately. A sign-in or unlock prompt this app opened '
         'is the one exception: the app stays covered while it is on '
         'screen, and relocks as soon as it closes if you have left.',
       );
+      expect(
+        l10n.settingsRelockSubtitle('2 minutes'),
+        contains('Locks the app after 2 minutes without input.'),
+        reason: 'issue #762: the selected duration is interpolated, never '
+            'hard-coded',
+      );
+      expect(l10n.settingsRelockTimeoutTitle, 'Inactivity timeout');
+      expect(l10n.settingsRelockTimeout2Minutes, '2 minutes');
+      expect(l10n.settingsRelockTimeout15Minutes, '15 minutes');
+      expect(l10n.settingsRelockTimeout1Hour, '1 hour');
       expect(l10n.settingsPredictionsTitle, 'Show predictions');
       expect(
         l10n.settingsPredictionsSubtitle,

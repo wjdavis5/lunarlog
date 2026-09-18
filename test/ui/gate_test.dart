@@ -289,13 +289,175 @@ void main() {
     expect(SettingsKeys.relockEnabled, 'relock_enabled');
   });
 
-  test('default inactivity timeout is two minutes and relock defaults on',
-      () {
-    expect(kDefaultInactivityTimeout, const Duration(minutes: 2));
+  test('default inactivity timeout is one hour and relock defaults on', () {
+    expect(kDefaultInactivityTimeout, const Duration(hours: 1),
+        reason: 'issue #762: the owner chose usability over the tight '
+            '2-minute window');
+    expect(kRelockTimeout1Hour, kDefaultInactivityTimeout);
     final controller = GateController(gate: FakeGate());
     addTearDown(controller.dispose);
     expect(controller.relockEnabled, isTrue,
         reason: 'auto-relock default ON (fail closed)');
+    expect(controller.relockTimeout, const Duration(hours: 1),
+        reason: 'the constructor default is the 1-hour option');
+  });
+
+  group('the relock-timeout codec (issue #762)', () {
+    test('the offered set is exactly 2 minutes, 15 minutes, and 1 hour', () {
+      expect(kRelockTimeoutOptions, const [
+        Duration(minutes: 2),
+        Duration(minutes: 15),
+        Duration(hours: 1),
+      ]);
+      expect(kDefaultInactivityTimeout, kRelockTimeout1Hour);
+    });
+
+    test('stored values round-trip through the codec', () {
+      for (final option in kRelockTimeoutOptions) {
+        expect(relockTimeoutFromStored(storedRelockTimeout(option)), option);
+      }
+    });
+
+    test('absent and unrecognized values both read as 1 hour', () {
+      expect(relockTimeoutFromStored(null), kRelockTimeout1Hour,
+          reason: 'never set ⇒ the issue #762 default');
+      expect(relockTimeoutFromStored('nonsense'), kRelockTimeout1Hour,
+          reason: 'a value from a future build must not wedge the gate');
+      expect(relockTimeoutFromStored(''), kRelockTimeout1Hour);
+      expect(relockTimeoutFromStored('5'), kRelockTimeout1Hour,
+          reason: '5 minutes is not an offered option');
+    });
+
+    test('the settings-store seam names the relock timeout key', () {
+      expect(SettingsKeys.relockTimeout, 'relock_timeout');
+    });
+  });
+
+  group('transient inactive gets a grace; real departures do not (#762)', () {
+    const grace = kSystemUiSettleTimeout;
+
+    Future<GateController> unlockedRig(
+      FakeGate gate,
+      FakeInactivityTimers timers,
+    ) async {
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      // Expire the credential prompt's settling tail so the assertions
+      // below start from steady-state unlocked.
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+      return controller;
+    }
+
+    test('inactive covers at once but only locks when the grace expires',
+        () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = await unlockedRig(gate, timers);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse,
+          reason: 'a transient inactive is not an immediate lock');
+      expect(controller.obscured, isTrue,
+          reason: 'the cover is a separate behaviour and still applies');
+      expect(timers.activeWithDelay(grace), isNotEmpty,
+          reason: 'the grace runs through the one injectable timer seam, '
+              'so this is deterministic and waits out no real time');
+
+      timers.fireWithDelay(grace);
+
+      expect(controller.locked, isTrue);
+      expect(controller.obscured, isTrue);
+    });
+
+    test('a resumed before the grace expires cancels it', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = await unlockedRig(gate, timers);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      final pending = timers.activeWithDelay(grace).single;
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+      expect(pending.active, isFalse, reason: 'the return answers the grace');
+      expect(controller.obscured, isFalse);
+      timers.fireWithDelay(grace);
+      expect(controller.locked, isFalse,
+          reason: 'the cancelled grace cannot lock an app the operator '
+              'came back to');
+    });
+
+    test('a paused supersedes the pending grace and locks immediately',
+        () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = await unlockedRig(gate, timers);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      final pending = timers.activeWithDelay(grace).single;
+      controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+
+      expect(controller.locked, isTrue,
+          reason: 'a real backgrounding is the privacy-critical case and '
+              'still locks at once');
+      expect(pending.active, isFalse,
+          reason: 'no second lock from a stale grace');
+    });
+
+    test('a hidden departure also locks immediately', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = await unlockedRig(gate, timers);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.hidden);
+
+      expect(controller.locked, isTrue,
+          reason: 'hidden means the UI is no longer visible — treated like '
+              'paused, not like the transient inactive');
+    });
+
+    test('a QA build arms no grace and never locks', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+        gate: gate,
+        qaBuild: true,
+        inactivityTimerFactory: timers.factory,
+      );
+      addTearDown(controller.dispose);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+
+      expect(controller.locked, isFalse);
+      expect(controller.obscured, isTrue,
+          reason: 'the snapshot cover posture is unchanged by #739');
+      expect(timers.activeWithDelay(grace), isEmpty,
+          reason: 'a QA build never re-locks, so it arms no grace');
+    });
+
+    test('the persisted timeout drives the armed inactivity delay', () async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = await unlockedRig(gate, timers);
+      expect(timers.activeWithDelay(kDefaultInactivityTimeout), isNotEmpty);
+
+      final store = FakeSettingsStore({SettingsKeys.relockTimeout: '2'});
+      addTearDown(store.close);
+      controller.attachSettings(store);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.relockTimeout, kRelockTimeout2Minutes);
+      expect(timers.activeWithDelay(kRelockTimeout2Minutes), isNotEmpty,
+          reason: 'a new choice re-arms the countdown without a restart');
+      expect(timers.activeWithDelay(kDefaultInactivityTimeout), isEmpty,
+          reason: 'the old 1-hour timer was replaced');
+    });
   });
 
   group('the credential decides, not the lifecycle (#65 U1; KTD1, KTD2a)',
@@ -633,9 +795,17 @@ void main() {
       timers.fireWithDelay(kSystemUiSettleTimeout);
       expect(controller.systemUiActive, isFalse);
 
-      // Same event, no window: the policy outside is unchanged.
+      // Same event, no window: issue #762 gives it a grace period rather
+      // than locking at once, but it still locks if the app never
+      // returns.
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
-      expect(controller.locked, isTrue);
+      expect(controller.locked, isFalse,
+          reason: 'a transient inactive is no longer an immediate lock');
+      expect(controller.obscured, isTrue,
+          reason: 'but the cover is raised the moment it departs');
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isTrue,
+          reason: 'never returning to resumed lets the grace expire');
     });
 
     testWidgets('nesting: an inner window closing does not restore locking '
@@ -870,8 +1040,12 @@ void main() {
           reason: 'the finally still closed the window');
 
       controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      expect(controller.locked, isFalse,
+          reason: 'the window really closed: a leaked one would have '
+              'suppressed the grace path entirely');
+      timers.fireWithDelay(kSystemUiSettleTimeout);
       expect(controller.locked, isTrue,
-          reason: 'a leaked window would have suppressed this');
+          reason: 'and an inactive that never returns locks');
     });
 
     test('an unlock resolving after dispose does not notify', () async {
@@ -1228,15 +1402,77 @@ void main() {
       await harness.dispose();
     });
 
-    testWidgets('inactive (split-screen focus loss) also re-locks',
-        (tester) async {
+    testWidgets('inactive (split-screen focus loss) covers at once but only '
+        're-locks once the grace expires', (tester) async {
       final harness = Harness(tester, seed: (db) async {
         await seedTwoProfiles(db, 0);
       });
       await harness.pump();
       await harness.background(AppLifecycleState.inactive);
+
+      // Issue #762: the transient departure covers immediately but does
+      // not lock — split-screen/multi-window unfocus is exactly the
+      // signal a notification-shade pull or call banner also reports.
+      expect(privacyCover, findsOneWidget,
+          reason: 'the cover is raised the moment the app departs');
+      expect(lockScreen, findsNothing,
+          reason: 'a transient inactive no longer locks at once');
+      expect(find.text('Alice'), findsNothing,
+          reason: 'covered, so no data is visible either way');
+
+      // The app never comes back: the grace expires and the departure
+      // takes effect fail-closed, so iPad Slide Over and an app-switcher
+      // peek still lock when they really are a departure.
+      harness.timers.fireWithDelay(kSystemUiSettleTimeout);
+      await tester.pumpAndSettle();
       expect(lockScreen, findsOneWidget,
-          reason: 'split-screen/multi-window unfocus is a departure');
+          reason: 'an inactive that never returns still locks');
+      expect(find.text('Alice'), findsNothing);
+      await harness.dispose();
+    });
+
+    testWidgets('an inactive -> resumed round trip does not lock (issue '
+        '#762)', (tester) async {
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump();
+      expect(find.text('Alice'), findsOneWidget);
+
+      // A notification-shade pull, Control Centre swipe, or call banner:
+      // inactive, then straight back to resumed. Deterministic because
+      // the grace runs through the injectable timer seam — no real time
+      // is waited out.
+      await harness.background(AppLifecycleState.inactive);
+      expect(lockScreen, findsNothing,
+          reason: 'still only covered while the grace is pending');
+      await harness.background(AppLifecycleState.resumed);
+
+      // Even firing every timer the factory ever made must not lock: the
+      // grace was cancelled by the return, so only cancelled no-ops
+      // remain.
+      harness.timers.fireWithDelay(kSystemUiSettleTimeout);
+      await tester.pumpAndSettle();
+      expect(lockScreen, findsNothing,
+          reason: 'the transient round trip is answered by the return, '
+              'not by a lock');
+      expect(privacyCover, findsNothing);
+      expect(find.text('Alice'), findsOneWidget);
+      await harness.dispose();
+    });
+
+    testWidgets('a paused event still locks immediately, with no grace '
+        '(privacy-critical, unchanged by #762)', (tester) async {
+      final harness = Harness(tester, seed: (db) async {
+        await seedTwoProfiles(db, 0);
+      });
+      await harness.pump();
+      expect(find.text('Alice'), findsOneWidget);
+
+      await harness.background(AppLifecycleState.paused);
+      expect(lockScreen, findsOneWidget,
+          reason: 'a real backgrounding locks at once — the grace is for '
+              'transient inactive only');
       expect(find.text('Alice'), findsNothing);
       await harness.dispose();
     });
@@ -1936,7 +2172,7 @@ void main() {
 
   group('settings screen (v1: exactly one control)', () {
     testWidgets('relock toggle persists via SettingsStore and shows the '
-        'fixed 2-minute timeout', (tester) async {
+        'operator-selected timeout', (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final store = DriftSettingsStore(db.storage);
       // Issue #226: the relock toggle now sits in the Privacy & security
@@ -1959,8 +2195,9 @@ void main() {
 
       final toggle = find.byKey(const ValueKey('relock-toggle'));
       expect(toggle, findsOneWidget);
-      expect(find.textContaining('2 minutes'), findsOneWidget,
-          reason: 'timeout display (fixed in v1)');
+      expect(find.textContaining('1 hour'), findsWidgets,
+          reason: 'issue #762: 1 hour is the default timeout, named in the '
+              'subtitle and the timeout tile alike');
       expect((tester.widget(toggle) as SwitchListTile).value, isTrue,
           reason: 'defaults on with no stored value');
 
@@ -1973,6 +2210,99 @@ void main() {
       await tester.pumpAndSettle();
       expect(await store.get(SettingsKeys.relockEnabled), 'true');
 
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('the timeout tile offers 2 minutes / 15 minutes / 1 hour, '
+        'defaults to 1 hour, and persists the choice (issue #762)',
+        (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final store = DriftSettingsStore(db.storage);
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(Provider<SettingsStore>.value(
+        value: store,
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SettingsScreen(),
+        ),
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final tile = find.byKey(const ValueKey('relock-timeout-tile'));
+      expect(tile, findsOneWidget);
+      final defaultTile = tester.widget<ListTile>(find.ancestor(
+        of: find.text('Inactivity timeout'),
+        matching: find.byType(ListTile),
+      ));
+      expect((defaultTile.subtitle! as Text).data, '1 hour',
+          reason: 'no stored value ⇒ the 1-hour default');
+
+      // Open the picker: exactly the three fixed options, no free-form
+      // duration control.
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('relock-timeout-option-2')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('relock-timeout-option-15')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('relock-timeout-option-60')),
+          findsOneWidget);
+      expect(find.text('2 minutes'), findsWidgets);
+      expect(find.text('15 minutes'), findsWidgets);
+      expect(find.text('1 hour'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('relock-timeout-option-15')));
+      await tester.pumpAndSettle();
+
+      expect(await store.get(SettingsKeys.relockTimeout), '15',
+          reason: 'the choice is persisted through the existing '
+              'SettingsStore seam');
+      final updatedTile = tester.widget<ListTile>(find.ancestor(
+        of: find.text('Inactivity timeout'),
+        matching: find.byType(ListTile),
+      ));
+      expect((updatedTile.subtitle! as Text).data, '15 minutes');
+      expect(find.textContaining('Locks the app after 15 minutes'),
+          findsOneWidget,
+          reason: 'the toggle subtitle reflects the selected duration');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    testWidgets('a persisted timeout is loaded and shown on open (issue '
+        '#762)', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final store = DriftSettingsStore(db.storage);
+      await store.set(SettingsKeys.relockTimeout, '2');
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(Provider<SettingsStore>.value(
+        value: store,
+        child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: SettingsScreen(),
+        ),
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Locks the app after 2 minutes'),
+          findsOneWidget,
+          reason: 'a stored 2-minute choice is honoured, not defaulted');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();

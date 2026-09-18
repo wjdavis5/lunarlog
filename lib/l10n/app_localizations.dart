@@ -1072,11 +1072,35 @@ abstract class AppLocalizations {
   /// **'Relock after inactivity'**
   String get settingsRelockTitle;
 
-  /// Subtitle of the inactivity auto-relock switch.
+  /// Subtitle of the inactivity auto-relock switch; {duration} is the selected timeout label (e.g. 1 hour).
   ///
   /// In en, this message translates to:
-  /// **'Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.'**
-  String get settingsRelockSubtitle;
+  /// **'Locks the app after {duration} without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.'**
+  String settingsRelockSubtitle(String duration);
+
+  /// Title of the relock-duration picker tile (issue #762).
+  ///
+  /// In en, this message translates to:
+  /// **'Inactivity timeout'**
+  String get settingsRelockTimeoutTitle;
+
+  /// Relock-duration picker option: 2 minutes (issue #762).
+  ///
+  /// In en, this message translates to:
+  /// **'2 minutes'**
+  String get settingsRelockTimeout2Minutes;
+
+  /// Relock-duration picker option: 15 minutes (issue #762).
+  ///
+  /// In en, this message translates to:
+  /// **'15 minutes'**
+  String get settingsRelockTimeout15Minutes;
+
+  /// Relock-duration picker option: 1 hour, the default (issue #762).
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour'**
+  String get settingsRelockTimeout1Hour;
 
   /// Settings tile and picker-dialog title for the appearance override (issue #137).
   ///
