@@ -344,7 +344,7 @@ class _NotificationPreferencesScreenState
           child: Text(
             key: const ValueKey('discretion-copy'),
             'Alerts never show what was logged - just a generic '
-            'reminder to open Lunarlog.',
+            'reminder to open lunarlog.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),

@@ -169,8 +169,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             Text('Just you for now', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              'This profile has one caregiver, so there is no shared activity '
-              'to review. When a second caregiver joins, both of your changes '
+              'This profile has one guardian, so there is no shared activity '
+              'to review. When a second guardian joins, both of your changes '
               'appear here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -200,7 +200,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             Text('No activity yet', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              'Changes either caregiver makes to this profile will appear '
+              'Changes either guardian makes to this profile will appear '
               'here.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -225,7 +225,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(
               'Newest first. Each row shows a day\u2019s latest change — '
-              'earlier edits by the same caregiver are not recorded '
+              'earlier edits by the same guardian are not recorded '
               'separately.',
               key: const ValueKey('activity-feed-caption'),
               style: theme.textTheme.bodySmall?.copyWith(
@@ -294,7 +294,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
             : 'Sync merge kept ${_possessive(actor)} version';
       case ActivityKind.accessRemoved:
         return actor == null
-            ? 'A caregiver no longer has access'
+            ? 'A guardian no longer has access'
             : '$actor no longer has access';
     }
   }
@@ -345,7 +345,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
           _currentUserId,
           data.guardians,
         ) ??
-        'one caregiver';
+        'one guardian';
     final what = item.discardedNote && item.discardedFlow
         ? 'flow and note values were'
         : item.discardedNote

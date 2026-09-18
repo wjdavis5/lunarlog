@@ -235,7 +235,7 @@ void main() {
     final aliceTile = find.byKey(const ValueKey('caregiver-alerts-p1'));
     expect(aliceTile, findsOneWidget);
     expect(find.byKey(const ValueKey('caregiver-alerts-p2')), findsOneWidget);
-    expect(find.text('Caregiver alerts'), findsNWidgets(2));
+    expect(find.text('Guardian alerts'), findsNWidgets(2));
     expect(find.text('Alice'), findsOneWidget);
 
     // One tap lands on the notification preferences screen itself.

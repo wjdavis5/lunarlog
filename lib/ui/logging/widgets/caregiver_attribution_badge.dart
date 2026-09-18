@@ -43,7 +43,7 @@ class CaregiverAttributionBadge extends StatelessWidget {
       }
       return guardianRoleLabel(l10n, match.role);
     }
-    return 'Caregiver';
+    return 'Guardian';
   }
 
   /// Issue #159: one label per non-`manual` source, "Imported" as the

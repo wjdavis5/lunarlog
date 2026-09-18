@@ -317,7 +317,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
 
 /// Resolves [userId] to display copy for the "Checked by" line, mirroring
 /// [CaregiverAttributionBadge]'s naming ("you" for the current operator,
-/// the guardian's display name when known, the role label, "Caregiver" as
+/// the guardian's display name when known, the role label, "Guardian" as
 /// the fallback) — never a raw uuid (the activity-feed precedent).
 String careActorCopy(
   AppLocalizations l10n,
@@ -335,7 +335,7 @@ String careActorCopy(
           : name;
     }
   }
-  return 'Caregiver';
+  return 'Guardian';
 }
 
 /// The guardian row for [userId], or null when no row matches. Split out

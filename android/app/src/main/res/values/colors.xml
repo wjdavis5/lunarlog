@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Issue #164: the brand colour, sampled from the brand mark's own
+     background (assets/branding/app_icon_1024.png, #37156C). It backs both
+     the Android launch screen and the adaptive-icon background layer, and is
+     deliberately a fixed brand colour rather than the app theme's seed (a
+     teal) or `?android:colorBackground` — the light brand mark is designed to
+     sit on this purple, so the launch screen reads correctly in light and
+     dark alike. `tool/branding/generate_brand_assets.py` documents the same
+     value for the rasters it derives from the mark. -->
+<resources>
+    <color name="ic_launcher_background">#37156C</color>
+</resources>

@@ -319,7 +319,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Invite Caregiver to Luna'), findsOneWidget);
+      expect(find.text('Invite guardian to Luna'), findsOneWidget);
       expect(find.text('Create Link'), findsOneWidget);
 
       await tester.tap(find.text('Create Link'));
@@ -522,7 +522,7 @@ void main() {
       expect(find.textContaining('child'), findsNothing);
       expect(
         find.text(
-          "You've been invited to a shared profile in LunarLog. "
+          "You've been invited to a shared profile in lunarlog. "
           'Accepting will sync its cycle calendar and health logs to '
           'this device.',
         ),
@@ -589,7 +589,7 @@ void main() {
           expect(find.textContaining('Riley'), findsOneWidget);
           expect(
             find.text(
-              "You've been invited to a shared profile in LunarLog. "
+              "You've been invited to a shared profile in lunarlog. "
               'Accepting will sync its cycle calendar and health logs to '
               'this device.',
             ),
@@ -1454,7 +1454,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.person_add), findsOneWidget);
-      expect(find.text('No caregivers linked yet'), findsOneWidget);
+      expect(find.text('No guardians linked yet'), findsOneWidget);
       expect(find.byIcon(Icons.remove_circle_outline), findsNothing);
 
       await tester.pumpWidget(const SizedBox.shrink());
@@ -1462,7 +1462,7 @@ void main() {
     });
 
     testWidgets("#544: shows a spinner before the guardian stream's first "
-        'emission, never "No caregivers linked yet" (which would read as '
+        'emission, never "No guardians linked yet" (which would read as '
         'a synced, empty profile rather than still loading)', (tester) async {
       await storage.applyRemoteRows([
         guardianRow('g-0', 'user-mom', 'primary_guardian', 'Mom'),
@@ -1485,7 +1485,7 @@ void main() {
       );
 
       expect(
-        find.text('No caregivers linked yet'),
+        find.text('No guardians linked yet'),
         findsNothing,
         reason:
             'must not flash the empty state before the first real '
@@ -2022,7 +2022,7 @@ void main() {
 
         await tester.tap(find.widgetWithText(TextButton, 'Resend'));
         await tester.pumpAndSettle();
-        expect(find.text('Invite Caregiver to Luna'), findsOneWidget);
+        expect(find.text('Invite guardian to Luna'), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
@@ -2631,10 +2631,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Caregivers'));
+      await tester.tap(find.text('Guardians'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Luna Caregivers'), findsOneWidget);
+      expect(find.text('Luna Guardians'), findsOneWidget);
 
       // U2 route naming: the pushed route is named ManageGuardiansScreen.
       final route = ModalRoute.of(

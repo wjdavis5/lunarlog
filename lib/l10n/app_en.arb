@@ -782,11 +782,11 @@
   "@settingsPrivacySubtitle": {
     "description": "Subtitle of the privacy policy tile."
   },
-  "settingsPrivacyDialogTitle": "LunarLog Privacy Policy",
+  "settingsPrivacyDialogTitle": "lunarlog Privacy Policy",
   "@settingsPrivacyDialogTitle": {
     "description": "Title of the in-app privacy policy dialog."
   },
-  "settingsPrivacyDialogBody": "LunarLog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Caregiver Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
+  "settingsPrivacyDialogBody": "lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
   "@settingsPrivacyDialogBody": {
     "description": "Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary."
   },
@@ -838,7 +838,7 @@
   "@settingsReminderSettingsSubtitle": {
     "description": "Subtitle of the reminder-settings tile."
   },
-  "settingsCaregiverAlertsTitle": "Caregiver alerts",
+  "settingsCaregiverAlertsTitle": "Guardian alerts",
   "@settingsCaregiverAlertsTitle": {
     "description": "Tile (inside the Reminders section, one per profile) opening the caregiver alert preferences screen (Issue #226 promoting it from Manage Guardians); the tile's subtitle is the profile's name."
   },
@@ -968,7 +968,7 @@
   "@firstRunAgeAcknowledgementLabel": {
     "description": "Checkbox label acknowledging the 13+ minimum-age statement on first-run profile creation."
   },
-  "firstRunAgeAcknowledgementHint": "LunarLog requires users to be at least 13 years old, or managed by a parent or legal guardian.",
+  "firstRunAgeAcknowledgementHint": "lunarlog requires users to be at least 13 years old, or managed by a parent or legal guardian.",
   "@firstRunAgeAcknowledgementHint": {
     "description": "One-line hint under the minimum-age acknowledgement checkbox in the first-run form."
   },
@@ -1621,7 +1621,7 @@
   "@manageGuardiansLeaveProfileTooltip": {
     "description": "Tooltip on a guardian row's revoke button when the row is the caller's own."
   },
-  "manageGuardiansRemoveCaregiverTooltip": "Remove caregiver",
+  "manageGuardiansRemoveCaregiverTooltip": "Remove guardian",
   "@manageGuardiansRemoveCaregiverTooltip": {
     "description": "Tooltip on a guardian row's revoke button when the row belongs to someone else."
   },
@@ -1954,7 +1954,7 @@
   "@reminderTextPreviewSection": {
     "description": "Section header above the live notification preview in the text editor (Issue #184)."
   },
-  "reminderTextPreviewAppName": "Lunarlog",
+  "reminderTextPreviewAppName": "lunarlog",
   "@reminderTextPreviewAppName": {
     "description": "The app name shown in the OS-notification-styled preview, matching what the OS banner header shows (Issue #184)."
   },
@@ -1978,7 +1978,7 @@
   "@reminderTextResetButton": {
     "description": "Action in the notification text editor that clears the custom text so the type falls back to the generic default (Issue #184)."
   },
-  "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. Lunarlog never adds a profile name, date, or health detail to notification text.",
+  "reminderTextDiscretionNote": "The preview is exactly what the notification will show — nothing more. lunarlog never adds a profile name, date, or health detail to notification text.",
   "@reminderTextDiscretionNote": {
     "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
   },

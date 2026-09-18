@@ -143,7 +143,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Share this single-use link with the caregiver for ${widget.profileName}:',
+                        'Share this single-use link with the guardian for ${widget.profileName}:',
                       ),
                       const SizedBox(height: 12),
                       Container(
@@ -233,7 +233,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Invite Caregiver to ${widget.profileName}',
+              'Invite guardian to ${widget.profileName}',
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),

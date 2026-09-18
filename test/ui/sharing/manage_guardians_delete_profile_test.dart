@@ -234,7 +234,7 @@ void main() {
       expect(erasureService.deleteCalls, 1);
       expect(erasureService.lastDeletedProfileId, testProfile.id);
       // The screen popped: its own AppBar title is gone.
-      expect(find.text('Riley Caregivers'), findsNothing);
+      expect(find.text('Riley Guardians'), findsNothing);
 
       await unmount(tester);
     },
@@ -268,7 +268,7 @@ void main() {
       );
       // The screen is still open (its AppBar title is present) and the
       // delete action is tappable again.
-      expect(find.text('Riley Caregivers'), findsOneWidget);
+      expect(find.text('Riley Guardians'), findsOneWidget);
       expect(
         tester
             .widget<DestructiveButton>(find.byWidgetPredicate(

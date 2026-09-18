@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Lunarlog</string>
+	<string>lunarlog</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -59,7 +59,7 @@
 	<true/>
 	<!-- U7: why the app requests Face ID (device-credential gate). -->
 	<key>NSFaceIDUsageDescription</key>
-	<string>Lunarlog uses Face ID to unlock your data.</string>
+	<string>lunarlog uses Face ID to unlock your data.</string>
 	<!-- Issue #156/#173: HealthKit platform plumbing, write-only by design
 	     (issue #515) — AppDelegate.swift's `requestAuthorization` call
 	     passes an empty `read` set (`toShare: toShare, read: []`), so this
@@ -88,7 +88,7 @@
 	     is offered; without it the photo pick crashes the app on iOS 14+.
 	     Only the feedback sheet's screenshot attachment opens the picker. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Lunarlog uses your photo library only when you choose to attach a screenshot to a support ticket. Nothing is uploaded unless you pick an image and submit the ticket.</string>
+	<string>lunarlog uses your photo library only when you choose to attach a screenshot to a support ticket. Nothing is uploaded unless you pick an image and submit the ticket.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

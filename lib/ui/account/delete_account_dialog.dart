@@ -8,7 +8,7 @@
 /// Issue #533: deleting your account cascades every profile you *own*
 /// (`supabase/migrations/20260905110000_account_deletion.sql`) - taking any
 /// co-guardian's access, and any minor's whole history, with it - while
-/// entries you logged as a caregiver on someone else's profile are kept and
+/// entries you logged as a guardian on someone else's profile are kept and
 /// re-attributed rather than deleted
 /// (`supabase/migrations/20260906120000_account_deletion_final_rehome.sql`).
 /// Neither consequence was previously disclosed, so this dialog now loads
@@ -264,7 +264,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Entries you logged as a caregiver on someone else\'s '
+                    'Entries you logged as a guardian on someone else\'s '
                     'profile are kept and re-attributed to its owner, not '
                     'deleted. Apple Health / Health Connect writes this '
                     'device already made stay in the device\'s own health '

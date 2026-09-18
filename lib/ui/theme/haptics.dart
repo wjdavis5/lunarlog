@@ -1,7 +1,7 @@
 /// Centralized semantic haptic feedback helpers (Issue #474).
 ///
 /// Provides tactile confirmation for key logging, selection, and destructive
-/// interactions across LunarLog. All calls are fire-and-forget, defensively
+/// interactions across lunarlog. All calls are fire-and-forget, defensively
 /// guarded against platform channel errors, and automatically no-op on platforms
 /// without haptic hardware (desktop/web) or in headless unit tests.
 library;

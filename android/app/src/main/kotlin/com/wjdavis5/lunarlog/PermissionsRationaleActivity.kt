@@ -39,7 +39,7 @@ class PermissionsRationaleActivity : Activity() {
         val padding = (24 * resources.displayMetrics.density).toInt()
 
         val title = TextView(this).apply {
-            text = "LunarLog & Health Connect"
+            text = "lunarlog & Health Connect"
             textSize = 20f
             setTypeface(typeface, Typeface.BOLD)
         }
@@ -47,7 +47,7 @@ class PermissionsRationaleActivity : Activity() {
         val body = TextView(this).apply {
             textSize = 15f
             setPadding(0, padding, 0, padding)
-            text = "LunarLog is a privacy-first, local-first cycle tracker.\n\n" +
+            text = "lunarlog is a privacy-first, local-first cycle tracker.\n\n" +
                 "• Health Connect data (menstruation dates and flow, and " +
                 "spotting logged between periods) is only ever read or " +
                 "written for the one profile explicitly bound as this " +
@@ -64,7 +64,7 @@ class PermissionsRationaleActivity : Activity() {
                 "use ads. Crash reports strip all health and personal " +
                 "details on-device before they ever leave it.\n\n" +
                 "You can grant, deny, or later revoke any of these permissions " +
-                "individually in Health Connect's own settings; LunarLog " +
+                "individually in Health Connect's own settings; lunarlog " +
                 "disables only the affected feature when a permission is " +
                 "denied or revoked."
         }

@@ -1,6 +1,6 @@
 /// Widget tests for [DeleteAccountDialog]'s blast-radius disclosure (Issue
 /// #533): deleting your account cascades every profile you own, taking any
-/// co-guardian's access with it, while entries you logged as a caregiver on
+/// co-guardian's access with it, while entries you logged as a guardian on
 /// someone else's profile are kept and re-attributed. This dialog must
 /// enumerate that before its confirm button is enabled, require an extra
 /// acknowledgement when it applies, offer "Transfer ownership first", and

@@ -112,8 +112,8 @@ void main() {
         hasNotificationPayload: false,
       )!;
 
-      expect(presentation.title, 'A reminder from Lunarlog');
-      expect(presentation.body, 'Open Lunarlog to see what it is about.');
+      expect(presentation.title, 'A reminder from lunarlog');
+      expect(presentation.body, 'Open lunarlog to see what it is about.');
     });
 
     test(
@@ -252,8 +252,8 @@ void main() {
       messages.emit(const RemoteMessage(
         messageId: 'msg-fg-1',
         notification: RemoteNotification(
-            title: 'A reminder from Lunarlog',
-            body: 'Open Lunarlog to see what it is about.'),
+            title: 'A reminder from lunarlog',
+            body: 'Open lunarlog to see what it is about.'),
         data: {'profile_id': 'profile-7'},
       ));
       await pumpEventQueue();
@@ -321,8 +321,8 @@ void main() {
       messages.emit(const RemoteMessage(
         messageId: 'msg-fg-3',
         notification: RemoteNotification(
-            title: 'A reminder from Lunarlog',
-            body: 'Open Lunarlog to see what it is about.'),
+            title: 'A reminder from lunarlog',
+            body: 'Open lunarlog to see what it is about.'),
       ));
       await pumpEventQueue();
 
@@ -416,8 +416,8 @@ void main() {
         message: const RemoteMessage(
           messageId: 'msg-bg-2',
           notification: RemoteNotification(
-              title: 'A reminder from Lunarlog',
-              body: 'Open Lunarlog to see what it is about.'),
+              title: 'A reminder from lunarlog',
+              body: 'Open lunarlog to see what it is about.'),
         ),
         plugin: FlutterLocalNotificationsPlugin(),
         platform: TargetPlatform.android,
@@ -458,8 +458,8 @@ void main() {
         message: const RemoteMessage(
           messageId: 'msg-bg-4',
           notification: RemoteNotification(
-              title: 'A reminder from Lunarlog',
-              body: 'Open Lunarlog to see what it is about.'),
+              title: 'A reminder from lunarlog',
+              body: 'Open lunarlog to see what it is about.'),
         ),
         plugin: FlutterLocalNotificationsPlugin(),
         platform: TargetPlatform.iOS,

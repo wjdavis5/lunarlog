@@ -111,7 +111,7 @@ void main() {
   });
 
   test('generic content: title/body carry no names, dates, or digits', () {
-    expect(kReminderTitle, 'A reminder from Lunarlog');
+    expect(kReminderTitle, 'A reminder from lunarlog');
     expect(RegExp(r'\d').hasMatch(kReminderTitle + kReminderBody), isFalse);
   });
 

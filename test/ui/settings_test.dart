@@ -159,7 +159,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify PrivacyPolicyScreen opened
-    expect(find.text('LunarLog Privacy Policy'), findsOneWidget);
+    expect(find.text('lunarlog Privacy Policy'), findsOneWidget);
     expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
     expect(find.textContaining('Protected at Rest'), findsOneWidget);
     expect(find.textContaining('Zero Ads & Tracking'), findsOneWidget);
@@ -169,7 +169,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify dialog closed
-    expect(find.text('LunarLog Privacy Policy'), findsNothing);
+    expect(find.text('lunarlog Privacy Policy'), findsNothing);
   });
 
   /// A signed-in [AuthController] so `hasFeedback` (R23) can turn true in a

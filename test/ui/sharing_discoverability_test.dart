@@ -851,7 +851,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('profile-shared-chip')));
         await tester.pumpAndSettle();
         expect(find.byType(ManageGuardiansScreen), findsOneWidget);
-        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(find.text('Alice Guardians'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }
@@ -879,9 +879,9 @@ void main() {
           matching: find.byType(PopupMenuButton<String>),
         ));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Caregivers'));
+        await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(find.text('Alice Guardians'), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
 
         // Cancel the invitation and confirm.
@@ -933,9 +933,9 @@ void main() {
           matching: find.byType(PopupMenuButton<String>),
         ));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Caregivers'));
+        await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(find.text('Alice Guardians'), findsOneWidget);
         expect(
             find.byKey(const ValueKey('pending-invite-inv-1')), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
@@ -948,7 +948,7 @@ void main() {
         // the dialog appears, and dismissing it leaves the expired row.
         await tester.tap(find.widgetWithText(TextButton, 'Resend'));
         await tester.pumpAndSettle();
-        expect(find.text('Invite Caregiver to Alice'), findsOneWidget);
+        expect(find.text('Invite guardian to Alice'), findsOneWidget);
         await tester.tap(find.text('Cancel'));
         await tester.pumpAndSettle();
         expect(
@@ -994,9 +994,9 @@ void main() {
           matching: find.byType(PopupMenuButton<String>),
         ));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Caregivers'));
+        await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
-        expect(find.text('Alice Caregivers'), findsOneWidget);
+        expect(find.text('Alice Guardians'), findsOneWidget);
         expect(find.text('Sitter'), findsOneWidget);
         expect(find.text('Predictions-only sharing'), findsOneWidget);
         expect(find.byKey(const ValueKey('share-predictions')),
@@ -1099,10 +1099,10 @@ void main() {
           matching: find.byType(PopupMenuButton<String>),
         ));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Caregivers'));
+        await tester.tap(find.text('Guardians'));
         await tester.pumpAndSettle();
 
-        expect(find.text('Zoe Caregivers'), findsOneWidget);
+        expect(find.text('Zoe Guardians'), findsOneWidget);
         expect(find.text('X'), findsOneWidget);
         // No invite action, no revocation of others, no pending section —
         // but the viewer's own self-leave control stays, matching Manage
@@ -1161,7 +1161,7 @@ void main() {
 
   group('row menu follows guardian role (issue #531)', () {
     /// Opens [profileId]'s row menu, asserts Rename/Archive presence
-    /// against [canEdit]/[canDelete] (Caregivers is unconditional and
+    /// against [canEdit]/[canDelete] (Guardians is unconditional and
     /// always checked), then dismisses onto the barrier so a following
     /// assertion in the same test starts clean.
     Future<void> expectRowMenu(
@@ -1175,7 +1175,7 @@ void main() {
         matching: find.byType(PopupMenuButton<String>),
       ));
       await tester.pumpAndSettle();
-      expect(find.text('Caregivers'), findsOneWidget);
+      expect(find.text('Guardians'), findsOneWidget);
       expect(find.text('Rename'), canEdit ? findsOneWidget : findsNothing);
       expect(find.text('Archive'), canDelete ? findsOneWidget : findsNothing);
       await tester.tapAt(const Offset(5, 5));
@@ -1312,7 +1312,7 @@ void main() {
             .tap(find.byKey(ValueKey('family-sharing-row-${ids.zoe}')));
         await tester.pumpAndSettle();
         expect(find.byType(ManageGuardiansScreen), findsOneWidget);
-        expect(find.text('Zoe Caregivers'), findsOneWidget);
+        expect(find.text('Zoe Guardians'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }

@@ -2219,15 +2219,12 @@ void main() {
           withStorage: true,
           seed: (db, profileId) async {
             await db.storage.applyRemoteRows([
-              // A real guardian whose role happens to be "caregiver" — whose
-              // label is the literal string 'Caregiver', identical to the
-              // no-match fallback text. Giving it a display name and
-              // attributing a *separate* entry to it proves the wiring
-              // actually looked the guardian up (real name shown) rather
-              // than the generic-fallback and matched-caregiver-role cases
-              // coincidentally rendering the same text: if the guardian list
-              // were ever dropped, this second entry would also read
-              // "Logged by Caregiver" instead of "Logged by Nanny".
+              // A real guardian whose role happens to be "caregiver". Giving
+              // it a display name and attributing a *separate* entry to it
+              // proves the wiring actually looked the guardian up (real name
+              // shown) rather than falling through to the generic label:
+              // if the guardian list were ever dropped, this second entry
+              // would read "Logged by Guardian" instead of "Logged by Nanny".
               guardianRow(
                 profileId,
                 'g-nanny',
@@ -2254,7 +2251,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
         expect(
-          find.textContaining('Logged by Caregiver'),
+          find.textContaining('Logged by Guardian'),
           findsOneWidget,
           reason:
               'a user id absent from the guardian list falls back to '
@@ -2269,11 +2266,11 @@ void main() {
           find.textContaining('Logged by Nanny'),
           findsOneWidget,
           reason:
-              'a real guardian whose role label is the same string as '
-              'the generic fallback must still resolve to its own display '
-              'name, proving the match — not the fallback — produced it',
+              'a real guardian must still resolve to its own display '
+              'name, proving the match — not the generic fallback — '
+              'produced it',
         );
-        expect(find.textContaining('Logged by Caregiver'), findsNothing);
+        expect(find.textContaining('Logged by Guardian'), findsNothing);
 
         await disposeLogging(tester, h);
       },
@@ -2615,7 +2612,7 @@ void main() {
       );
       // The generic fallback proves the sheet resolved attribution against
       // an empty list rather than rendering nothing at all.
-      expect(find.textContaining('Logged by Caregiver'), findsOneWidget);
+      expect(find.textContaining('Logged by Guardian'), findsOneWidget);
       await tester.tapAt(const Offset(20, 20));
       await tester.pumpAndSettle();
 
@@ -2655,7 +2652,7 @@ void main() {
       await tester.tap(find.byKey(ValueKey('day-cell-${dadLeakDate.iso}')));
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('Logged by Caregiver'),
+        find.textContaining('Logged by Guardian'),
         findsOneWidget,
         reason:
             "profile A's guardian must not resolve in profile B's "
@@ -2763,7 +2760,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
         await tester.pumpAndSettle();
         expect(
-          find.textContaining('Logged by Caregiver'),
+          find.textContaining('Logged by Guardian'),
           findsOneWidget,
           reason: 'no guardian row exists yet for user-nanny',
         );
@@ -2831,7 +2828,7 @@ void main() {
       // depends on `currentUserId` reaching the read-only body's
       // CaregiverAttributionBadge: if that path dropped or nulled it,
       // `_formatUser` could never take the "you" branch and this would
-      // instead read the generic "Logged by Caregiver" fallback (no
+      // instead read the generic "Logged by Guardian" fallback (no
       // guardian row exists for user-mom here).
       expect(
         find.textContaining('Logged by you'),
@@ -2884,7 +2881,7 @@ void main() {
               'can no longer render as attributed to "you"',
         );
         expect(
-          find.textContaining('Logged by Caregiver'),
+          find.textContaining('Logged by Guardian'),
           findsOneWidget,
           reason:
               'with currentUserId cleared and no guardian row for '

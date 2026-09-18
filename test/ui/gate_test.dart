@@ -1584,7 +1584,7 @@ void main() {
               .read<SyncStatusController?>(),
           isNull);
       // #76: no Supabase client, so no sharing service either — the
-      // Caregivers menu and invite intake must stay dormant, not crash.
+      // Guardians menu and invite intake must stay dormant, not crash.
       expect(
           tester.element(find.byType(ProfileHomeGate)).read<SharingService?>(),
           isNull);
@@ -1694,7 +1694,7 @@ void main() {
     testWidgets(
         '(#76) a supabaseClient builds a real SupabaseSharingService and a '
         'real SupabaseFeedbackService and provides both down the tree, so '
-        'the Caregivers menu, invite intake, and Send feedback are reachable '
+        'the Guardians menu, invite intake, and Send feedback are reachable '
         'in production — not just when a test injects a fake service '
         'directly', (tester) async {
       final auth = FakeAuthService();

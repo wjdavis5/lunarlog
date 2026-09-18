@@ -245,7 +245,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           final canEdit = role == null || role.canEditProfile;
           final canDelete = role == null || role.canDeleteProfile;
           return [
-            const PopupMenuItem(value: 'caregivers', child: Text('Caregivers')),
+            const PopupMenuItem(value: 'caregivers', child: Text('Guardians')),
             if (canEdit)
               const PopupMenuItem(value: 'rename', child: Text('Rename')),
             if (canDelete)

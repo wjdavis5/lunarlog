@@ -55,10 +55,10 @@ class HelpCards {
 
   static const String _reviewDate = '2026-09-11';
   static const String _appPredictionSource =
-      'LunarLog prediction engine (lib/domain/prediction/prediction.dart)';
-  static const String _appBehaviourSource = 'LunarLog app behaviour';
+      'lunarlog prediction engine (lib/domain/prediction/prediction.dart)';
+  static const String _appBehaviourSource = 'lunarlog app behaviour';
   static const String _appSharingSource =
-      'LunarLog sharing model (lib/domain/models/profile_guardian.dart)';
+      'lunarlog sharing model (lib/domain/models/profile_guardian.dart)';
   static const String _literacySource =
       'American College of Obstetricians and Gynecologists (ACOG), '
       'patient education on menstruation';
