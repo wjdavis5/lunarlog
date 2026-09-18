@@ -2069,6 +2069,35 @@ class _MonthCalendarState extends State<MonthCalendar>
     ];
   }
 
+  /// Issue #761: the day's bleed marker and its screen-reader spotting
+  /// flag, resolved together and split out of [_dayCell] so that method
+  /// stays under the quality gate's per-method CRAP cap -- the same
+  /// reason [_cellColumn] is separate.
+  ///
+  /// **Bleed wins.** A day carrying both a bleed level and a spotting
+  /// observation renders the bleed fill and announces only the bleed
+  /// level, never the spotting ring. A spotting-only day borrows the
+  /// deprecated [FlowLevel.spotting] level's existing `_flowCircle`
+  /// ring-plus-centre-dot branch, which is why that branch is reachable
+  /// again despite nothing writing the level. `listForProfile` already
+  /// synthesises the observation for a legacy `flow = 'spotting'` row, so
+  /// old data needs no extra branch.
+  ({FlowLevel? bleed, bool hasSpotting}) _bleedAndSpottingFor(
+    String iso,
+    DayEntry? entry,
+  ) {
+    final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
+    if (bleedLevel != null) {
+      return (bleed: bleedLevel, hasSpotting: false);
+    }
+    final spotting = _spottingIsos.contains(iso);
+    return (
+      // ignore: deprecated_member_use_from_same_package
+      bleed: entry != null && spotting ? FlowLevel.spotting : null,
+      hasSpotting: spotting,
+    );
+  }
+
   Widget _dayCell(
     LocalDate date, {
     required Map<String, DayEntry> byIso,
@@ -2091,18 +2120,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     final forecastCell = _cellForMode(
       entry == null && isFuture ? forecastByIso[iso] : null,
     );
-    final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
-    // Issue #761: a spotting-only day renders the ring-plus-centre-dot
-    // treatment through the deprecated `spotting` level's existing
-    // `_flowCircle` branch (bleed wins: a day carrying both keeps the
-    // bleed fill). `listForProfile` already synthesises the observation
-    // for a legacy `flow = 'spotting'` row, so old data needs no extra
-    // branch here.
-    // ignore: deprecated_member_use_from_same_package
-    final effectiveBleed = bleedLevel ??
-        (entry != null && _spottingIsos.contains(iso)
-            ? FlowLevel.spotting
-            : null);
+    final marks = _bleedAndSpottingFor(iso, entry);
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     final tapHandler = _cellTapHandler(
       selectable: selectable,
@@ -2139,7 +2157,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         fertileWindowLabel: _copy.fertileWindowLabel,
         // Issue #761: bleed wins in the label too — a day carrying both
         // announces only the bleed level, matching the rendered fill.
-        hasSpotting: bleedLevel == null && _spottingIsos.contains(iso),
+        hasSpotting: marks.hasSpotting,
       ),
       onTap: tapHandler,
       excludeSemantics: true,
@@ -2149,7 +2167,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         child: _cellColumn(
           date,
           entry: entry,
-          bleedLevel: effectiveBleed,
+          bleedLevel: marks.bleed,
           forecastCell: forecastCell,
           isFuture: isFuture,
           isToday: isToday,
