@@ -38,6 +38,7 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart'
     show CycleExclusionList;
 import 'package:lunarlog/domain/pregnancy.dart' show pregnancyExclusionStarts;
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 
@@ -109,12 +110,14 @@ Set<LocalDate> _exclusionStartsFor({
   required Iterable<Episode> episodes,
   required LocalDate? modeStartedOn,
   required LocalDate exitedOn,
+  LocalDate? estimatedDueDate,
 }) =>
     switch (exitedMode) {
       LifecycleMode.pregnancy => pregnancyExclusionStarts(
           episodes: episodes,
           modeStartedOn: modeStartedOn,
           exitedOn: exitedOn,
+          estimatedDueDate: estimatedDueDate,
         ),
       LifecycleMode.postpartum => postpartumExclusionStarts(
           episodes: episodes,
@@ -138,14 +141,17 @@ Future<ModeExitExclusionOutcome> offerModeExitExclusion(
   required CycleExclusionList exclusions,
   required String profileId,
   required bool readOnly,
+  String? estimatedDueDate,
 }) async {
   final copy = _ModeExitCopy.forMode(AppLocalizations.of(context), exitedMode);
   final startedOn = LocalDate.tryParseIso(modeStartedOn);
+  final dueDate = LocalDate.tryParseIso(estimatedDueDate);
   final starts = _exclusionStartsFor(
     exitedMode: exitedMode,
     episodes: deriveEpisodes(bleedDates),
     modeStartedOn: startedOn,
     exitedOn: exitedOn,
+    estimatedDueDate: dueDate,
   );
   // Nothing inside the interval to exclude (or an unstamped mode, or a
   // mode with no discrete span): the dialog has nothing honest to offer —
@@ -195,6 +201,7 @@ Future<void> offerModeExitExclusionFromTree(
   required LifecycleMode exitedMode,
   required String profileId,
   required String? modeStartedOn,
+  String? estimatedDueDate,
 }) async {
   final copy = _ModeExitCopy.forMode(AppLocalizations.of(context), exitedMode);
   if (copy == null) return;
@@ -202,6 +209,13 @@ Future<void> offerModeExitExclusionFromTree(
   final entries = _maybeRead<DayEntriesRepository>(context);
   if (exclusions == null || entries == null) return;
   final bleedDates = await _bleedDatesFor(entries, profileId);
+  if (!context.mounted) return;
+  var effectiveDueDate = estimatedDueDate;
+  if (effectiveDueDate == null && exitedMode == LifecycleMode.pregnancy) {
+    final modes = _maybeRead<ProfileModesRepository>(context);
+    final row = await modes?.find(profileId);
+    effectiveDueDate = row?.estimatedDueDate;
+  }
   if (!context.mounted) return;
   final outcome = await offerModeExitExclusion(
     context,
@@ -212,6 +226,7 @@ Future<void> offerModeExitExclusionFromTree(
     exclusions: exclusions,
     profileId: profileId,
     readOnly: false,
+    estimatedDueDate: effectiveDueDate,
   );
   if (!context.mounted || !outcome.accepted) return;
   ScaffoldMessenger.of(context).showSnackBar(

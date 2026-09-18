@@ -18,7 +18,6 @@
 library;
 
 import 'episodes/episodes.dart';
-import 'mode_intervals.dart';
 import 'models/local_date.dart';
 
 /// Naegele's rule, the 280-day gestation Clue's own week calculation is
@@ -66,9 +65,11 @@ int pregnancyWeekOf({required LocalDate dueDate, required LocalDate today}) {
 int daysUntilDueDate({required LocalDate dueDate, required LocalDate today}) =>
     dueDate.difference(today);
 
-/// The cycle-start dates the pregnancy-exit exclusion (Issue #192 AC4/5)
-/// must omit from cycle averages: every episode start inside the
-/// half-open interval `[modeStartedOn, exitedOn)`.
+/// The cycle-start dates the pregnancy-exit exclusion (Issue #192 AC4/5,
+/// Issue #823) must omit from cycle averages: the pregnancy-long cycle
+/// that starts at the last pre-pregnancy period, plus every episode start
+/// inside the half-open interval `[modeStartedOn, exitedOn)`
+/// (breakthrough-bleeding episodes).
 ///
 /// Why every start in the interval, not just one row at
 /// [modeStartedOn]: `cycle_overrides` is keyed by single cycle-start
@@ -87,6 +88,13 @@ int daysUntilDueDate({required LocalDate dueDate, required LocalDate today}) =>
 /// spanning `mode_started_on` through the exit date" is realized on the
 /// #188 schema, which has no interval columns.
 ///
+/// In real-world usage, mothers switch to Pregnancy mode weeks after
+/// their last period (stamping [modeStartedOn] weeks after LMP). The
+/// pregnancy cycle anchor is derived backwards from [estimatedDueDate]
+/// via Naegele's rule (`estimatedDueDate - 280 days`), matching to an
+/// episode in [episodes] if recorded, or from the last recorded period
+/// start prior to [modeStartedOn] (Issue #823).
+///
 /// [exitedOn] is the date the mode moved off `pregnancy` (the new mode's
 /// own `mode_started_on`); a period starting exactly on [exitedOn] is the
 /// first *real* post-pregnancy cycle and is deliberately NOT excluded —
@@ -99,9 +107,88 @@ Set<LocalDate> pregnancyExclusionStarts({
   required Iterable<Episode> episodes,
   required LocalDate? modeStartedOn,
   required LocalDate exitedOn,
-}) =>
-    intervalExclusionStarts(
-      episodes: episodes,
+  LocalDate? estimatedDueDate,
+}) {
+  if (modeStartedOn == null) return const {};
+
+  final starts = <LocalDate>{
+    for (final episode in episodes)
+      if (!episode.start.isBefore(modeStartedOn) &&
+          episode.start.isBefore(exitedOn))
+        episode.start,
+  };
+
+  final anchor = _resolvePregnancyAnchor(
+    episodes: episodes,
+    modeStartedOn: modeStartedOn,
+    exitedOn: exitedOn,
+    estimatedDueDate: estimatedDueDate,
+    hasModeStartEpisode: starts.contains(modeStartedOn),
+  );
+
+  if (anchor != null && anchor.isBefore(exitedOn)) {
+    starts.add(anchor);
+  }
+
+  return starts;
+}
+
+LocalDate? _resolvePregnancyAnchor({
+  required Iterable<Episode> episodes,
+  required LocalDate modeStartedOn,
+  required LocalDate exitedOn,
+  required LocalDate? estimatedDueDate,
+  required bool hasModeStartEpisode,
+}) {
+  final priorStarts = [
+    for (final episode in episodes)
+      if (episode.start.isBefore(modeStartedOn) &&
+          episode.start.isBefore(exitedOn))
+        episode.start,
+  ]..sort();
+
+  if (estimatedDueDate != null) {
+    return _anchorFromDueDate(
+      dueDate: estimatedDueDate,
+      priorStarts: priorStarts,
       modeStartedOn: modeStartedOn,
       exitedOn: exitedOn,
     );
+  }
+
+  return _anchorFromPriorEpisodes(
+    priorStarts: priorStarts,
+    modeStartedOn: modeStartedOn,
+    hasModeStartEpisode: hasModeStartEpisode,
+  );
+}
+
+LocalDate? _anchorFromDueDate({
+  required LocalDate dueDate,
+  required List<LocalDate> priorStarts,
+  required LocalDate modeStartedOn,
+  required LocalDate exitedOn,
+}) {
+  final lmpFromDueDate = dueDate.addDays(-kGestationDays);
+  if (!lmpFromDueDate.isBefore(exitedOn)) return null;
+
+  final matching = priorStarts.where(
+    (start) => (start.difference(lmpFromDueDate)).abs() <= 14,
+  );
+  if (matching.isNotEmpty) return matching.last;
+  if (priorStarts.isNotEmpty &&
+      modeStartedOn.difference(priorStarts.last) <= 300) {
+    return priorStarts.last;
+  }
+  return lmpFromDueDate;
+}
+
+LocalDate? _anchorFromPriorEpisodes({
+  required List<LocalDate> priorStarts,
+  required LocalDate modeStartedOn,
+  required bool hasModeStartEpisode,
+}) {
+  if (hasModeStartEpisode || priorStarts.isEmpty) return null;
+  final latest = priorStarts.last;
+  return modeStartedOn.difference(latest) <= 300 ? latest : null;
+}

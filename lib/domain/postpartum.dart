@@ -62,13 +62,15 @@ bool hasLoggedBleedSince({
 /// must omit from cycle averages: every episode start inside the
 /// half-open interval `[modeStartedOn, exitedOn)`.
 ///
-/// Structurally identical to [pregnancyExclusionStarts] — both delegate to
-/// `intervalExclusionStarts` (`lib/domain/mode_intervals.dart`), which
-/// documents why the bound is half-open and why every start inside the
-/// interval gets its own `cycle_overrides` row. The postpartum interval
-/// can contain apparent cycle starts (lochia, then spotting, then a first
-/// real period) whose spacing lands inside the 15–60 day validity window
-/// and would otherwise poison the post-postpartum mean.
+/// Delegates to `intervalExclusionStarts` (`lib/domain/mode_intervals.dart`),
+/// which documents why the bound is half-open and why every start inside the
+/// interval gets its own `cycle_overrides` row. Unlike pregnancy (which
+/// anchors at the last pre-pregnancy period before the mode was stamped —
+/// Issue #823), the postpartum interval begins at the mode start (birth).
+/// The postpartum interval can contain apparent cycle starts (lochia, then
+/// spotting, then a first real period) whose spacing lands inside the
+/// 15–60 day validity window and would otherwise poison the post-postpartum
+/// mean.
 Set<LocalDate> postpartumExclusionStarts({
   required Iterable<Episode> episodes,
   required LocalDate? modeStartedOn,

@@ -66,27 +66,87 @@ void main() {
     });
   });
 
-  group('pregnancyExclusionStarts', () {
+  group('pregnancyExclusionStarts (Issue #192, Issue #823)', () {
+    // History with two pre-pregnancy cycles (2025-12-04, 2026-01-01),
+    // mid-pregnancy breakthrough episodes, and the exit-day period.
     final episodes = deriveEpisodes([
-      d(2026, 1, 1),
-      d(2026, 3, 15),
-      d(2026, 5, 2),
-      d(2026, 10, 30),
+      d(2025, 12, 4), // prior completed cycle
+      d(2026, 1, 1), // last menstrual period (LMP)
+      d(2026, 3, 15), // mid-pregnancy breakthrough
+      d(2026, 5, 2), // mid-pregnancy breakthrough
+      d(2026, 10, 30), // exit-day first real cycle
     ]);
 
-    test('excludes every episode start in [modeStartedOn, exitedOn)', () {
+    test('includes the LMP anchor cycle plus mid-pregnancy episodes in '
+        '[modeStartedOn, exitedOn) (Issue #823)', () {
+      // Operator entered pregnancy mode on 2026-01-24 (weeks into pregnancy,
+      // after the 2026-01-01 LMP). Both the LMP and breakthrough bleeds are
+      // excluded; prior completed cycles are not.
       expect(
         pregnancyExclusionStarts(
           episodes: episodes,
           modeStartedOn: d(2026, 1, 24),
           exitedOn: d(2026, 10, 30),
         ),
-        {d(2026, 3, 15), d(2026, 5, 2)},
+        {d(2026, 1, 1), d(2026, 3, 15), d(2026, 5, 2)},
       );
     });
 
-    test('the mode-start cycle itself (the pregnancy-long "cycle") is '
-        'excluded when it starts inside the interval', () {
+    test('derives LMP anchor from estimatedDueDate via Naegele\'s rule '
+        'when modeStartedOn is weeks after LMP', () {
+      final normalEpisodes = deriveEpisodes([
+        d(2025, 12, 27),
+        d(2026, 1, 24), // LMP
+        d(2026, 10, 30), // exit-day period
+      ]);
+      // Normal pregnancy with NO breakthrough bleeds: mode entered 6 weeks
+      // into pregnancy (2026-03-05). Due date is 2026-10-31 (LMP + 280).
+      expect(
+        pregnancyExclusionStarts(
+          episodes: normalEpisodes,
+          modeStartedOn: d(2026, 3, 5),
+          exitedOn: d(2026, 10, 30),
+          estimatedDueDate: d(2026, 10, 31),
+        ),
+        {d(2026, 1, 24)},
+      );
+    });
+
+    test('normal pregnancy with no mid-pregnancy bleeds still excludes '
+        'the pregnancy cycle without estimatedDueDate', () {
+      final normalEpisodes = deriveEpisodes([
+        d(2025, 12, 27),
+        d(2026, 1, 24), // LMP
+        d(2026, 10, 30), // exit-day period
+      ]);
+      expect(
+        pregnancyExclusionStarts(
+          episodes: normalEpisodes,
+          modeStartedOn: d(2026, 3, 5),
+          exitedOn: d(2026, 10, 30),
+        ),
+        {d(2026, 1, 24)},
+      );
+    });
+
+    test('derives exclusion even when no episodes were logged before mode '
+        'if estimatedDueDate is provided', () {
+      final noPriorEpisodes = deriveEpisodes([
+        d(2026, 10, 30), // first logged bleed on exit day
+      ]);
+      expect(
+        pregnancyExclusionStarts(
+          episodes: noPriorEpisodes,
+          modeStartedOn: d(2026, 3, 5),
+          exitedOn: d(2026, 10, 30),
+          estimatedDueDate: d(2026, 10, 31),
+        ),
+        {d(2026, 1, 24)},
+      );
+    });
+
+    test('the mode-start cycle itself is excluded when it starts on '
+        'modeStartedOn', () {
       expect(
         pregnancyExclusionStarts(
           episodes: episodes,
@@ -119,13 +179,62 @@ void main() {
       );
     });
 
-    test('pre-pregnancy cycles are never excluded', () {
+    test('completed pre-pregnancy cycles are never excluded', () {
       final starts = pregnancyExclusionStarts(
         episodes: episodes,
         modeStartedOn: d(2026, 1, 24),
         exitedOn: d(2026, 10, 30),
       );
-      expect(starts.contains(d(2026, 1, 1)), isFalse);
+      // 2025-12-04 was a completed regular cycle before the 2026-01-01 LMP.
+      expect(starts.contains(d(2025, 12, 4)), isFalse);
+    });
+
+    test('prior episode more than 300 days before modeStartedOn is not '
+        'treated as pregnancy LMP', () {
+      final oldEpisodes = deriveEpisodes([
+        d(2024, 1, 1), // > 300 days before modeStartedOn
+        d(2026, 10, 30), // exit-day period
+      ]);
+      expect(
+        pregnancyExclusionStarts(
+          episodes: oldEpisodes,
+          modeStartedOn: d(2026, 3, 5),
+          exitedOn: d(2026, 10, 30),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('estimatedDueDate with implied LMP on or after exitedOn yields no anchor', () {
+      final episodesList = deriveEpisodes([
+        d(2026, 1, 1),
+      ]);
+      // Due date 2027-11-01 implies LMP 2027-01-25, which is after exitedOn (2026-10-30).
+      expect(
+        pregnancyExclusionStarts(
+          episodes: episodesList,
+          modeStartedOn: d(2026, 3, 1),
+          exitedOn: d(2026, 10, 30),
+          estimatedDueDate: d(2027, 11, 1),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('estimatedDueDate falls back to prior episode within 300 days when '
+        'matching window exceeds 14 days', () {
+      final spacedEpisodes = deriveEpisodes([
+        d(2026, 1, 1), // 23 days from implied LMP 2026-01-24
+      ]);
+      expect(
+        pregnancyExclusionStarts(
+          episodes: spacedEpisodes,
+          modeStartedOn: d(2026, 3, 1),
+          exitedOn: d(2026, 10, 30),
+          estimatedDueDate: d(2026, 10, 31), // implied LMP 2026-01-24
+        ),
+        {d(2026, 1, 1)},
+      );
     });
   });
 
@@ -216,6 +325,27 @@ void main() {
             .omitted,
         isTrue,
       );
+    });
+
+    test('WITH realistic modeStartedOn (weeks after LMP), pregnancy-long cycle '
+        'is still excluded and mean is restored (Issue #823)', () {
+      final realisticModeStartedOn = d(2026, 3, 5); // 6 weeks after LMP
+      final exclusions = pregnancyExclusionStarts(
+        episodes: episodes,
+        modeStartedOn: realisticModeStartedOn,
+        exitedOn: exitedOn,
+        estimatedDueDate: d(2026, 10, 31),
+      );
+      expect(exclusions, {d(2026, 1, 24), d(2026, 3, 15), d(2026, 5, 2)});
+      final prediction = computePredictionFromEntries(
+        entries: entries,
+        today: today,
+        omittedCycleStarts: exclusions,
+      );
+      expect(prediction, isA<ActivePrediction>());
+      final active = prediction as ActivePrediction;
+      expect(active.averagedCycleLengths, everyElement(28));
+      expect(active.meanCycleLengthDays, 28.0);
     });
   });
 }
