@@ -155,6 +155,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cycleHistoryLoadError => 'Could not load cycle history.';
 
   @override
+  String get cycleHistoryOpenCycleNotCounted =>
+      'Not counted yet — your next period completes it';
+
+  @override
   String get cycleComparisonToggleButton => 'Compare cycles';
 
   @override

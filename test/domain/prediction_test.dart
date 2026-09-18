@@ -40,6 +40,7 @@ void main() {
       expect(nth.episodeCount, 0);
       expect(nth.completedCycleCount, 0);
       expect(nth.validCycleCount, 0);
+      expect(nth.usableCycleCount, 0);
       expect(nth.statusLabel, isNotEmpty);
     });
 
@@ -55,6 +56,10 @@ void main() {
       expect(nth.episodeCount, 3);
       expect(nth.completedCycleCount, 2);
       expect(nth.validCycleCount, 2);
+      expect(nth.usableCycleCount, 2,
+          reason: 'issue #816: the tally the UI surfaces is the same count '
+              'the gate compares — three logged starts are two completed '
+              'cycles');
     });
 
     test('three completed cycles but only two valid -> NotEnoughHistory', () {
@@ -67,6 +72,10 @@ void main() {
       expect(result, isA<NotEnoughHistory>());
       expect((result as NotEnoughHistory).validCycleCount, 2);
       expect(result.completedCycleCount, 3);
+      expect(result.usableCycleCount, 2,
+          reason: 'issue #816: an outlier cycle stays in history but is not '
+              'in the tally the gate counts, so the progress line can never '
+              'overstate it');
     });
 
     test('three completed valid cycles -> estimate appears', () {

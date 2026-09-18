@@ -174,6 +174,14 @@ void main() {
       expect(copy, contains('three'));
     });
 
+    test('issue #816: the three-cycle card uses the "completed cycles" unit '
+        'and states that the in-progress cycle does not count yet', () {
+      final copy = _copyOf(HelpCards.byId('why-no-estimate-yet')!);
+      expect(copy, contains('three completed cycles'));
+      expect(copy, isNot(contains('three usable cycles')));
+      expect(copy.toLowerCase(), contains('does not count yet'));
+    });
+
     test('role card names every rung of the ladder', () {
       final copy =
           _copyOf(HelpCards.byId('guardian-roles')!).toLowerCase();

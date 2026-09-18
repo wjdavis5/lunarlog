@@ -333,7 +333,7 @@ class _AnalysisTabState extends State<AnalysisTab>
       const SizedBox(height: LLSpace.space3),
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
-        NotEnoughHistory() => _notEnoughCard(context),
+        NotEnoughHistory() => _notEnoughCard(context, prediction),
         // Issue #233/#528: an in-effect continuous method, or a life-stage
         // mode the averaging model doesn't apply to, suppresses period
         // prediction with an explicit named state — the stats card has no
@@ -352,6 +352,10 @@ class _AnalysisTabState extends State<AnalysisTab>
         readOnly: _effectiveReadOnly,
         showStatistics: false,
         showDisclaimer: false,
+        // Issue #816: hand the history header the engine's own tally so its
+        // "N of 3 completed cycles" line can never disagree with the empty
+        // state above it. Null in every other prediction state.
+        notEnough: prediction is NotEnoughHistory ? prediction : null,
         onCompareSelected: (cycleAStart, cycleBStart) =>
             Navigator.of(context).push(
               CycleComparisonScreen.route(
@@ -570,7 +574,10 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// Same posture as [OverviewPanel._notEnoughCard]: a loaded-but-empty
   /// result, not a loading state (issue #187), so it renders through
   /// [EmptyState] with the disclaimer alongside it as a plain [Text].
-  Widget _notEnoughCard(BuildContext context) {
+  /// Issue #816: the body comes from [prediction]'s live tally (the same
+  /// "N of 3 completed cycles" the history header below shows), never a
+  /// vague "a few cycles".
+  Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
     return Card(
       key: const ValueKey('analysis-not-enough'),
@@ -581,7 +588,10 @@ class _AnalysisTabState extends State<AnalysisTab>
           children: [
             EmptyState(
               title: _copy.notEnoughTitle,
-              body: _copy.notEnoughBody,
+              body: _copy.notEnoughBody(
+                prediction.usableCycleCount,
+                kMinCompletedValidCycles,
+              ),
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
@@ -592,9 +602,10 @@ class _AnalysisTabState extends State<AnalysisTab>
               style: theme.textTheme.bodySmall,
             ),
             // Issue #139: same three-cycle explainer as OverviewPanel.
+            // Issue #816: the label names the unit the threshold counts.
             const HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three cycles?',
+              label: 'Why three completed cycles?',
             ),
           ],
         ),

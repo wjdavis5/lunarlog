@@ -22,6 +22,54 @@ library;
 import 'models/profile_mode.dart';
 import 'tags.dart';
 
+/// Builds the not-enough-history body from the live tally (issue #816):
+/// [complete] completed cycles recorded so far, out of [needed]. It is a
+/// function rather than a fixed string so the card can show real progress
+/// in the same "completed cycles" unit the threshold counts, in every care
+/// mode. The callers pass the engine's own
+/// `NotEnoughHistory.usableCycleCount` and `kMinCompletedValidCycles`
+/// rather than recomputing either.
+typedef NotEnoughBody = String Function(int complete, int needed);
+
+/// The shared numeric progress sentence (issue #816). Counts in
+/// "completed cycles" — the unit `kMinCompletedValidCycles` counts — and
+/// names what happens next rather than restating the rule. The
+/// `remaining == 1` branch is the tester's own case (three logged starts,
+/// two completed cycles): the next period is exactly what unlocks
+/// estimates. With exactly zero completed cycles no "N more periods" count
+/// is honest (the first logged period opens a cycle rather than completing
+/// one), so that branch states the gap in completed cycles instead;
+/// otherwise the remaining period count is exact.
+///
+/// Public so the cycle-history header can render the exact same tally the
+/// not-enough-history card uses, in the same unit, without a second copy.
+String completedCycleProgress(int complete, int needed) {
+  final remaining = needed - complete;
+  final String nextStep;
+  if (remaining <= 1) {
+    nextStep = 'estimates start after your next period';
+  } else if (complete == 0) {
+    nextStep = 'estimates start once you have $needed completed cycles';
+  } else {
+    nextStep = '$remaining more periods until estimates';
+  }
+  return '$complete of $needed completed cycles — $nextStep.';
+}
+
+String _standardNotEnoughBody(int complete, int needed) =>
+    completedCycleProgress(complete, needed);
+
+String _teenNotEnoughBody(int complete, int needed) =>
+    'Every entry builds the picture of your cycle. '
+    '${completedCycleProgress(complete, needed)}';
+
+String _caregiverNotEnoughBody(int complete, int needed) =>
+    '${completedCycleProgress(complete, needed)} Regular logging helps.';
+
+String _irregularNotEnoughBody(int complete, int needed) =>
+    '${completedCycleProgress(complete, needed)} Your estimates may stay '
+    'ranges rather than dates.';
+
 /// Per-mode vocabulary and logging defaults.
 class CareModeCopy {
   const CareModeCopy({
@@ -41,8 +89,9 @@ class CareModeCopy {
   /// Heading of the insufficient-history card.
   final String notEnoughTitle;
 
-  /// Body of the insufficient-history card.
-  final String notEnoughBody;
+  /// Body of the insufficient-history card, built from the live tally —
+  /// see [NotEnoughBody].
+  final NotEnoughBody notEnoughBody;
 
   /// Label introducing the next-period estimate line (the formatted date
   /// follows it). Honesty is kept in every variant: each names the date an
@@ -149,8 +198,7 @@ const Map<TagCategory, String> _standardCategoryLabels = {
 
 const CareModeCopy _standard = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody:
-      'Keep logging — estimates appear once a few cycles are recorded.',
+  notEnoughBody: _standardNotEnoughBody,
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -164,9 +212,7 @@ const CareModeCopy _standard = CareModeCopy(
 
 const CareModeCopy _teen = CareModeCopy(
   notEnoughTitle: 'Your record is just getting started',
-  notEnoughBody:
-      'Every entry builds the picture of your cycle. Estimates '
-      'appear once a few cycles are recorded.',
+  notEnoughBody: _teenNotEnoughBody,
   nextEstimateLabel: 'Your next period is estimated around:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -259,9 +305,7 @@ const CareModeCopy _teen = CareModeCopy(
 
 const CareModeCopy _caregiver = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody:
-      'Estimates appear once a few cycles are recorded — regular '
-      'logging helps.',
+  notEnoughBody: _caregiverNotEnoughBody,
   nextEstimateLabel: 'Next period estimate:',
   overdueStatusLabel: '',
   silencesLateBanner: false,
@@ -275,9 +319,7 @@ const CareModeCopy _caregiver = CareModeCopy(
 
 const CareModeCopy _irregular = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
-  notEnoughBody:
-      'Keep logging — estimates appear once a few cycles are '
-      'recorded, and yours may stay ranges rather than dates.',
+  notEnoughBody: _irregularNotEnoughBody,
   nextEstimateLabel: 'Next period may start around:',
   overdueStatusLabel:
       'No new period logged yet — with irregular cycles, '
