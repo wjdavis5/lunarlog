@@ -133,6 +133,21 @@ class Harness {
   }
 }
 
+/// Scrolls the mounted first-run form until [finder] is built and visible.
+///
+/// Issue #262 narrows the onboarding form to a centred 560dp column, which
+/// makes it tall enough on the default 800x600 test surface that the lazy
+/// [ListView] may not have built its trailing actions yet. This mirrors the
+/// `ensureVisible` the cycle-question tests already do for "Create profile".
+Future<void> _revealFirstRunAction(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 /// A [ProfilesRepository] decorator (issue #544) that lets a test make
 /// [create] throw a set number of times before delegating to the real
 /// repository — for asserting that `FirstRunScreen._create` surfaces the
@@ -650,6 +665,8 @@ void main() {
 
         expect(find.byType(RestoringScreen), findsNothing,
             reason: '$phase is home-gate territory, not a restoring wait');
+        await _revealFirstRunAction(
+            tester, find.byKey(const ValueKey('first-run-continue')));
         expect(find.byKey(const ValueKey('first-run-continue')),
             findsOneWidget);
         await h.dispose();
@@ -863,6 +880,8 @@ void main() {
       expect(button, findsOneWidget);
       expect(find.text('Restore from backup or Clue export'), findsOneWidget);
 
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
       await tester.tap(button);
       await tester.pumpAndSettle();
 

@@ -51,6 +51,7 @@ import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -473,7 +474,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   Widget _introScreen() {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      body: Center(
+      body: ResponsiveBody(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(LLSpace.space5),
           child: Column(
@@ -589,9 +590,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.firstRunCreateTitle)),
-      body: Padding(
-        padding: const EdgeInsets.all(LLSpace.space4),
-        child: Form(
+      body: ResponsiveBody(
+        child: Padding(
+          padding: const EdgeInsets.all(LLSpace.space4),
+          child: Form(
           key: _formKey,
           child: ListView(
             children: [
@@ -717,6 +719,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
             ],
           ),
+          ),
         ),
       ),
     );
@@ -734,9 +737,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           onPressed: () => setState(() => _cycleQuestionsPending = false),
         ),
       ),
-      body: Form(
-        key: _cycleFormKey,
-        child: ListView(
+      body: ResponsiveBody(
+        child: Form(
+          key: _cycleFormKey,
+          child: ListView(
           padding: const EdgeInsets.all(LLSpace.space4),
           children: [
             Text(l10n.firstRunCycleCaption),
@@ -858,6 +862,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ),
             ],
           ],
+          ),
         ),
       ),
     );

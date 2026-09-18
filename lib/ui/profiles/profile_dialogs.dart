@@ -26,6 +26,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
+import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
@@ -361,13 +362,14 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     final existing = widget.existing;
     final theme = Theme.of(context);
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
+      child: ResponsiveBody(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -584,6 +586,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
               ],
             ),
           ],
+        ),
         ),
       ),
     );
