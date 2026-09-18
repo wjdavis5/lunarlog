@@ -87,7 +87,7 @@ select ok(
        and c.setting = 'search_path=""'),
   'bulk_import_entries pins search_path to exactly empty');
 select ok(
-  has_function_privilege('authenticated', 'public.bulk_import_entries(uuid,jsonb)', 'execute'),
+  has_function_privilege('authenticated', 'public.bulk_import_entries(uuid,jsonb,text)', 'execute'),
   'authenticated can execute bulk_import_entries');
 select is(
   (select count(*) from pg_proc p
