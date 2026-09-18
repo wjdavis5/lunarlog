@@ -1319,6 +1319,10 @@ export type Database = {
         Args: { p_import_id: string; p_rows: Json }
         Returns: Json
       }
+      bulk_import_observations: {
+        Args: { p_import_id: string; p_rows: Json }
+        Returns: Json
+      }
       bulk_import_safe_date: { Args: { p_text: string }; Returns: string }
       bulk_import_safe_timestamptz: {
         Args: { p_text: string }
