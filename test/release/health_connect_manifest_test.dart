@@ -34,12 +34,17 @@ void main() {
     });
 
     test(
-        'declares exactly the v1 menstruation-baseline WRITE health '
+        'declares exactly the v1 menstruation-baseline WRITE+READ health '
         'permissions -- not history/background/sexual-activity/BBT (those '
         'are #186/#210/#228)', () {
       for (final permission in [
         'android.permission.health.WRITE_MENSTRUATION',
         'android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING',
+        // Issue #458: the read/import direction the owner's #781 decision
+        // unblocked, matching HealthConnectAdapter.kt's readPermissions set
+        // and the user-initiated getChangesToken/getChanges call site.
+        'android.permission.health.READ_MENSTRUATION',
+        'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
       ]) {
         expect(manifest, contains('android:name="$permission"'),
             reason: permission);
@@ -55,18 +60,16 @@ void main() {
     });
 
     test(
-        'declares no READ_* health permission -- write-only by design '
-        '(issue #515): HealthConnectAdapter.kt never requests '
-        'getReadPermission, so the earlier READ_MENSTRUATION/'
-        'READ_INTERMENSTRUAL_BLEEDING declarations were dead and were '
-        'removed rather than kept unused', () {
-      for (final permission in [
-        'android.permission.health.READ_MENSTRUATION',
-        'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
-      ]) {
-        expect(manifest, isNot(contains('android:name="$permission"')),
-            reason: permission);
-      }
+        'the Kotlin adapter requests the two read permissions a read call '
+        'site now exists for (Issue #458) -- not just the write set #515 '
+        'left in place', () {
+      final adapter =
+          readRepoFile('android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
+              'HealthConnectAdapter.kt');
+      expect(adapter, contains('readPermissions = setOf('));
+      expect(adapter, contains('getReadPermission('));
+      // The single authorization sheet carries write + read together.
+      expect(adapter, contains('allPermissions'));
     });
 
     test('declares the Health Connect package-visibility query', () {

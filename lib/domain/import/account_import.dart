@@ -65,7 +65,7 @@ import '../models/profile_guardian.dart';
 import '../models/profile_mode.dart';
 import '../models/profile_relationship.dart';
 import '../repositories/profile_modes_repository.dart' show ProfileLifecycleMode;
-import '../util/timezone.dart' show isValidIanaTimeZone;
+import '../util/timezone.dart' show isValidIanaTimeZone, isFixedOffsetZoneName;
 
 /// Byte cap on a picked import file, checked before any JSON decoding
 /// (Issue #140 review): a hostile or corrupted file with an enormous byte
@@ -992,13 +992,16 @@ _DayEntryProvenance _dayEntryProvenance(
 /// `tz` ≤ [kMaxTzLength] AND a valid IANA zone (Issue #140 review, item 4) —
 /// null (absent key; every schema version has always allowed this) defaults
 /// to `'UTC'` without re-validating a value this codebase itself would only
-/// ever have written.
+/// ever have written. A fixed-offset designator ([isFixedOffsetZoneName],
+/// Issue #458) is accepted too: a Health Connect import stores a record's
+/// raw `zoneOffset` this way, and rejecting it here would break the
+/// export/import round-trip for Android-sourced entries.
 String _parseTz(Object? raw, {required String context}) {
   if (raw == null) return 'UTC';
   if (raw is! String || raw.length > kMaxTzLength) {
     throw _ImportFormatException('$context has an invalid time zone.');
   }
-  if (!isValidIanaTimeZone(raw)) {
+  if (!isValidIanaTimeZone(raw) && !isFixedOffsetZoneName(raw)) {
     throw _ImportFormatException(
         '$context has an unrecognised time zone ("$raw").');
   }

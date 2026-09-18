@@ -144,13 +144,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final signedIn = authController?.signedIn ?? false;
     final hasFeedback =
         Provider.of<FeedbackService?>(context) != null && signedIn;
-    // Issue #153: dormant until a HealthKit/Health Connect adapter exists
-    // (AppConfig.hasHealthSync) and never on web — see that flag's doc
-    // comment. Since #193 the write flow behind it is real, but only on
-    // iOS: the Health Connect half's device checklist is #202's, so the
-    // tile stays hidden on Android rather than binding a profile nothing
-    // syncs yet. Also needs the repository wiring a fully unconfigured
-    // build (e.g. tests with no repositories provided) may not have.
+    // Issues #153/#458: dormant until a HealthKit/Health Connect adapter
+    // exists (AppConfig.hasHealthSync) and never on web — see that flag's
+    // doc comment. Since #193 the write flow behind it is real on iOS, and
+    // since #458 the read path is real on Android too (the write adapter
+    // #345/#374 had landed earlier), so the tile renders on both wired OS
+    // stores. Also needs the repository wiring a fully unconfigured build
+    // (e.g. tests with no repositories provided) may not have.
     final profilesRepository = Provider.of<ProfilesRepository?>(context);
     final guardiansRepository = Provider.of<ProfileGuardiansRepository?>(
       context,
@@ -158,7 +158,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final hasHealthSync =
         AppConfig.hasHealthSync &&
         !kIsWeb &&
-        defaultTargetPlatform == TargetPlatform.iOS &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.android) &&
         profilesRepository != null &&
         guardiansRepository != null;
     // Issue #226: the Reminders section renders whenever either of its
@@ -469,7 +470,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           guardiansForProfile: guardiansRepository.getForProfile,
           binding: HealthSyncBinding(context.read<SettingsStore>()),
           signedInUserId: signedInUserId,
-          importer: Provider.of<AppleHealthImportRunner?>(context, listen: false),
+          importer: Provider.of<HealthImportRunner?>(context, listen: false),
+          // Issue #458: writes are still iOS-only; Android wires only the
+          // import runner, so the screen must not describe writes there.
+          writeEnabled: defaultTargetPlatform == TargetPlatform.iOS,
         ),
       ),
     );

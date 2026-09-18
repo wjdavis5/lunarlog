@@ -303,6 +303,54 @@ void main() {
       final sample = (decoded as HealthReadSamples).samples.single;
       expect(sample.tzName, isNull);
       expect(sample.externalUuid, isNull);
+      // A pre-#458 payload carries no `kind`; it must default to a flow
+      // sample, never fail.
+      expect(sample.kind, HealthSampleKind.menstrualFlow);
+      expect(sample.offset, isNull);
+    });
+
+    test('an Android sample decodes its kind and raw zoneOffset (Issue #458)',
+        () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'hc-1',
+          'kind': 'menstrualFlow',
+          'flow': 'heavy',
+          'startMs': 1000,
+          'endMs': 2000,
+          'zoneOffsetSeconds': -14400,
+        },
+        {
+          'recordId': 'hc-2',
+          'kind': 'intermenstrualBleeding',
+          'startMs': 3000,
+          'endMs': 3000,
+          'zoneOffsetSeconds': 19800,
+        },
+      ]);
+      final samples = (decoded as HealthReadSamples).samples;
+      expect(samples[0].kind, HealthSampleKind.menstrualFlow);
+      expect(samples[0].flow, HealthFlowValue.heavy);
+      expect(samples[0].offset, const Duration(hours: -4));
+      expect(samples[1].kind, HealthSampleKind.intermenstrualBleeding);
+      expect(samples[1].flow, isNull);
+      expect(samples[1].offset, const Duration(hours: 5, minutes: 30));
+    });
+
+    test('a flow sample with a missing or unknown flow, or an unknown kind, '
+        'is a failed result', () {
+      expect(
+        decodeHealthReadResult([
+          {'recordId': 'x', 'kind': 'menstrualFlow', 'startMs': 1, 'endMs': 2},
+        ]),
+        isA<HealthReadFailed>(),
+      );
+      expect(
+        decodeHealthReadResult([
+          {'recordId': 'x', 'kind': 'bogus', 'startMs': 1, 'endMs': 2},
+        ]),
+        isA<HealthReadFailed>(),
+      );
     });
 
     test('platform outcomes decode to their read variants', () {

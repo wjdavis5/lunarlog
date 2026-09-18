@@ -548,6 +548,18 @@ PredictionProjectionPublisher? buildPredictionProjectionPublisher({
   );
 }
 
+/// The platforms the *write* direction is wired on. Writes stay iOS-only
+/// (Issue #193/#202's device checklist owns opening Android); Issue #458
+/// wired only the read/import direction there, so the Settings screen's
+/// write-specific copy is conditioned on this.
+const Set<TargetPlatform> _healthWritePlatforms = {TargetPlatform.iOS};
+
+/// The import platform each wired OS store maps to (Issue #458).
+const Map<TargetPlatform, HealthImportPlatform> _healthImportPlatforms = {
+  TargetPlatform.iOS: HealthImportPlatform.appleHealth,
+  TargetPlatform.android: HealthImportPlatform.healthConnect,
+};
+
 /// Constructs the health-flow write coordinator, or null when the feature
 /// is gated off (Issue #193: `AppConfig.hasHealthSync`, iOS-only until
 /// #202; widget-test harnesses and web never construct it).
@@ -562,7 +574,9 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   required bool minorBindingAllowed,
 }) {
   if (!AppConfig.hasHealthSync) return null;
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  if (kIsWeb || !_healthWritePlatforms.contains(defaultTargetPlatform)) {
+    return null;
+  }
   final binding = HealthSyncBinding(settings);
   final platform = createHealthPlatform(
     defaultTargetPlatform,
@@ -587,29 +601,33 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   );
 }
 
-/// Constructs the user-initiated Apple Health import runner (Issue #217),
-/// or null when the feature is gated off — the same `AppConfig.hasHealthSync`
-/// plus iOS-only gate the write coordinator uses. Unlike that coordinator
-/// there is nothing to start: the runner is a stateless-ish service the
-/// Settings screen calls once per explicit import action.
+/// Constructs the user-initiated OS health-store import runner (Issues #217
+/// and #458), or null when the feature is gated off — the same
+/// `AppConfig.hasHealthSync` plus wired-store gate, but the only health
+/// capability wired on Android. Unlike the write coordinator there is
+/// nothing to start: the runner is a stateless-ish service the Settings
+/// screen calls once per explicit import action.
 ///
 /// It is handed the read port (`createHealthImportSource`) and the write
 /// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
 /// native guard mirror) and `requestWriteAuthorization` (which now also
-/// requests the read type) are the same calls the write path makes.
-AppleHealthImportRunner? buildAppleHealthImportRunner({
+/// requests the read types) are the same calls the write path makes.
+HealthImportRunner? buildHealthImportRunner({
   required SettingsStore settings,
   required ProfilesRepository profiles,
   required DayEntriesRepository dayEntries,
+  required ObservationsRepository observations,
   required Future<List<ProfileGuardian>> Function(String profileId)
   guardiansForProfile,
   required String? Function() signedInUserId,
   required bool minorBindingAllowed,
 }) {
   if (!AppConfig.hasHealthSync) return null;
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  final importPlatform = _healthImportPlatforms[defaultTargetPlatform];
+  if (kIsWeb || importPlatform == null) return null;
   final binding = HealthSyncBinding(settings);
-  return LocalAppleHealthImportService(
+  return LocalHealthImportService(
+    importPlatform: importPlatform,
     platform: createHealthPlatform(
       defaultTargetPlatform,
       binding: binding,
@@ -624,6 +642,7 @@ AppleHealthImportRunner? buildAppleHealthImportRunner({
     minorBindingAllowed: minorBindingAllowed,
     profiles: profiles,
     dayEntries: dayEntries,
+    observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
   );
@@ -631,7 +650,7 @@ AppleHealthImportRunner? buildAppleHealthImportRunner({
 
 /// Constructs the health-store tombstone-propagation coordinator (Issue
 /// #186, AC6), or null when the feature is gated off (same gate as the write
-/// coordinator: `AppConfig.hasHealthSync`, native-only; widget-test harnesses
+/// coordinator: `AppConfig.hasHealthSync`, iOS-only; widget-test harnesses
 /// and web never construct it). A tombstoned bound-profile entry hands its
 /// ULID (the recorded health-store external id) to the platform's
 /// `deleteRecords`.
@@ -644,7 +663,9 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   required String? Function() signedInUserId,
 }) {
   if (!AppConfig.hasHealthSync) return null;
-  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  if (kIsWeb || !_healthWritePlatforms.contains(defaultTargetPlatform)) {
+    return null;
+  }
   final binding = HealthSyncBinding(settings);
   final platform = createHealthPlatform(
     defaultTargetPlatform,

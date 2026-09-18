@@ -1,5 +1,7 @@
-/// The read/import direction of the Health Platform Sync epic (Issue #217)
-/// — the pure-Dart vocabulary for one user-initiated Apple Health import.
+/// The read/import direction of the Health Platform Sync epic (Issues #217
+/// and #458) — the pure-Dart vocabulary for one user-initiated import from
+/// the device's OS health store (Apple Health on iOS, Health Connect on
+/// Android).
 ///
 /// **This file is where the write-only posture documented in
 /// `health_platform.dart` ends, deliberately and for one direction only.**
@@ -16,27 +18,32 @@
 ///
 /// * **User-initiated only.** There is no observer, no background
 ///   delivery, and no automatic pass anywhere in this file. The only entry
-///   point is [AppleHealthImportRunner.importNow] — a settings action the
+///   point is [HealthImportRunner.importNow] — a settings action the
 ///   operator triggers.
 /// * **Bounded window.** An import reads a fixed, documented number of
-///   days back ([kAppleHealthImportWindowDays]); full-history and
-///   background reads stay deferred (see `health_channel_codec.dart`'s
-///   doc and #186's AC9).
+///   days back ([kHealthImportWindowDays]); full-history and background
+///   reads stay deferred (see `health_channel_codec.dart`'s doc and #186's
+///   AC9).
+/// * **Resolve each sample's civil date from its own zone.** HealthKit
+///   samples carry an IANA zone (`HKMetadataKeyTimeZone`) and Health
+///   Connect records carry their own `zoneOffset`; a sample with neither is
+///   skipped, never guessed from the device's current zone (see
+///   [HealthFlowSample] and `day_boundary.dart`'s #180 contract).
 /// * **Opaque read authorization.** HealthKit's
 ///   `authorizationStatus(for:)` never reveals a denied *read*, and a
-///   denied read is indistinguishable from "no samples". [HealthReadResult]
-///   therefore carries no "denied but non-empty" state, and
-///   [AppleHealthImportSummary] deliberately records no
-///   permission-denied-vs-no-data distinction — the UI must not invent
-///   one.
-/// * **Read-only for Apple's computed types.** The four cycle-deviation
+///   denied read is indistinguishable from "no samples"; Health Connect
+///   can report a `SecurityException`, but [HealthImportSummary]
+///   deliberately records no permission-denied-vs-no-data distinction —
+///   the UI must not invent one.
+/// * **Read-only for computed types.** Apple's four cycle-deviation
 ///   category types (`irregularMenstrualCycles`,
 ///   `infrequentMenstrualCycles`, `prolongedMenstrualPeriods`,
 ///   `persistentIntermenstrualBleeding`) are Apple-computed, not
 ///   user-logged, and App Review 5.1.3 forbids writing derived data back
-///   into HealthKit. This file's import only ever *reads* menstrual flow
-///   into lunarlog; there is no read type that can be written, and the
-///   write port's surface is unchanged.
+///   into HealthKit. This file's import only ever *reads* user-recorded
+///   menstrual flow and intermenstrual-bleeding records into lunarlog;
+///   there is no read type that can be written, and the write port's
+///   surface is unchanged.
 ///
 /// Pure Dart (R14/R16): imports only the domain port vocabulary.
 library;
@@ -50,42 +57,91 @@ import 'health_sync_policy.dart';
 /// matches the 30-day window `health_channel_codec.dart` already documents
 /// for Health Connect's v1 read limit and the Settings screen states it
 /// plainly rather than silently truncating.
-const int kAppleHealthImportWindowDays = 30;
+const int kHealthImportWindowDays = 30;
 
-/// One menstrual-flow sample read from the OS health store, before it is
+/// Which OS health-store record a [HealthFlowSample] came from. The shared
+/// import pipeline handles both of Android's read data types; iOS currently
+/// produces only [menstrualFlow] (#217's read set is the single menstrual
+/// flow type).
+enum HealthSampleKind {
+  /// A `MenstruationFlowRecord` / `HKCategoryTypeSample` menstrual-flow
+  /// sample, carrying a [HealthFlowSample.flow] intensity.
+  menstrualFlow,
+
+  /// An `IntermenstrualBleedingRecord` — bleeding outside a period
+  /// episode. The record carries no intensity (the record's existence is
+  /// the datum), so [HealthFlowSample.flow] is null. Imported as a
+  /// `spotting` observation, the inverse of the write side's A3-4 rule
+  /// (`health_flow_mapping.dart`'s `mapSpottingToHealthWrite`).
+  intermenstrualBleeding;
+
+  /// Parses the wire string; null when [raw] is not in the closed set. A
+  /// null [raw] is the pre-#458 iOS payload (no `kind` key) and means
+  /// [menstrualFlow] — only Android emits a kind today. The native sides
+  /// build the string; Dart only ever reads it.
+  static HealthSampleKind? fromWire(String? raw) => switch (raw) {
+        null || 'menstrualFlow' => menstrualFlow,
+        'intermenstrualBleeding' => intermenstrualBleeding,
+        _ => null,
+      };
+}
+
+/// One menstrual sample read from the OS health store, before it is
 /// resolved to a lunarlog civil date.
 ///
 /// [start]/[end] are absolute instants (the sample's own recorded times).
-/// [tzName] is the sample's own IANA zone from HealthKit's
-/// `HKMetadataKeyTimeZone` (see `day_boundary.dart`'s #180 import
-/// contract) — never the device's current zone. It may be null for a
-/// sample written without that metadata; such a sample cannot be placed on
-/// a civil date without guessing, so the import service skips and counts
-/// it rather than falling back to the device zone.
+/// The sample's own zone rides exactly one of [tzName] (HealthKit's
+/// `HKMetadataKeyTimeZone` IANA name) or [offset] (Health Connect's raw
+/// `zoneOffset`) — never the device's current zone. A sample with neither
+/// cannot be placed on a civil date without guessing, so the import service
+/// skips and counts it rather than falling back to the device zone.
 ///
-/// [recordId] is the sample's own UUID (HealthKit's stable sample id), used
-/// as the imported day entry's `source_id` so re-importing the same sample
-/// addresses the same row. [externalUuid] is `HKMetadataKeyExternalUUID`
-/// when present — the id lunarlog stamps on its own writes (#186), carried
-/// through for diagnostics. Echo prevention itself is [HealthImportSource]'s
-/// mandatory implementation duty: the native query excludes any sample whose
-/// recording source is this app (HealthKit's `dataOrigin`), which is what
-/// stops a write from being re-imported as new data.
+/// [recordId] is the sample's own store id (HealthKit's stable sample UUID,
+/// Health Connect's platform `metadata.id`), used as the imported day
+/// entry's `source_id` so re-importing the same sample addresses the same
+/// row. [externalUuid] is `HKMetadataKeyExternalUUID` when present — the id
+/// lunarlog stamps on its own writes (#186), carried through for
+/// diagnostics. Echo prevention itself is [HealthImportSource]'s mandatory
+/// implementation duty: each native query excludes any record whose
+/// recording source is this app (HealthKit's `sourceRevision.source`, Health
+/// Connect's `dataOrigin`), which is what stops a write from being
+/// re-imported as new data.
 class HealthFlowSample {
   const HealthFlowSample({
     required this.recordId,
-    required this.flow,
     required this.start,
     required this.end,
+    this.kind = HealthSampleKind.menstrualFlow,
+    this.flow,
     this.tzName,
+    this.offset,
     this.externalUuid,
-  });
+  }) : assert(
+          kind == HealthSampleKind.intermenstrualBleeding || flow != null,
+          'a menstrual-flow sample requires a flow value',
+        );
 
   final String recordId;
-  final HealthFlowValue flow;
+
+  /// Which record type this sample is. See [HealthSampleKind].
+  final HealthSampleKind kind;
+
+  /// The flow intensity. Non-null for [HealthSampleKind.menstrualFlow]
+  /// (asserted); null for [HealthSampleKind.intermenstrualBleeding], which
+  /// has no intensity field at all.
+  final HealthFlowValue? flow;
+
   final DateTime start;
   final DateTime end;
+
+  /// The sample's own IANA zone (HealthKit). Exactly one of this or
+  /// [offset] is present for a placeable sample.
   final String? tzName;
+
+  /// The record's own recorded UTC offset (Health Connect). Exactly one of
+  /// this or [tzName] is present for a placeable sample.
+  final Duration? offset;
+
   final String? externalUuid;
 }
 
@@ -93,8 +149,8 @@ class HealthFlowSample {
 /// platform-failure vocabulary but carrying the samples on success.
 ///
 /// A denial of read access is deliberately NOT a distinct state: HealthKit
-/// reports it as an empty result, so [HealthReadSamples] with an empty list
-/// and any permission state are treated identically by every caller. The
+/// reports it as an empty result, and the import summary coalesces every
+/// platform's denial signal into the same neutral state. The
 /// [HealthReadRefused] case is a *device-binding* refusal (the Dart or
 /// native guard denied the read), which is a different thing from the OS
 /// withholding read permission.
@@ -109,8 +165,9 @@ sealed class HealthReadResult {
   const factory HealthReadResult.unavailable() = HealthReadUnavailable;
 
   /// The OS threw a permission error for the read. Never produced by
-  /// HealthKit for a denied read (it returns empty instead); carried so the
-  /// port stays total on platforms that do report it.
+  /// HealthKit for a denied read (it returns empty instead); Health Connect
+  /// does surface it as a `SecurityException`, but the import service
+  /// coalesces it with the empty case deliberately.
   const factory HealthReadResult.permissionDenied() =
       HealthReadPermissionDenied;
 
@@ -149,11 +206,22 @@ final class HealthReadFailed extends HealthReadResult {
   final String message;
 }
 
-/// The read half of the health-store port (Issue #217) — one method per
-/// read data-type concept, mirroring [HealthPlatformStore]'s write shape.
-/// The shared `lunarlog/health` adapter implements both; the Dart guard and
-/// its native mirror apply exactly as they do to a write, because reading
-/// the bound profile's health data is the same device-binding decision.
+/// Which OS health platform an import pass is reading from. Carried by the
+/// runner so the Settings UI can name the right store ("Apple Health" /
+/// "Health Connect") and the import service can stamp the right provenance
+/// ([DayEntrySource.healthkit] / [DayEntrySource.healthConnect]) — one
+/// shared pipeline, not two.
+enum HealthImportPlatform {
+  appleHealth,
+  healthConnect;
+}
+
+/// The read half of the health-store port (Issues #217/#458) — one method
+/// per read data-type concept, mirroring [HealthPlatformStore]'s write
+/// shape. The shared `lunarlog/health` adapter implements both; the Dart
+/// guard and its native mirror apply exactly as they do to a write, because
+/// reading the bound profile's health data is the same device-binding
+/// decision.
 ///
 /// **Implementor contract:** evaluate `HealthSyncBinding.canWrite` first
 /// (returning a refusal without touching the OS health store on a deny),
@@ -162,14 +230,16 @@ final class HealthReadFailed extends HealthReadResult {
 /// the query — the same defense-in-depth property [HealthPlatformStore]
 /// documents.
 abstract interface class HealthImportSource {
-  /// Reads menstrual-flow samples whose recorded interval intersects
-  /// `[start]`–`[end]` (absolute instants) for the bound profile.
+  /// Reads menstrual-flow and intermenstrual-bleeding samples whose
+  /// recorded interval intersects `[start]`–`[end]` (absolute instants)
+  /// for the bound profile.
   ///
   /// Samples recorded by this app itself MUST be excluded by the
   /// implementation before they reach the caller (HealthKit's
-  /// `dataOrigin`/source filtering): lunarlog's write path (#193) writes
-  /// the user's logged flow into Apple Health, and re-importing those
-  /// samples would duplicate every entry and loop the two directions.
+  /// `sourceRevision.source.bundleIdentifier` / Health Connect's
+  /// `dataOrigin` filtering): lunarlog's write path (#193/#202) writes the
+  /// user's logged flow into the OS store, and re-importing those samples
+  /// would duplicate every entry and loop the two directions.
   Future<HealthReadResult> readMenstrualFlow(
     HealthGuardFacts facts, {
     required DateTime start,
@@ -180,14 +250,15 @@ abstract interface class HealthImportSource {
 /// What one user-initiated import pass did, in counts a summary can render
 /// without re-reading anything. Deliberately carries no
 /// permission-denied-vs-empty distinction (see the library doc).
-class AppleHealthImportSummary {
-  const AppleHealthImportSummary({
+class HealthImportSummary {
+  const HealthImportSummary({
     this.bound = true,
     this.blocked,
     this.samplesRead = 0,
     this.daysWritten = 0,
     this.daysUnchanged = 0,
     this.daysKeptManual = 0,
+    this.spottingDaysWritten = 0,
     this.samplesWithoutZone = 0,
     this.samplesUnsupported = 0,
   });
@@ -214,7 +285,11 @@ class AppleHealthImportSummary {
   /// Days whose human-logged flow differed and was deliberately kept.
   final int daysKeptManual;
 
-  /// Samples skipped because they carried no IANA zone to resolve a civil
+  /// Days that gained an imported `spotting` observation from an
+  /// intermenstrual-bleeding record (Issue #458).
+  final int spottingDaysWritten;
+
+  /// Samples skipped because they carried no zone/offset to resolve a civil
   /// date from (never guessed from the device zone).
   final int samplesWithoutZone;
 
@@ -234,19 +309,24 @@ class AppleHealthImportSummary {
       daysWritten == 0 &&
       daysUnchanged == 0 &&
       daysKeptManual == 0 &&
+      spottingDaysWritten == 0 &&
       samplesWithoutZone == 0 &&
       samplesUnsupported == 0;
 }
 
 /// The seam `lib/ui` drives for a user-initiated import. Implementations
 /// own the binding guard, the bounded window, and the local-store merge;
-/// the screen only renders the returned [AppleHealthImportSummary].
-abstract interface class AppleHealthImportRunner {
+/// the screen only renders the returned [HealthImportSummary].
+abstract interface class HealthImportRunner {
+  /// Which OS health store this runner reads from — drives the Settings
+  /// copy's data-source name.
+  HealthImportPlatform get platform;
+
   /// Runs one user-initiated import pass for the currently bound profile.
-  Future<AppleHealthImportSummary> importNow();
+  Future<HealthImportSummary> importNow();
 }
 
 /// The first civil day of the inclusive import window ending at [today]
-/// — `today - (kAppleHealthImportWindowDays - 1)`.
-LocalDate appleHealthImportWindowStart(LocalDate today) =>
-    today.addDays(-(kAppleHealthImportWindowDays - 1));
+/// — `today - (kHealthImportWindowDays - 1)`.
+LocalDate healthImportWindowStart(LocalDate today) =>
+    today.addDays(-(kHealthImportWindowDays - 1));

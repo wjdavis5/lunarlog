@@ -19,6 +19,16 @@
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
+/// *Sample maps* (`readMenstrualFlow`): `recordId`, `startMs`, `endMs`, and
+/// either an iOS-only `tzName` (the sample's IANA zone, #217) or an
+/// Android-only `zoneOffsetSeconds` (Health Connect's raw `zoneOffset`,
+/// #458) — the #180 "resolve the civil date from the sample's own zone"
+/// contract. An optional `kind` distinguishes a `MenstruationFlowRecord`
+/// (`menstrualFlow`, the pre-#458 default when absent) from an
+/// `IntermenstrualBleedingRecord` (`intermenstrualBleeding`, which carries
+/// no `flow`). An optional `flow` intensity is present for menstrual-flow
+/// samples; `externalUuid` (iOS) is diagnostic only.
+///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
 /// `transferredToUserId?`, `minorBindingAllowed`. They are exactly
@@ -194,26 +204,36 @@ HealthReadResult decodeHealthReadResult(Object? raw) {
 }
 
 /// One sample map from `readMenstrualFlow`, or null when a required key is
-/// missing/typed wrong. Optional keys (`tzName`, `externalUuid`) are
-/// genuinely nullable. [start]/[end] cross as epoch-millisecond numbers and
-/// become UTC instants; the sample's own zone rides [HealthFlowSample.tzName]
-/// (the #180 import contract — the conversion to a civil date happens in Dart,
-/// never from the device's current zone).
+/// missing/typed wrong. Optional keys (`tzName`, `zoneOffsetSeconds`,
+/// `externalUuid`) are genuinely nullable. [start]/[end] cross as
+/// epoch-millisecond numbers and become UTC instants; the sample's own zone
+/// rides [HealthFlowSample.tzName] (iOS IANA) or [HealthFlowSample.offset]
+/// (Android raw offset) — the #180 import contract, the conversion to a
+/// civil date happens in Dart, never from the device's current zone.
 HealthFlowSample? _decodeFlowSample(Object? entry) {
   if (entry is! Map) return null;
   final recordId = entry['recordId'];
+  final kind = HealthSampleKind.fromWire(entry['kind'] as String?);
   final flow = HealthFlowValue.fromWire(entry['flow'] as String?);
   final startMs = (entry['startMs'] as num?)?.toInt();
   final endMs = (entry['endMs'] as num?)?.toInt();
-  if (recordId is! String || flow == null || startMs == null || endMs == null) {
+  if (recordId is! String ||
+      kind == null ||
+      startMs == null ||
+      endMs == null ||
+      (kind == HealthSampleKind.menstrualFlow && flow == null)) {
     return null;
   }
+  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
   return HealthFlowSample(
     recordId: recordId,
+    kind: kind,
     flow: flow,
     start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
     end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
     tzName: entry['tzName'] as String?,
+    offset:
+        offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
     externalUuid: entry['externalUuid'] as String?,
   );
 }

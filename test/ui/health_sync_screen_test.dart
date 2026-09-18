@@ -180,24 +180,30 @@ ProfileGuardian _owner(String profileId, String userId) => ProfileGuardian(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
-/// A programmable [AppleHealthImportRunner] for the #217 UI states.
-class _FakeImporter implements AppleHealthImportRunner {
-  _FakeImporter(this.summary);
+/// A programmable [HealthImportRunner] for the #217/#458 UI states.
+class _FakeImporter implements HealthImportRunner {
+  _FakeImporter(this.summary, {this.platform = HealthImportPlatform.appleHealth});
 
-  AppleHealthImportSummary summary;
+  HealthImportSummary summary;
+
+  @override
+  final HealthImportPlatform platform;
   int calls = 0;
 
   @override
-  Future<AppleHealthImportSummary> importNow() async {
+  Future<HealthImportSummary> importNow() async {
     calls++;
     return summary;
   }
 }
 
 /// A runner that throws, for the unexpected-failure line.
-class _ThrowingImporter implements AppleHealthImportRunner {
+class _ThrowingImporter implements HealthImportRunner {
   @override
-  Future<AppleHealthImportSummary> importNow() async =>
+  HealthImportPlatform get platform => HealthImportPlatform.appleHealth;
+
+  @override
+  Future<HealthImportSummary> importNow() async =>
       throw StateError('boom');
 }
 
@@ -231,7 +237,8 @@ void main() {
     required HealthSyncBinding binding,
     String? signedInUserId = 'u1',
     ProfilesRepository? profilesRepository,
-    AppleHealthImportRunner? importer,
+    HealthImportRunner? importer,
+    bool writeEnabled = true,
   }) async {
     // Issue #186 added revocation/30-day-limit copy above the profile
     // picker, and #217 adds an import tile and its result block below it,
@@ -249,6 +256,7 @@ void main() {
           binding: binding,
           signedInUserId: signedInUserId,
           importer: importer,
+          writeEnabled: writeEnabled,
         ),
       ),
     );
@@ -331,6 +339,33 @@ void main() {
       find.textContaining('spotting between periods is written as '
           'intermenstrual bleeding'),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('an import-only platform (Android, Issue #458) shows the '
+      'import explanation and hides the write-only copy', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(
+      tester,
+      binding: binding,
+      writeEnabled: false,
+    );
+
+    expect(
+      find.byKey(const ValueKey('health-sync-import-only-copy')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('health-sync-forward-only-copy')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('health-sync-flow-collapse-copy')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('health-sync-revocation-copy')),
+      findsNothing,
     );
   });
 
@@ -525,7 +560,7 @@ void main() {
 
     testWidgets('tapping Import runs the runner once and renders the '
         'positive summary', (tester) async {
-      final importer = _FakeImporter(const AppleHealthImportSummary(
+      final importer = _FakeImporter(const HealthImportSummary(
         samplesRead: 2,
         daysWritten: 2,
         daysKeptManual: 1,
@@ -553,14 +588,19 @@ void main() {
 
     testWidgets('an empty result renders the neutral ambiguity copy, never '
         '"nothing tracked" or "permission denied"', (tester) async {
-      final importer = _FakeImporter(const AppleHealthImportSummary());
+      final importer = _FakeImporter(const HealthImportSummary());
       final binding = await boundBinding(FakeSettingsStore());
       await pumpScreen(tester, binding: binding, importer: importer);
 
       await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
       await tester.pumpAndSettle();
 
-      expect(find.text(kAppleHealthImportEmptyCopy), findsOneWidget);
+      expect(
+        find.text(
+          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+        ),
+        findsOneWidget,
+      );
       // The neutral copy itself states both possibilities; it must not
       // assert either as fact, and no denial line is rendered.
       expect(find.textContaining('permission denied'), findsNothing);
@@ -568,7 +608,7 @@ void main() {
 
     testWidgets('a denied read renders the same neutral copy as an empty '
         'one (HealthKit opacity)', (tester) async {
-      final importer = _FakeImporter(const AppleHealthImportSummary(
+      final importer = _FakeImporter(const HealthImportSummary(
         blocked: HealthPlatformPermissionDenied(),
       ));
       final binding = await boundBinding(FakeSettingsStore());
@@ -577,12 +617,17 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
       await tester.pumpAndSettle();
 
-      expect(find.text(kAppleHealthImportEmptyCopy), findsOneWidget);
+      expect(
+        find.text(
+          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('permission denied'), findsNothing);
     });
 
     testWidgets('a guard refusal renders the cannot-import line', (tester) async {
-      final importer = _FakeImporter(const AppleHealthImportSummary(
+      final importer = _FakeImporter(const HealthImportSummary(
         blocked: HealthPlatformRefused(HealthSyncCheck.notOwner),
       ));
       final binding = await boundBinding(FakeSettingsStore());
@@ -593,6 +638,28 @@ void main() {
 
       expect(
         find.textContaining("This profile can't import from Apple Health"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an Android runner names Health Connect and renders the '
+        'spotting line (Issue #458)', (tester) async {
+      final importer = _FakeImporter(
+        const HealthImportSummary(spottingDaysWritten: 2),
+        platform: HealthImportPlatform.healthConnect,
+      );
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      expect(
+        find.text('Import from Health Connect'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('Added spotting to 2 days from Health Connect.'),
         findsOneWidget,
       );
     });

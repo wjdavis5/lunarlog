@@ -5,6 +5,8 @@ import android.content.SharedPreferences
 import androidx.activity.ComponentActivity
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.changes.ChangesTokenExpiredException
+import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.IntermenstrualBleedingRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
@@ -13,6 +15,9 @@ import androidx.health.connect.client.records.Record
 // Aliased because a plain `Metadata` import resolves to the compiler's
 // own kotlin.Metadata annotation in constructor-argument position here.
 import androidx.health.connect.client.records.metadata.Metadata as HcMetadata
+import androidx.health.connect.client.request.ChangesTokenRequest
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +59,14 @@ import java.util.Calendar
 // rule lives in lib/data/health/health_channel.dart's library doc and
 // both halves of the channel are bound by it.
 //
+// Issue #458 adds the read half: getChangesToken/getChanges over the two
+// user-recorded menstrual types, with dataOrigin filtering so this app's
+// own writes are never re-imported (the Android counterpart of #217's
+// sourceRevision filtering) and a ChangesTokenExpiredException fallback so
+// a token older than Health Connect's 30-day window recovers with a full
+// time-range read instead of failing. The first import backfills the bound
+// window directly, then stores a change token for later incremental passes.
+//
 // The stored value is a random profile ULID, not health data.
 class HealthConnectAdapter(context: Context) {
 
@@ -92,6 +105,18 @@ class HealthConnectAdapter(context: Context) {
         HealthPermission.getWritePermission(MenstruationPeriodRecord::class),
         HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class),
     )
+
+    // Issue #458 (the owner's #781 read decision, already applied to iOS in
+    // #217): the read/import half. Only the two user-recorded menstrual
+    // types are read; the request sheet carries both sets at once, the
+    // Android counterpart of #217's single `requestAuthorization(toShare:,
+    // read:)` call. Nothing derived or predicted is ever read or written.
+    private val readPermissions = setOf(
+        HealthPermission.getReadPermission(MenstruationFlowRecord::class),
+        HealthPermission.getReadPermission(IntermenstrualBleedingRecord::class),
+    )
+
+    private val allPermissions = writePermissions + readPermissions
 
     // The guard-args half of every guarded call (mirrors
     // encodeGuardArgs in health_channel_codec.dart). StandardMessageCodec
@@ -162,7 +187,11 @@ class HealthConnectAdapter(context: Context) {
             }
 
             "unbind" -> {
-                prefs.edit().remove(BOUND_PROFILE_KEY).apply()
+                val editor = prefs.edit().remove(BOUND_PROFILE_KEY)
+                // Drop the profile's incremental read anchor too, so a later
+                // re-bind starts from a clean backfill (Issue #458).
+                storedBoundProfileId?.let { editor.remove(changesTokenKey(it)) }
+                editor.apply()
                 result.success(null)
             }
 
@@ -191,7 +220,9 @@ class HealthConnectAdapter(context: Context) {
                     result.error(
                         "writeFailed", "no activity to host the permission prompt", null)
                 } else {
-                    launcher.launch(writePermissions)
+                    // The one sheet covers write and read types (Issue #458);
+                    // a user who has only ever imported still sees the prompt.
+                    launcher.launch(allPermissions)
                 }
             }
 
@@ -413,6 +444,46 @@ class HealthConnectAdapter(context: Context) {
                 }
             }
 
+            "readMenstrualFlow" -> {
+                // Issue #458 (#781's read decision): the user-initiated
+                // import. Guarded identically to a write (the device-binding
+                // decision is the same), then a bounded read over the two
+                // user-recorded menstrual types. Success returns an array of
+                // primitive maps (StandardMessageCodec), not a result string.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "readMenstrualFlow requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val startMs = GuardArgs.number(args, "startMs")
+                val endMs = GuardArgs.number(args, "endMs")
+                if (startMs == null || endMs == null) {
+                    return result.error(
+                        "bad_args", "readMenstrualFlow requires startMs/endMs", null)
+                }
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        result.success(
+                            readSamples(client, g.profileId, startMs, endMs))
+                    } catch (e: SecurityException) {
+                        // Read permission revoked or never granted on this
+                        // install — distinct from a read failure. The Dart
+                        // side deliberately coalesces this with "no data".
+                        result.success("permissionDenied")
+                    } catch (e: Exception) {
+                        result.error("readFailed", e.message, null)
+                    }
+                }
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -441,6 +512,159 @@ class HealthConnectAdapter(context: Context) {
             }
         }
     }
+
+    // Issue #458: the read/import half. Reads the requested window through
+    // the Changes API when a stored token exists (an incremental pass),
+    // recovering from ChangesTokenExpiredException with a full window read,
+    // and directly when no token exists (the first import backfill). A
+    // fresh token for the next pass is stored either way. Records this app
+    // itself wrote are dropped by dataOrigin — the mandatory loop-breaker.
+    private suspend fun readSamples(
+        client: HealthConnectClient,
+        profileId: String,
+        startMs: Long,
+        endMs: Long,
+    ): List<Map<String, Any>> {
+        val start = Instant.ofEpochMilli(startMs)
+        val end = Instant.ofEpochMilli(endMs)
+        val tokenKey = changesTokenKey(profileId)
+        val storedToken = prefs.getString(tokenKey, null)
+        val records = LinkedHashMap<String, Record>()
+        if (storedToken == null) {
+            records.putAll(readWindow(client, start, end))
+        } else {
+            try {
+                records.putAll(changedRecords(client, storedToken))
+            } catch (e: ChangesTokenExpiredException) {
+                // Health Connect tokens expire after 30 days: clear the
+                // stale anchor and recover with the same full window read a
+                // first import uses, rather than failing the pass.
+                prefs.edit().remove(tokenKey).apply()
+                records.putAll(readWindow(client, start, end))
+            }
+        }
+        // Mint the next incremental anchor. Best-effort: a token failure
+        // must not fail a pass that already read its data.
+        storeChangesToken(client, tokenKey)
+        return records.values.mapNotNull { sampleFor(it, start, end) }
+    }
+
+    // A full time-range read over the two user-recorded menstrual types.
+    private suspend fun readWindow(
+        client: HealthConnectClient,
+        start: Instant,
+        end: Instant,
+    ): Map<String, Record> {
+        val records = LinkedHashMap<String, Record>()
+        val filter = TimeRangeFilter.between(start, end)
+        for (record in client.readRecords(
+            ReadRecordsRequest(MenstruationFlowRecord::class, filter)
+        ).records) {
+            records[record.metadata.id] = record
+        }
+        for (record in client.readRecords(
+            ReadRecordsRequest(IntermenstrualBleedingRecord::class, filter)
+        ).records) {
+            records[record.metadata.id] = record
+        }
+        return records
+    }
+
+    // Upserts since [token]. Deletions are a deliberate no-op on import for
+    // v1 (#186); a change carrying a non-menstrual record is ignored too.
+    private suspend fun changedRecords(
+        client: HealthConnectClient,
+        token: String,
+    ): Map<String, Record> {
+        val records = LinkedHashMap<String, Record>()
+        for (change in client.getChanges(token).changes) {
+            if (change is UpsertionChange) {
+                records[change.record.metadata.id] = change.record
+            }
+        }
+        return records
+    }
+
+    // Stores a token representing "now" for the next incremental pass.
+    private suspend fun storeChangesToken(
+        client: HealthConnectClient,
+        tokenKey: String,
+    ) {
+        val token = try {
+            client.getChangesToken(
+                ChangesTokenRequest(
+                    setOf(
+                        MenstruationFlowRecord::class,
+                        IntermenstrualBleedingRecord::class,
+                    ),
+                ),
+            )
+        } catch (e: Exception) {
+            null
+        }
+        if (token != null) prefs.edit().putString(tokenKey, token).apply()
+    }
+
+    // One record's primitive sample map, or null when it is our own write,
+    // outside the requested window, or not a supported type.
+    private fun sampleFor(
+        record: Record,
+        start: Instant,
+        end: Instant,
+    ): Map<String, Any>? {
+        // Mandatory echo prevention: a record this app wrote comes back
+        // with our own package as dataOrigin. Re-importing it would
+        // duplicate every entry and loop the write/read directions.
+        if (record.metadata.dataOrigin.packageName == contextApp.packageName) {
+            return null
+        }
+        return when (record) {
+            is MenstruationFlowRecord ->
+                if (inWindow(record.time, start, end)) {
+                    sampleMap(record.metadata.id, "menstrualFlow", record.time,
+                        record.zoneOffset) + ("flow" to flowWire(record.flow))
+                } else {
+                    null
+                }
+            is IntermenstrualBleedingRecord ->
+                if (inWindow(record.time, start, end)) {
+                    sampleMap(record.metadata.id, "intermenstrualBleeding",
+                        record.time, record.zoneOffset)
+                } else {
+                    null
+                }
+            else -> null
+        }
+    }
+
+    private fun inWindow(time: Instant, start: Instant, end: Instant): Boolean =
+        !time.isBefore(start) && !time.isAfter(end)
+
+    private fun flowWire(flow: Int): String = when (flow) {
+        MenstruationFlowRecord.FLOW_LIGHT -> "light"
+        MenstruationFlowRecord.FLOW_MEDIUM -> "medium"
+        MenstruationFlowRecord.FLOW_HEAVY -> "heavy"
+        else -> "unspecified"
+    }
+
+    private fun sampleMap(
+        id: String,
+        kind: String,
+        time: Instant,
+        zoneOffset: ZoneOffset,
+    ): MutableMap<String, Any> = mutableMapOf(
+        "recordId" to id,
+        "kind" to kind,
+        // These records are instantaneous; the codec needs only one bound.
+        "startMs" to time.toEpochMilli(),
+        "endMs" to time.toEpochMilli(),
+        // A Health Connect record carries a raw offset, not an IANA name;
+        // the Dart side resolves the civil date from it (the #180 contract).
+        "zoneOffsetSeconds" to zoneOffset.totalSeconds,
+    )
+
+    private fun changesTokenKey(profileId: String): String =
+        "lunarlog.health.changesToken.$profileId"
 
     // The native mirror of HealthSyncBinding._evaluate — same wire
     // strings the Dart codec decodes. `boundProfileId` comes from
