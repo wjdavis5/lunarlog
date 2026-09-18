@@ -164,6 +164,7 @@ void main() {
         'p_visit_prep_items': [],
         'p_merge_events': [],
         'p_tag_registry': [],
+        'p_guardian_notes': [],
       });
 
       expect(result.resolved, hasLength(2));
@@ -235,7 +236,8 @@ void main() {
           {'p_profiles': [], 'p_day_entries': [], 'p_observations': [],
             'p_profile_modes': [], 'p_cycle_overrides': [],
             'p_care_notes': [], 'p_visit_prep_items': [],
-            'p_merge_events': [], 'p_tag_registry': []});
+            'p_merge_events': [], 'p_tag_registry': [],
+            'p_guardian_notes': []});
     });
 
     test('sends at most 500 rows per array', () async {

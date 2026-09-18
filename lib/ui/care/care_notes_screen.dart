@@ -33,6 +33,7 @@ import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
@@ -401,6 +402,14 @@ class _CareNotesSection extends StatelessWidget {
           },
         ),
         if (canWrite) ...[
+          const SizedBox(height: 8),
+          // Issue #800/#801: the writer is told who can read this, at the
+          // point of writing.
+          Text(
+            kCareNotesDisclosure,
+            key: const ValueKey('care-notes-disclosure'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 8),
           TextField(
             key: const ValueKey('care-note-field'),

@@ -57,6 +57,7 @@ import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/widgets/merge_notice_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
@@ -2073,6 +2074,28 @@ class _DaySheetState extends State<DaySheet> {
                     maxLengthEnforcement: MaxLengthEnforcement.enforced,
                   ),
                 ),
+                // Issue #800/#801: who can read what a guardian writes is
+                // stated at the point of writing, not buried in settings.
+                Padding(
+                  padding: const EdgeInsets.only(top: LLSpace.space1),
+                  child: Text(
+                    kCareNotesDisclosure,
+                    key: const ValueKey('day-note-disclosure'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                // Issue #801: the per-guardian dated notes, beside the shared
+                // day note — never a rework of it.
+                if (!widget.readOnly)
+                  GuardianNotesSection(
+                    profileId: widget.profileId,
+                    date: widget.date,
+                    tz: (widget.timezoneProvider ??
+                        resolveCurrentTimeZoneSync)(),
+                    currentUserId: widget.currentUserId,
+                    guardians: widget.guardians,
+                    canWrite: _guardianNotesCanWrite,
+                  ),
               ],
             ),
           ),
@@ -2297,6 +2320,20 @@ class _DaySheetState extends State<DaySheet> {
     return role == null
         ? null
         : guardianRoleReadOnlyReason(AppLocalizations.of(context), role);
+  }
+
+  /// Issue #801: whether the caller may write a guardian note. Reuses the
+  /// same role-derivation seam as [_readOnlyReason] rather than duplicating
+  /// any gate logic: the day_entries/observations/care-notes ladder — any
+  /// accepted guardian except a viewer. A caller with no matched role (a
+  /// local-only operator, or a test with no guardians list) defaults to the
+  /// sheet's own [DaySheet.readOnly] flag.
+  bool get _guardianNotesCanWrite {
+    if (widget.readOnly) return false;
+    return acceptedGuardianFor(widget.guardians, widget.currentUserId)
+            ?.role
+            .canLog ??
+        true;
   }
 
   /// Issue #642, LLA-012: bounded via [SingleChildScrollView] — before this

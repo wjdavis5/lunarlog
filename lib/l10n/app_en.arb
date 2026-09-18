@@ -2293,6 +2293,30 @@
   "importClueDone": "Done",
   "@importClueDone": {
     "description": "Import > Clue path: closes the screen after a successful import (Issue #452)."
+  },
+  "guardianNotesSectionTitle": "Notes from guardians",
+  "@guardianNotesSectionTitle": {
+    "description": "Day sheet: heading of the per-guardian dated notes section (Issue #801)."
+  },
+  "guardianNotesEmpty": "No guardian notes for this day yet.",
+  "@guardianNotesEmpty": {
+    "description": "Day sheet: shown to a read-only guardian when no guardian note exists for the day (Issue #801)."
+  },
+  "guardianNotesYou": "You",
+  "@guardianNotesYou": {
+    "description": "Day sheet: author label above the reader's own editable guardian note (Issue #801)."
+  },
+  "guardianNotesRemove": "Remove",
+  "@guardianNotesRemove": {
+    "description": "Day sheet: button that removes the reader's own guardian note (Issue #801)."
+  },
+  "guardianNotesAdd": "Add note",
+  "@guardianNotesAdd": {
+    "description": "Day sheet: button that saves a new guardian note (Issue #801)."
+  },
+  "guardianNotesUpdate": "Update note",
+  "@guardianNotesUpdate": {
+    "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
   }
 
 }

@@ -32,6 +32,7 @@ class PushBatch {
     List<JsonRow> visitPrepItems = const [],
     List<JsonRow> mergeEvents = const [],
     List<JsonRow> tagRegistry = const [],
+    List<JsonRow> guardianNotes = const [],
   })  : profiles = List.unmodifiable(profiles),
         dayEntries = List.unmodifiable(dayEntries),
         observations = List.unmodifiable(observations),
@@ -40,42 +41,29 @@ class PushBatch {
         careNotes = List.unmodifiable(careNotes),
         visitPrepItems = List.unmodifiable(visitPrepItems),
         mergeEvents = List.unmodifiable(mergeEvents),
-        tagRegistry = List.unmodifiable(tagRegistry) {
-    if (profiles.length > maxRows) {
-      throw ArgumentError.value(profiles.length, 'profiles',
-          'a push batch carries at most $maxRows profiles');
-    }
-    if (dayEntries.length > maxRows) {
-      throw ArgumentError.value(dayEntries.length, 'dayEntries',
-          'a push batch carries at most $maxRows day entries');
-    }
-    if (observations.length > maxRows) {
-      throw ArgumentError.value(observations.length, 'observations',
-          'a push batch carries at most $maxRows observations');
-    }
-    if (profileModes.length > maxRows) {
-      throw ArgumentError.value(profileModes.length, 'profileModes',
-          'a push batch carries at most $maxRows profile mode rows');
-    }
-    if (cycleOverrides.length > maxRows) {
-      throw ArgumentError.value(cycleOverrides.length, 'cycleOverrides',
-          'a push batch carries at most $maxRows cycle overrides');
-    }
-    if (careNotes.length > maxRows) {
-      throw ArgumentError.value(careNotes.length, 'careNotes',
-          'a push batch carries at most $maxRows care notes');
-    }
-    if (visitPrepItems.length > maxRows) {
-      throw ArgumentError.value(visitPrepItems.length, 'visitPrepItems',
-          'a push batch carries at most $maxRows visit prep items');
-    }
-    if (mergeEvents.length > maxRows) {
-      throw ArgumentError.value(mergeEvents.length, 'mergeEvents',
-          'a push batch carries at most $maxRows merge events');
-    }
-    if (tagRegistry.length > maxRows) {
-      throw ArgumentError.value(tagRegistry.length, 'tagRegistry',
-          'a push batch carries at most $maxRows tag registry rows');
+        tagRegistry = List.unmodifiable(tagRegistry),
+        guardianNotes = List.unmodifiable(guardianNotes) {
+    // One shared check per array, split out so the constructor itself
+    // carries no branches (the CRAP gate; the per-array limit is enforced
+    // identically, and the helper is exercised once per table).
+    _checkMaxRows('profiles', profiles.length, 'profiles');
+    _checkMaxRows('dayEntries', dayEntries.length, 'day entries');
+    _checkMaxRows('observations', observations.length, 'observations');
+    _checkMaxRows('profileModes', profileModes.length, 'profile mode rows');
+    _checkMaxRows('cycleOverrides', cycleOverrides.length, 'cycle overrides');
+    _checkMaxRows('careNotes', careNotes.length, 'care notes');
+    _checkMaxRows('visitPrepItems', visitPrepItems.length, 'visit prep items');
+    _checkMaxRows('mergeEvents', mergeEvents.length, 'merge events');
+    _checkMaxRows('tagRegistry', tagRegistry.length, 'tag registry rows');
+    _checkMaxRows('guardianNotes', guardianNotes.length, 'guardian notes');
+  }
+
+  /// Throws the RPC-equivalent `22023` guard client-side when one array
+  /// exceeds [maxRows].
+  static void _checkMaxRows(String field, int length, String noun) {
+    if (length > maxRows) {
+      throw ArgumentError.value(
+          length, field, 'a push batch carries at most $maxRows $noun');
     }
   }
 
@@ -107,6 +95,10 @@ class PushBatch {
   /// Issue #257: `sync_push`'s ninth parameter (custom-tag registry rows).
   final List<JsonRow> tagRegistry;
 
+  /// Issue #801: `sync_push`'s tenth parameter (dated, author-scoped
+  /// guardian notes).
+  final List<JsonRow> guardianNotes;
+
   int get rowCount =>
       profiles.length +
       dayEntries.length +
@@ -116,7 +108,8 @@ class PushBatch {
       careNotes.length +
       visitPrepItems.length +
       mergeEvents.length +
-      tagRegistry.length;
+      tagRegistry.length +
+      guardianNotes.length;
 
   bool get isEmpty => rowCount == 0;
 
@@ -126,7 +119,7 @@ class PushBatch {
       'observations: ${observations.length}, profileModes: ${profileModes.length}, '
       'cycleOverrides: ${cycleOverrides.length}, careNotes: ${careNotes.length}, '
       'visitPrepItems: ${visitPrepItems.length}, mergeEvents: ${mergeEvents.length}, '
-      'tagRegistry: ${tagRegistry.length})';
+      'tagRegistry: ${tagRegistry.length}, guardianNotes: ${guardianNotes.length})';
 }
 
 /// What `sync_push` answered (KTD3).

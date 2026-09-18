@@ -21,6 +21,7 @@ const SyncStateRow kDefaultSyncState = SyncStateRow(
   cursorDayEntryMergeEvents: 0,
   cursorProfileTagRegistry: 0,
   cursorDayEntryHistory: 0,
+  cursorGuardianNotes: 0,
 );
 
 /// Local-read and query-helper members mixed into [LunarLogStorage].
@@ -374,6 +375,48 @@ mixin LunarLogStorageQueries {
         .watch();
   }
 
+  /// A profile's dated guardian notes (Issue #801) — UI reads (default)
+  /// filter tombstones; `includeTombstones: true` gives full-fidelity reads
+  /// for sync. Ordered by `local_date` then id, so the day sheet can group
+  /// by date and the calendar can mark days cheaply.
+  Future<List<GuardianNoteData>> getGuardianNotesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _guardianNoteQuery(profileId, includeTombstones: includeTombstones)
+        .get();
+  }
+
+  /// Stream variant of [getGuardianNotesForProfile] for reactive UI.
+  Stream<List<GuardianNoteData>> watchGuardianNotesForProfile(
+    String profileId, {
+    bool includeTombstones = false,
+  }) {
+    return _guardianNoteQuery(profileId, includeTombstones: includeTombstones)
+        .watch();
+  }
+
+  /// The live note [authorUserId] wrote for (profile, date), or null
+  /// (Issue #801). Used by the day sheet to edit an existing note instead
+  /// of minting a second one. Null [authorUserId] (never-synced local-only
+  /// operator) matches a null-author row, mirroring the author-ownership
+  /// rule the server enforces.
+  Future<GuardianNoteData?> findLiveGuardianNoteForDate({
+    required String profileId,
+    required String localDate,
+    required String? authorUserId,
+  }) {
+    final query = db.select(db.guardianNotes)
+      ..where((t) =>
+          t.profileId.equals(profileId) &
+          t.localDate.equals(localDate) &
+          t.deletedAt.isNull() &
+          (authorUserId == null
+              ? t.loggedByUserId.isNull()
+              : t.loggedByUserId.equals(authorUserId)));
+    return query.getSingleOrNull();
+  }
+
   /// A profile's visit-prep items — UI reads (default) filter tombstones;
   /// `includeTombstones: true` gives full-fidelity reads for sync.
   /// Checked items sort after unchecked ones (unchecked first, then by
@@ -520,6 +563,22 @@ mixin LunarLogStorageQueries {
   Future<List<VisitPrepItemData>> readDirtyVisitPrepItems(
       {int? limit, String? afterId}) {
     final query = db.select(db.visitPrepItems)
+      ..where((t) =>
+          t.dirty.equals(true) &
+          (afterId == null
+              ? const Constant(true)
+              : t.id.isBiggerThanValue(afterId)))
+      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
+    if (limit != null) query.limit(limit);
+    return query.get();
+  }
+
+  /// Guardian notes with unpushed local changes, tombstones included,
+  /// ordered by id (Issue #801). Same keyset-paging contract as
+  /// [readDirtyProfiles].
+  Future<List<GuardianNoteData>> readDirtyGuardianNotes(
+      {int? limit, String? afterId}) {
+    final query = db.select(db.guardianNotes)
       ..where((t) =>
           t.dirty.equals(true) &
           (afterId == null
@@ -716,7 +775,9 @@ mixin LunarLogStorageQueries {
         db.dayEntryMergeEvents.dirty.equals(true));
     final tr = await _count(db.profileTagRegistry, db.profileTagRegistry.id,
         db.profileTagRegistry.dirty.equals(true));
-    return p + d + o + pm + co + cn + vp + me + tr;
+    final gn = await _count(
+        db.guardianNotes, db.guardianNotes.id, db.guardianNotes.dirty.equals(true));
+    return p + d + o + pm + co + cn + vp + me + tr + gn;
   }
 
   /// Row counts, live and tombstoned, of the two synced tables the upload-
@@ -745,7 +806,8 @@ mixin LunarLogStorageQueries {
       return false;
     }
     if (await _count(db.careNotes, db.careNotes.id) != 0) return false;
-    return await _count(db.visitPrepItems, db.visitPrepItems.id) == 0;
+    if (await _count(db.visitPrepItems, db.visitPrepItems.id) != 0) return false;
+    return await _count(db.guardianNotes, db.guardianNotes.id) == 0;
   }
 
   // --------------------------------------------------------- sync: state row
@@ -981,10 +1043,41 @@ mixin LunarLogStorageQueries {
     return query;
   }
 
+  Future<GuardianNoteData?> _guardianNoteOrNull(String id) =>
+      (db.select(db.guardianNotes)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  Future<GuardianNoteData> _guardianNoteById(String id) async {
+    final row = await _guardianNoteOrNull(id);
+    if (row == null) throw StateError('guardian note disappeared: $id');
+    return row;
+  }
+
+  /// The shared builder behind [getGuardianNotesForProfile] and its watch
+  /// variant: ordered by `local_date` then id, tombstones filtered unless
+  /// [includeTombstones].
+  Selectable<GuardianNoteData> _guardianNoteQuery(
+    String profileId, {
+    required bool includeTombstones,
+  }) {
+    final query = db.select(db.guardianNotes)
+      ..where((t) {
+        var condition = t.profileId.equals(profileId);
+        if (!includeTombstones) {
+          condition = condition & t.deletedAt.isNull();
+        }
+        return condition;
+      })
+      ..orderBy([
+        (t) => OrderingTerm(expression: t.localDate),
+        (t) => OrderingTerm(expression: t.id),
+      ]);
+    return query;
+  }
+
   Future<VisitPrepItemData?> _visitPrepItemOrNull(String id) =>
       (db.select(db.visitPrepItems)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
-
   Future<VisitPrepItemData> _visitPrepItemById(String id) async {
     final row = await _visitPrepItemOrNull(id);
     if (row == null) throw StateError('visit prep item disappeared: $id');

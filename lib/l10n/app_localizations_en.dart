@@ -1828,4 +1828,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get importClueDone => 'Done';
+
+  @override
+  String get guardianNotesSectionTitle => 'Notes from guardians';
+
+  @override
+  String get guardianNotesEmpty => 'No guardian notes for this day yet.';
+
+  @override
+  String get guardianNotesYou => 'You';
+
+  @override
+  String get guardianNotesRemove => 'Remove';
+
+  @override
+  String get guardianNotesAdd => 'Add note';
+
+  @override
+  String get guardianNotesUpdate => 'Update note';
 }

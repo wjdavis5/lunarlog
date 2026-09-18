@@ -78,6 +78,14 @@ const String kVisitPrepItemsProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_visit_prep_items_profile_id '
     'ON visit_prep_items (profile_id)';
 
+/// Schema v25 (issue #801): composite index over
+/// `guardian_notes(profile_id, local_date)` — the day sheet's per-day read
+/// and the calendar's has-guardian-note marker both filter by exactly this
+/// pair.
+const String kGuardianNotesProfileDateIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_guardian_notes_profile_date '
+    'ON guardian_notes (profile_id, local_date)';
+
 /// Schema v21 (issue #130): composite index over
 /// `day_entry_merge_events(profile_id, local_date)` — the day sheet's
 /// merge-notice read filters by exactly this pair.
@@ -132,6 +140,7 @@ const String kObservationsProfileIndexSql =
   ProfileModes,
   CycleOverrides,
   CareNotes,
+  GuardianNotes,
   VisitPrepItems,
   DayEntryMergeEvents,
   ProfileTagRegistry,
@@ -237,8 +246,13 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   mode: the synced due date the week-of-pregnancy counter derives
   ///   from — last recorded period start + 280 days on entry, or a manual
   ///   override when that start is unknown/imported).
+  /// * 25 — `guardian_notes` table (Issue #801, per-guardian dated notes:
+  ///   one row per author per date, attributed, never merged — the
+  ///   date-bound AND author-scoped sibling of `care_notes`) with its
+  ///   `sync_state.cursor_guardian_notes` pull cursor and a
+  ///   `(profile_id, local_date)` index.
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -256,6 +270,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kObservationsProfileIndexSql);
           await customStatement(kProfileTagRegistryProfileIndexSql);
           await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
+          await customStatement(kGuardianNotesProfileDateIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -535,6 +550,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV23(m, from);
     // Issue #192's v24 step, same shape again.
     await _upgradeToV24(m, from);
+    // Issue #801's v25 step, same shape again.
+    await _upgradeToV25(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -583,6 +600,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // `onCreate` or the `from < 23` step below). A no-op for every real
     // device.
     await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
+    // Issue #801 extends the same unconditional re-assert to the v25
+    // guardian-notes index, for the identical reason (a schema-verification
+    // fixture that starts at v25 via `createAll` alone never ran the real
+    // `onCreate`). A no-op for every real device.
+    await customStatement(kGuardianNotesProfileDateIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -964,6 +986,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       // emptied before their parents or the FK fails the whole wipe.
       await delete(visitPrepItems).go();
       await delete(careNotes).go();
+      // Issue #801: guardian_notes references profiles(id): empty it before
+      // its parent like every other profile-scoped content table.
+      await delete(guardianNotes).go();
       await delete(cycleOverrides).go();
       await delete(profileModes).go();
       await delete(dayEntryMergeEvents).go();
@@ -1069,6 +1094,29 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profile_modes.estimated_due_date');
       }
       await _advanceSchemaVersion(24);
+    });
+  }
+
+  /// The v25 upgrade step (Issue #801): the `guardian_notes` table, its
+  /// `sync_state` pull cursor, and its `(profile_id, local_date)` index.
+  /// Same standalone-method shape as [_upgradeToV24] (including the
+  /// `sync_state` gotcha: the `from < 2` block's `m.createTable(syncState)`
+  /// builds the table from the *current* `SyncState` class, which already
+  /// declares this cursor column — see [_hasColumn]'s doc comment,
+  /// LLA-015). No backfill: the table starts empty and is filled by local
+  /// writes and the ordinary pull.
+  Future<void> _upgradeToV25(Migrator m, int from) async {
+    if (from >= 25) return;
+    await transaction(() async {
+      await m.createTable(guardianNotes);
+      await migrationStepHook?.call('guardian_notes');
+      if (!await _hasColumn('sync_state', 'cursor_guardian_notes')) {
+        await m.addColumn(syncState, syncState.cursorGuardianNotes);
+        await migrationStepHook?.call('sync_state.cursor_guardian_notes');
+      }
+      await customStatement(kGuardianNotesProfileDateIndexSql);
+      await migrationStepHook?.call('guardian_notes.profile_date_index');
+      await _advanceSchemaVersion(25);
     });
   }
 }

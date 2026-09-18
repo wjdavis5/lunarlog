@@ -167,6 +167,7 @@ const Map<SyncTable, String> _syncTableNames = {
   SyncTable.profileTagRegistry: 'profile_tag_registry',
   SyncTable.deletedProfiles: 'deleted_profiles',
   SyncTable.dayEntryHistory: 'day_entry_history',
+  SyncTable.guardianNotes: 'guardian_notes',
 };
 
 /// [syncTableName]'s inverse, precomputed once from it rather than
@@ -403,6 +404,33 @@ JsonRow encodeVisitPrepItem(VisitPrepItemData row) {
     'profile_id': row.profileId,
     'body': row.body,
     'is_checked': row.isChecked,
+    'updated_at': encodeTimestamp(row.updatedAt),
+    'deleted_at': _encodeNullable(row.deletedAt),
+  };
+}
+
+/// The `p_guardian_notes` element for [row] (Issue #801). `body` is
+/// emitted as-is — free text, never validated against a closed set here.
+/// `logged_by_user_id` is deliberately NOT emitted: the server stamps the
+/// author on insert (and enforces author-ownership on update), so a client
+/// can never forge or re-attribute an author. Emits exactly the keys
+/// `sync_push`'s derived allowlist accepts.
+JsonRow encodeGuardianNote(GuardianNoteData row) {
+  const table = SyncTable.guardianNotes;
+  if (!isValidUlid(row.id)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'id');
+  }
+  if (!isValidUlid(row.profileId)) {
+    throw const RowCodecError(RowCodecErrorKind.invalidId,
+        table: table, field: 'profile_id');
+  }
+  return {
+    'id': row.id,
+    'profile_id': row.profileId,
+    'local_date': row.localDate,
+    'tz': row.tz,
+    'body': row.body,
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
   };
@@ -803,6 +831,26 @@ RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
   );
 }
 
+/// Decodes a `guardian_notes` row (Issue #801). `body` is read as-is —
+/// free text, never validated against a closed set. `logged_by_user_id` is
+/// the author-ownership key the client uses to decide editability.
+RemoteGuardianNoteRow decodeGuardianNote(JsonRow json) {
+  const table = SyncTable.guardianNotes;
+  final r = _Reader(json, table);
+  return RemoteGuardianNoteRow(
+    id: r.ulid('id'),
+    profileId: r.ulid('profile_id'),
+    localDate: r.isoDate('local_date'),
+    tz: r.string('tz'),
+    body: r.string('body'),
+    updatedAt: r.timestamp('updated_at'),
+    deletedAt: r.timestampOrNull('deleted_at'),
+    serverVersion: r.integerOr('server_version', 0),
+    loggedByUserId: r.stringOrNull('logged_by_user_id'),
+    lastModifiedByUserId: r.stringOrNull('last_modified_by_user_id'),
+  );
+}
+
 /// Decodes a `day_entry_merge_events` row (Issue #130). `field` is
 /// normalised against the closed set ('flow' | 'note') on decode — an
 /// unrecognised value can only come from a broken writer, and degrades to
@@ -923,6 +971,7 @@ const Map<SyncTable, RemoteRow Function(JsonRow)> _remoteRowDecoders = {
   SyncTable.profileTagRegistry: decodeProfileTagRegistryEntry,
   SyncTable.deletedProfiles: decodeDeletedProfile,
   SyncTable.dayEntryHistory: decodeDayEntryHistory,
+  SyncTable.guardianNotes: decodeGuardianNote,
 };
 
 /// Decodes a `sync_push` `resolved` element, dispatching on its `table`

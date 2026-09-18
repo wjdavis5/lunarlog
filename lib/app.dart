@@ -50,6 +50,7 @@ import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
@@ -269,6 +270,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final ObservationsRepository _observations;
   late final CareContentRepository _careContent;
 
+  /// Issue #801: per-guardian dated notes.
+  late final GuardianNotesRepository _guardianNotes;
+
   /// Issue #257: the per-profile custom-tag registry.
   late final TagRegistryRepository _tagRegistry;
   late final SettingsStore _settings;
@@ -383,6 +387,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _dayEntries = _deps.dayEntries;
     _observations = _deps.observations;
     _careContent = _deps.careContent;
+    _guardianNotes = _deps.guardianNotes;
     _tagRegistry = _deps.tagRegistry;
     _settings = _deps.settings;
     // Issue #132: the device-local omission list joins both streams, so
@@ -1145,6 +1150,9 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
         Provider<CareContentRepository>.value(value: _careContent),
+        // Issue #801: the day sheet's "Notes from guardians" section reads
+        // and writes through this domain seam.
+        Provider<GuardianNotesRepository>.value(value: _guardianNotes),
         // Issue #257: the day sheet's tag picker reads/writes the
         // custom-tag registry through this domain seam, never the raw
         // storage object.
