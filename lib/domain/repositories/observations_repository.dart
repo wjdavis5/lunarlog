@@ -3,6 +3,7 @@
 /// isolation), mirroring [DayEntriesRepository].
 library;
 
+import '../models/local_date.dart';
 import '../models/observation.dart';
 
 abstract interface class ObservationsRepository {
@@ -44,4 +45,64 @@ abstract interface class ObservationsRepository {
 
   /// Tombstones the observation [id]. No-op if not held locally.
   Future<void> delete(String id);
+}
+
+/// Optional capability of an [ObservationsRepository] (issue #795): a
+/// date-scoped, spotting-category read that never scans the profile's full
+/// observation history. It is itself an [ObservationsRepository] (so a
+/// repository implementing it can be type-promoted to it), but kept as a
+/// separate interface rather than a new member on [ObservationsRepository]
+/// so existing `implements` fakes keep compiling; callers go through
+/// [SpottingObservationsRead.spottingIsosInRange], which falls back to
+/// [ObservationsRepository.listForProfile] when a repository does not
+/// implement this capability.
+abstract interface class SpottingObservationsRangeRepository
+    implements ObservationsRepository {
+  /// Live `category: 'spotting'` observations for [profileId] whose
+  /// `localDate` falls in the inclusive range [from]..[to], including the
+  /// legacy `flow = 'spotting'` alias synthesis [listForProfile] applies.
+  Future<List<Observation>> listSpottingObservationsInRange({
+    required String profileId,
+    required LocalDate from,
+    required LocalDate to,
+  });
+}
+
+/// Range-scoped spotting reads for any [ObservationsRepository] (issue
+/// #795). The calendar only needs the ISO dates carrying a live spotting
+/// observation inside its already-subscribed entries window; dispatching
+/// to [SpottingObservationsRangeRepository.listSpottingObservationsInRange]
+/// scopes the query to that window (and to the spotting category), while
+/// the [ObservationsRepository.listForProfile] fallback keeps repositories
+/// without the capability — including test fakes — working unchanged.
+extension SpottingObservationsRead on ObservationsRepository {
+  /// The ISO dates in [from]..[to] carrying a live spotting observation.
+  /// With a null [from]/[to] (no window established yet) this degrades to
+  /// the full [ObservationsRepository.listForProfile] read.
+  Future<Set<String>> spottingIsosInRange({
+    required String profileId,
+    LocalDate? from,
+    LocalDate? to,
+  }) async {
+    final repository = this;
+    final List<Observation> observations;
+    if (from != null &&
+        to != null &&
+        repository is SpottingObservationsRangeRepository) {
+      observations = await repository.listSpottingObservationsInRange(
+        profileId: profileId,
+        from: from,
+        to: to,
+      );
+    } else {
+      observations = await listForProfile(profileId);
+    }
+    return {
+      for (final observation in observations)
+        if (observation.category == 'spotting' &&
+            (from == null || !observation.localDate.isBefore(from)) &&
+            (to == null || !observation.localDate.isAfter(to)))
+          observation.localDate.iso,
+    };
+  }
 }

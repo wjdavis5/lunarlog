@@ -210,6 +210,78 @@ ClueImportPreview prepareClueImport({
   );
 }
 
+/// The one message a Clue prepare's `compute` isolate takes (issue #795):
+/// the held export bytes plus the password the operator entered. A named
+/// request class because `compute` passes exactly one value.
+class CluePrepareRequest {
+  const CluePrepareRequest({required this.zipBytes, required this.password});
+
+  final List<int> zipBytes;
+  final String password;
+}
+
+/// Why a Clue prepare failed, as a typed value the UI switches on for its
+/// user-facing copy (issue #795) — never a substring match against an
+/// exception's English message (which broke under localization and on any
+/// upstream wording change).
+enum CluePrepareFailure {
+  /// The archive opened but does not contain `measurements.json` — this
+  /// ZIP is not a Clue export.
+  entryNotFound,
+
+  /// The archive could not be opened/decoded (wrong password, corrupt
+  /// archive, or a bounded-inflation guard firing).
+  unreadable,
+
+  /// The entry opened but is not the expected JSON shape.
+  malformed,
+}
+
+/// The outcome of [prepareClueImportResult]: either a prepared
+/// [ClueImportPreview] or a typed [CluePrepareFailure]. A result value
+/// rather than a thrown exception (issue #795) so the same work can cross
+/// a `compute` isolate boundary — only sendable data crosses, and the UI
+/// still gets a typed failure without matching exception strings.
+sealed class CluePrepareResult {
+  const CluePrepareResult();
+}
+
+final class CluePrepared extends CluePrepareResult {
+  const CluePrepared(this.preview);
+
+  final ClueImportPreview preview;
+}
+
+final class CluePrepareFailed extends CluePrepareResult {
+  const CluePrepareFailed(this.failure);
+
+  final CluePrepareFailure failure;
+}
+
+/// The `compute` callback for a Clue prepare (issue #795): the exact work
+/// of [prepareClueImport], but returning a typed [CluePrepareResult]
+/// instead of throwing, so a real export's zip extraction, SHA-256, and
+/// JSON parse can run off the UI isolate. Placed here (not in the UI) so
+/// the callback is a top-level function the isolate can invoke.
+CluePrepareResult prepareClueImportResult(CluePrepareRequest request) {
+  try {
+    return CluePrepared(
+      prepareClueImport(
+        zipBytes: request.zipBytes,
+        password: request.password,
+      ),
+    );
+  } on ClueZipException catch (error) {
+    return CluePrepareFailed(
+      error.reason == ClueZipFailureReason.entryNotFound
+          ? CluePrepareFailure.entryNotFound
+          : CluePrepareFailure.unreadable,
+    );
+  } on ClueImportException {
+    return const CluePrepareFailed(CluePrepareFailure.malformed);
+  }
+}
+
 /// The effectful half of a Clue import the UI drives: writes an
 /// already-prepared [ClueImportPreview] into one local profile and returns
 /// the applied summary. The concrete implementation is
@@ -426,12 +498,11 @@ ClueImportSummary summarizeClueImport(ClueExportParseResult result) {
 /// The `observations.category` for an unrecognised datapoint: the mapped
 /// category when the `type` itself is known (only its `value` shape was
 /// not), else [kClueUnmappedCategory]. Never invents a mapping — a `type`
-/// absent from [kClueTypeMap] (and not numeric/`period`) has no home.
+/// absent from [kClueTypeMap] (and not numeric) has no home.
 /// [numericCategory] covers the `bbt`/`temperature` family, whose mapped
 /// category is `bbt` regardless of the value shape.
 String unmappedCategoryFor(String clueType) {
   if (kClueTypeMap[clueType] != null) return kClueTypeMap[clueType]!.category;
   if (kClueNumericTypes.contains(clueType)) return 'bbt';
-  if (clueType == 'period') return kClueUnmappedCategory;
   return kClueUnmappedCategory;
 }

@@ -1001,17 +1001,22 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// than throwing. The repository's `listForProfile` already synthesises
   /// a spotting observation for a legacy `flow = 'spotting'` row, so old
   /// data is covered with no extra branch here.
+  ///
+  /// Issue #795: the read is scoped to the same window the entries
+  /// subscription uses ([_entriesWindowFrom]/[_entriesWindowTo]), never the
+  /// profile's full observation history — the trigger (every entries tick)
+  /// is unchanged, only how much this reads is.
   Future<void> _refetchObservations() async {
     final repository =
         widget.observationsRepository ??
         context.read<ObservationsRepository?>();
     if (repository == null) return;
-    final observations = await repository.listForProfile(widget.profileId);
+    final spotting = await repository.spottingIsosInRange(
+      profileId: widget.profileId,
+      from: _entriesWindowFrom,
+      to: _entriesWindowTo,
+    );
     if (!mounted) return;
-    final spotting = {
-      for (final observation in observations)
-        if (observation.category == 'spotting') observation.localDate.iso,
-    };
     setState(() => _spottingIsos = spotting);
   }
 

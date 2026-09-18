@@ -52,6 +52,20 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+/// Why a Clue zip read failed (issue #795) — a typed reason the import UI
+/// switches on for its user-facing copy, instead of substring-matching the
+/// English [ClueZipException.message] (which broke under localization and
+/// on any upstream wording change).
+enum ClueZipFailureReason {
+  /// The archive opened but simply does not contain `measurements.json` —
+  /// "this ZIP is not a Clue export" rather than "the file is unreadable".
+  entryNotFound,
+
+  /// Everything else: wrong password, corrupt archive, an implausible
+  /// entry count/size, or a bounded-inflation guard firing.
+  unreadable,
+}
+
 /// Thrown when the zip cannot be opened at all (wrong password, corrupt
 /// archive), does not contain the requested entry, that entry declares an
 /// implausible size, or its actual decompressed content exceeds
@@ -65,11 +79,18 @@ import 'package:archive/archive.dart';
 /// `ClueImportException`'s doc comment in `clue_export_parser.dart` for
 /// the fuller rationale, which applies identically here. [offset] carries
 /// only `FormatException.offset` when the underlying failure was one,
-/// never any fragment of the bytes themselves.
+/// never any fragment of the bytes themselves. [reason] is the typed
+/// failure (issue #795); it defaults to [ClueZipFailureReason.unreadable]
+/// so the generic catch-all needs no extra branch.
 class ClueZipException implements Exception {
-  ClueZipException(this.message, {this.offset});
+  ClueZipException(
+    this.message, {
+    this.reason = ClueZipFailureReason.unreadable,
+    this.offset,
+  });
 
   final String message;
+  final ClueZipFailureReason reason;
   final int? offset;
 
   @override
@@ -192,7 +213,10 @@ ZipFileHeader _requireHeader(ZipDirectory directory, String entryName) {
   for (final header in directory.fileHeaders) {
     if (header.filename == entryName) return header;
   }
-  throw ClueZipException('$entryName not found in the Clue export zip');
+  throw ClueZipException(
+    '$entryName not found in the Clue export zip',
+    reason: ClueZipFailureReason.entryNotFound,
+  );
 }
 
 /// Cheap fast-path guard on [header]'s DECLARED sizes (Issue #626,

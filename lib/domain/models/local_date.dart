@@ -47,6 +47,20 @@ class LocalDate implements Comparable<LocalDate> {
     );
   }
 
+  /// Tolerant `yyyy-MM-dd` parse: [fromIso]'s null/empty/malformed-proof
+  /// counterpart (issue #795), returning null rather than throwing so a
+  /// stored value that fails to parse reads as unset instead of taking a
+  /// screen down. One shared helper replaces the per-file copies that used
+  /// to exist in `overview_panel.dart` and `mode_exit_exclusion.dart`.
+  static LocalDate? tryParseIso(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    try {
+      return LocalDate.fromIso(iso);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
   /// The date part of [dateTime] as-is (no offset conversion): the caller
   /// passes a DateTime already resolved to the relevant local time.
   factory LocalDate.fromDateTime(DateTime dateTime) =>

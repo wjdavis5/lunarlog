@@ -140,9 +140,7 @@ Future<ModeExitExclusionOutcome> offerModeExitExclusion(
   required bool readOnly,
 }) async {
   final copy = _ModeExitCopy.forMode(AppLocalizations.of(context), exitedMode);
-  final startedOn = modeStartedOn == null || modeStartedOn.isEmpty
-      ? null
-      : _tryParseIso(modeStartedOn);
+  final startedOn = LocalDate.tryParseIso(modeStartedOn);
   final starts = _exclusionStartsFor(
     exitedMode: exitedMode,
     episodes: deriveEpisodes(bleedDates),
@@ -242,12 +240,4 @@ Future<List<LocalDate>> _bleedDatesFor(
 ) async {
   final entries = await repository.listForProfile(profileId);
   return bleedDatesOf(entries).toList();
-}
-
-LocalDate? _tryParseIso(String iso) {
-  try {
-    return LocalDate.fromIso(iso);
-  } on ArgumentError {
-    return null;
-  }
 }

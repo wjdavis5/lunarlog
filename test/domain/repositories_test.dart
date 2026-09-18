@@ -631,6 +631,172 @@ void main() {
     });
   });
 
+  group('range-scoped spotting reads (issue #795)', () {
+    Future<void> saveObservation({
+      required String profileId,
+      required String dayEntryId,
+      required LocalDate localDate,
+      required String category,
+      String? code,
+    }) async {
+      await observations.save(Observation(
+        id: '',
+        dayEntryId: dayEntryId,
+        profileId: profileId,
+        localDate: localDate,
+        tz: 'America/Chicago',
+        category: category,
+        code: code,
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ));
+    }
+
+    test(
+        'listSpottingObservationsInRange returns only in-window spotting '
+        'rows, never out-of-window or non-spotting ones', () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final inWindow = await dayEntries
+          .save(entryFor(profile.id, LocalDate(2026, 7, 10),
+              flow: FlowLevel.notBleeding));
+      final outOfWindow = await dayEntries
+          .save(entryFor(profile.id, LocalDate(2026, 8, 10),
+              flow: FlowLevel.notBleeding));
+      final inWindowOther = await dayEntries
+          .save(entryFor(profile.id, LocalDate(2026, 7, 11),
+              flow: FlowLevel.notBleeding));
+      await saveObservation(
+        profileId: profile.id,
+        dayEntryId: inWindow.id,
+        localDate: LocalDate(2026, 7, 10),
+        category: 'spotting',
+        code: 'spotting',
+      );
+      await saveObservation(
+        profileId: profile.id,
+        dayEntryId: outOfWindow.id,
+        localDate: LocalDate(2026, 8, 10),
+        category: 'spotting',
+        code: 'spotting',
+      );
+      await saveObservation(
+        profileId: profile.id,
+        dayEntryId: inWindowOther.id,
+        localDate: LocalDate(2026, 7, 11),
+        category: 'pain',
+        code: 'cramps',
+      );
+
+      final range = observations as SpottingObservationsRangeRepository;
+      final read = await range.listSpottingObservationsInRange(
+        profileId: profile.id,
+        from: LocalDate(2026, 7, 1),
+        to: LocalDate(2026, 7, 31),
+      );
+
+      expect(read.map((o) => o.localDate.iso), ['2026-07-10']);
+    });
+
+    test(
+        'listSpottingObservationsInRange synthesises the legacy '
+        'flow = spotting alias only for in-window entries', () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final inWindow = await dayEntries.save(entryFor(
+          profile.id, LocalDate(2026, 7, 12),
+          // ignore: deprecated_member_use_from_same_package
+          flow: FlowLevel.spotting));
+      await dayEntries.save(entryFor(
+          profile.id, LocalDate(2026, 8, 12),
+          // ignore: deprecated_member_use_from_same_package
+          flow: FlowLevel.spotting));
+
+      final range = observations as SpottingObservationsRangeRepository;
+      final read = await range.listSpottingObservationsInRange(
+        profileId: profile.id,
+        from: LocalDate(2026, 7, 1),
+        to: LocalDate(2026, 7, 31),
+      );
+
+      expect(read, hasLength(1));
+      expect(read.single.dayEntryId, inWindow.id);
+      expect(read.single.id, spottingAliasId(inWindow.id));
+      expect(read.single.category, 'spotting');
+    });
+
+    test(
+        'spottingIsosInRange narrows the calendar read to the window: the '
+        'full listForProfile read still reports the out-of-window date',
+        () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final inWindow = await dayEntries
+          .save(entryFor(profile.id, LocalDate(2026, 7, 15),
+              flow: FlowLevel.notBleeding));
+      final outOfWindow = await dayEntries
+          .save(entryFor(profile.id, LocalDate(2026, 9, 15),
+              flow: FlowLevel.notBleeding));
+      for (final row in [inWindow, outOfWindow]) {
+        await saveObservation(
+          profileId: profile.id,
+          dayEntryId: row.id,
+          localDate: row.localDate,
+          category: 'spotting',
+          code: 'spotting',
+        );
+      }
+
+      // The full-history read (pre-#795 behaviour) sees both dates…
+      final all = await observations.spottingIsosInRange(
+        profileId: profile.id,
+      );
+      expect(all, {'2026-07-15', '2026-09-15'});
+
+      // …while the windowed read only asks for (and returns) the in-window
+      // one — the scoping the entries subscription already implies.
+      final scoped = await observations.spottingIsosInRange(
+        profileId: profile.id,
+        from: LocalDate(2026, 7, 1),
+        to: LocalDate(2026, 7, 31),
+      );
+      expect(scoped, {'2026-07-15'});
+    });
+
+    test(
+        'spottingIsosInRange falls back to listForProfile for a repository '
+        'without the range capability, still filtering to the window',
+        () async {
+      final fake = _PlainObservationsRepository({
+        Observation(
+          id: 'a',
+          dayEntryId: 'e1',
+          profileId: 'p',
+          localDate: LocalDate(2026, 7, 15),
+          tz: 'America/Chicago',
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+        Observation(
+          id: 'b',
+          dayEntryId: 'e2',
+          profileId: 'p',
+          localDate: LocalDate(2026, 9, 15),
+          tz: 'America/Chicago',
+          category: 'spotting',
+          code: 'spotting',
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+      });
+
+      final scoped = await fake.spottingIsosInRange(
+        profileId: 'p',
+        from: LocalDate(2026, 7, 1),
+        to: LocalDate(2026, 7, 31),
+      );
+
+      expect(scoped, {'2026-07-15'});
+      expect(fake.listForProfileCalls, 1);
+    });
+  });
+
   group('R3: per-profile isolation through the repositories', () {
     test('reads, writes and streams never co-mingle profiles', () async {
       final a = await profiles.create(displayName: 'A', isMinor: true);
@@ -743,4 +909,36 @@ void main() {
       expect(SettingsKeys.webModalAcknowledged, 'web_modal_acknowledged');
     });
   });
+}
+
+/// An [ObservationsRepository] that deliberately does **not** implement
+/// [SpottingObservationsRangeRepository] (issue #795): proves the
+/// [SpottingObservationsRead.spottingIsosInRange] extension still scopes a
+/// full [listForProfile] read to the requested window.
+class _PlainObservationsRepository implements ObservationsRepository {
+  _PlainObservationsRepository(this._rows);
+
+  final Set<Observation> _rows;
+  int listForProfileCalls = 0;
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async {
+    listForProfileCalls++;
+    return _rows.toList();
+  }
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async => const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+    String dayEntryId,
+  ) async =>
+      const [];
+
+  @override
+  Future<Observation> save(Observation observation) async => observation;
+
+  @override
+  Future<void> delete(String id) async {}
 }

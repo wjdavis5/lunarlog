@@ -15,7 +15,8 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 
 import 'mappers.dart';
 
-class DriftObservationsRepository implements ObservationsRepository {
+class DriftObservationsRepository
+    implements ObservationsRepository, SpottingObservationsRangeRepository {
   DriftObservationsRepository(this._storage);
 
   final LunarLogStorage _storage;
@@ -52,6 +53,44 @@ class DriftObservationsRepository implements ObservationsRepository {
         for (final row in await _storage.getObservationsForDayEntry(dayEntryId))
           observationToDomain(row),
       ];
+
+  /// Issue #795: [listForProfile]'s spotting rows and legacy
+  /// `flow = 'spotting'` alias synthesis, scoped to the inclusive
+  /// [from]..[to] window (and, on the observation side, to the `spotting`
+  /// category) rather than the profile's full observation history — the
+  /// read the calendar's marker actually needs, since it already
+  /// subscribes to a windowed range of entries (issue #197).
+  @override
+  Future<List<domain.Observation>> listSpottingObservationsInRange({
+    required String profileId,
+    required domain.LocalDate from,
+    required domain.LocalDate to,
+  }) async {
+    final observations = [
+      for (final row in await _storage.getObservationsForProfile(
+        profileId,
+        fromLocalDate: from.iso,
+        toLocalDate: to.iso,
+        category: 'spotting',
+      ))
+        observationToDomain(row),
+    ];
+    final daySpottingIds = {
+      for (final o in observations)
+        if (o.category == 'spotting') o.dayEntryId,
+    };
+    for (final entry in await _storage.getDayEntries(
+      profileId: profileId,
+      fromLocalDate: from.iso,
+      toLocalDate: to.iso,
+    )) {
+      if (entry.flow == db.FlowLevel.spotting &&
+          !daySpottingIds.contains(entry.id)) {
+        observations.add(_spottingObservationFor(entry));
+      }
+    }
+    return observations;
+  }
 
   /// Issue #549: [listForDayEntry] plus [listForProfile]'s alias synthesis,
   /// scoped to this one day entry via [LunarLogStorage.getDayEntryById]
