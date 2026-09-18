@@ -39,6 +39,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/components/app_shell.dart' show AppShell;
 import 'package:lunarlog/ui/components/app_shell_scope.dart' show AppTab;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
@@ -688,6 +689,59 @@ void main() {
           ModalRoute.of(tester.element(find.byType(ActivityFeedScreen)));
       expect(route?.settings.name, kRouteActivityFeedScreen);
       expect(kSentryRouteNames, contains(kRouteActivityFeedScreen));
+      await h.dispose();
+    });
+  });
+
+  group('issue #806: care notes are reachable for an active profile', () {
+    testWidgets(
+        'the shell app bar exposes care notes and opens them writable',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+
+      expect(
+        find.byKey(const ValueKey('care-notes-button')),
+        findsOneWidget,
+        reason: 'an active profile must not have to be archived to reach '
+            'its care notes',
+      );
+      await tester.tap(find.byKey(const ValueKey('care-notes-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CareNotesScreen), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('care-note-field')),
+        findsOneWidget,
+        reason: 'a guardian whose role can log writes from the active '
+            'profile',
+      );
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a viewer reaches the notes but gets no write affordance',
+        (tester) async {
+      final h = Harness(tester);
+      h.auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-doc'));
+      await h.pump(
+        seedGuardians: (db, profileId) => db.storage.applyRemoteRows([
+          guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+        ]),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('care-notes-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CareNotesScreen), findsOneWidget,
+          reason: 'a viewer still reads the notes');
+      expect(find.byKey(const ValueKey('care-note-field')), findsNothing);
+      expect(find.byKey(const ValueKey('visit-prep-field')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('care-read-only-reason')),
+        findsOneWidget,
+      );
       await h.dispose();
     });
   });

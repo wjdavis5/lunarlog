@@ -53,6 +53,7 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -61,6 +62,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/components/profile_card.dart' show ProfileAvatar;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
@@ -278,6 +280,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final guardiansRepository = context.read<ProfileGuardiansRepository?>();
     final activityRepository = context.read<ActivityFeedRepository?>();
+    final careContentRepository = context.read<CareContentRepository?>();
     // listen: false -- only existence is read here; the glyph does its own
     // watch, and listening would rebuild the whole IndexedStack on every
     // sync snapshot (review finding on #182).
@@ -302,7 +305,12 @@ class _AppShellState extends State<AppShell> {
         child: Scaffold(
           appBar: _tab == AppTab.more
               ? null
-              : _shellAppBar(hasSync, guardiansRepository, activityRepository),
+              : _shellAppBar(
+                  hasSync,
+                  guardiansRepository,
+                  activityRepository,
+                  careContentRepository,
+                ),
           body: Column(
             children: [
               // Issue #568: a persistent banner when the sync session is
@@ -377,13 +385,24 @@ class _AppShellState extends State<AppShell> {
   /// The app bar shared by Today/Calendar/Insights (issue #182 AC2/AC3/AC5):
   /// the profile switcher, the Activity feed action (issue #313 -- #124's
   /// [ActivityFeedButton], reachable again now that the shell replaced
-  /// `ProfileDetailScreen` as where the active profile lives), the sync
-  /// glyph (only when a build has one), and a Settings action. Extracted
-  /// out of [build] to keep that method's branching low (CRAP gate).
+  /// `ProfileDetailScreen` as where the active profile lives), the care
+  /// notes action (issue #806 -- #128's [CareNotesButton], which until then
+  /// mounted only on the archived, read-only `ProfileDetailScreen`), the
+  /// sync glyph (only when a build has one), and a Settings action.
+  /// Extracted out of [build] to keep that method's branching low (CRAP
+  /// gate).
+  ///
+  /// [CareNotesButton] is mounted for the active profile with no `readOnly`
+  /// passthrough: every profile that reaches this shell is active. The
+  /// viewer write gate is not duplicated here -- [CareNotesScreen] derives
+  /// it from the guardians watch (the same per-snapshot role derivation the
+  /// archived screen uses), so a `viewer` still reaches the notes but is
+  /// offered no input.
   AppBar _shellAppBar(
     bool hasSync,
     ProfileGuardiansRepository? guardiansRepository,
     ActivityFeedRepository? activityRepository,
+    CareContentRepository? careContentRepository,
   ) =>
       AppBar(
         title: _ProfileSwitcher(
@@ -398,6 +417,15 @@ class _AppShellState extends State<AppShell> {
               repository: activityRepository,
               todayProvider: widget.todayProvider,
               timezoneProvider: widget.timezoneProvider,
+            ),
+          // Issue #806: the same repository gating `ProfileDetailScreen`
+          // uses -- an unwired (unconfigured/test) tree keeps the old app
+          // bar exactly as before.
+          if (careContentRepository != null && guardiansRepository != null)
+            CareNotesButton(
+              profile: widget.profile,
+              repository: careContentRepository,
+              guardiansRepository: guardiansRepository,
             ),
           if (hasSync) SyncStatusGlyph(onPressed: _openMoreTab),
           IconButton(
