@@ -465,6 +465,18 @@ void main() {
       expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
     });
 
+    // Issue #458: a Health Connect import stores a record's raw zoneOffset as
+    // a fixed-offset designator; the export/import round-trip must accept it.
+    test('a fixed-offset zone designator is accepted', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, dayEntries: [
+          {..._rawDayEntry(_e1, '2026-01-05'), 'tz': 'UTC+05:30'},
+        ]),
+      ]);
+      final parsed = parseAccountImport(_bytes(raw));
+      expect(parsed, isNot(isA<AccountImportParseFailed>()));
+    });
+
     test('a day entry id longer than the server bound is rejected', () {
       final raw = _rawDocument(profiles: [
         _rawProfile(_p1, dayEntries: [

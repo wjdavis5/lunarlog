@@ -92,4 +92,42 @@ void main() {
       expect(isValidIanaTimeZone('Not/A_Real_Timezone'), isFalse);
     });
   });
+
+  // Issue #458: the fixed-offset designator a Health Connect import stores
+  // for a record that carries only a raw zoneOffset.
+  group('fixedOffsetZoneName / isFixedOffsetZoneName', () {
+    test('renders zero, whole-hour, half-hour, and negative offsets', () {
+      expect(fixedOffsetZoneName(Duration.zero), 'UTC');
+      expect(fixedOffsetZoneName(const Duration(hours: 5)), 'UTC+05:00');
+      expect(
+        fixedOffsetZoneName(const Duration(hours: 5, minutes: 30)),
+        'UTC+05:30',
+      );
+      expect(
+        fixedOffsetZoneName(const Duration(hours: -4)),
+        'UTC-04:00',
+      );
+      expect(
+        fixedOffsetZoneName(const Duration(minutes: -210)),
+        'UTC-03:30',
+      );
+    });
+
+    test('accepts exactly the forms it renders, and rejects other strings',
+        () {
+      for (final value in ['UTC', 'UTC+05:30', 'UTC-04:00', 'UTC+14:00']) {
+        expect(isFixedOffsetZoneName(value), isTrue, reason: value);
+      }
+      for (final value in [
+        'UTC+5:30',
+        'UTC+05:60',
+        'UTC+19:00',
+        'GMT+05:30',
+        'America/New_York',
+        '',
+      ]) {
+        expect(isFixedOffsetZoneName(value), isFalse, reason: value);
+      }
+    });
+  });
 }

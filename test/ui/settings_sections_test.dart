@@ -170,7 +170,7 @@ Future<PackageInfo> _failingPackageInfo() async => throw Exception('no channel')
 
 void main() {
   testWidgets(
-      "Issue #226: renders the eight sections, in the issue's order, each "
+      "Issue #226/#458: renders the nine sections, in the issue's order, each "
       'headed by the shared SettingsSection component', (tester) async {
     await pumpSettings(
       tester,
@@ -183,6 +183,9 @@ void main() {
       _sectionIdsInOrder(tester),
       [
         'your-data',
+        // Issue #458 opened the health tile on Android (this test platform)
+        // for the import direction; it renders whenever the repos are wired.
+        'health',
         'appearance',
         'reminders',
         'calendar',
@@ -195,6 +198,7 @@ void main() {
     // The headers render their localized titles.
     for (final title in [
       'Your data',
+      'Health',
       'Appearance',
       'Reminders',
       'Calendar',

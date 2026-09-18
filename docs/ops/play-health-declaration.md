@@ -26,7 +26,7 @@ track. This is separate from and in addition to the ordinary Play Data
 safety form. Google reviews the declaration; a build can be rejected or
 removed if the declared use doesn't match actual behavior.
 
-## Current permission set (issue #166 baseline)
+## Current permission set (issue #166 baseline; read side added by #458)
 
 Scoped to the menstruation data types [#202](https://github.com/wjdavis5/lunarlog/issues/202)
 (HS-7) needs for v1. The [#173](https://github.com/wjdavis5/lunarlog/issues/173)
@@ -37,16 +37,23 @@ written into the on-device Health Connect store, and nothing is
 transmitted off-device through this feature. Writes carry user-logged or
 imported data only — never a predicted or derived cycle value (the
 written rule in `lib/data/health/health_channel.dart`'s library doc,
-issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). **Write-only
-by design (issue #515):** `HealthConnectAdapter.kt`'s `writePermissions`
-set never requests `getReadPermission` for either record type, so the
-manifest's earlier `READ_MENSTRUATION`/`READ_INTERMENSTRUAL_BLEEDING`
-declarations were dead permissions with no matching call site — they were
-removed rather than kept "for later," matching the Swift adapter's
-`read: []`. Re-add a `READ_*` permission here only alongside an actual
-read call site and a `PRIVACY.md` update describing what is read and why.
-Extend the table below (never widen the manifest silently) as later HS
-issues ([#186](https://github.com/wjdavis5/lunarlog/issues/186),
+issue [#254](https://github.com/wjdavis5/lunarlog/issues/254). **Read
+direction added by issue [#458](https://github.com/wjdavis5/lunarlog/issues/458),
+the Android half of the owner's [#781](https://github.com/wjdavis5/lunarlog/issues/781)
+read decision already applied to iOS by [#217](https://github.com/wjdavis5/lunarlog/issues/217):**
+`HealthConnectAdapter.kt`'s `readPermissions` set now requests
+`getReadPermission` for both record types, matching a real call site
+(the user-initiated `getChangesToken`/`getChanges` import in
+`readMenstrualFlow`), and `AndroidManifest.xml` declares the two
+`READ_*` permissions. The import drops any record whose `dataOrigin` is
+this app, so lunarlog's own writes are never re-imported, and it is
+bounded to the last 30 days with no background or full-history read
+(`READ_HEALTH_DATA_HISTORY` / `READ_HEALTH_DATA_IN_BACKGROUND` remain
+undeclared). Adding a `READ_*` permission re-triggers the Play Health
+apps declaration review: refile this form before any track Google
+reviews ships the build. Extend the table below (never widen the
+manifest silently) as later HS issues
+([#186](https://github.com/wjdavis5/lunarlog/issues/186),
 [#210](https://github.com/wjdavis5/lunarlog/issues/210),
 [#228](https://github.com/wjdavis5/lunarlog/issues/228)) add data types.
 
@@ -54,6 +61,8 @@ issues ([#186](https://github.com/wjdavis5/lunarlog/issues/186),
 |---|---|---|
 | `android.permission.health.WRITE_MENSTRUATION` | Write | Lets the user optionally mirror period start/end dates and flow level they log in lunarlog into Health Connect, so other health apps they use can see the same cycle history. Opt-in, one profile at a time, forward-only from grant (matches the Clue-parity baseline scoped in issue #116's epic). |
 | `android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING` | Write | Same rationale as `WRITE_MENSTRUATION`, for intermenstrual bleeding entries. |
+| `android.permission.health.READ_MENSTRUATION` | Read | Lets the user explicitly import menstrual-flow records another app wrote into Health Connect, so history logged elsewhere does not have to be re-entered. User-initiated only (Settings → Health app sync → Import from Health Connect), bounded to the last 30 days, into the one profile bound to this device; records lunarlog itself wrote are excluded by `dataOrigin` so nothing round-trips, and a value the user logged by hand is never overwritten. |
+| `android.permission.health.READ_INTERMENSTRUAL_BLEEDING` | Read | Same rationale as `READ_MENSTRUATION`, for intermenstrual-bleeding records (stored as the app's spotting observations). No derived or predicted value is ever read or written. |
 
 ## Declaration form skeleton
 
@@ -65,9 +74,13 @@ this as a skeleton to walk through, not a verbatim transcript.
       that lunarlog is a menstrual cycle tracker that, with explicit
       opt-in, can write period/flow and intermenstrual-bleeding records to
       Health Connect so the user's data is available to other health apps
-      they choose to use (write-only — issue #515).
+      they choose to use, and — separately and only when the user starts an
+      import — read the same two user-recorded types back over the last 30
+      days so history logged in another app does not have to be re-entered
+      (never a predicted or derived value; no background or full-history
+      read).
 - [ ] **Per-permission justification:** paste the justification column
-      above (or the form's closer equivalent) for each of the two
+      above (or the form's closer equivalent) for each of the four
       permissions.
 - [ ] **Data sharing disclosure:** confirm the form's questions about
       whether health data is shared with third parties are answered "no" —
@@ -119,7 +132,10 @@ itself, tracked in "Re-check triggers" below, not by re-flipping).
   the manifest (issues #186, #210, #228, #246 will each do this).
   Adding a data type re-triggers Play's Health apps declaration review —
   update the per-permission table above and re-file before the build
-  that carries it ships to any track Google reviews.
+  that carries it ships to any track Google reviews. **Issue #458 already
+  triggered one:** it re-added the two `READ_*` permissions and the read
+  call site, so this form must be re-filed (with the two new table rows)
+  before the next production-track build.
 - `AppConfig.hasHealthSync` flipped to `true` with #173 and the #193/#374
   writes — the form is no longer a draft exercise: it must actually be
   filed (and the release-gate variable above set) before any
