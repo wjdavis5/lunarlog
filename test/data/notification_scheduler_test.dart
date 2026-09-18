@@ -141,6 +141,10 @@ void main() {
   FlutterLocalNotificationsScheduler schedulerFor(
     TargetPlatform platform, {
     SettingsStore? settingsStore,
+    LocalTimeZoneProvider? localTimeZoneProvider,
+    tz.Location Function()? locationProvider,
+    ReminderNowProvider? nowProvider,
+    BreadcrumbLog? breadcrumbLog,
   }) {
     debugDefaultTargetPlatformOverride = platform;
     switch (platform) {
@@ -155,7 +159,13 @@ void main() {
       case TargetPlatform.windows:
         break;
     }
-    return FlutterLocalNotificationsScheduler(settingsStore: settingsStore);
+    return FlutterLocalNotificationsScheduler(
+      settingsStore: settingsStore,
+      localTimeZoneProvider: localTimeZoneProvider,
+      locationProvider: locationProvider,
+      nowProvider: nowProvider,
+      breadcrumbLog: breadcrumbLog,
+    );
   }
 
   group('FlutterLocalNotificationsScheduler permission probing (Issue #43)', () {
@@ -628,6 +638,121 @@ void main() {
       final args = scheduleCall.arguments as Map;
       expect(args['title'], kReminderTitle);
       expect(args['body'], kReminderBody);
+    });
+  });
+
+  group('past-due skip and per-reminder isolation (issue #171)', () {
+    PlannedReminder lateOn(
+      LocalDate date,
+      int minuteOfDay, {
+      String profile = 'profile-1',
+    }) =>
+        PlannedReminder(
+          profileId: profile,
+          fireOn: date,
+          kind: ReminderKind.late,
+          timeOfDayMinutes: minuteOfDay,
+        );
+
+    Set<Object?> zonedScheduleIds() => calls
+        .where((c) => c.method == 'zonedSchedule')
+        .map((c) => (c.arguments as Map)['id'])
+        .toSet();
+
+    test(
+        'a replan after the fire hour skips the past-dated slot and still '
+        'arms every later reminder', () async {
+      final log = BreadcrumbLog();
+      final scheduler = schedulerFor(
+        TargetPlatform.android,
+        localTimeZoneProvider: () async => 'UTC',
+        locationProvider: () => tz.getLocation('UTC'),
+        // 12:00 UTC — after today's 09:00 slot, before its 15:00 one.
+        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 12),
+        breadcrumbLog: log,
+      );
+      await scheduler.initialize();
+      calls.clear();
+
+      final past = lateOn(LocalDate(2026, 9, 20), 9 * 60);
+      final thisAfternoon = lateOn(LocalDate(2026, 9, 20), 15 * 60);
+      final tomorrow = lateOn(LocalDate(2026, 9, 21), 9 * 60);
+
+      await scheduler.rescheduleAll([past, thisAfternoon, tomorrow]);
+
+      final ids = zonedScheduleIds();
+      expect(ids, isNot(contains(past.id)),
+          reason: 'a past-dated trigger is never delivered and must never be '
+              'handed to zonedSchedule');
+      expect(ids, contains(thisAfternoon.id),
+          reason: 'a later slot on the same day still arms');
+      expect(ids, contains(tomorrow.id),
+          reason: 'the next occurrence of the recurring window still arms');
+      expect(log.snapshot(), contains('reminders: skipped past-due slot'));
+    });
+
+    test('a replan before the fire hour skips nothing', () async {
+      final log = BreadcrumbLog();
+      final scheduler = schedulerFor(
+        TargetPlatform.android,
+        localTimeZoneProvider: () async => 'UTC',
+        locationProvider: () => tz.getLocation('UTC'),
+        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 8),
+        breadcrumbLog: log,
+      );
+      await scheduler.initialize();
+      calls.clear();
+
+      final today = lateOn(LocalDate(2026, 9, 20), 9 * 60);
+      final tomorrow = lateOn(LocalDate(2026, 9, 21), 9 * 60);
+
+      await scheduler.rescheduleAll([today, tomorrow]);
+
+      expect(zonedScheduleIds(), {today.id, tomorrow.id});
+      expect(log.snapshot(), isEmpty);
+    });
+
+    test(
+        'a throwing zonedSchedule for one reminder leaves every other '
+        'reminder scheduled and is recorded through the seam', () async {
+      final log = BreadcrumbLog();
+      final scheduler = schedulerFor(
+        TargetPlatform.android,
+        localTimeZoneProvider: () async => 'UTC',
+        locationProvider: () => tz.getLocation('UTC'),
+        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 0),
+        breadcrumbLog: log,
+      );
+      await scheduler.initialize();
+      calls.clear();
+
+      final first = lateOn(LocalDate(2026, 9, 20), 9 * 60, profile: 'p1');
+      final failing = lateOn(LocalDate(2026, 9, 20), 10 * 60, profile: 'p2');
+      final third = lateOn(LocalDate(2026, 9, 20), 11 * 60, profile: 'p3');
+
+      // Replace the default handler with one that rejects exactly the middle
+      // reminder's call — the OS notification cap / invalid-date failure
+      // class that used to abort the whole batch.
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        calls.add(call);
+        if (call.method == 'zonedSchedule' &&
+            (call.arguments as Map)['id'] == failing.id) {
+          throw PlatformException(code: 'schedule_failed');
+        }
+        return null;
+      });
+
+      await scheduler.rescheduleAll([first, failing, third]);
+
+      final ids = zonedScheduleIds();
+      expect(ids, contains(first.id),
+          reason: 'the call before the failure is unaffected');
+      expect(ids, contains(third.id),
+          reason: 'one failure must never abort the remaining reminders');
+      expect(log.snapshot(), contains('reminders: PlatformException'),
+          reason: 'the failure is reported through the breadcrumb seam, not '
+              'swallowed');
     });
   });
 }

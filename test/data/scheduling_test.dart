@@ -1490,4 +1490,107 @@ void main() {
               '(this file\'s own tests included) are unaffected');
     });
   });
+
+  group('notification ids are identity-derived, not positional '
+      '(issue #171)', () {
+    /// A map of logical-reminder key -> OS notification id, so two plans can
+    /// be compared regardless of the order they happen to be built in.
+    Map<String, int> idsByKey(List<PlannedReminder> plan) => {
+          for (final reminder in plan)
+            '${reminder.profileId}|${reminder.kind.name}|'
+                '${reminder.fireOn.iso}': reminder.id,
+        };
+
+    ActivePrediction upcomingFor(LocalDate estimate) =>
+        _prediction(today: today, estimatedNextStart: estimate);
+
+    test('reordering the planned list never changes a reminder id', () {
+      final lowFirst = <String, ActivePrediction>{
+        'p1': upcomingFor(today.addDays(10)),
+        'p2': upcomingFor(today.addDays(12)),
+        'p3': upcomingFor(today.addDays(-6)),
+      };
+      final highFirst = <String, ActivePrediction>{
+        'p3': lowFirst['p3']!,
+        'p2': lowFirst['p2']!,
+        'p1': lowFirst['p1']!,
+      };
+
+      final first = planReminders(today: today, predictions: lowFirst);
+      final second = planReminders(today: today, predictions: highFirst);
+
+      expect(idsByKey(first), isNotEmpty);
+      expect(idsByKey(first), idsByKey(second),
+          reason: 'a list-position id would renumber when siblings reorder; '
+              'an identity-derived id cannot');
+    });
+
+    test('adding or removing a profile does not renumber another profile\'s '
+        'ids', () {
+      final alone = planReminders(
+        today: today,
+        predictions: {'p1': upcomingFor(today.addDays(10))},
+      );
+      final together = planReminders(
+        today: today,
+        predictions: {
+          'p0': upcomingFor(today.addDays(-6)),
+          'p1': upcomingFor(today.addDays(10)),
+          'p2': upcomingFor(today.addDays(14)),
+        },
+      );
+
+      final p1Ids = together
+          .where((r) => r.profileId == 'p1')
+          .map((r) => r.id)
+          .toList();
+      expect(p1Ids, alone.map((r) => r.id).toList(),
+          reason: 'p1\'s ids must be identical whether or not p0/p2 exist — '
+              'an archived profile leaving the list cannot re-point them');
+    });
+
+    test('two different profiles never collide on an id at scale', () {
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          for (var i = 0; i < 40; i++)
+            'profile-$i': upcomingFor(today.addDays(6)),
+        },
+      );
+      expect(plan, hasLength(40));
+
+      final ids = plan.map((r) => r.id).toList();
+      expect(ids.toSet(), hasLength(ids.length),
+          reason: 'the same kind and date across 40 profiles must still '
+              'yield 40 distinct OS notification ids');
+    });
+
+    test('the same (profile, kind, date) reuses its id when only the text '
+        'changes', () {
+      final prediction = upcomingFor(today.addDays(10));
+      final plain = planReminders(
+        today: today,
+        predictions: {'p1': prediction},
+      );
+      final custom = planReminders(
+        today: today,
+        predictions: {'p1': prediction},
+        configs: {
+          'p1': ReminderConfig.standard.copyWith(
+            upcoming: const ReminderTypeConfig(
+              enabled: true,
+              leadDays: 2,
+              timeOfDayMinutes: 9 * 60,
+              customTitle: 'Tea',
+              customBody: 'Bring the blue bottle.',
+            ),
+          ),
+        },
+      );
+
+      expect(custom.single.id, plain.single.id,
+          reason: 'a text edit is not a different reminder');
+      expect(custom.single.title, isNot(plain.single.title));
+    });
+  });
 }
