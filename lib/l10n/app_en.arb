@@ -820,6 +820,14 @@
   "@settingsSectionYourData": {
     "description": "Header of the Settings 'Your data' section (Issue #226): export, import, CSV/clinical export, purge."
   },
+  "clinicalPdfExportTitle": "Export clinical summary (PDF)",
+  "@clinicalPdfExportTitle": {
+    "description": "Settings 'Your data' tile that opens the on-device PDF clinician cycle summary export (Issue #154)."
+  },
+  "clinicalPdfExportForProfileTitle": "Export clinical summary for",
+  "@clinicalPdfExportForProfileTitle": {
+    "description": "Profile chooser dialog title shown before the PDF clinical summary export when several live profiles exist (Issue #154)."
+  },
   "settingsSectionAppearance": "Appearance",
   "@settingsSectionAppearance": {
     "description": "Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker."

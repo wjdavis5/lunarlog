@@ -1198,6 +1198,18 @@ abstract class AppLocalizations {
   /// **'Your data'**
   String get settingsSectionYourData;
 
+  /// Settings 'Your data' tile that opens the on-device PDF clinician cycle summary export (Issue #154).
+  ///
+  /// In en, this message translates to:
+  /// **'Export clinical summary (PDF)'**
+  String get clinicalPdfExportTitle;
+
+  /// Profile chooser dialog title shown before the PDF clinical summary export when several live profiles exist (Issue #154).
+  ///
+  /// In en, this message translates to:
+  /// **'Export clinical summary for'**
+  String get clinicalPdfExportForProfileTitle;
+
   /// Header of the Settings 'Appearance' section (Issue #226): the theme-mode picker.
   ///
   /// In en, this message translates to:

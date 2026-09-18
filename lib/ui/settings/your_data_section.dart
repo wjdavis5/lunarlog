@@ -61,6 +61,7 @@ import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/components/settings_section.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
+import 'package:lunarlog/ui/settings/clinical_pdf_export_tile.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/routes.dart';
@@ -177,6 +178,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       ..._importTile(context),
       CsvExportTile(exportCsv: widget.exportCsv), // Issue #469
       const ClinicalExportTile(), // Issue #157
+      const ClinicalPdfExportTile(), // Issue #154
       ..._purgeImportedDataTile(context, profiles), // Issue #472
     ];
   }
