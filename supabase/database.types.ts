@@ -1316,7 +1316,7 @@ export type Database = {
       alert_coalesce_window: { Args: never; Returns: string }
       alert_daily_push_ceiling: { Args: never; Returns: number }
       bulk_import_entries: {
-        Args: { p_import_id: string; p_rows: Json }
+        Args: { p_import_id: string; p_on_date_conflict?: string; p_rows: Json }
         Returns: Json
       }
       bulk_import_observations: {
