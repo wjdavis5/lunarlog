@@ -17,6 +17,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
+import 'package:lunarlog/domain/mode_intervals.dart' show hasModeIntervalExclusion;
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -38,7 +39,7 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
-import 'package:lunarlog/ui/profiles/pregnancy_exit_exclusion.dart';
+import 'package:lunarlog/ui/profiles/mode_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/prediction_connections_screen.dart';
 import 'package:lunarlog/ui/sharing/open_manage_guardians.dart';
@@ -298,23 +299,24 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
   /// Issue #192: the profile's pregnancy state is captured BEFORE the
   /// edit dialog opens — leaving Pregnancy mode auto-offers exclusion of
   /// the pregnancy interval from cycle averages once the switch itself
-  /// has landed. Read up front (not after the dialog) so the awaited
-  /// dialog round-trip never leaves this lookup on an unmounted context,
-  /// and so the row is the pre-edit one by construction.
+  /// has landed. Issue #455 generalizes the same seam to Postpartum mode:
+  /// whichever discrete-interval mode the profile was in, the offer is
+  /// made against the *pre-edit* row, so the interval's start is honest.
+  /// Read up front (not after the dialog) so the awaited dialog
+  /// round-trip never leaves this lookup on an unmounted context, and so
+  /// the row is the pre-edit one by construction.
   Future<void> _onRenameAction(
     BuildContext context,
     Profile profile,
     ProfileController controller,
   ) async {
     final modes = Provider.of<ProfileModesRepository?>(context, listen: false);
-    final pregnancyRow = await modes?.find(profile.id);
+    final priorModeRow = await modes?.find(profile.id);
     if (!context.mounted) return;
     final result = await showProfileEditDialog(context, existing: profile);
     if (result == null) return;
-    final wasPregnancy =
-        (pregnancyRow?.mode ?? LifecycleMode.tracking) ==
-            LifecycleMode.pregnancy;
-    final pregnancyStartedOn = pregnancyRow?.modeStartedOn;
+    final priorMode = priorModeRow?.mode ?? LifecycleMode.tracking;
+    final priorStartedOn = priorModeRow?.modeStartedOn;
     await controller.renameProfile(
       profile,
       displayName: result.displayName,
@@ -326,12 +328,13 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     if (!context.mounted) return;
     await _recordCycleAnswers(context, profile.id, result);
     if (context.mounted &&
-        wasPregnancy &&
-        result.lifecycleMode != LifecycleMode.pregnancy) {
-      await offerPregnancyExitExclusionFromTree(
+        hasModeIntervalExclusion(priorMode) &&
+        result.lifecycleMode != priorMode) {
+      await offerModeExitExclusionFromTree(
         context,
+        exitedMode: priorMode,
         profileId: profile.id,
-        modeStartedOn: pregnancyStartedOn,
+        modeStartedOn: priorStartedOn,
       );
     }
   }

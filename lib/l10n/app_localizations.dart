@@ -2907,6 +2907,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pregnancy excluded from cycle averages'**
   String get pregnancyExitExclusionDone;
+
+  /// Postpartum-mode Cycle View headline: the whole-day counter since the profile entered Postpartum mode (Issue #455). Deliberately framed as 'of postpartum' rather than 'since birth' because the mode start is the app's only recorded proxy for that date.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {days} of postpartum'**
+  String postpartumDayTitle(int days);
+
+  /// Postpartum card quiet line when the mode is postpartum but no mode-start date was stamped (a row entered before #188 stamped the column), matching the pregnancy card's honest no-data state (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Postpartum mode is on. The start date wasn\'t recorded, so there\'s no day count yet.'**
+  String get postpartumStartMissing;
+
+  /// Title of the postpartum overview offer shown once a bleed has been logged during Postpartum mode (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Cycles have returned?'**
+  String get postpartumReturnTitle;
+
+  /// Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.'**
+  String get postpartumReturnBody;
+
+  /// Action of the postpartum cycles-have-returned offer; switches the profile's life-stage mode to tracking and then offers the interval exclusion (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to Period Tracking'**
+  String get postpartumReturnAction;
+
+  /// Title of the dialog offered when leaving Postpartum mode (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude this postpartum interval from cycle averages?'**
+  String get postpartumExitExclusionTitle;
+
+  /// Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it.
+  ///
+  /// In en, this message translates to:
+  /// **'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  String get postpartumExitExclusionBody;
+
+  /// Accept action of the postpartum-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Exclude postpartum interval'**
+  String get postpartumExitExclusionAccept;
+
+  /// Decline action of the postpartum-exit exclusion dialog: nothing is written; the cycles stay excludable later from cycle history (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Keep in averages'**
+  String get postpartumExitExclusionDecline;
+
+  /// Snackbar confirming the postpartum exclusion rows were written (Issue #455).
+  ///
+  /// In en, this message translates to:
+  /// **'Postpartum interval excluded from cycle averages'**
+  String get postpartumExitExclusionDone;
 }
 
 class _AppLocalizationsDelegate

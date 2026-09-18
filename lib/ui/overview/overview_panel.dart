@@ -44,11 +44,15 @@ import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/episodes/episodes.dart' show bleedDatesOf;
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
+import 'package:lunarlog/domain/postpartum.dart'
+    show daysSincePostpartumStart, hasLoggedBleedSince;
 import 'package:lunarlog/domain/pregnancy.dart' show pregnancyWeekOf;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -69,6 +73,7 @@ import 'package:lunarlog/ui/components/async_snapshot_view.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
+import 'package:lunarlog/ui/components/postpartum_card.dart';
 import 'package:lunarlog/ui/components/pregnancy_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
@@ -78,6 +83,7 @@ import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/profiles/mode_exit_exclusion.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
@@ -209,6 +215,22 @@ class _OverviewPanelState extends State<OverviewPanel>
       Provider.of<ProfileModesRepository?>(context, listen: false);
   StreamSubscription<ProfileLifecycleMode?>? _modeRowSub;
   ProfileLifecycleMode? _modeRow;
+
+  /// Issue #455: the day-entry stream watched only while the profile is in
+  /// Postpartum mode, to detect the first logged bleed (the
+  /// cycles-have-returned offer). A separate subscription from the
+  /// prediction stream because prediction is suppressed in this mode and
+  /// carries no episode data. Null in every other mode.
+  StreamSubscription<List<DayEntry>>? _postpartumEntriesSub;
+  bool _postpartumBleedLogged = false;
+
+  /// Issue #455: optional seams the cycles-have-returned action needs (a
+  /// test/unwired tree simply renders the offer without the action).
+  late final DayEntriesRepository? _dayEntries =
+      Provider.of<DayEntriesRepository?>(context, listen: false);
+  late final OnboardingCycleAnswersRecorder? _cycleAnswersRecorder =
+      Provider.of<OnboardingCycleAnswersRecorder?>(context, listen: false);
+
   StreamSubscription<String?>? _suggestionDismissedSub;
   bool _irregularSuggestionDismissed = false;
   AuthController? _auth;
@@ -241,16 +263,82 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// Pregnancy card (week-of-pregnancy counter) renders while the mode is
   /// `pregnancy` and disappears the moment it is switched away — the same
   /// re-derive-on-write cadence the prediction stream above already has.
+  /// Issue #455 extends the same watch to the Postpartum card and its
+  /// cycles-have-returned trigger.
   void _watchModeRow() {
     unawaited(_modeRowSub?.cancel());
     _modeRowSub = null;
     _modeRow = null;
+    _syncPostpartumWatch(null);
     final modes = _profileModes;
     if (modes == null) return;
     _modeRowSub = modes.watch(widget.profileId).listen((row) {
       if (!mounted) return;
       setState(() => _modeRow = row);
+      _syncPostpartumWatch(row);
     });
+  }
+
+  /// Issue #455: keeps the postpartum bleed watch in step with the mode
+  /// row — a subscription only while the mode is `postpartum`, cancelled
+  /// (and the flag reset) the moment it is switched away, so no stale
+  /// day-entry subscription survives a mode change or an archive.
+  void _syncPostpartumWatch(ProfileLifecycleMode? row) {
+    if (row?.mode != LifecycleMode.postpartum) {
+      unawaited(_postpartumEntriesSub?.cancel());
+      _postpartumEntriesSub = null;
+      if (_postpartumBleedLogged) {
+        setState(() => _postpartumBleedLogged = false);
+      }
+      return;
+    }
+    if (_postpartumEntriesSub != null) return;
+    final repository = _dayEntries;
+    if (repository == null) return;
+    _postpartumEntriesSub =
+        repository.watchForProfile(widget.profileId).listen((entries) {
+      if (!mounted) return;
+      // Read the start off the live row rather than the closure: the row
+      // is already set by the time this listener first fires, and keeping
+      // it live means a re-emitted row can never leave a stale interval
+      // start behind.
+      final logged = hasLoggedBleedSince(
+        bleedDates: bleedDatesOf(entries),
+        modeStartedOn: _parseStoredDate(_modeRow?.modeStartedOn),
+      );
+      if (logged != _postpartumBleedLogged) {
+        setState(() => _postpartumBleedLogged = logged);
+      }
+    });
+  }
+
+  /// Issue #455: the cycles-have-returned action — switch the profile's
+  /// life-stage mode back to Period Tracking through the same onboarding
+  /// recorder seam the profile editor uses (so the birth-control answer
+  /// and due date are preserved and `mode_started_on` is re-stamped,
+  /// never a full-row clobber), then offer the postpartum-interval
+  /// exclusion against the pre-switch start.
+  Future<void> _switchPostpartumToTracking() async {
+    final recorder = _cycleAnswersRecorder;
+    final modes = _profileModes;
+    if (recorder == null || modes == null) return;
+    final prior = await modes.find(widget.profileId);
+    if (!mounted) return;
+    final startedOn = prior?.modeStartedOn;
+    await recorder.record(
+      widget.profileId,
+      OnboardingCycleAnswers(
+        lifecycleMode: LifecycleMode.tracking,
+        birthControlMethod: prior?.birthControlMethod,
+      ),
+    );
+    if (!mounted) return;
+    await offerModeExitExclusionFromTree(
+      context,
+      exitedMode: LifecycleMode.postpartum,
+      profileId: widget.profileId,
+      modeStartedOn: startedOn,
+    );
   }
 
   void _onAuthChanged() {
@@ -324,6 +412,8 @@ class _OverviewPanelState extends State<OverviewPanel>
     _suggestionDismissedSub = null;
     unawaited(_modeRowSub?.cancel());
     _modeRowSub = null;
+    unawaited(_postpartumEntriesSub?.cancel());
+    _postpartumEntriesSub = null;
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     super.dispose();
@@ -471,6 +561,12 @@ class _OverviewPanelState extends State<OverviewPanel>
         // explanation.
         if (_modeRow?.mode == LifecycleMode.pregnancy)
           _pregnancyCard(context),
+        // Issue #455: the Postpartum-mode headline — day count since mode
+        // start, plus the cycles-have-returned offer once a bleed has been
+        // logged. Prediction below stays suppressed (#528) with its
+        // explanatory card, exactly as in Pregnancy mode.
+        if (_modeRow?.mode == LifecycleMode.postpartum)
+          _postpartumCard(context),
         switch (prediction) {
           ActivePrediction() => _activeCard(context, prediction),
           NotEnoughHistory() => _notEnoughCard(context),
@@ -503,15 +599,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// week math is `pregnancyWeekOf` (pure, `lib/domain/pregnancy.dart`);
   /// this only renders it.
   Widget _pregnancyCard(BuildContext context) {
-    final dueIso = _modeRow?.estimatedDueDate;
-    LocalDate? due;
-    if (dueIso != null) {
-      try {
-        due = LocalDate.fromIso(dueIso);
-      } on ArgumentError {
-        due = null; // defensive: a malformed stored date renders as unset
-      }
-    }
+    final due = _parseStoredDate(_modeRow?.estimatedDueDate);
     final today = widget.todayProvider();
     return PregnancyCard(
       week: due == null ? null : pregnancyWeekOf(dueDate: due, today: today),
@@ -522,6 +610,35 @@ class _OverviewPanelState extends State<OverviewPanel>
               locale: dates.calendarLocale(context),
             ),
     );
+  }
+
+  /// Issue #455: the Postpartum-mode headline — the day count since the
+  /// mode started, plus the cycles-have-returned offer once a bleed has
+  /// been logged during the interval. The day math is
+  /// `daysSincePostpartumStart` (pure, `lib/domain/postpartum.dart`); the
+  /// offer's action switches the mode and offers the interval exclusion.
+  Widget _postpartumCard(BuildContext context) {
+    final startedOn = _parseStoredDate(_modeRow?.modeStartedOn);
+    final today = widget.todayProvider();
+    return PostpartumCard(
+      daysSinceStart: startedOn == null
+          ? null
+          : daysSincePostpartumStart(modeStartedOn: startedOn, today: today),
+      showReturnOffer: _postpartumBleedLogged,
+      canSwitch: !_effectiveReadOnly,
+      onSwitchToTracking: _switchPostpartumToTracking,
+    );
+  }
+
+  /// Tolerant `yyyy-MM-dd` parse for a stored `profile_modes` date: a
+  /// malformed value renders as unset rather than taking the panel down.
+  static LocalDate? _parseStoredDate(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    try {
+      return LocalDate.fromIso(iso);
+    } on ArgumentError {
+      return null;
+    }
   }
 
   /// Issue #314: replaces the [CycleHistorySection] this panel used to

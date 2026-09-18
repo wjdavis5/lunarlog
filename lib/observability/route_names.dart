@@ -64,12 +64,19 @@ const String kRouteProfileEditDialog = 'ProfileEditDialog';
 /// `lib/ui/profiles/profile_dialogs.dart` (archive a profile).
 const String kRouteProfileArchiveDialog = 'ProfileArchiveDialog';
 
-/// `lib/ui/profiles/pregnancy_exit_exclusion.dart` — the offer made when
+/// `lib/ui/profiles/mode_exit_exclusion.dart` — the offer made when
 /// leaving Pregnancy mode to exclude the pregnancy interval from cycle
 /// averages (Issue #192); a genuine choice with data consequences, not a
 /// trivial confirm (U2 Approach 2b).
 const String kRoutePregnancyExitExclusionDialog =
     'PregnancyExitExclusionDialog';
+
+/// `lib/ui/profiles/mode_exit_exclusion.dart` — the same offer when
+/// leaving Postpartum mode, excluding the postpartum interval from cycle
+/// averages (Issue #455); a sibling destination to the pregnancy one, not
+/// a trivial confirm (U2 Approach 2b).
+const String kRoutePostpartumExitExclusionDialog =
+    'PostpartumExitExclusionDialog';
 
 /// The read-only future-day explainer (`lib/ui/logging/month_calendar.dart`
 /// pushes it for a tapped future cell, issue #133 KTD8) — a genuine
@@ -262,6 +269,7 @@ const Set<String> kSentryRouteNames = {
   kRouteProfileEditDialog,
   kRouteProfileArchiveDialog,
   kRoutePregnancyExitExclusionDialog,
+  kRoutePostpartumExitExclusionDialog,
   kRouteFutureDayExplainerScreen,
   kRouteMonthYearPickerDialog,
   kRouteAttachmentConsentDialog,
