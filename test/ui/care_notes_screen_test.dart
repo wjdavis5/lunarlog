@@ -135,6 +135,65 @@ Future<void> disposeCare(WidgetTester tester, Harness h) async {
   await h.db.close();
 }
 
+/// Pumps a [ProfileDetailScreen] over the real repositories it reads
+/// (mirrors `lib/app.dart`'s provider set), for the archived/active
+/// care-notes entry-point tests below.
+Future<Harness> pumpProfileDetail(
+  WidgetTester tester, {
+  required bool readOnly,
+}) async {
+  tester.view.physicalSize = const Size(800, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final db = LunarLogDatabase(NativeDatabase.memory());
+  final profiles = DriftProfilesRepository(db.storage);
+  final profile = await profiles.create(displayName: 'Riley', isMinor: true);
+  final auth = FakeAuthService();
+  auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-mom'));
+  final authController = AuthController(authService: auth);
+
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: <SingleChildWidget>[
+        Provider<ProfilesRepository>.value(value: profiles),
+        Provider<DayEntriesRepository>.value(
+            value: DriftDayEntriesRepository(db.storage)),
+        Provider<ObservationsRepository>.value(
+            value: DriftObservationsRepository(db.storage)),
+        Provider<SettingsStore>.value(value: DriftSettingsStore(db.storage)),
+        ChangeNotifierProvider<AuthController>.value(value: authController),
+        // Domain-typed seams `ProfileDetailScreen` reads instead of raw
+        // storage (mirrors `lib/app.dart`).
+        Provider<ProfileGuardiansRepository>.value(
+            value: DriftProfileGuardiansRepository(db.storage)),
+        Provider<ActivityFeedRepository>.value(
+            value: DriftActivityFeedRepository(db.storage)),
+        Provider<CareContentRepository>.value(
+            value: DriftCareContentRepository(db.storage)),
+        ChangeNotifierProvider(
+          create: (_) {
+            final controller = ProfileController(
+              profilesRepository: profiles,
+              settingsStore: DriftSettingsStore(db.storage),
+            );
+            unawaited(controller.load());
+            return controller;
+          },
+        ),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ProfileDetailScreen(profile: profile, readOnly: readOnly),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return Harness(db, profile, auth, authController);
+}
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -382,61 +441,9 @@ void main() {
   });
 
   group('ProfileDetailScreen care entry point (Issue #128)', () {
-    testWidgets('the profile screen shows the care button when storage '
-        'is wired', (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final profiles = DriftProfilesRepository(db.storage);
-      final profile =
-          await profiles.create(displayName: 'Riley', isMinor: true);
-      final auth = FakeAuthService();
-      auth.emit(AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-mom'));
-      final authController = AuthController(authService: auth);
-
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: <SingleChildWidget>[
-            Provider<ProfilesRepository>.value(value: profiles),
-            Provider<DayEntriesRepository>.value(
-                value: DriftDayEntriesRepository(db.storage)),
-            Provider<ObservationsRepository>.value(
-                value: DriftObservationsRepository(db.storage)),
-            Provider<SettingsStore>.value(
-                value: DriftSettingsStore(db.storage)),
-            ChangeNotifierProvider<AuthController>.value(
-                value: authController),
-            // Domain-typed seams `ProfileDetailScreen` reads instead of raw
-            // storage (mirrors `lib/app.dart`).
-            Provider<ProfileGuardiansRepository>.value(
-                value: DriftProfileGuardiansRepository(db.storage)),
-            Provider<ActivityFeedRepository>.value(
-                value: DriftActivityFeedRepository(db.storage)),
-            Provider<CareContentRepository>.value(
-                value: DriftCareContentRepository(db.storage)),
-            ChangeNotifierProvider(
-              create: (_) {
-                final controller = ProfileController(
-                  profilesRepository: profiles,
-                  settingsStore: DriftSettingsStore(db.storage),
-                );
-                unawaited(controller.load());
-                return controller;
-              },
-            ),
-          ],
-          child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: ProfileDetailScreen(profile: profile),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+    testWidgets('the active profile screen shows the care button when '
+        'storage is wired', (tester) async {
+      final h = await pumpProfileDetail(tester, readOnly: false);
 
       expect(find.byKey(const ValueKey('care-notes-button')), findsOneWidget);
 
@@ -444,12 +451,25 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Riley Care'), findsOneWidget);
       expect(find.byKey(const ValueKey('care-note-field')), findsOneWidget);
+      await disposeCare(tester, h);
+    });
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      authController.dispose();
-      await auth.dispose();
-      await db.close();
+    testWidgets(
+        'issue #806: an archived profile still opens care notes read-only '
+        'through the same entry point', (tester) async {
+      final h = await pumpProfileDetail(tester, readOnly: true);
+
+      expect(find.byKey(const ValueKey('care-notes-button')), findsOneWidget,
+          reason: 'the archived path is not broken by the active-profile '
+              'entry point #806 adds to the shell');
+
+      await tester.tap(find.byKey(const ValueKey('care-notes-button')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CareNotesScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('care-note-field')), findsNothing);
+      expect(find.byKey(const ValueKey('visit-prep-field')), findsNothing);
+      expect(find.text('This profile is archived.'), findsOneWidget);
+      await disposeCare(tester, h);
     });
   });
 }
