@@ -18,6 +18,7 @@
 library;
 
 import 'episodes/episodes.dart';
+import 'mode_intervals.dart';
 import 'models/local_date.dart';
 
 /// Naegele's rule, the 280-day gestation Clue's own week calculation is
@@ -98,12 +99,9 @@ Set<LocalDate> pregnancyExclusionStarts({
   required Iterable<Episode> episodes,
   required LocalDate? modeStartedOn,
   required LocalDate exitedOn,
-}) {
-  if (modeStartedOn == null) return const {};
-  return {
-    for (final episode in episodes)
-      if (!episode.start.isBefore(modeStartedOn) &&
-          episode.start.isBefore(exitedOn))
-        episode.start,
-  };
-}
+}) =>
+    intervalExclusionStarts(
+      episodes: episodes,
+      modeStartedOn: modeStartedOn,
+      exitedOn: exitedOn,
+    );

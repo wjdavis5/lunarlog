@@ -1627,4 +1627,41 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get pregnancyExitExclusionDone =>
       'Pregnancy excluded from cycle averages';
+
+  @override
+  String postpartumDayTitle(int days) {
+    return 'Day $days of postpartum';
+  }
+
+  @override
+  String get postpartumStartMissing =>
+      'Postpartum mode is on. The start date wasn\'t recorded, so there\'s no day count yet.';
+
+  @override
+  String get postpartumReturnTitle => 'Cycles have returned?';
+
+  @override
+  String get postpartumReturnBody =>
+      'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.';
+
+  @override
+  String get postpartumReturnAction => 'Switch to Period Tracking';
+
+  @override
+  String get postpartumExitExclusionTitle =>
+      'Exclude this postpartum interval from cycle averages?';
+
+  @override
+  String get postpartumExitExclusionBody =>
+      'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.';
+
+  @override
+  String get postpartumExitExclusionAccept => 'Exclude postpartum interval';
+
+  @override
+  String get postpartumExitExclusionDecline => 'Keep in averages';
+
+  @override
+  String get postpartumExitExclusionDone =>
+      'Postpartum interval excluded from cycle averages';
 }
