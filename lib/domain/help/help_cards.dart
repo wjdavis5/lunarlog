@@ -73,12 +73,13 @@ class HelpCards {
       'A period estimate is an average of past cycle lengths. With fewer '
           'than three completed cycles there is nothing honest to average, '
           'so the app shows "not enough history yet" instead of guessing.',
-      'A cycle counts once a new period starts after the last one. Cycles '
+      'A cycle counts as completed once a new period starts after the last '
+          'one, so the cycle you are in right now does not count yet. Cycles '
           'shorter than 15 days or longer than 60 days stay in history but '
           'never feed the average, because they would pull it away from '
           'the usual pattern.',
       'Keep logging period starts. The estimate appears on its own once '
-          'three usable cycles are recorded — usually around three months '
+          'three completed cycles are recorded — usually around three months '
           'of logging.',
       'Estimates only — not medical advice. If something worries you, talk '
           'to a doctor or another clinician you trust.',

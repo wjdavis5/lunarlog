@@ -597,7 +597,7 @@ class _OverviewPanelState extends State<OverviewPanel>
           _postpartumCard(context),
         switch (prediction) {
           ActivePrediction() => _activeCard(context, prediction),
-          NotEnoughHistory() => _notEnoughCard(context),
+          NotEnoughHistory() => _notEnoughCard(context, prediction),
           // Issue #233/#528: an in-effect continuous birth-control
           // method, or a life-stage mode the averaging model doesn't
           // apply to, replaces the estimate with an explicit suppressed
@@ -1033,7 +1033,13 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// Issue #308: `titleStyle`/`crossAxisAlignment` regain this card's old
   /// `headlineSmall`, left-aligned heading now that [EmptyState] otherwise
   /// defaults to a centred `titleMedium`.
-  Widget _notEnoughCard(BuildContext context) {
+  ///
+  /// Issue #816: [prediction] carries the engine's own tally, so the body
+  /// reads "N of 3 completed cycles" with what happens next rather than the
+  /// old vague "a few cycles" — the number the gate actually compares, so
+  /// a user with two completed cycles out of three sees the gap instead of
+  /// concluding the app is broken.
+  Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
     return Card(
       key: const ValueKey('overview-not-enough'),
@@ -1044,7 +1050,10 @@ class _OverviewPanelState extends State<OverviewPanel>
           children: [
             EmptyState(
               title: _copy.notEnoughTitle,
-              body: _copy.notEnoughBody,
+              body: _copy.notEnoughBody(
+                prediction.usableCycleCount,
+                kMinCompletedValidCycles,
+              ),
               titleStyle: theme.textTheme.headlineSmall,
               crossAxisAlignment: CrossAxisAlignment.start,
             ),
@@ -1055,10 +1064,11 @@ class _OverviewPanelState extends State<OverviewPanel>
               style: theme.textTheme.bodySmall,
             ),
             // Issue #139: the "not enough history yet" state links to the
-            // bundled card explaining the three-cycle requirement.
+            // bundled card explaining the three-cycle requirement. Issue
+            // #816: the label names the unit the threshold actually counts.
             const HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three cycles?',
+              label: 'Why three completed cycles?',
             ),
           ],
         ),

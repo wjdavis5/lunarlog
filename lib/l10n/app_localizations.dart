@@ -358,6 +358,12 @@ abstract class AppLocalizations {
   /// **'Could not load cycle history.'**
   String get cycleHistoryLoadError;
 
+  /// Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Not counted yet — your next period completes it'**
+  String get cycleHistoryOpenCycleNotCounted;
+
   /// Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side.
   ///
   /// In en, this message translates to:

@@ -452,6 +452,26 @@ class GatedGuardiansRepository implements ProfileGuardiansRepository {
       _inner?.getForProfile(profileId) ?? Future.value(const []);
 }
 
+/// Asserts every curated taxonomy chip is visible, keyed by display string.
+///
+/// Issue #817: displays are unique *within a category*, not globally — the
+/// digestion and stool "Great" chips share a label because the category
+/// heading disambiguates them. So a global `findsOneWidget` per display is
+/// wrong; the count per display must instead match how many tags carry it.
+void expectEveryTaxonomyChipVisible(WidgetTester tester) {
+  final displayCounts = <String, int>{};
+  for (final tag in kTagTaxonomy) {
+    displayCounts.update(tag.display, (n) => n + 1, ifAbsent: () => 1);
+  }
+  for (final entry in displayCounts.entries) {
+    expect(
+      find.text(entry.key),
+      findsNWidgets(entry.value),
+      reason: 'every chip for "${entry.key}" must render',
+    );
+  }
+}
+
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -873,9 +893,7 @@ void main() {
           header == 'PMS' ? findsNWidgets(2) : findsOneWidget,
         );
       }
-      for (final tag in kTagTaxonomy) {
-        expect(find.text(tag.display), findsOneWidget);
-      }
+      expectEveryTaxonomyChipVisible(tester);
       // The nine option-set-unverified categories (four from issue #249 —
       // hotFlashes left this set under issue #456; three from issue #251:
       // pms, meditation, leisure; two from issue #252: appointments,
@@ -3149,13 +3167,7 @@ void main() {
       // the standalone spotting toggle (Issue #247) and the standalone PMS
       // toggle (Issue #220), also FilterChips.
       expect(find.byType(FilterChip), findsNWidgets(kTagTaxonomy.length + 2));
-      for (final tag in kTagTaxonomy) {
-        expect(
-          find.text(tag.display),
-          findsOneWidget,
-          reason: 'teen mode must not hide ${tag.display}',
-        );
-      }
+      expectEveryTaxonomyChipVisible(tester);
       // Teen vocabulary: the body category is re-headed...
       expect(find.text('How your body feels'), findsOneWidget);
       expect(find.text('Body'), findsNothing);

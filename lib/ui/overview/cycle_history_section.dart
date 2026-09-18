@@ -31,11 +31,14 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/care_modes.dart' show completedCycleProgress;
 import 'package:lunarlog/domain/insights/cycle_comparison.dart'
     show kMinCyclesToCompare;
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show NotEnoughHistory, kMinCompletedValidCycles;
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
@@ -74,6 +77,7 @@ class CycleHistorySection extends StatefulWidget {
     this.readOnly = false,
     this.showStatistics = true,
     this.showDisclaimer = true,
+    this.notEnough,
     this.onCompareSelected,
   });
 
@@ -83,6 +87,15 @@ class CycleHistorySection extends StatefulWidget {
   final LocalDate Function() todayProvider;
 
   final bool readOnly;
+
+  /// Issue #816: the caller's live not-enough-history state, when it has
+  /// one. The section then shows the header tally ("2 of 3 completed
+  /// cycles — estimates start after your next period.") from the engine's
+  /// own count, so it can never disagree with the empty state above it.
+  /// Null in every other prediction state (and for the archived-profile
+  /// mount, which has no prediction but already shows the tally in its
+  /// panel's card), so a profile with an estimate gets no progress line.
+  final NotEnoughHistory? notEnough;
 
   /// Whether this section renders its own statistics row (average cycle
   /// length, average period length, variation). Default true so
@@ -224,7 +237,17 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
                 if (view.confidence != null) _confidenceChip(context, view),
               ],
             ),
-            if (view.confidence != null) ...[
+            if (widget.notEnough != null) ...[
+              const SizedBox(height: LLSpace.space1),
+              Text(
+                completedCycleProgress(
+                  widget.notEnough!.usableCycleCount,
+                  kMinCompletedValidCycles,
+                ),
+                key: const ValueKey('history-progress'),
+                style: theme.textTheme.bodySmall,
+              ),
+            ] else if (view.confidence != null) ...[
               const SizedBox(height: LLSpace.space1),
               Text(
                 view.confidence!.summary,
@@ -480,6 +503,10 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     );
   }
 
+  /// Issue #816: the open cycle is visibly *not* part of the completed-cycle
+  /// tally the header shows ("2 of 3 completed cycles") — the bare "Current
+  /// cycle" label alone left the user counting its row as a completed one.
+  /// An omitted (skipped) open cycle keeps its more specific subtitle.
   Widget _openRow(
     BuildContext context,
     ThemeData theme,
@@ -499,7 +526,9 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
       ),
       subtitle: item.omitted
           ? const Text('Skipped — excluded from averages')
-          : null,
+          : Text(
+              AppLocalizations.of(context).cycleHistoryOpenCycleNotCounted,
+            ),
       trailing: _openRowTrailing(context, item),
     );
   }

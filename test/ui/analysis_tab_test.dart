@@ -260,6 +260,15 @@ void main() {
       expect(textAt(tester, 'analysis-not-enough-disclaimer'), kDisclaimer);
       expect(find.byKey(const ValueKey('analysis-stats')), findsNothing);
 
+      // Issue #816: the empty state and the history header below it state
+      // the same live tally in the same "completed cycles" unit, so a
+      // user with two logged starts (one completed cycle) can see why
+      // estimates have not started yet.
+      const progress =
+          '1 of 3 completed cycles — 2 more periods until estimates.';
+      expect(find.text(progress), findsNWidgets(2));
+      expect(find.text('Why three completed cycles?'), findsOneWidget);
+
       await h.dispose();
     },
   );

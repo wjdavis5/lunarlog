@@ -36,6 +36,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart' show NotEnoughHistory;
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
@@ -121,8 +122,9 @@ class Harness {
 
   /// Mounts [CycleHistorySection] directly (issue #314 -- see the file
   /// doc comment for why this is no longer through `OverviewPanel`/
-  /// `ProfileDetailScreen`).
-  Widget appFor({bool readOnly = false}) {
+  /// `ProfileDetailScreen`). [notEnough] (issue #816) is the caller's live
+  /// not-enough-history state, when it has one.
+  Widget appFor({bool readOnly = false, NotEnoughHistory? notEnough}) {
     return MultiProvider(
       providers: [
         Provider<CycleHistoryService>.value(
@@ -140,6 +142,7 @@ class Harness {
             profileId: profile.id,
             todayProvider: () => today,
             readOnly: readOnly,
+            notEnough: notEnough,
           ),
         ),
       ),
@@ -155,6 +158,7 @@ Future<Harness> pumpHistory(
   required List<LocalDate> starts,
   bool readOnly = false,
   int bleedDays = 4,
+  NotEnoughHistory? notEnough,
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1.0;
@@ -184,7 +188,9 @@ Future<Harness> pumpHistory(
     }
   }
   final harness = Harness(db, profile, entries, settings)..today = today;
-  await tester.pumpWidget(harness.appFor(readOnly: readOnly));
+  await tester.pumpWidget(
+    harness.appFor(readOnly: readOnly, notEnough: notEnough),
+  );
   await tester.pumpAndSettle();
   return harness;
 }
@@ -441,6 +447,51 @@ void main() {
       );
       expect(find.textContaining('vary a lot'), findsOneWidget);
       expectNoFertilityVocabulary(tester, 'irregular confidence');
+      await disposeHistory(tester, h);
+    });
+  });
+
+  group('issue #816: progress tally and open-cycle exclusion', () {
+    testWidgets('the header shows the engine tally and the open cycle is '
+        'visibly not counted', (tester) async {
+      final h = await pumpHistory(
+        tester,
+        today: aug30,
+        // Two starts -> one completed cycle of three.
+        starts: kLearningStarts,
+        notEnough: const NotEnoughHistory(
+          episodeCount: 2,
+          completedCycleCount: 1,
+          validCycleCount: 1,
+          usableCycleCount: 1,
+        ),
+      );
+
+      expect(
+        find.text('1 of 3 completed cycles — 2 more periods until estimates.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Not counted yet — your next period completes it'),
+        findsOneWidget,
+        reason: 'the open row must read as excluded from the tally',
+      );
+      // The numeric tally replaces the vaguer generic learning summary.
+      expect(find.textContaining('Still learning'), findsNothing);
+      await disposeHistory(tester, h);
+    });
+
+    testWidgets('no progress line when the caller has no not-enough state '
+        '(an estimate exists)', (tester) async {
+      final h = await pumpHistory(tester, today: aug30, starts: kSteadyStarts);
+
+      expect(find.byKey(const ValueKey('history-progress')), findsNothing);
+      // The open cycle still reads as not counted even with an estimate
+      // present — it is genuinely not part of the completed history yet.
+      expect(
+        find.text('Not counted yet — your next period completes it'),
+        findsOneWidget,
+      );
       await disposeHistory(tester, h);
     });
   });

@@ -203,6 +203,10 @@
   "@cycleHistoryLoadError": {
     "description": "InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602."
   },
+  "cycleHistoryOpenCycleNotCounted": "Not counted yet — your next period completes it",
+  "@cycleHistoryOpenCycleNotCounted": {
+    "description": "Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted."
+  },
   "cycleComparisonToggleButton": "Compare cycles",
   "@cycleComparisonToggleButton": {
     "description": "Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side."

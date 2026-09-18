@@ -187,7 +187,10 @@ void main() {
       expect(
         profileCycleStatus(
           prediction: const NotEnoughHistory(
-              episodeCount: 0, completedCycleCount: 0, validCycleCount: 0),
+              episodeCount: 0,
+              completedCycleCount: 0,
+              validCycleCount: 0,
+              usableCycleCount: 0),
           l10n: l10n,
         ),
         'No history yet',

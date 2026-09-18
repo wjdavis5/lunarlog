@@ -491,6 +491,18 @@ void main() {
       // way, so scoping is now belt-and-suspenders rather than load-
       // bearing the way it was when the cycle-history card (with its own
       // legitimate dates and lengths) used to render there too.
+      //
+      // Issue #816: the card now deliberately carries one digit-bearing
+      // line — the "N of 3 completed cycles" progress tally — which is not
+      // a partial estimate (no date, no day count), so it is the one
+      // allowed exception. Every other text in the card must still be
+      // digit-free.
+      expect(
+        find.text('1 of 3 completed cycles — 2 more periods until estimates.'),
+        findsOneWidget,
+        reason: 'the card states the live tally (two starts = one '
+            'completed cycle) and what unblocks it',
+      );
       final texts = tester.widgetList<Text>(
         find.descendant(
           of: find.byKey(const ValueKey('overview-not-enough')),
@@ -499,6 +511,7 @@ void main() {
       ).map((text) => text.data ?? '').where((text) => text.isNotEmpty);
       expect(texts, isNotEmpty);
       for (final text in texts) {
+        if (text.contains('completed cycles')) continue;
         expect(RegExp(r'\d').hasMatch(text), isFalse,
             reason: 'partial number leaked in not-enough state: "$text"');
       }

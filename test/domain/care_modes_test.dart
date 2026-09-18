@@ -18,7 +18,7 @@ void main() {
       for (final mode in ProfileMode.values) {
         final copy = careModeCopyFor(mode);
         expect(copy.notEnoughTitle, isNotEmpty, reason: '$mode title');
-        expect(copy.notEnoughBody, isNotEmpty, reason: '$mode body');
+        expect(copy.notEnoughBody(2, 3), isNotEmpty, reason: '$mode body');
         expect(copy.nextEstimateLabel, isNotEmpty, reason: '$mode estimate');
         for (final category in TagCategory.values) {
           expect(
@@ -110,8 +110,8 @@ void main() {
         isNot(standard.notEnoughTitle),
       );
       expect(
-        careModeCopyFor(ProfileMode.teen).notEnoughBody,
-        isNot(standard.notEnoughBody),
+        careModeCopyFor(ProfileMode.teen).notEnoughBody(2, 3),
+        isNot(standard.notEnoughBody(2, 3)),
       );
     });
 
@@ -234,6 +234,35 @@ void main() {
           reason: '$mode appends the sensitive/fertility cluster after '
               'supplements',
         );
+      }
+    });
+  });
+
+  group('issue #816: not-enough-history progress copy', () {
+    test('states the live tally in completed cycles and what happens next',
+        () {
+      final standard = careModeCopyFor(ProfileMode.standard);
+      expect(
+        standard.notEnoughBody(2, 3),
+        '2 of 3 completed cycles — estimates start after your next period.',
+      );
+      expect(
+        standard.notEnoughBody(1, 3),
+        '1 of 3 completed cycles — 2 more periods until estimates.',
+      );
+      expect(
+        standard.notEnoughBody(0, 3),
+        '0 of 3 completed cycles — estimates start once you have 3 '
+        'completed cycles.',
+      );
+    });
+
+    test('every mode speaks the same "completed cycles" unit and never the '
+        'old vague "a few cycles"', () {
+      for (final mode in ProfileMode.values) {
+        final body = careModeCopyFor(mode).notEnoughBody(2, 3);
+        expect(body, contains('completed cycles'), reason: '$mode');
+        expect(body, isNot(contains('a few cycles')), reason: '$mode');
       }
     });
   });

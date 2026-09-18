@@ -435,23 +435,36 @@ typedef PredictionStream = Stream<CyclePrediction> Function(String profileId);
 
 /// Too little valid history to estimate anything. Carries only counts of
 /// recorded history — no means, no partial dates.
+///
+/// Issue #816: [usableCycleCount] is the tally the gate actually compares
+/// against [kMinCompletedValidCycles] — completed cycles that are within
+/// the validity window, not omitted, and inside [kRecencyWindowCycles]
+/// (see [_recentValidCycles]'s `usableLengths`). It exists so the UI can
+/// show an honest "N of 3 completed cycles" progress line that agrees with
+/// the engine rather than one of the looser counts ([completedCycleCount],
+/// [validCycleCount]) that would overstate progress when a cycle is an
+/// outlier or excluded from the average.
 class NotEnoughHistory extends CyclePrediction {
   const NotEnoughHistory({
     required this.episodeCount,
     required this.completedCycleCount,
     required this.validCycleCount,
+    required this.usableCycleCount,
   });
 
   final int episodeCount;
   final int completedCycleCount;
   final int validCycleCount;
 
+  /// Completed cycles the engine counts toward [kMinCompletedValidCycles].
+  final int usableCycleCount;
+
   String get statusLabel => 'not enough history yet';
 
   @override
   String toString() => 'NotEnoughHistory(episodes: $episodeCount, '
       'completedCycles: $completedCycleCount, validCycles: $validCycleCount, '
-      'status: $statusLabel)';
+      'usableCycles: $usableCycleCount, status: $statusLabel)';
 }
 
 /// A birth-control method currently in effect, resolved by the service
@@ -818,7 +831,11 @@ CyclePrediction computePrediction({
   ];
   if (sorted.isEmpty) {
     return const NotEnoughHistory(
-        episodeCount: 0, completedCycleCount: 0, validCycleCount: 0);
+      episodeCount: 0,
+      completedCycleCount: 0,
+      validCycleCount: 0,
+      usableCycleCount: 0,
+    );
   }
 
   final starts = [for (final episode in sorted) episode.start];
@@ -829,6 +846,7 @@ CyclePrediction computePrediction({
       episodeCount: sorted.length,
       completedCycleCount: windows.lengths.length,
       validCycleCount: windows.validLengths.length,
+      usableCycleCount: windows.usableLengths.length,
     );
   }
 
@@ -1384,7 +1402,11 @@ CyclePrediction seedProvisionalPrediction({
   final cycleDays = facts.typicalCycleLengthDays;
   if (lastStart == null || cycleDays == null || !_withinValidWindow(cycleDays)) {
     return const NotEnoughHistory(
-        episodeCount: 0, completedCycleCount: 0, validCycleCount: 0);
+      episodeCount: 0,
+      completedCycleCount: 0,
+      validCycleCount: 0,
+      usableCycleCount: 0,
+    );
   }
 
   final openDays = today.difference(lastStart);

@@ -57,6 +57,7 @@ const _notEnoughHistory = NotEnoughHistory(
   episodeCount: 1,
   completedCycleCount: 0,
   validCycleCount: 0,
+  usableCycleCount: 0,
 );
 
 class _FakeService implements PredictionConnectionService {

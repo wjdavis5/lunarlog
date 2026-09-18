@@ -35,10 +35,15 @@
 /// `cold_flu_ailments`). Everything else keeps the raw Clue option
 /// string, which is also what the Clue importer's pass-through
 /// (`clue_option_map.dart`) writes into `observations.code`, so the two
-/// vocabularies line up option-for-option. A display string is likewise
-/// qualified only where the bare option would collide with another
-/// display or a category heading ("Pain (medication)", the
-/// "Cravings (unspecified)" precedent).
+/// vocabularies line up option-for-option. Issue #817: a code's
+/// category-qualifying suffix must **not** leak into its display — a
+/// display is qualified only where the bare option would still collide
+/// with another display or a *different* category's heading ("Pain
+/// (medication)", "Cold/flu (medication)"), never merely because its code
+/// was qualified. A chip rendered under its own category heading
+/// (`care_modes.dart`'s `categoryLabels`) already has that category
+/// supplied, so `great_digestion`/`great_stool` both read simply "Great";
+/// `test/domain/tags_test.dart` guards this permanently.
 ///
 /// Fertility scope was relaxed per Issues #123/#142 (the fertility-scope
 /// decision, 2026-09-07), and Issue #253 ships the first fertility-related
@@ -215,20 +220,25 @@ const List<TagCode> kTagTaxonomy = [
   TagCode('oily_hair', TagCategory.hair, 'Oily hair'),
   TagCode('dry_hair', TagCategory.hair, 'Dry hair'),
   // digestion — bloating/nausea re-parented from body; Clue's `great`
-  // option is suffix-qualified (see the library doc comment) because
-  // stool's `great` collides with it in this flat namespace.
+  // option is suffix-qualified on the *code* (see the library doc comment)
+  // because stool's `great` collides with it in this flat namespace. The
+  // display does not repeat the category: the picker renders it under the
+  // "Digestion" heading, so the chip reads simply "Great" (issue #817).
   TagCode('bloating', TagCategory.digestion, 'Bloating'),
   TagCode('nausea', TagCategory.digestion, 'Nausea'),
   TagCode('gassy', TagCategory.digestion, 'Gassy'),
-  TagCode('great_digestion', TagCategory.digestion, 'Great digestion'),
+  TagCode('great_digestion', TagCategory.digestion, 'Great'),
   // stool
   TagCode('normal', TagCategory.stool, 'Normal'),
   TagCode('constipated', TagCategory.stool, 'Constipated'),
-  TagCode('great_stool', TagCategory.stool, 'Great stool'),
+  TagCode('great_stool', TagCategory.stool, 'Great'),
   TagCode('diarrhea', TagCategory.stool, 'Diarrhea'),
   // cravings — the legacy boolean code stays readable and writable as the
-  // "unspecified craving" member alongside the four attested options.
-  TagCode('cravings', TagCategory.cravings, 'Cravings (unspecified)'),
+  // "unspecified craving" member alongside the four attested options. Its
+  // display is "Other craving" (issue #817): "(unspecified)" was
+  // implementation vocabulary, and "Cravings" would just repeat the
+  // category heading above the chip.
+  TagCode('cravings', TagCategory.cravings, 'Other craving'),
   TagCode('sweet', TagCategory.cravings, 'Sweet'),
   TagCode('salty', TagCategory.cravings, 'Salty'),
   TagCode('carbs', TagCategory.cravings, 'Carbs'),
@@ -336,8 +346,9 @@ const List<TagCode> kTagTaxonomy = [
   // library doc comment); the importer's option map renames both
   // documented spellings (`cold/flu`, `cold_flu`) onto the qualified
   // codes. `pain` keeps the attested option string as its code; the
-  // display is qualified to stay unambiguous next to the Pain category
-  // heading ("Cravings (unspecified)" precedent).
+  // display is qualified to stay unambiguous next to the separate Pain
+  // category heading (a different category's heading — see the library
+  // doc comment's issue #817 display rule).
   TagCode('pain', TagCategory.medication, 'Pain (medication)'),
   TagCode(
     'cold_flu_medication',
