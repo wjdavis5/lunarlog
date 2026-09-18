@@ -1721,4 +1721,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perimenopauseCompareButton => 'Compare cycles';
+
+  @override
+  String get importCluePasswordPrompt =>
+      'Clue emails a one-time password with the export. Enter it to open the file.';
+
+  @override
+  String get importClueExportPasswordLabel => 'Export password';
+
+  @override
+  String get importClueOpenExport => 'Open export';
+
+  @override
+  String get importClueNewProfileNote =>
+      'A new profile will be created for this import.';
+
+  @override
+  String get importClueProfileNameLabel => 'Profile name';
+
+  @override
+  String get importClueCancel => 'Cancel';
+
+  @override
+  String get importClueImport => 'Import';
+
+  @override
+  String get importClueDone => 'Done';
 }

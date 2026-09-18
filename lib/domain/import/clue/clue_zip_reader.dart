@@ -105,6 +105,24 @@ const int kClueZipEntrySizeCapBytes = 64 * 1024 * 1024;
 /// Clue export (a handful of files).
 const int kClueZipMaxEntries = 10000;
 
+/// Whether [bytes] begin with the ZIP local-file-header signature
+/// (`PK\x03\x04`, or one of the other two RFC-fixed `PK` signatures an
+/// empty/spanned archive may open with) — the cheap, pure check the import
+/// screen uses to route a picked file to the Clue path or the app's own
+/// JSON path (Issue #452). The two formats are unambiguous: every ZIP
+/// variant starts with `PK`, and a lunarlog account export is a JSON object
+/// starting with `{` (a UTF-8 BOM aside). A file that begins with `PK` but
+/// is not a readable archive still routes to the Clue path and surfaces a
+/// typed [ClueZipException] there rather than being misparsed as JSON.
+bool looksLikeZipArchive(List<int> bytes) {
+  if (bytes.length < 4) return false;
+  if (bytes[0] != 0x50 || bytes[1] != 0x4b) return false;
+  // 0x03: local file header, 0x05: end of central directory (empty
+  // archive), 0x07: spanned archive. Any other third byte is not a ZIP
+  // signature.
+  return bytes[2] == 0x03 || bytes[2] == 0x05 || bytes[2] == 0x07;
+}
+
 /// Extracts [entryName]'s raw bytes from a Clue export zip. [password] is
 /// the one-time password from Clue's export email; a wrong password (or a
 /// corrupt/unrecognised archive) throws [ClueZipException] rather than

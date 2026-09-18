@@ -39,8 +39,11 @@ import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
 import 'package:lunarlog/domain/import/clue/clue_option_map.dart';
 import 'package:lunarlog/domain/limits.dart';
 
-/// Runs one Clue file import against the local store (Issue #199).
-class ClueImporter {
+/// Runs one Clue file import against the local store (Issue #199). The
+/// production [ClueImportRunner] seam (Issue #452) `lib/ui` drives through
+/// the provider tree, so the import screen never names this concrete class
+/// or the raw storage object.
+class ClueImporter implements ClueImportRunner {
   ClueImporter(this._storage);
 
   final LunarLogStorage _storage;
@@ -50,6 +53,7 @@ class ClueImporter {
   /// is [clueFileChecksum] of the original file bytes — the idempotency
   /// anchor. [tz] is the IANA zone stamped on newly created day entries
   /// (an upgraded row keeps its stored zone).
+  @override
   Future<ClueImportSummary> run({
     required String profileId,
     required String tz,

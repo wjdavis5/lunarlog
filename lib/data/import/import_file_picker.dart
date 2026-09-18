@@ -3,8 +3,10 @@
 /// `lib/data/export/account_export_writer.dart`'s split — everything
 /// content-shaped lives in the pure `lib/domain/import/account_import.dart`
 /// parser this wraps. Opens the platform file picker (`file_picker`,
-/// scoped to `.json`) and returns the picked file's bytes, or null when
-/// the operator cancels.
+/// scoped to `.json` and, since Issue #452, `.zip`) and returns the picked
+/// file's bytes, or null when the operator cancels. The import screen
+/// routes a ZIP to the Clue path and a JSON file to the app's own export
+/// path by inspecting the bytes, so the picker itself stays type-agnostic.
 ///
 /// `file_picker` is a new platform dependency (Issue #140 design
 /// constraints: "a file picker is a new dependency and a new platform
@@ -38,9 +40,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:lunarlog/domain/import/import_file_cap.dart' show readCappedBytes;
 import 'package:lunarlog/domain/import/import_file_reader.dart' as domain;
 
-/// Opens the platform file picker scoped to `.json` files and returns the
-/// picked file's bytes, stream-read with `readCappedBytes`'s cap (Issue
-/// #626, LLA-089) rather than [PlatformFile.readAsBytes]'s unconditional
+/// Opens the platform file picker scoped to `.json` (this app's own export)
+/// and `.zip` (a Clue export, Issue #452) files and returns the picked
+/// file's bytes, stream-read with `readCappedBytes`'s cap (Issue #626,
+/// LLA-089) rather than [PlatformFile.readAsBytes]'s unconditional
 /// whole-file read. Throws `ImportFileTooLargeException` for a file over
 /// the cap; the platform's declared length is consulted first
 /// ([PlatformFile.lengthSync], falling back to the awaitable
@@ -49,7 +52,7 @@ import 'package:lunarlog/domain/import/import_file_reader.dart' as domain;
 Future<Uint8List?> pickImportFile() async {
   final file = await FilePicker.pickFile(
     type: FileType.custom,
-    allowedExtensions: const ['json'],
+    allowedExtensions: const ['json', 'zip'],
   );
   if (file == null) return null;
   final declaredLength = file.lengthSync() ?? await file.length();

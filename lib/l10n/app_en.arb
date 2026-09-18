@@ -2191,6 +2191,38 @@
   "perimenopauseCompareButton": "Compare cycles",
   "@perimenopauseCompareButton": {
     "description": "Button on the Perimenopause-mode Cycle View card that opens the full side-by-side cycle comparison (Issue #196, reusing Issue #235's screen)."
+  },
+  "importCluePasswordPrompt": "Clue emails a one-time password with the export. Enter it to open the file.",
+  "@importCluePasswordPrompt": {
+    "description": "Import > Clue path: prompt for the one-time password Clue emails with an export (Issue #452)."
+  },
+  "importClueExportPasswordLabel": "Export password",
+  "@importClueExportPasswordLabel": {
+    "description": "Import > Clue path: label of the export-password field (Issue #452)."
+  },
+  "importClueOpenExport": "Open export",
+  "@importClueOpenExport": {
+    "description": "Import > Clue path: button that decrypts and parses the picked export (Issue #452)."
+  },
+  "importClueNewProfileNote": "A new profile will be created for this import.",
+  "@importClueNewProfileNote": {
+    "description": "Import > Clue path: shown when no profile exists yet, so the import creates one (Issue #452)."
+  },
+  "importClueProfileNameLabel": "Profile name",
+  "@importClueProfileNameLabel": {
+    "description": "Import > Clue path: label of the new-profile name field (Issue #452)."
+  },
+  "importClueCancel": "Cancel",
+  "@importClueCancel": {
+    "description": "Import > Clue path: cancel button returning to the pick step (Issue #452)."
+  },
+  "importClueImport": "Import",
+  "@importClueImport": {
+    "description": "Import > Clue path: confirm button that writes the prepared export (Issue #452)."
+  },
+  "importClueDone": "Done",
+  "@importClueDone": {
+    "description": "Import > Clue path: closes the screen after a successful import (Issue #452)."
   }
 
 }

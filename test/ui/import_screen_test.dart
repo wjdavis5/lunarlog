@@ -7,21 +7,30 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/import/account_importer.dart';
+import 'package:lunarlog/data/import/clue_importer.dart';
+import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/clue/clue_export_parser.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
 import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/settings/import_screen.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
@@ -155,17 +164,84 @@ Future<void> _pump(
   WidgetTester tester, {
   ImportFileReader? pickFile,
   AccountImportCoordinator? coordinator,
+  ClueImportRunner? clueRunner,
+  ProfilesRepository? profilesRepository,
 }) async {
   await tester.pumpWidget(MaterialApp(
-    home: ImportScreen(pickFile: pickFile, coordinator: coordinator),
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: ImportScreen(
+      pickFile: pickFile,
+      coordinator: coordinator,
+      clueRunner: clueRunner,
+      profilesRepository: profilesRepository,
+    ),
   ));
   await tester.pumpAndSettle();
 }
+
+/// An in-memory store + real profile repository for the Clue tests: the
+/// whole point of the Clue path is end-to-end, so these tests drive the
+/// real `ClueImporter` and a real `DriftProfilesRepository` over an
+/// in-memory database rather than fakes.
+class _ClueHarness {
+  _ClueHarness() {
+    db = LunarLogDatabase(NativeDatabase.memory());
+    _storage = LunarLogStorage(db);
+  }
+
+  late final LunarLogDatabase db;
+  late final LunarLogStorage _storage;
+
+  LunarLogStorage get storage => _storage;
+  ProfilesRepository get profiles => DriftProfilesRepository(_storage);
+  ClueImporter get importer => ClueImporter(_storage);
+}
+
+/// A minimal `ClueImportRunner` that never writes: proves a read failure
+/// never reaches the write step.
+class _FakeClueRunner implements ClueImportRunner {
+  int calls = 0;
+  Object? error;
+  ClueImportSummary? result;
+
+  @override
+  Future<ClueImportSummary> run({
+    required String profileId,
+    required String tz,
+    required ClueExportParseResult parseResult,
+    required String fileChecksum,
+  }) async {
+    calls++;
+    final failure = error;
+    if (failure != null) throw failure;
+    return result!;
+  }
+}
+
+/// A small, real (fabricated) Clue-shaped zip built with the same
+/// `ZipEncoder` the reader uses, so the widget test exercises extraction,
+/// parsing, and the write path rather than a mocked parser.
+Uint8List _clueZip(Map<String, String> files, {String password = ''}) {
+  final archive = Archive();
+  for (final entry in files.entries) {
+    archive.addFile(ArchiveFile.bytes(entry.key, utf8.encode(entry.value)));
+  }
+  // `ZipEncoder` cannot take an empty password (it treats '' as an AES key
+  // and throws); omit it for an unencrypted archive.
+  final encoder =
+      password.isEmpty ? ZipEncoder() : ZipEncoder(password: password);
+  return Uint8List.fromList(encoder.encode(archive));
+}
+
+String _fixture(String name) =>
+    File('test/fixtures/clue/$name').readAsStringSync();
 
 void main() {
   late LunarLogStorage storage;
 
   setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     storage = LunarLogStorage(LunarLogDatabase(NativeDatabase.memory()));
   });
 
@@ -462,6 +538,207 @@ void main() {
       await tester.tap(key('import-result-done'));
       await tester.pumpAndSettle();
       expect(key('import-result-summary'), findsNothing);
+    });
+  });
+
+  group('Clue export zip path (Issue #452)', () {
+    testWidgets('a real Clue zip imports end to end and creates a profile',
+        (tester) async {
+      final harness = _ClueHarness();
+      addTearDown(harness.db.close);
+      final zip = _clueZip(
+        {'measurements.json': _fixture('unknown_type_and_option.json')},
+        password: 'clue-pass',
+      );
+
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => zip),
+        clueRunner: harness.importer,
+        profilesRepository: harness.profiles,
+      );
+
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      // A ZIP routes to the Clue password step, never the JSON parser.
+      expect(key('clue-password-field'), findsOneWidget);
+      expect(key('clue-preview-summary'), findsNothing);
+
+      await tester.enterText(key('clue-password-field'), 'clue-pass');
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      // Preview: the planned summary, the #199 disclosure lines, and — no
+      // profiles exist — an editable name for the profile to create.
+      expect(key('clue-preview-summary'), findsOneWidget);
+      expect(key('clue-preview-summary-lines'), findsOneWidget);
+      expect(key('clue-new-profile-name'), findsOneWidget);
+      expect(find.text(kClueImportMergePolicySentence), findsOneWidget);
+
+      await tester.ensureVisible(key('clue-preview-confirm'));
+      await tester.tap(key('clue-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(key('clue-result-summary'), findsOneWidget);
+      expect(
+        find.textContaining('Unrecognised type kept: hot_flashes.'),
+        findsOneWidget,
+      );
+
+      final profiles = await harness.profiles.list();
+      expect(profiles.length, 1);
+      expect(profiles.single.displayName, 'Imported from Clue');
+      final days =
+          await harness.storage.getDayEntries(profileId: profiles.single.id);
+      expect(days.length, 7);
+      for (final day in days) {
+        expect(day.source, 'clue_import');
+      }
+      final observations =
+          await harness.storage.getObservationsForProfile(profiles.single.id);
+      expect(observations.length, 8);
+      for (final observation in observations) {
+        expect(observation.source, 'clue_import');
+      }
+    });
+
+    testWidgets('an existing profile is offered and receives rows additively',
+        (tester) async {
+      final harness = _ClueHarness();
+      addTearDown(harness.db.close);
+      final existing =
+          await harness.profiles.create(displayName: 'Riley', isMinor: false);
+      // A manually logged day the import touches must survive untouched.
+      await harness.storage.upsertDayEntry(
+        profileId: existing.id,
+        localDate: '2026-04-01',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.heavy,
+        note: 'kept',
+      );
+      final zip = _clueZip(
+        {'measurements.json': _fixture('unknown_type_and_option.json')},
+        password: 'pw',
+      );
+
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => zip),
+        clueRunner: harness.importer,
+        profilesRepository: harness.profiles,
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('clue-password-field'), 'pw');
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      expect(key('clue-profile-dropdown'), findsOneWidget);
+      expect(key('clue-new-profile-name'), findsNothing);
+
+      await tester.ensureVisible(key('clue-preview-confirm'));
+      await tester.tap(key('clue-preview-confirm'));
+      await tester.pumpAndSettle();
+      expect(key('clue-result-summary'), findsOneWidget);
+
+      // No second profile; the manual day keeps its flow and note.
+      expect((await harness.profiles.list()).length, 1);
+      final day = await harness.storage.getDayEntry(
+          profileId: existing.id, localDate: '2026-04-01');
+      expect(day!.flow, dbtables.FlowLevel.heavy);
+      expect(day.note, 'kept');
+    });
+
+    testWidgets('a ZIP that is not a Clue export fails before the write step',
+        (tester) async {
+      final runner = _FakeClueRunner();
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => _clueZip({'notes.txt': 'hello'})),
+        clueRunner: runner,
+        profilesRepository: _UnusedProfilesRepository(),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      expect(key('clue-password-error'), findsOneWidget);
+      expect(find.text(kClueImportNotClueCopy), findsOneWidget);
+      expect(runner.calls, 0);
+      // Still on the password step — no partial import.
+      expect(key('clue-password-field'), findsOneWidget);
+      expect(key('clue-result-summary'), findsNothing);
+    });
+
+    testWidgets('a wrong password fails with the retry copy, never the writer',
+        (tester) async {
+      final runner = _FakeClueRunner();
+      final zip = _clueZip({'measurements.json': '[]'}, password: 'right');
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => zip),
+        clueRunner: runner,
+        profilesRepository: _UnusedProfilesRepository(),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('clue-password-field'), 'wrong');
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kClueImportReadFailureCopy), findsOneWidget);
+      expect(runner.calls, 0);
+      expect(key('clue-password-field'), findsOneWidget);
+    });
+
+    testWidgets('a malformed measurements.json fails with the retry copy',
+        (tester) async {
+      final runner = _FakeClueRunner();
+      await _pump(
+        tester,
+        pickFile: _FakeReader(
+            () async => _clueZip({'measurements.json': 'not json'})),
+        clueRunner: runner,
+        profilesRepository: _UnusedProfilesRepository(),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kClueImportReadFailureCopy), findsOneWidget);
+      expect(runner.calls, 0);
+    });
+
+    testWidgets('an apply failure stays on the preview with its own copy',
+        (tester) async {
+      final harness = _ClueHarness();
+      addTearDown(harness.db.close);
+      final runner = _FakeClueRunner()..error = StateError('disk full');
+      final zip = _clueZip(
+        {'measurements.json': '[]'},
+        password: 'pw',
+      );
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => zip),
+        clueRunner: runner,
+        profilesRepository: harness.profiles,
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('clue-password-field'), 'pw');
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(key('clue-preview-confirm'));
+      await tester.tap(key('clue-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      expect(key('clue-preview-error'), findsOneWidget);
+      expect(find.text(kClueImportApplyFailureCopy), findsOneWidget);
+      expect(key('clue-result-summary'), findsNothing);
+      expect(runner.calls, 1);
     });
   });
 }

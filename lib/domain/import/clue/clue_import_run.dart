@@ -33,6 +33,7 @@ import 'clue_cycle_reconstruction.dart';
 import 'clue_datapoint.dart';
 import 'clue_export_parser.dart';
 import 'clue_option_map.dart';
+import 'clue_zip_reader.dart';
 
 /// The `source` stamped on every row a Clue file import writes (Issue
 /// #159's `day_entries`/`observations` closed sets both carry it).
@@ -169,6 +170,63 @@ bool looksLikeFreeText(Object? value) {
   if (value is Map) return value.values.any(looksLikeFreeText);
   if (value is List) return value.any(looksLikeFreeText);
   return false;
+}
+
+/// One Clue export zip already decrypted and parsed, with everything the
+/// write step and the preview/summary UI need to proceed without touching
+/// the archive twice (Issue #452). [summary] is the planned half of the
+/// run ([summarizeClueImport]); the applied half arrives from
+/// [ClueImportRunner.run].
+class ClueImportPreview {
+  const ClueImportPreview({
+    required this.parseResult,
+    required this.fileChecksum,
+    required this.summary,
+  });
+
+  final ClueExportParseResult parseResult;
+  final String fileChecksum;
+  final ClueImportSummary summary;
+}
+
+/// Decrypts [zipBytes] with [password] (the one-time password from Clue's
+/// export email), parses the contained `measurements.json`, and builds the
+/// planned summary — pure, writing nothing (Issue #452). Throws
+/// [ClueZipException] when the archive cannot be opened or lacks
+/// `measurements.json` (a wrong password, a corrupt/non-Clue file), and
+/// [ClueImportException] when the entry is not the expected JSON shape —
+/// both typed, so the import screen can show honest copy without ever
+/// falling back to partial data.
+ClueImportPreview prepareClueImport({
+  required List<int> zipBytes,
+  required String password,
+}) {
+  final measurements = extractClueZipEntry(zipBytes, password: password);
+  final parseResult = parseClueDatapoints(measurements);
+  return ClueImportPreview(
+    parseResult: parseResult,
+    fileChecksum: clueFileChecksum(zipBytes),
+    summary: summarizeClueImport(parseResult),
+  );
+}
+
+/// The effectful half of a Clue import the UI drives: writes an
+/// already-prepared [ClueImportPreview] into one local profile and returns
+/// the applied summary. The concrete implementation is
+/// `lib/data/import/clue_importer.dart`'s `ClueImporter`, which wraps every
+/// write in one transaction (all-or-nothing). `lib/ui` depends only on this
+/// domain contract, mirroring [AccountImportCoordinator]'s split.
+abstract interface class ClueImportRunner {
+  /// Writes [parseResult] for [profileId] and returns the applied summary.
+  /// [fileChecksum] is [clueFileChecksum] of the original zip bytes — the
+  /// idempotency anchor. [tz] is the IANA zone stamped on newly created day
+  /// entries.
+  Future<ClueImportSummary> run({
+    required String profileId,
+    required String tz,
+    required ClueExportParseResult parseResult,
+    required String fileChecksum,
+  });
 }
 
 /// The outcome of one Clue file import run: what the file carried

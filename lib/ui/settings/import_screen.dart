@@ -30,8 +30,15 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
+import 'package:lunarlog/domain/import/clue/clue_zip_reader.dart'
+    show ClueZipException, looksLikeZipArchive;
 import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
+import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/util/timezone.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
@@ -65,12 +72,51 @@ const String kImportSharedProfileGuardianSentence =
 /// spin-up cost.
 const int kImportComputeOffloadThresholdBytes = 2 * 1024 * 1024;
 
+/// Shown when a picked `.zip` cannot be read as a Clue export — a wrong
+/// password, a corrupt archive, or a ZIP that simply is not Clue's (Issue
+/// #452). One honest sentence; the raw [ClueZipException] message is never
+/// rendered.
+const String kClueImportReadFailureCopy =
+    'Could not read that Clue export. Check the file and the password '
+    'from your export email, then try again.';
+
+/// Shown when a picked ZIP opens but does not contain Clue's
+/// `measurements.json` — a ZIP from somewhere else, not a Clue export
+/// (Issue #452).
+const String kClueImportNotClueCopy =
+    'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.';
+
+/// Shown when a Clue export was read and previewed but the write itself
+/// failed (Issue #452). Mirrors [kImportApplyFailureCopy]: the importer's
+/// transaction is all-or-nothing, so nothing was written.
+const String kClueImportApplyFailureCopy =
+    'Could not finish the Clue import. Nothing was written — please try '
+    'again.';
+
+/// The default name offered when a Clue import has no existing profile to
+/// write into (a first-run restore). Editable, so the operator — not this
+/// screen — decides what the imported profile is called.
+const String kClueImportedProfileDefaultName = 'Imported from Clue';
+
+/// Merge disclosure for the Clue preview step (Issue #452): unlike the
+/// JSON path, a Clue import writes into one chosen profile and never
+/// creates/removes any other.
+const String kClueImportMergePolicySentence =
+    'Nothing already on this device is deleted. Day entries and '
+    'observations are added to the profile you choose.';
+
 /// `$n $singular` or `$n $plural` (`n == 1` picks [singular]).
 String _count(int n, String singular, String plural) =>
     '$n ${n == 1 ? singular : plural}';
 
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.pickFile, this.coordinator});
+  const ImportScreen({
+    super.key,
+    this.pickFile,
+    this.coordinator,
+    this.clueRunner,
+    this.profilesRepository,
+  });
 
   /// Reads the picked file's bytes; null means "not provided by the
   /// caller" (default: the tree-provided [ImportFileReader]). Injectable
@@ -81,6 +127,15 @@ class ImportScreen extends StatefulWidget {
   /// [AccountImportCoordinator]" (see `_ImportScreenState._coordinator`).
   /// Injectable for tests.
   final AccountImportCoordinator? coordinator;
+
+  /// Writes a prepared Clue export (Issue #452); null means "read the
+  /// tree-provided [ClueImportRunner]". Injectable for tests.
+  final ClueImportRunner? clueRunner;
+
+  /// Lists/creates the profile a Clue import targets (Issue #452); null
+  /// means "read the tree-provided [ProfilesRepository]". Injectable so the
+  /// JSON path's tests never need a provider tree for it.
+  final ProfilesRepository? profilesRepository;
 
   @override
   State<ImportScreen> createState() => _ImportScreenState();
@@ -94,10 +149,49 @@ class _ImportScreenState extends State<ImportScreen> {
   ImportPlan? _plan;
   ImportPlanSummary? _result;
 
+  /// The picked Clue zip's bytes, non-null only while the Clue path is
+  /// active (Issue #452).
+  Uint8List? _clueZipBytes;
+
+  /// The decrypted/parsed Clue export, once its password was accepted.
+  ClueImportPreview? _cluePreview;
+
+  /// The applied Clue summary shown on the result step.
+  ClueImportSummary? _clueResult;
+
+  /// Live profiles offered as the Clue import's target.
+  List<Profile> _clueProfiles = const [];
+
+  /// The chosen existing target profile id, or null to create a new one.
+  String? _clueProfileId;
+
+  final TextEditingController _cluePassword = TextEditingController();
+  final TextEditingController _clueProfileName =
+      TextEditingController(text: kClueImportedProfileDefaultName);
+
+  @override
+  void dispose() {
+    _cluePassword.dispose();
+    _clueProfileName.dispose();
+    super.dispose();
+  }
+
   AccountImportCoordinator _coordinator(BuildContext context) {
     final injected = widget.coordinator;
     if (injected != null) return injected;
     return context.read<AccountImportCoordinator>();
+  }
+
+  ClueImportRunner _clueRunner(BuildContext context) {
+    final injected = widget.clueRunner;
+    if (injected != null) return injected;
+    return context.read<ClueImportRunner>();
+  }
+
+  ProfilesRepository _profilesRepository(BuildContext context) {
+    final injected = widget.profilesRepository;
+    if (injected != null) return injected;
+    return context.read<ProfilesRepository>();
   }
 
   Future<void> _pickAndPlan() async {
@@ -105,6 +199,16 @@ class _ImportScreenState extends State<ImportScreen> {
     try {
       final bytes = await _readPickedFileCapped();
       if (bytes == null || !mounted) return;
+      if (looksLikeZipArchive(bytes)) {
+        // Issue #452: a ZIP is a Clue export (or an honest failure). Hold
+        // its bytes and ask for the export password before parsing.
+        setState(() {
+          _clueZipBytes = bytes;
+          _cluePreview = null;
+          _clueResult = null;
+        });
+        return;
+      }
       final parsed = await _parse(bytes);
       // A second `mounted` re-check (`_parse` is itself an `await` gap,
       // possibly a whole extra isolate round trip for a large file) before
@@ -175,6 +279,92 @@ class _ImportScreenState extends State<ImportScreen> {
           ? compute(parseAccountImport, bytes)
           : Future.value(parseAccountImport(bytes));
 
+  // ---------------------------------------------------------------------
+  // Clue export path (Issue #452).
+  // ---------------------------------------------------------------------
+
+  /// Decrypts/parses the held Clue zip with the entered password and loads
+  /// the profiles it could write into. Runs on the UI isolate deliberately:
+  /// [prepareClueImport] can throw the typed [ClueZipException]/
+  /// [ClueImportException] this screen must map to honest copy, and those
+  /// do not survive a `compute` isolate boundary cleanly.
+  Future<void> _prepareClue() async {
+    final bytes = _clueZipBytes;
+    if (bytes == null || _busy) return;
+    final repository = _profilesRepository(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final preview = prepareClueImport(
+        zipBytes: bytes,
+        password: _cluePassword.text,
+      );
+      final profiles = await repository.list();
+      if (!mounted) return;
+      setState(() {
+        _cluePreview = preview;
+        _clueProfiles = profiles;
+        _clueProfileId = profiles.isEmpty ? null : profiles.first.id;
+      });
+    } catch (error) {
+      debugPrint('lunarlog import: clue read failed (${error.runtimeType})');
+      _showImportError(_clueReadFailureMessage(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The honest copy for a failed Clue read: a ZIP without
+  /// `measurements.json` is not a Clue export; everything else (wrong
+  /// password, corrupt archive, malformed entry) is the retry copy.
+  String _clueReadFailureMessage(Object error) =>
+      error is ClueZipException && error.message.contains('not found')
+          ? kClueImportNotClueCopy
+          : kClueImportReadFailureCopy;
+
+  /// Applies the prepared Clue preview to the chosen/created profile.
+  Future<void> _confirmClue() async {
+    final preview = _cluePreview;
+    if (preview == null || _busy) return;
+    final runner = _clueRunner(context);
+    final repository = _profilesRepository(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final profileId = await _resolveClueProfileId(repository);
+      final summary = await runner.run(
+        profileId: profileId,
+        tz: resolveCurrentTimeZoneSync(),
+        parseResult: preview.parseResult,
+        fileChecksum: preview.fileChecksum,
+      );
+      if (mounted) setState(() => _clueResult = summary);
+    } catch (error) {
+      debugPrint('lunarlog import: clue apply failed (${error.runtimeType})');
+      if (mounted) setState(() => _error = kClueImportApplyFailureCopy);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The Clue import target: the selected live profile, or a newly created
+  /// one named from the text field (the first-run case, where no profile
+  /// exists yet). Additive either way — [ClueImportRunner] never deletes.
+  Future<String> _resolveClueProfileId(ProfilesRepository repository) async {
+    final selected = _clueProfileId;
+    if (selected != null) return selected;
+    final name = _clueProfileName.text.trim();
+    final profile = await repository.create(
+      displayName: name.isEmpty ? kClueImportedProfileDefaultName : name,
+      isMinor: false,
+    );
+    return profile.id;
+  }
+
   Future<void> _buildPlan(
     AccountImportCoordinator coordinator,
     AccountImportDocument document,
@@ -235,11 +425,22 @@ class _ImportScreenState extends State<ImportScreen> {
       _preview = null;
       _plan = null;
       _result = null;
+      _clueZipBytes = null;
+      _cluePreview = null;
+      _clueResult = null;
+      _clueProfiles = const [];
+      _clueProfileId = null;
+      _cluePassword.clear();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final clueResult = _clueResult;
+    if (clueResult != null) return _clueResultScaffold(context, clueResult);
+    final cluePreview = _cluePreview;
+    if (cluePreview != null) return _cluePreviewScaffold(context, cluePreview);
+    if (_clueZipBytes != null) return _cluePasswordScaffold(context);
     final result = _result;
     if (result != null) return _resultScaffold(context, result);
     final document = _document;
@@ -281,9 +482,9 @@ class _ImportScreenState extends State<ImportScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          'Choose a JSON file this app exported (Settings > Your data > '
-          'Export my data). Your profiles and day entries are added to '
-          'this device — nothing already here is ever deleted.',
+          'Choose a file: a JSON backup this app exported (Settings > Your '
+          'data > Export my data), or the .zip Clue emailed you. Your data '
+          'is added to this device — nothing already here is ever deleted.',
         ),
         const SizedBox(height: 16),
         ElevatedButton(
@@ -296,6 +497,163 @@ class _ImportScreenState extends State<ImportScreen> {
           InlineError(key: const ValueKey('import-pick-error'), message: error),
         ],
       ],
+    ));
+  }
+
+  // ---------------------------------------------------------------------
+  // Clue export path scaffolds (Issue #452).
+  // ---------------------------------------------------------------------
+
+  Scaffold _cluePasswordScaffold(BuildContext context) {
+    final error = _error;
+    final l10n = AppLocalizations.of(context);
+    return _scaffold(Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(l10n.importCluePasswordPrompt),
+        const SizedBox(height: 16),
+        TextField(
+          key: const ValueKey('clue-password-field'),
+          controller: _cluePassword,
+          obscureText: true,
+          decoration:
+              InputDecoration(labelText: l10n.importClueExportPasswordLabel),
+          onSubmitted: (_) => _prepareClue(),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          InlineError(
+              key: const ValueKey('clue-password-error'), message: error),
+        ],
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            TextButton(
+              key: const ValueKey('clue-password-cancel'),
+              onPressed: _busy ? null : _reset,
+              child: Text(l10n.importClueCancel),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              key: const ValueKey('clue-password-continue'),
+              onPressed: _busy ? null : _prepareClue,
+              child: _busyOrLabel(l10n.importClueOpenExport),
+            ),
+          ],
+        ),
+      ],
+    ));
+  }
+
+  String _cluePreviewSummaryText(ClueImportSummary summary) =>
+      'Ready to import: ${_count(summary.dayCount, 'day', 'days')}, '
+      '${_count(summary.datapointCount, 'datapoint', 'datapoints')}.';
+
+  /// The target selector: a dropdown of live profiles, or — when none exist
+  /// (a first-run restore) — an editable name for the profile this import
+  /// creates.
+  Widget _clueTargetSelector(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (_clueProfiles.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.importClueNewProfileNote),
+          TextField(
+            key: const ValueKey('clue-new-profile-name'),
+            controller: _clueProfileName,
+            decoration: InputDecoration(labelText: l10n.importClueProfileNameLabel),
+          ),
+        ],
+      );
+    }
+    return DropdownButton<String>(
+      key: const ValueKey('clue-profile-dropdown'),
+      value: _clueProfileId,
+      isExpanded: true,
+      onChanged: (value) => setState(() => _clueProfileId = value ?? _clueProfileId),
+      items: [
+        for (final profile in _clueProfiles)
+          DropdownMenuItem<String>(
+            value: profile.id,
+            child: Text(profile.displayName),
+          ),
+      ],
+    );
+  }
+
+  Widget _clueSummaryLines(Key key, ClueImportSummary summary) => Column(
+        key: key,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final line in summary.summaryLines) Text(line),
+        ],
+      );
+
+  Scaffold _cluePreviewScaffold(
+    BuildContext context,
+    ClueImportPreview preview,
+  ) {
+    final error = _error;
+    final l10n = AppLocalizations.of(context);
+    return _scaffold(SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(_cluePreviewSummaryText(preview.summary),
+              key: const ValueKey('clue-preview-summary')),
+          const SizedBox(height: 8),
+          const Text(kClueImportMergePolicySentence,
+              key: ValueKey('clue-preview-policy')),
+          const SizedBox(height: 8),
+          _clueTargetSelector(context),
+          const SizedBox(height: 8),
+          _clueSummaryLines(
+              const ValueKey('clue-preview-summary-lines'), preview.summary),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            InlineError(
+                key: const ValueKey('clue-preview-error'), message: error),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              TextButton(
+                key: const ValueKey('clue-preview-cancel'),
+                onPressed: _busy ? null : _reset,
+                child: Text(l10n.importClueCancel),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                key: const ValueKey('clue-preview-confirm'),
+                onPressed: _busy ? null : _confirmClue,
+                child: _busyOrLabel(l10n.importClueImport),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ));
+  }
+
+  Scaffold _clueResultScaffold(
+    BuildContext context,
+    ClueImportSummary summary,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    return _scaffold(SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _clueSummaryLines(const ValueKey('clue-result-summary'), summary),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            key: const ValueKey('clue-result-done'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.importClueDone),
+          ),
+        ],
+      ),
     ));
   }
 

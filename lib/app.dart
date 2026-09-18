@@ -34,6 +34,8 @@ import 'package:lunarlog/domain/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
+    show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
@@ -300,6 +302,9 @@ class _LunarLogAppState extends State<LunarLogApp>
   late final AttachmentSource _attachmentSource;
   late final ImportFileReader _importFileReader;
   late final AccountImportCoordinator _accountImportCoordinator;
+
+  /// Issue #452: the Clue-export write path the import screen drives.
+  late final ClueImportRunner _clueImportRunner;
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   // U2 Approach 1b: allocated once, not per build. `build` re-runs on every
   // `setState` (the invite-link and auth-change paths both trigger one),
@@ -405,6 +410,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _attachmentSource = _deps.attachmentSource;
     _importFileReader = _deps.importFileReader;
     _accountImportCoordinator = _deps.accountImportCoordinator;
+    _clueImportRunner = _deps.clueImportRunner;
     _initAuthController();
     _initHealthFlowWriter();
     _initHealthSyncTombstonePropagation();
@@ -1086,6 +1092,7 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<ImportFileReader>.value(value: _importFileReader),
         Provider<AccountImportCoordinator>.value(
             value: _accountImportCoordinator),
+        Provider<ClueImportRunner>.value(value: _clueImportRunner),
         if (_deps.sharingService != null)
           Provider<SharingService>.value(value: _deps.sharingService!),
         if (_deps.ownershipTransferService != null)
