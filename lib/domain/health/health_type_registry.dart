@@ -3,9 +3,11 @@
 /// carrying its mapping status. This is the one place a future issue can
 /// look to see what exists, what is planned, and what is deliberately
 /// absent — the `pregnancy`/`lactation` entries below are the
-/// future-mapping placeholders the issue requires (registry entries
-/// only, **no write path implemented**), sequenced behind Pregnancy mode
-/// existing at all (A3-10).
+/// future-mapping placeholders issue #192 requires, and the
+/// `menopausalState`/`bleedingAfterMenopause` entries are the ones issue
+/// #196 requires (registry entries only, **no write path implemented**),
+/// sequenced behind Pregnancy mode (A3-10) and Perimenopause mode existing
+/// at all respectively.
 ///
 /// iOS 26 added `HKCategoryTypeIdentifier.pregnancy` and
 /// `.lactation` (interval samples carrying
@@ -119,5 +121,31 @@ const List<HealthTypeRegistryEntry> kHealthTypeRegistry = [
     healthKitIdentifier: 'HKCategoryTypeIdentifier.lactation',
     healthConnectRecord: null,
     issue: '#192 (placeholder; future Health Platform Sync issue)',
+  ),
+  // Issue #196 AC6: the iOS 26 menopause category types — registry entries
+  // only (no port method, no channel codec entry, no write path). Health
+  // Connect has no menopause-state or post-menopausal-bleeding analogue
+  // today, so both are HealthKit-only candidates, which by itself rules out
+  // a cross-platform port method until one exists (A3-15: write support is
+  // explicitly out of scope for the household's current users).
+  //
+  // Future implementer note: `menopausalState` is a point-in-time category
+  // sample whose start and end date must be **identical** — HealthKit
+  // rejects a save where they differ, unlike every interval sample this
+  // registry otherwise names. `.bleedingAfterMenopause` is an interval
+  // sample carrying `HKCategoryValueVaginalBleeding`.
+  HealthTypeRegistryEntry(
+    concept: 'menopausalState',
+    status: HealthTypeMappingStatus.futureCandidate,
+    healthKitIdentifier: 'HKCategoryTypeIdentifier.menopausalState',
+    healthConnectRecord: null,
+    issue: '#196 (placeholder; future Health Platform Sync issue)',
+  ),
+  HealthTypeRegistryEntry(
+    concept: 'bleedingAfterMenopause',
+    status: HealthTypeMappingStatus.futureCandidate,
+    healthKitIdentifier: 'HKCategoryTypeIdentifier.bleedingAfterMenopause',
+    healthConnectRecord: null,
+    issue: '#196 (placeholder; future Health Platform Sync issue)',
   ),
 ];
