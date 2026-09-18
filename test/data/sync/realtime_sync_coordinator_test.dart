@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -536,6 +537,109 @@ void main() {
           .emitStatus(RealtimeSubscribeStatus.timedOut);
       expect(retries.delays.last, kRealtimeRetryBase,
           reason: 'attempt counter resets after a success');
+    });
+
+    test(
+        'a signed-out channel that reports subscribed before the server '
+        'rejects it still backs off to the cap (issue #771)', () async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final signedOutCoordinator = RealtimeSyncCoordinator(
+        client: client,
+        syncEngine: syncEngine,
+        storage: storage,
+        auth: auth,
+        debounceDuration: const Duration(milliseconds: 50),
+        retryTimerFactory: retries.call,
+      );
+      addTearDown(signedOutCoordinator.dispose);
+
+      signedOutCoordinator.start();
+      final p1 =
+          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final topic = 'profile:${p1.id}';
+
+      // Every fresh channel reports `subscribed` from the join ack, then the
+      // server's post-join rejection arrives as `channelError` on the same
+      // channel -- the shape the realtime client produces when no authorized
+      // identity can set up replication (RealtimeChannel.subscribe's
+      // onSystemEvents handler). The optimistic `subscribed` must not reset
+      // the backoff counter, or the delay stays pinned at the base forever.
+      void rejectCurrentChannel() {
+        client.createdChannels[topic]!
+            .emitStatus(RealtimeSubscribeStatus.channelError);
+      }
+
+      rejectCurrentChannel();
+
+      // Fail each fired retry's replacement the same way.
+      for (var i = 0; i < 8; i++) {
+        expect(retries.pending, hasLength(1));
+        retries.fireNext();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        rejectCurrentChannel();
+      }
+
+      expect(
+        retries.delays.take(7).toList(),
+        [
+          kRealtimeRetryBase,
+          kRealtimeRetryBase * 2,
+          kRealtimeRetryBase * 4,
+          kRealtimeRetryBase * 8,
+          kRealtimeRetryBase * 16,
+          kRealtimeRetryBase * 32,
+          kRealtimeRetryCap,
+        ],
+        reason: 'the delay grows past the base and reaches the cap',
+      );
+      expect(
+        retries.delays.every((d) => d <= kRealtimeRetryCap),
+        isTrue,
+        reason: 'backoff never exceeds the cap',
+      );
+    });
+
+    test('a signed-out retry storm logs the failure once, not per attempt '
+        '(issue #771)', () async {
+      final logs = <String>[];
+      final originalDebugPrint = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) logs.add(message);
+      };
+      addTearDown(() => debugPrint = originalDebugPrint);
+
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final signedOutCoordinator = RealtimeSyncCoordinator(
+        client: client,
+        syncEngine: syncEngine,
+        storage: storage,
+        auth: auth,
+        debounceDuration: const Duration(milliseconds: 50),
+        retryTimerFactory: retries.call,
+      );
+      addTearDown(signedOutCoordinator.dispose);
+
+      signedOutCoordinator.start();
+      final p1 =
+          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final topic = 'profile:${p1.id}';
+
+      for (var i = 0; i < 5; i++) {
+        client.createdChannels[topic]!
+            .emitStatus(RealtimeSubscribeStatus.channelError);
+        if (retries.pending.isNotEmpty) {
+          retries.fireNext();
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+
+      expect(logs, hasLength(1),
+          reason: 'only the first failure of the episode is logged');
+      expect(logs.single, contains('channelError'));
     });
 
     test('dispose cancels a pending retry: no re-subscribe after', () async {
