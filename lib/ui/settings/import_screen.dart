@@ -354,6 +354,12 @@ class _ImportScreenState extends State<ImportScreen> {
   /// The Clue import target: the selected live profile, or a newly created
   /// one named from the text field (the first-run case, where no profile
   /// exists yet). Additive either way — [ClueImportRunner] never deletes.
+  ///
+  /// Defect #791: a created profile's id is recorded in [_clueProfileId]
+  /// before [ClueImportRunner.run] is called, so a failed run (whose
+  /// transaction rolls back its writes but not this profile, created
+  /// outside it) leaves exactly one empty profile and every retry reuses
+  /// it instead of orphaning another.
   Future<String> _resolveClueProfileId(ProfilesRepository repository) async {
     final selected = _clueProfileId;
     if (selected != null) return selected;
@@ -362,6 +368,7 @@ class _ImportScreenState extends State<ImportScreen> {
       displayName: name.isEmpty ? kClueImportedProfileDefaultName : name,
       isMinor: false,
     );
+    _clueProfileId = profile.id;
     return profile.id;
   }
 
