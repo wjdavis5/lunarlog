@@ -60,6 +60,17 @@ class _SheetHost extends StatelessWidget {
   }
 }
 
+/// Counts route pops so a double dismiss is observable (issue #791).
+class _PopCounter extends NavigatorObserver {
+  int pops = 0;
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pops++;
+    super.didPop(route, previousRoute);
+  }
+}
+
 Future<void> _pumpAndOpen(WidgetTester tester) async {
   // A phone-class viewport, so the sheet's editable body genuinely
   // overflows and scrolls (the shape the bug report describes).
@@ -176,5 +187,76 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(_headerKey), findsOneWidget);
+  });
+
+  testWidgets('issue #791: a fast downward fling on the header pops exactly '
+      'once, never the route beneath the sheet', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final db = LunarLogDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final repository = DriftDayEntriesRepository(db.storage);
+    final profile = await DriftProfilesRepository(
+      db.storage,
+    ).create(displayName: 'Alice', isMinor: false);
+
+    final observer = _PopCounter();
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<DayEntriesRepository>.value(value: repository),
+          Provider<ObservationsRepository>.value(
+            value: DriftObservationsRepository(db.storage),
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.lightTheme,
+          navigatorObservers: [observer],
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: ElevatedButton(
+                  key: const ValueKey('push-sheet-host'),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => _SheetHost(repository, profile.id),
+                    ),
+                  ),
+                  child: const Text('Push'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // A route beneath the sheet, so a spurious second pop has somewhere to
+    // land and the observer can count it.
+    await tester.tap(find.byKey(const ValueKey('push-sheet-host')));
+    await tester.pumpAndSettle();
+    observer.pops = 0;
+
+    await tester.tap(find.byKey(const ValueKey('open-day-sheet')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(_headerKey), findsOneWidget);
+
+    // A fast fling crosses BOTH dismiss thresholds: the distance one in
+    // `_onDragUpdate`, then the velocity one in `_onDragEnd`.
+    await tester.fling(find.byKey(_headerKey), const Offset(0, 200), 2000);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(_headerKey), findsNothing);
+    expect(
+      observer.pops,
+      1,
+      reason: 'one fling must dismiss only the sheet, never the route '
+          'beneath it (issue #791)',
+    );
   });
 }

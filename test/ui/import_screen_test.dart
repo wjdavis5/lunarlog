@@ -740,5 +740,39 @@ void main() {
       expect(key('clue-result-summary'), findsNothing);
       expect(runner.calls, 1);
     });
+
+    testWidgets('issue #791: a failed first-run import reuses its created '
+        'profile on retry instead of orphaning another', (tester) async {
+      final harness = _ClueHarness();
+      addTearDown(harness.db.close);
+      final runner = _FakeClueRunner()..error = StateError('disk full');
+      final zip = _clueZip({'measurements.json': '[]'}, password: 'pw');
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => zip),
+        clueRunner: runner,
+        profilesRepository: harness.profiles,
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('clue-password-field'), 'pw');
+      await tester.tap(key('clue-password-continue'));
+      await tester.pumpAndSettle();
+
+      // First attempt fails — the profile it created (outside the run's
+      // transaction) is left behind, exactly once.
+      await tester.ensureVisible(key('clue-preview-confirm'));
+      await tester.tap(key('clue-preview-confirm'));
+      await tester.pumpAndSettle();
+      expect(key('clue-preview-error'), findsOneWidget);
+      expect((await harness.profiles.list()).length, 1);
+
+      // Retrying reuses that profile rather than creating a second orphan.
+      await tester.ensureVisible(key('clue-preview-confirm'));
+      await tester.tap(key('clue-preview-confirm'));
+      await tester.pumpAndSettle();
+      expect((await harness.profiles.list()).length, 1);
+      expect(runner.calls, 2);
+    });
   });
 }

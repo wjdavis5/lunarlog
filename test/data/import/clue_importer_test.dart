@@ -263,6 +263,114 @@ void main() {
       expect(day!.deletedAt, isNull);
     });
 
+    // Issue #790 defect 1, the full four-step sequence: import -> delete the
+    // imported day -> log that date by hand -> re-import. Without the
+    // live-row pre-check the tombstone is revived by id, `_writeDayEntry`
+    // clears `deleted_at`, and the partial unique index throws a
+    // `SqliteException` that rolls the whole run back — permanently, on
+    // every retry. This test fails (throws) against the unfixed importer.
+    test('issue #790: a tombstone whose date was re-logged is merged, '
+        'never revived into a unique-index collision', () async {
+      final pid = await profileId();
+      final bytes = utf8.encode(jsonEncode([
+        {'date': '2026-06-10', 'type': 'period', 'value': {'option': 'heavy'}},
+        {'date': '2026-06-10', 'type': 'pain', 'value': {'option': 'headache'}},
+      ]));
+      Future<ClueImportSummary> run() => importer.run(
+            profileId: pid,
+            tz: 'UTC',
+            parseResult: parseClueDatapoints(bytes),
+            fileChecksum: clueFileChecksum(bytes),
+          );
+      await run();
+
+      // 2. The user deletes the imported day (the tombstone keeps
+      // `source = clue_import`).
+      await storage.softDeleteDayEntry(profileId: pid, localDate: '2026-06-10');
+
+      // 3. The user logs that same date by hand — a new live row.
+      final manual = await storage.upsertDayEntry(
+        profileId: pid,
+        localDate: '2026-06-10',
+        tz: 'UTC',
+        flow: dbtables.FlowLevel.light,
+        note: 'logged by hand',
+      );
+
+      // 4. Re-importing the same export completes instead of throwing.
+      final second = await run();
+      expect(second.rowsSkipped, 0);
+
+      // The manual row survives under its own id, with its own flow and
+      // note (never downgraded/replaced), and the file's observation is
+      // merged onto it rather than revived under the tombstone.
+      final day = await storage.getDayEntry(
+        profileId: pid,
+        localDate: '2026-06-10',
+      );
+      expect(day, isNotNull);
+      expect(day!.id, manual.id);
+      expect(day.flow, dbtables.FlowLevel.light);
+      expect(day.note, 'logged by hand');
+      final observations =
+          await storage.getObservationsForDayEntry(manual.id);
+      expect(observations, isNotEmpty);
+      // Still a single live row for the date — the tombstone was not
+      // revived to collide with it.
+      final live = await storage.getDayEntries(profileId: pid);
+      expect(
+        live.where((d) => d.localDate == '2026-06-10').length,
+        1,
+      );
+    });
+
+    // Issue #790 defect 2: `day_sheet.dart` deliberately preserves
+    // `source`/`sourceId` through a manual edit, so an imported day the
+    // user later corrected still resolves by source on re-import. The
+    // importer must not rewrite that correction. This test fails against
+    // the unfixed importer (flow reverts to the file's `heavy`).
+    test('issue #790: a manual flow correction on an imported day survives '
+        're-import', () async {
+      final pid = await profileId();
+      final bytes = utf8.encode(jsonEncode([
+        {'date': '2026-06-11', 'type': 'period', 'value': {'option': 'heavy'}},
+      ]));
+      Future<ClueImportSummary> run() => importer.run(
+            profileId: pid,
+            tz: 'UTC',
+            parseResult: parseClueDatapoints(bytes),
+            fileChecksum: clueFileChecksum(bytes),
+          );
+      await run();
+      final imported = await storage.getDayEntry(
+        profileId: pid,
+        localDate: '2026-06-11',
+      );
+      expect(imported!.flow, dbtables.FlowLevel.heavy);
+      expect(imported.source, 'clue_import');
+
+      // The user corrects the imported level by hand; the day sheet carries
+      // the imported provenance through the edit.
+      await storage.upsertDayEntry(
+        id: imported.id,
+        profileId: pid,
+        localDate: '2026-06-11',
+        tz: imported.tz,
+        flow: dbtables.FlowLevel.light,
+        source: imported.source,
+        sourceId: imported.sourceId,
+      );
+
+      final second = await run();
+      expect(second.daysWritten, 0);
+      expect(second.daysUnchanged, 1);
+      final after = await storage.getDayEntry(
+        profileId: pid,
+        localDate: '2026-06-11',
+      );
+      expect(after!.flow, dbtables.FlowLevel.light);
+    });
+
     test('an oversized datapoint is skipped and counted, never silent',
         () async {
       final pid = await profileId();

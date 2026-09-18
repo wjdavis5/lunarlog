@@ -37,6 +37,16 @@ class SheetDragHeader extends StatefulWidget {
 class _SheetDragHeaderState extends State<SheetDragHeader> {
   double _dragDy = 0;
 
+  /// Defect #791: a single gesture can cross BOTH dismiss thresholds — the
+  /// distance one in [_onDragUpdate] and then the velocity one in
+  /// [_onDragEnd]. Without a one-shot guard the second `maybePop` targets
+  /// whatever route sits beneath the sheet (it is popped as far as the
+  /// navigator is concerned, but the sheet's own `State` is still mounted
+  /// through the exit animation), so a fast fling closed two screens at
+  /// once. Set on the first [_dismiss] of a gesture and cleared when that
+  /// gesture ends or is cancelled.
+  bool _dismissed = false;
+
   void _onDragUpdate(DragUpdateDetails details) {
     // Only accumulate downward movement; an upward correction cancels the
     // pending dismiss distance rather than banking it.
@@ -51,14 +61,17 @@ class _SheetDragHeaderState extends State<SheetDragHeader> {
     final velocity = details.primaryVelocity ?? 0;
     _dragDy = 0;
     if (velocity >= kSheetDragDismissVelocity) _dismiss();
+    _dismissed = false;
   }
 
   void _onDragCancel() {
     _dragDy = 0;
+    _dismissed = false;
   }
 
   void _dismiss() {
-    if (!mounted) return;
+    if (_dismissed || !mounted) return;
+    _dismissed = true;
     Navigator.of(context).maybePop();
   }
 

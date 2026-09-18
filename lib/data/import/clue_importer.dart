@@ -147,6 +147,30 @@ class ClueImporter implements ClueImportRunner {
         sourceId: sourceId,
       );
       if (existing != null) {
+        // Defect #790: a tombstoned row from an earlier run whose date now
+        // holds a live row (the user deleted the imported day, then logged
+        // that date by hand) must not be revived by id — clearing its
+        // `deleted_at` would violate `uq_day_entries_profile_date_live`,
+        // and the resulting `SqliteException` is not the `ArgumentError`
+        // this method's catch handles, so the whole transaction would roll
+        // back and every retry would fail the same way. Merge into the live
+        // row instead, through the same additive path already used when no
+        // source match exists: the file's observations attach to the user's
+        // row, a logged flow is never downgraded, and the tombstone is left
+        // untouched. `storage_local_writes.dart`'s `upsertDayEntry(id:)`
+        // revival contract requires exactly this pre-check of every caller.
+        if (existing.deletedAt != null &&
+            await _hasLiveRow(profileId, dateIso)) {
+          return await _adoptDayEntry(
+            profileId: profileId,
+            tz: tz,
+            dateIso: dateIso,
+            desiredFlow: desiredFlow,
+            sourceId: sourceId,
+            onWritten: onWritten,
+            onUnchanged: onUnchanged,
+          );
+        }
         return await _refreshDayEntry(
           existing: existing,
           profileId: profileId,
@@ -172,6 +196,18 @@ class ClueImporter implements ClueImportRunner {
     }
   }
 
+  /// Whether a live (non-tombstoned) row already occupies [dateIso] for
+  /// [profileId] — the pre-check `storage_local_writes.dart`'s
+  /// `upsertDayEntry(id: ...)` revival contract requires of every caller
+  /// (defect #790). An indexed single-row lookup.
+  Future<bool> _hasLiveRow(String profileId, String dateIso) async {
+    final live = await _storage.getDayEntry(
+      profileId: profileId,
+      localDate: dateIso,
+    );
+    return live != null;
+  }
+
   /// The import's flow level for one date, or null when the file carries no
   /// `period` datapoint for it (genuinely unlogged — never the explicit
   /// `notBleeding` assertion, which only a real `period/none` datapoint
@@ -185,10 +221,19 @@ class ClueImporter implements ClueImportRunner {
   }
 
   /// Reconciles a day entry a previous run of the same file already wrote
-  /// (found by `source`/`source_id`, tombstones included): identical
-  /// content is a no-op, a changed level is rewritten in place, and a
-  /// tombstone is revived. Tags/note/`pms` on a live row are preserved —
-  /// the importer never writes them.
+  /// (found by `source`/`source_id`), with no live row sharing its date (the
+  /// caller guarantees that — see [_ensureDayEntry]).
+  ///
+  /// A live row is a no-op (defect #790): the same file is idempotent — its
+  /// checksum-derived `source_id` fixes the flow level it writes — so a
+  /// live row whose `flow` differs from [desiredFlow] can only differ
+  /// because the user edited it, and the additive contract never overwrites
+  /// a manual edit. This mirrors [_adoptDayEntry]'s "never downgrade a
+  /// logged level" rule; tags/note/`pms` are never written by this importer
+  /// anyway.
+  ///
+  /// A tombstone with no live row on its date is revived at the file's
+  /// level. Its tags/note/`pms` were cleared by the delete and stay cleared.
   Future<String> _refreshDayEntry({
     required db.DayEntry existing,
     required String profileId,
@@ -198,8 +243,7 @@ class ClueImporter implements ClueImportRunner {
     required void Function() onWritten,
     required void Function() onUnchanged,
   }) async {
-    final live = existing.deletedAt == null;
-    if (live && (desiredFlow == null || existing.flow == desiredFlow)) {
+    if (existing.deletedAt == null) {
       onUnchanged();
       return existing.id;
     }
@@ -209,10 +253,10 @@ class ClueImporter implements ClueImportRunner {
       localDate: dateIso,
       tz: existing.tz,
       flow: desiredFlow ?? db.FlowLevel.none,
-      tags: live ? existing.tags : const [],
-      note: live ? existing.note : null,
-      // A revived tombstone's marker stays cleared.
-      pms: live ? existing.pms : false,
+      // A revived tombstone's payload was cleared by the delete.
+      tags: const [],
+      note: null,
+      pms: false,
       source: kClueImportSource,
       sourceId: sourceId,
     );
@@ -220,9 +264,12 @@ class ClueImporter implements ClueImportRunner {
     return row.id;
   }
 
-  /// Reconciles a date with no row from this file yet: attaches to the
-  /// live row when one exists (upgrading an unlogged `none` flow, never
-  /// downgrading a logged one), or inserts a fresh imported row.
+  /// Reconciles a date the import must merge into rather than revive by id:
+  /// either no row from this file exists yet, or the file's own row is a
+  /// tombstone whose date now holds a live row (defect #790). Attaches
+  /// observations to the live row when one exists (upgrading an unlogged
+  /// `none` flow, never downgrading a logged one), or inserts a fresh
+  /// imported row.
   Future<String> _adoptDayEntry({
     required String profileId,
     required String tz,
