@@ -583,8 +583,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsRelockTitle => 'Relock after inactivity';
 
   @override
-  String get settingsRelockSubtitle =>
-      'Locks the app after 2 minutes without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.';
+  String settingsRelockSubtitle(String duration) {
+    return 'Locks the app after $duration without input. Backgrounding relocks immediately. A sign-in or unlock prompt this app opened is the one exception: the app stays covered while it is on screen, and relocks as soon as it closes if you have left.';
+  }
+
+  @override
+  String get settingsRelockTimeoutTitle => 'Inactivity timeout';
+
+  @override
+  String get settingsRelockTimeout2Minutes => '2 minutes';
+
+  @override
+  String get settingsRelockTimeout15Minutes => '15 minutes';
+
+  @override
+  String get settingsRelockTimeout1Hour => '1 hour';
 
   @override
   String get settingsAppearanceTitle => 'Appearance';

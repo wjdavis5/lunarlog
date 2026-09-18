@@ -16,6 +16,15 @@ abstract final class SettingsKeys {
   static const String lastActiveProfile = 'last_active_profile';
   static const String relockEnabled = 'relock_enabled';
 
+  /// The operator-selected foreground inactivity relock timeout (issue
+  /// #762): a stringified whole-minute count, one of `'2'`, `'15'`, or
+  /// `'60'` (see `relockTimeoutFromStored`/`storedRelockTimeout` in
+  /// `lib/gate_controller.dart`, the single codec for this key). Absent —
+  /// or any unrecognized value, so a future value can never wedge the
+  /// gate — reads as 1 hour, the issue's default posture. Device-local by
+  /// design, the same display-preference posture as [relockEnabled].
+  static const String relockTimeout = 'relock_timeout';
+
   /// How many consecutive times the Android OS has refused
   /// `POST_NOTIFICATIONS` — the automatic ask in `initialize()` plus every
   /// "Turn on reminders" tap (Issue #168). Persisted so a permanently-

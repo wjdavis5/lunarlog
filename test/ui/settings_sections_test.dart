@@ -213,8 +213,10 @@ void main() {
     await pumpSettings(tester, profiles: [_profile('p1', 'Alice')]);
     expect(find.byKey(const ValueKey('relock-toggle')), findsOneWidget);
     expect(
-      find.textContaining('Locks the app after 2 minutes'),
+      find.textContaining('Locks the app after 1 hour'),
       findsOneWidget,
+      reason: 'issue #762: the subtitle names the selected duration, '
+          'defaulting to 1 hour',
     );
     expect(find.text('Privacy & security'), findsOneWidget);
     // Section-mates: the privacy policy tile renders under the same

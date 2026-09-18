@@ -17,8 +17,10 @@
 /// Guardians entry stays); Calendar holds the week-start and date-format
 /// pickers (new in #226) plus the per-profile predictions (#225) and
 /// measurement-unit (#457) sections; Privacy & security keeps the
-/// inactivity auto-relock toggle (default on, fixed 2-minute timeout,
-/// persisted via [SettingsKeys.relockEnabled]; backgrounding always
+/// inactivity auto-relock toggle (default on, persisted via
+/// [SettingsKeys.relockEnabled]) with its operator-selectable timeout
+/// (issue #762: 2 minutes / 15 minutes / 1 hour, default 1 hour,
+/// persisted via [SettingsKeys.relockTimeout]; backgrounding always
 /// re-locks regardless — its explanation survives intact, now with
 /// section-mates), the app PIN (#271), and the privacy policy; Help holds
 /// the offline help library (#139), feedback/support, and support history;
@@ -45,6 +47,7 @@ import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/gate_controller.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
@@ -70,6 +73,22 @@ import 'package:lunarlog/ui/startup/qa_build_banner.dart'
 import 'package:lunarlog/ui/theme/appearance.dart';
 import 'package:provider/provider.dart';
 
+/// The localized label for a relock-timeout [Duration] (issue #762).
+/// Any value outside [kRelockTimeoutOptions] (only possible from a test
+/// or a future build) reads as the 1-hour default, matching
+/// [relockTimeoutFromStored]'s fallback. A top-level function (rather
+/// than inline in the tile) so it carries its own test coverage instead
+/// of the untested navigation wiring around it.
+String relockTimeoutLabel(AppLocalizations l10n, Duration value) {
+  if (value == kRelockTimeout2Minutes) {
+    return l10n.settingsRelockTimeout2Minutes;
+  }
+  if (value == kRelockTimeout15Minutes) {
+    return l10n.settingsRelockTimeout15Minutes;
+  }
+  return l10n.settingsRelockTimeout1Hour;
+}
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, this.qaBuild});
 
@@ -87,6 +106,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _relock = true;
+  Duration _relockTimeout = kRelockTimeout1Hour;
   bool _loaded = false;
 
   /// Issue #739: the resolved QA-build flag for this screen's render.
@@ -98,9 +118,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final store = context.read<SettingsStore>();
     unawaited(() async {
       final value = await store.get(SettingsKeys.relockEnabled);
+      final timeoutRaw = await store.get(SettingsKeys.relockTimeout);
       if (!mounted) return;
       setState(() {
         _relock = value != 'false';
+        _relockTimeout = relockTimeoutFromStored(timeoutRaw);
         _loaded = true;
       });
     }());
@@ -277,9 +299,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Issue #739: a QA build renders the toggle disabled and off
             // with the QA note as its subtitle — relock is permanently off
             // in [GateController] for such a build, so an interactive
-            // switch claiming otherwise would lie.
+            // switch claiming otherwise would lie. Issue #762: the
+            // subtitle names the selected timeout, never a hard-coded one.
             subtitle: Text(
-              _qaBuild ? kQaBuildRelockNote : l10n.settingsRelockSubtitle,
+              _qaBuild
+                  ? kQaBuildRelockNote
+                  : l10n.settingsRelockSubtitle(
+                      relockTimeoutLabel(l10n, _relockTimeout),
+                    ),
             ),
             value: _qaBuild ? false : _relock,
             onChanged: _loaded && !_qaBuild
@@ -292,6 +319,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     );
                   }
+                : null,
+          ),
+          // Issue #762: the operator-selectable inactivity timeout — a
+          // fixed 2 minutes / 15 minutes / 1 hour choice (default 1 hour),
+          // persisted via [SettingsKeys.relockTimeout]. Disabled in a QA
+          // build (relock is structurally off there, so a choice would
+          // lie), but stays interactive while the toggle itself is off:
+          // the choice is remembered and applies when relock is
+          // re-enabled.
+          ListTile(
+            key: const ValueKey('relock-timeout-tile'),
+            leading: const Icon(Icons.timer_outlined),
+            title: Text(l10n.settingsRelockTimeoutTitle),
+            subtitle: Text(relockTimeoutLabel(l10n, _relockTimeout)),
+            trailing: const Icon(Icons.chevron_right),
+            enabled: _loaded && !_qaBuild,
+            onTap: _loaded && !_qaBuild
+                ? () => _openRelockTimeoutPicker(context, l10n)
                 : null,
           ),
           // Issue #271: optional in-app PIN, a second lock layer on top of
@@ -307,6 +352,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       );
+
+  /// Issue #762: the relock-timeout picker dialog — the three fixed
+  /// durations in [kRelockTimeoutOptions], mirroring the appearance
+  /// tile's picker shape (`RadioGroup` owning the selection).
+  Future<void> _openRelockTimeoutPicker(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l10n.settingsRelockTimeoutTitle),
+        children: [
+          RadioGroup<Duration>(
+            groupValue: _relockTimeout,
+            onChanged: (value) {
+              if (value != null) unawaited(_pickRelockTimeout(value));
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final option in kRelockTimeoutOptions)
+                  RadioListTile<Duration>(
+                    key: ValueKey('relock-timeout-option-${option.inMinutes}'),
+                    value: option,
+                    title: Text(relockTimeoutLabel(l10n, option)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Persists a relock-timeout choice (issue #762): closes the picker,
+  /// updates the tile optimistically, and writes through [SettingsStore]
+  /// — the gate's own watch picks the change up, which is the entire
+  /// propagation mechanism, no controller in between.
+  Future<void> _pickRelockTimeout(Duration value) async {
+    Navigator.of(context).pop();
+    setState(() => _relockTimeout = value);
+    await context
+        .read<SettingsStore>()
+        .set(SettingsKeys.relockTimeout, storedRelockTimeout(value));
+  }
 
   /// The Help section's children: the offline help library (Issue #139 —
   /// every card ships in the app bundle, so this needs no network),

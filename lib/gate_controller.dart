@@ -7,10 +7,17 @@
 ///   QA build (`LUNARLOG_QA_BUILD=true`) starts unlocked and never
 ///   re-locks, so testers reach the feature set without the credential
 ///   ceremony; the privacy cover below still applies.
-/// * Re-lock: backgrounding (paused/hidden — and `inactive`, which is what
-///   split-screen/multi-window focus loss reports) always re-locks;
-///   foreground inactivity re-locks after a timeout (default 2 minutes,
-///   toggleable via [SettingsKeys.relockEnabled], default on).
+/// * Re-lock: backgrounding (`paused`/`hidden`, which mean the UI is no
+///   longer visible) always re-locks; a transient `inactive` (which is
+///   what split-screen/multi-window focus loss, a notification-shade
+///   pull, Control Centre, or a call banner reports — and, on iPad Slide
+///   Over or an app-switcher peek, sometimes the only departure signal
+///   delivered) only covers, then re-locks if the app has still not
+///   returned to `resumed` when a short grace period elapses; foreground
+///   inactivity re-locks after a timeout (default 1 hour,
+///   operator-selectable from [kRelockTimeoutOptions] and persisted via
+///   [SettingsKeys.relockTimeout], toggleable via
+///   [SettingsKeys.relockEnabled], default on).
 /// * System-UI windows (#65; KTD2): the one exception to the above. While
 ///   the app itself has system UI on screen — its credential prompt, the
 ///   Google picker, the Apple sheet — a departure covers the content but
@@ -58,8 +65,53 @@ export 'package:lunarlog/domain/gate/pin_credential_service.dart';
 /// [applyPlatformPrivacyProtections].
 const String kPrivacyChannel = 'lunarlog/privacy';
 
-/// v1 inactivity auto-relock timeout (fixed; the settings screen shows it).
-const Duration kDefaultInactivityTimeout = Duration(minutes: 2);
+/// Foreground inactivity auto-relock timeout (issue #762): 1 hour unless
+/// the operator picked another value from [kRelockTimeoutOptions]
+/// (persisted via [SettingsKeys.relockTimeout]; absent or unparsable
+/// reads as 1 hour — see [relockTimeoutFromStored]).
+const Duration kDefaultInactivityTimeout = Duration(hours: 1);
+
+/// The operator-selectable foreground inactivity timeouts (issue #762):
+/// 2 minutes, 15 minutes, and 1 hour (the default). A small fixed set,
+/// not a free-form duration picker — the settings screen offers exactly
+/// these three.
+const Duration kRelockTimeout2Minutes = Duration(minutes: 2);
+const Duration kRelockTimeout15Minutes = Duration(minutes: 15);
+const Duration kRelockTimeout1Hour = Duration(hours: 1);
+
+/// Every value [kRelockTimeoutOptions] holds, in settings-screen order.
+const List<Duration> kRelockTimeoutOptions = [
+  kRelockTimeout2Minutes,
+  kRelockTimeout15Minutes,
+  kRelockTimeout1Hour,
+];
+
+/// Parses the persisted [SettingsKeys.relockTimeout] value: a stringified
+/// whole-minute count. `null` (never set) and any unrecognized value read
+/// as 1 hour, so a value written by a future build degrades to the
+/// issue's default posture rather than wedging the gate.
+Duration relockTimeoutFromStored(String? value) => switch (value) {
+      '2' => kRelockTimeout2Minutes,
+      '15' => kRelockTimeout15Minutes,
+      '60' => kRelockTimeout1Hour,
+      _ => kRelockTimeout1Hour,
+    };
+
+/// Encodes [value] for persistence through `SettingsStore.set`. Any value
+/// outside [kRelockTimeoutOptions] (only possible from a test or a future
+/// build) encodes as `'60'`, matching [relockTimeoutFromStored]'s fallback.
+String storedRelockTimeout(Duration value) {
+  if (value == kRelockTimeout2Minutes) return '2';
+  if (value == kRelockTimeout15Minutes) return '15';
+  return '60';
+}
+
+/// Hard bound on an open system-UI window (#65 U1; KTD5). This used to
+/// share [kDefaultInactivityTimeout]'s value when that was 2 minutes;
+/// since issue #762 raised the inactivity default to 1 hour, the window
+/// keeps its own 2-minute bound — a credential prompt must never stay
+/// suppressible for an hour.
+const Duration kDefaultSystemUiDeadline = Duration(minutes: 2);
 
 /// How long a closed system-UI window keeps absorbing lifecycle reports
 /// (#65 U1; KTD2a). The prompt's dismissal can report `inactive` *after*
@@ -149,7 +201,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     PinCredentialService? pinService,
     this.inactivityTimeout = kDefaultInactivityTimeout,
     this.inactivityTimerFactory = defaultInactivityTimerFactory,
-    this.systemUiDeadline = kDefaultInactivityTimeout,
+    this.systemUiDeadline = kDefaultSystemUiDeadline,
     this.settleTimeout = kSystemUiSettleTimeout,
     bool? qaBuild,
   })  : _gate = gate,
@@ -192,7 +244,15 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// settings screen uses this to decide whether to offer the toggle at
   /// all, without awaiting [PinCredentialService.isPinSet].
   bool get pinAvailable => _pinService != null;
-  final Duration inactivityTimeout;
+
+  /// The currently effective foreground inactivity timeout (issue #762).
+  /// Seeded from the constructor (default 1 hour) and kept live by
+  /// [attachSettings]'s [SettingsKeys.relockTimeout] watch afterwards —
+  /// the same seam pattern [relockEnabled] uses for its toggle.
+  Duration inactivityTimeout;
+
+  /// Alias read as the operator-facing "relock after" duration.
+  Duration get relockTimeout => inactivityTimeout;
   final InactivityTimerFactory inactivityTimerFactory;
 
   /// Hard bound on an open system-UI window (#65 U1; KTD5). Deliberately
@@ -222,6 +282,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   String? _pendingLaunchProfileId;
   InactivityTimer? _inactivityTimer;
   StreamSubscription<String?>? _relockSub;
+  StreamSubscription<String?>? _relockTimeoutSub;
 
   /// Last lifecycle state this controller was told about. Tracked here
   /// rather than read from `WidgetsBinding.instance` so the gate's own
@@ -257,6 +318,16 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   int get generation => _generation;
   InactivityTimer? _systemUiTimer;
   InactivityTimer? _settleTimer;
+
+  /// The transient-`inactive` grace timer (issue #762): armed on every
+  /// `inactive` that arrives outside a system-UI window, fired through
+  /// the same injectable [inactivityTimerFactory] seam (and the same
+  /// [settleTimeout] duration) as every other timer here — not a second
+  /// parallel mechanism, just a fourth use of the one factory. Cancelled
+  /// by a `resumed`, superseded by a `hidden`/`paused` (which lock at
+  /// once), and transferred into the window's own bookkeeping when
+  /// system UI opens while it is pending.
+  InactivityTimer? _inactiveGraceTimer;
 
   /// True while a departure must not lock the app: the app's own system UI
   /// is on screen, or it just came off and is still settling.
@@ -315,24 +386,45 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Subscribes the inactivity toggle to the persisted setting (read after
-  /// the database opens, so it is not available at construction).
+  /// Subscribes the inactivity toggle and the relock timeout to their
+  /// persisted settings (read after the database opens, so neither is
+  /// available at construction).
   void attachSettings(SettingsStore store) {
     unawaited(_relockSub?.cancel());
-    _relockSub = store.watch(SettingsKeys.relockEnabled).listen((value) {
-      // Issue #739: a QA build keeps relock off even when the persisted
-      // toggle says on — the setting is presentation for store builds
-      // only, and re-enabling it here would re-arm the inactivity
-      // countdown below on a build whose promise is "no prompts".
-      _relockEnabled = !_qaBuild && value != 'false'; // absent ⇒ default ON (fail closed)
-      if (_relockEnabled) {
-        _armInactivity();
-      } else {
-        _inactivityTimer?.cancel();
-        _inactivityTimer = null;
-      }
-      notifyListeners();
-    });
+    unawaited(_relockTimeoutSub?.cancel());
+    _relockSub =
+        store.watch(SettingsKeys.relockEnabled).listen(_onRelockEnabled);
+    _relockTimeoutSub =
+        store.watch(SettingsKeys.relockTimeout).listen(_onRelockTimeout);
+  }
+
+  /// The relock-toggle half of [attachSettings], split out to keep each
+  /// listener under the CRAP gate's complexity budget.
+  void _onRelockEnabled(String? value) {
+    // Issue #739: a QA build keeps relock off even when the persisted
+    // toggle says on — the setting is presentation for store builds
+    // only, and re-enabling it here would re-arm the inactivity
+    // countdown below on a build whose promise is "no prompts".
+    _relockEnabled = !_qaBuild && value != 'false'; // absent ⇒ default ON (fail closed)
+    if (_relockEnabled) {
+      _armInactivity();
+    } else {
+      _inactivityTimer?.cancel();
+      _inactivityTimer = null;
+    }
+    notifyListeners();
+  }
+
+  /// The relock-timeout half of [attachSettings] (issue #762): resolves
+  /// the persisted duration (absent or unparsable reads as 1 hour) and
+  /// re-arms the foreground countdown so a new choice takes effect
+  /// without an app restart. Never arms while suppressed, locked, or
+  /// toggled off — [_armInactivity] already guards all three, and a QA
+  /// build keeps [_relockEnabled] false so nothing arms there either.
+  void _onRelockTimeout(String? value) {
+    inactivityTimeout = relockTimeoutFromStored(value);
+    if (_relockEnabled) _armInactivity();
+    notifyListeners();
   }
 
   /// Runs [action] inside a system-UI window (#65 U1; KTD2, KTD2a): while
@@ -395,6 +487,16 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // `noteActivity` cannot refresh it. `_reconcileWindowClose` re-arms it.
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
+    // A transient `inactive` grace still pending while system UI opens
+    // (issue #762): the window takes over its bookkeeping, or the
+    // departure it was waiting on would be answered by nobody — the
+    // grace firing mid-window returns early on `_suppressingLock`, and
+    // the window's own settle would then see no absorbed departure.
+    if (_inactiveGraceTimer != null && !_resumed) {
+      _departedDuringWindow = true;
+    }
+    _inactiveGraceTimer?.cancel();
+    _inactiveGraceTimer = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = inactivityTimerFactory(
       systemUiDeadline,
@@ -723,6 +825,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   void lock() {
     _inactivityTimer?.cancel();
     _inactivityTimer = null;
+    // A lock answers every pending departure: a grace still waiting out
+    // its window (issue #762) must not fire later into an already-locked
+    // gate and notify twice for one departure.
+    _inactiveGraceTimer?.cancel();
+    _inactiveGraceTimer = null;
     // #271: a re-lock discards any pending PIN step — backgrounding
     // mid-entry must require the whole gate again, not resume where it
     // left off.
@@ -761,9 +868,12 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
       case AppLifecycleState.resumed:
         _resumedToForeground();
       case AppLifecycleState.inactive:
+        _resumed = false;
+        _inactiveDeparted();
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
         _resumed = false;
+        _cancelInactiveGrace();
         _departed();
       case AppLifecycleState.detached:
         break;
@@ -773,6 +883,9 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// The `resumed` half of [didChangeAppLifecycleState], split out to keep
   /// that switch under the CRAP gate's complexity budget.
   void _resumedToForeground() {
+    // A transient `inactive` round trip ends here (issue #762): the grace
+    // it armed is answered by the return, not by a lock.
+    _cancelInactiveGrace();
     _resumed = true;
     if (_systemUiWindows == 0) _obscured = false;
     if (!_locked && !_suppressingLock) _armInactivity();
@@ -789,27 +902,80 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Any departure from the foreground: cover the content (snapshots), and
-  /// re-lock unless the app itself put the system UI on screen.
+  /// Any real departure from visibility (`hidden`/`paused`): cover the
+  /// content (snapshots), and re-lock unless the app itself put the
+  /// system UI on screen.
   ///
   /// The cover is set either way — a window suppresses the *lock*, never
-  /// the snapshot posture. Outside a window the policy is unchanged, and
-  /// `inactive` still re-locks: on iPad Slide Over and an iOS app-switcher
-  /// peek it can be the only departure signal delivered, so narrowing it
-  /// would under-lock.
+  /// the snapshot posture. `inactive` no longer arrives here (issue #762
+  /// routes it to [_inactiveDeparted] instead), but the reasoning that
+  /// used to keep it in this set survives: on iPad Slide Over and an iOS
+  /// app-switcher peek `inactive` can be the only departure signal
+  /// delivered, and the grace expiry there still locks — a transient
+  /// overlay instead returns to `resumed` first and cancels it, which is
+  /// what separates the two cases.
   void _departed() {
     if (_suppressingLock) {
-      // A multi-step departure (Android's credential fallback reports
-      // inactive -> hidden -> paused for one prompt) reaches here three
-      // times; only the first changes anything.
-      final changed = !_obscured || !_departedDuringWindow;
-      _obscured = true;
-      _departedDuringWindow = true;
-      if (changed) notifyListeners();
+      _absorbDepartureInWindow();
       return;
     }
     _obscured = true;
     lock();
+  }
+
+  /// A transient departure (`inactive`, issue #762): cover the content
+  /// immediately — covering and locking are separate behaviours, and this
+  /// change only alters the second — but do not lock yet. The lock
+  /// follows only if the app has still not returned to `resumed` when a
+  /// short grace period elapses ([_onInactiveGraceExpired]); a
+  /// notification-shade pull, Control Centre swipe, or call banner that
+  /// comes straight back never locks at all.
+  void _inactiveDeparted() {
+    if (_suppressingLock) {
+      _absorbDepartureInWindow();
+      return;
+    }
+    final changed = !_obscured;
+    _obscured = true;
+    if (changed) notifyListeners();
+    // A locked gate needs no second lock, and issue #739's QA build never
+    // re-locks (`lock()` is a no-op there) — arming a grace that could
+    // only ever no-op would leave a pending timer behind for nothing.
+    if (_qaBuild || _locked) return;
+    _inactiveGraceTimer?.cancel();
+    _inactiveGraceTimer =
+        inactivityTimerFactory(settleTimeout, _onInactiveGraceExpired);
+  }
+
+  /// The transient-`inactive` grace fired: the operator never came back,
+  /// so the departure takes effect fail-closed. Guarded like
+  /// [_onSettleTimeout] — a return, a window that opened meanwhile, or a
+  /// disposal must not lock behind them.
+  void _onInactiveGraceExpired() {
+    _inactiveGraceTimer = null;
+    if (_disposed || _resumed || _suppressingLock || _qaBuild) return;
+    _departed();
+  }
+
+  /// Answers the pending transient-`inactive` grace without locking: the
+  /// operator returned (`resumed`), or a `hidden`/`paused` superseded it
+  /// with an immediate lock of its own.
+  void _cancelInactiveGrace() {
+    _inactiveGraceTimer?.cancel();
+    _inactiveGraceTimer = null;
+  }
+
+  /// A departure observed while the app's own system UI is on screen:
+  /// cover, remember it for the window's settle, notify only on change.
+  /// Shared by [_departed] and [_inactiveDeparted] — a multi-step
+  /// departure (Android's credential fallback reports inactive -> hidden
+  /// -> paused for one prompt) reaches here three times, and only the
+  /// first changes anything.
+  void _absorbDepartureInWindow() {
+    final changed = !_obscured || !_departedDuringWindow;
+    _obscured = true;
+    _departedDuringWindow = true;
+    if (changed) notifyListeners();
   }
 
   @override
@@ -823,7 +989,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _inactivityTimer?.cancel();
     _systemUiTimer?.cancel();
     _settleTimer?.cancel();
+    _inactiveGraceTimer?.cancel();
+    _inactiveGraceTimer = null;
     unawaited(_relockSub?.cancel());
+    unawaited(_relockTimeoutSub?.cancel());
     super.dispose();
   }
 }

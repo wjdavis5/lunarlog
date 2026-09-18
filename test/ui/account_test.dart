@@ -463,8 +463,9 @@ void main() {
       expect(gate.locked, isFalse);
     });
 
-    testWidgets('an email/password sign-in is unaffected: a departure during '
-        'it still locks the app (#65 R7)', (tester) async {
+    testWidgets('an email/password sign-in opens no system UI, so a '
+        'departure during it is not suppressed — it still locks once the '
+        'transient-inactive grace expires (#65 R7; #762)', (tester) async {
       final gateFake = FakeGate();
       final timers = FakeInactivityTimers();
       final gate = GateController(
@@ -482,8 +483,16 @@ void main() {
       await tester.pump();
 
       gate.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      // Issue #762: no system UI was opened, so this is the ordinary
+      // transient-inactive path — covered at once, then locked when the
+      // operator has not returned by the grace expiry.
+      expect(gate.locked, isFalse,
+          reason: 'a transient inactive is no longer an immediate lock');
+      expect(gate.obscured, isTrue);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
       expect(gate.locked, isTrue,
-          reason: 'no system UI was opened, so the policy is unchanged');
+          reason: 'no system UI was opened, so the departure is not '
+              'suppressed and takes effect once the grace expires');
 
       s.auth.hold!.complete();
       s.auth.hold = null;

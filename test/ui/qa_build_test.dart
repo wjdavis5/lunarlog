@@ -289,6 +289,10 @@ void main() {
           reason: 'and must not claim relock is on when it is structurally '
               'off');
       expect(find.text(kQaBuildRelockNote), findsOneWidget);
+      // Issue #762: the duration control is disabled too — relock is
+      // structurally off in a QA build, so offering a timeout would lie.
+      expect(tester.widget<ListTile>(key('relock-timeout-tile')).enabled,
+          isFalse);
     });
 
     testWidgets('a default build renders the working toggle', (tester) async {
@@ -300,6 +304,10 @@ void main() {
       expect(toggle.onChanged, isNotNull);
       expect(toggle.value, isTrue, reason: 'default ON (fail closed)');
       expect(find.text(kQaBuildRelockNote), findsNothing);
+      expect(tester.widget<ListTile>(key('relock-timeout-tile')).enabled,
+          isTrue);
+      expect(find.text('1 hour'), findsWidgets,
+          reason: 'issue #762: a store build defaults to the 1-hour timeout');
     });
   });
 
