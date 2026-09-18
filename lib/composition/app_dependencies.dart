@@ -21,6 +21,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/data/export/csv_export_writer.dart';
+import 'package:lunarlog/data/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
@@ -70,6 +71,7 @@ import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
+import 'package:lunarlog/domain/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/import_file_reader.dart';
@@ -128,6 +130,7 @@ class AppDependencies {
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
+    required this.clinicalPdfWriter,
     required this.attachmentSource,
     required this.exportSnapshot,
     required this.importFileReader,
@@ -178,6 +181,7 @@ class AppDependencies {
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
   final CsvExportWriter csvExportWriter;
+  final ClinicalPdfWriter clinicalPdfWriter;
   final AttachmentSource attachmentSource;
 
   /// Issue #140 review, LLA-084/LLA-094: the coherent point-in-time export
@@ -317,6 +321,7 @@ AppDependencies buildAppDependencies({
     ),
     fhirBundleWriter: const PlatformFhirBundleWriter(),
     csvExportWriter: const PlatformCsvExportWriter(),
+    clinicalPdfWriter: const PlatformClinicalPdfWriter(),
     attachmentSource: ImagePickerAttachmentSource(),
     exportSnapshot: DriftAccountExportSnapshotRepository(
       storage: storage,

@@ -646,6 +646,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSectionYourData => 'Your data';
 
   @override
+  String get clinicalPdfExportTitle => 'Export clinical summary (PDF)';
+
+  @override
+  String get clinicalPdfExportForProfileTitle => 'Export clinical summary for';
+
+  @override
   String get settingsSectionAppearance => 'Appearance';
 
   @override
