@@ -6,11 +6,35 @@ not a new source of technical fact — every claim here is backed by
 
 ## Audience
 
-Families with one or more adult guardians tracking menstrual cycles for
-themselves and/or minors in their care, where more than one adult
-(co-parents, other caregivers) needs visibility into or a hand in logging
-that data — not a single-user, single-device tracker. (`README.md`
+Households where more than one person has a hand in one person's cycle
+data — not a single-user, single-device tracker. That includes an adult
+tracking only for herself, an adult and a teenager tracking together, and
+a teenager tracking on her own with a parent alongside. (`README.md`
 "Family sharing"; roles `primary_guardian`/`co_parent`/`caregiver`/`viewer`.)
+
+### This product is not parent-first, and not parent-only
+
+Stated explicitly because earlier framing in this document implied it, and
+that framing propagated into the issue tracker:
+
+- **A minor can be a user in her own right.** She can install the app and
+  log for herself. Whether she is allowed to install apps on her device is
+  between her and her family; it is out of this product's scope.
+- **Either side can start.** A parent can create a profile and invite the
+  subject to log it herself; the subject can start on her own and invite a
+  parent in. Neither direction is the "real" one.
+- **A parent logging on a subject's behalf is a supported mode, not the
+  default mode.** It matters most for a younger child, for someone
+  unwell, or when the subject simply asks — and it stays available
+  afterwards rather than being replaced.
+- **Ownership transfer is a separate, later decision.** Being the subject
+  of a profile and owning the account that holds it are different things,
+  and the product should not require the second to support the first.
+
+The design consequence: any flow that assumes the parent is the first
+mover, the account holder, or the primary logger is wrong by construction.
+Invites, onboarding, and the logging surfaces all need to read sensibly
+from both ends.
 
 ## The family-collaboration story
 
