@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -35,6 +36,7 @@ class TodayLogFab extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.lifecycleMode,
     this.trackingPreferences,
     this.isMinor = false,
     this.todayProvider = LocalDate.today,
@@ -49,6 +51,11 @@ class TodayLogFab extends StatefulWidget {
   /// The profile's care mode (Issue #131): category headings and
   /// surfacing order in the day sheet this button opens.
   final ProfileMode mode;
+
+  /// The profile's life-stage mode (Issue #188/#204), forwarded to
+  /// [DaySheet] so Conceive mode surfaces Tests/Discharge first. Null means
+  /// no life-stage context: the standard order, never a guess.
+  final LifecycleMode? lifecycleMode;
 
   /// The profile's curated tracking categories (Issue #259), forwarded to
   /// [DaySheet]; null means never customized. Presentation only.
@@ -151,6 +158,7 @@ class _TodayLogFabState extends State<TodayLogFab>
         existing: existing,
         today: today,
         mode: widget.mode,
+        lifecycleMode: widget.lifecycleMode,
         trackingPreferences: widget.trackingPreferences,
         isMinor: widget.isMinor,
         timezoneProvider: widget.timezoneProvider,

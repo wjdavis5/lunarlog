@@ -2967,6 +2967,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Postpartum interval excluded from cycle averages'**
   String get postpartumExitExclusionDone;
+
+  /// Heading of the Conceive-mode Cycle View card, shown while profile_modes.mode is conceive (Issue #204).
+  ///
+  /// In en, this message translates to:
+  /// **'Conceive mode'**
+  String get conceiveTitle;
+
+  /// Label above the estimated fertile-window date range on the Conceive-mode card (Issue #204).
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated fertile window'**
+  String get conceiveWindowLabel;
+
+  /// Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Deliberately says 'in one study' so the number never reads as a personal probability.
+  ///
+  /// In en, this message translates to:
+  /// **'Most likely day: {date} (about {percent}% in one study)'**
+  String conceivePeakDay(String date, int percent);
 }
 
 class _AppLocalizationsDelegate

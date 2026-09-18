@@ -44,15 +44,17 @@
 /// "up returns to the first destination before exiting" guidance.
 library;
 
-import 'dart:async' show unawaited;
+import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -137,9 +139,43 @@ class _AppShellState extends State<AppShell> {
   /// every later switch, matching a standard lazy `IndexedStack`.
   final Set<AppTab> _everShown = {AppTab.today};
 
+  /// Issue #204: the active profile's life-stage mode, watched once here so
+  /// the Calendar tab's day sheet and the Today FAB's day sheet -- neither
+  /// of which has its own `profile_modes` watch -- reorder their category
+  /// headings in Conceive mode, exactly as the Cycle View's day sheet does.
+  /// Null repository (a test/unwired tree) leaves this at
+  /// [LifecycleMode.tracking], the same graceful degrade `OverviewPanel`'s
+  /// own nullable watch uses.
+  late final ProfileModesRepository? _profileModes =
+      Provider.of<ProfileModesRepository?>(context, listen: false);
+  StreamSubscription<ProfileLifecycleMode?>? _lifecycleModeSub;
+  LifecycleMode _lifecycleMode = LifecycleMode.tracking;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchLifecycleMode();
+  }
+
+  /// (Re)subscribes to the active profile's `profile_modes` row. A profile
+  /// switch ([didUpdateWidget]) must re-subscribe, since the row is keyed
+  /// by profile id.
+  void _watchLifecycleMode() {
+    unawaited(_lifecycleModeSub?.cancel());
+    _lifecycleModeSub = null;
+    final modes = _profileModes;
+    if (modes == null) return;
+    _lifecycleModeSub = modes.watch(widget.profile.id).listen((row) {
+      if (!mounted) return;
+      final next = row?.mode ?? LifecycleMode.tracking;
+      if (next != _lifecycleMode) setState(() => _lifecycleMode = next);
+    });
+  }
+
   @override
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.id != widget.profile.id) _watchLifecycleMode();
     // The widget is recreated in place whenever the home gate rebuilds (a
     // profile switch included), so this State survives -- same shape as
     // the pre-#182 ProfileDetailScreen seam this replaces. An ordinary
@@ -151,6 +187,13 @@ class _AppShellState extends State<AppShell> {
     if (token != null && token != oldWidget.launchToken) {
       _tab = AppTab.today;
     }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_lifecycleModeSub?.cancel());
+    _lifecycleModeSub = null;
+    super.dispose();
   }
 
   void _openPicker() => context.read<ProfileController>().openPicker();
@@ -189,6 +232,7 @@ class _AppShellState extends State<AppShell> {
           MonthCalendar(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            lifecycleMode: _lifecycleMode,
             trackingPreferences: widget.profile.trackingPreferences,
             isMinor: widget.profile.isMinor,
             todayProvider: widget.todayProvider,
@@ -285,6 +329,7 @@ class _AppShellState extends State<AppShell> {
               ? TodayLogFab(
                   profileId: widget.profile.id,
                   mode: widget.profile.mode,
+                  lifecycleMode: _lifecycleMode,
                   trackingPreferences: widget.profile.trackingPreferences,
                   isMinor: widget.profile.isMinor,
                   todayProvider: widget.todayProvider,
