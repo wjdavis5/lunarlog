@@ -274,6 +274,15 @@ void main() {
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('restoring')), findsNothing);
+      // Issue #262: the onboarding form is now a centred 560dp column, so
+      // on the default 800x600 test surface its trailing "Continue" action
+      // sits below the lazy ListView's build window — scroll it into view,
+      // the same way the cycle-question tests do for "Create profile".
+      await tester.scrollUntilVisible(
+        find.text('Continue'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Continue'), findsOneWidget,
           reason: 'nothing to restore from: the name form shows (#216)');
       await disposeApp(tester, db2);

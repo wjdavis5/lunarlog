@@ -68,6 +68,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
@@ -1537,10 +1538,12 @@ class _MonthCalendarState extends State<MonthCalendar>
               ),
             ),
           ),
-          Padding(
-            key: const ValueKey('calendar-weekday-header'),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
+          ResponsiveBody(
+            maxWidth: kCalendarGridMaxWidth,
+            child: Padding(
+              key: const ValueKey('calendar-weekday-header'),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
               children: [
                 // #138 (B-23): the narrow initial stays the visual child, but
                 // each column carries the full day name as its Semantics
@@ -1565,6 +1568,7 @@ class _MonthCalendarState extends State<MonthCalendar>
                     ),
                   ),
               ],
+              ),
             ),
           ),
           if (!estimateActive) _keepLoggingStrip(theme),
@@ -1582,12 +1586,22 @@ class _MonthCalendarState extends State<MonthCalendar>
                 // every cell keeps a 48dp-tall touch target.
                 return LayoutBuilder(
                   builder: (context, constraints) {
-                    final metrics = dayCellMetricsFor(
+                    // Issue #262: cap the width the cell geometry derives
+                    // from, so a 900dp tablet does not stretch each of the
+                    // seven columns to ~128dp of empty space. The column
+                    // count itself never changes — it is a calendar.
+                    final gridWidth = math.min(
                       constraints.maxWidth,
+                      kCalendarGridMaxWidth,
+                    );
+                    final metrics = dayCellMetricsFor(
+                      gridWidth,
                       MediaQuery.textScalerOf(context),
                     );
                     return SingleChildScrollView(
-                      child: Column(
+                      child: ResponsiveBody(
+                        maxWidth: kCalendarGridMaxWidth,
+                        child: Column(
                         children: [
                           // Issue #187 (B-8): a month with zero entries otherwise
                           // renders as a silent grid of bare day numbers with no
@@ -1649,6 +1663,7 @@ class _MonthCalendarState extends State<MonthCalendar>
                             ),
                           ),
                         ],
+                        ),
                       ),
                     );
                   },

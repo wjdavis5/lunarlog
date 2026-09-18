@@ -53,6 +53,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/account_section.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/settings_section.dart';
+import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/help/help_library_screen.dart';
 import 'package:lunarlog/ui/feedback/feedback_screen.dart'
     show kSupportEmailAddress;
@@ -168,7 +169,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Provider.of<NotificationPreferencesService?>(context) != null;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settingsTitle)),
-      body: ListView(
+      body: ResponsiveBody(
+        child: ListView(
         children: [
           // 1. Your data (Issue #222/#140) — self-hosts its SettingsSection
           // so it can keep self-hiding as a unit (web builds render none
@@ -229,6 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: const [AboutSection()],
           ),
         ],
+        ),
       ),
     );
   }

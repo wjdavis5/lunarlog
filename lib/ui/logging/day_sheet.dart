@@ -95,6 +95,7 @@ import 'package:provider/provider.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
+import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/intensity_selector.dart';
 import 'package:lunarlog/ui/components/sheet_drag_header.dart';
@@ -1445,11 +1446,20 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   Widget _sheetShell({required Widget child}) {
+    // Issue #262: in landscape the 85%-of-height cap leaves ~300dp for four
+    // chip categories plus the note field. The content is already scrollable
+    // ([_editableBody]'s Flexible + SingleChildScrollView, [_readOnlyBody]'s
+    // own scroll view) and the shell already pads by the keyboard inset, so
+    // the fix is a taller cap when width exceeds height (92% instead of 85%)
+    // plus the shared form max-width so the sheet never stretches full-bleed
+    // on a tablet. Verified: landscape-height pump with all chip categories
+    // and the note field reachable, and the note field above the keyboard.
+    final size = MediaQuery.sizeOf(context);
+    final maxHeight =
+        size.height * (size.width > size.height ? 0.92 : 0.85);
     return SafeArea(
       child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
-        ),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         // #198 (B-12): pad by the keyboard inset (the pattern already
         // correct in `accept_invite_sheet.dart`/`claim_profile_sheet.dart`)
         // so the sheet's own box shrinks when the keyboard is up — the
@@ -1462,7 +1472,7 @@ class _DaySheetState extends State<DaySheet> {
           16 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         width: double.infinity,
-        child: child,
+        child: ResponsiveBody(child: child),
       ),
     );
   }
