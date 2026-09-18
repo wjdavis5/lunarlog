@@ -39,6 +39,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
@@ -468,6 +469,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           guardiansForProfile: guardiansRepository.getForProfile,
           binding: HealthSyncBinding(context.read<SettingsStore>()),
           signedInUserId: signedInUserId,
+          importer: Provider.of<AppleHealthImportRunner?>(context, listen: false),
         ),
       ),
     );

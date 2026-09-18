@@ -29,6 +29,7 @@ import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/health/health_import_service.dart';
 import 'package:lunarlog/data/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
@@ -97,6 +98,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
 import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
@@ -582,6 +584,48 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     binding: binding,
     dayEntries: dayEntries,
     service: service,
+  );
+}
+
+/// Constructs the user-initiated Apple Health import runner (Issue #217),
+/// or null when the feature is gated off — the same `AppConfig.hasHealthSync`
+/// plus iOS-only gate the write coordinator uses. Unlike that coordinator
+/// there is nothing to start: the runner is a stateless-ish service the
+/// Settings screen calls once per explicit import action.
+///
+/// It is handed the read port (`createHealthImportSource`) and the write
+/// port (`createHealthPlatform`) from one platform, so `bindProfile` (the
+/// native guard mirror) and `requestWriteAuthorization` (which now also
+/// requests the read type) are the same calls the write path makes.
+AppleHealthImportRunner? buildAppleHealthImportRunner({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required DayEntriesRepository dayEntries,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return null;
+  final binding = HealthSyncBinding(settings);
+  return LocalAppleHealthImportService(
+    platform: createHealthPlatform(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: minorBindingAllowed,
+    ),
+    source: createHealthImportSource(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: minorBindingAllowed,
+    ),
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+    profiles: profiles,
+    dayEntries: dayEntries,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
   );
 }
 

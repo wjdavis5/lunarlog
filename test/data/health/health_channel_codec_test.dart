@@ -8,6 +8,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_channel_codec.dart';
 import 'package:lunarlog/domain/health/day_boundary.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -251,6 +252,99 @@ void main() {
       expect(HealthFlowValue.fromWire('spotting'), isNull);
       expect(HealthFlowValue.fromWire('none'), isNull);
       expect(HealthFlowValue.fromWire(null), isNull);
+    });
+  });
+
+  group('readMenstrualFlow codec (Issue #217)', () {
+    test('encodeReadWindowArgs crosses absolute instants as epoch ms', () {
+      final args = encodeReadWindowArgs(
+        DateTime.utc(2026, 8, 16),
+        DateTime.utc(2026, 9, 17),
+      );
+      expect(args['startMs'], DateTime.utc(2026, 8, 16).millisecondsSinceEpoch);
+      expect(args['endMs'], DateTime.utc(2026, 9, 17).millisecondsSinceEpoch);
+    });
+
+    test('a sample list decodes to HealthReadSamples with every field', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'uuid-1',
+          'flow': 'medium',
+          'startMs': DateTime.utc(2026, 9, 10, 4).millisecondsSinceEpoch,
+          'endMs': DateTime.utc(2026, 9, 11, 3, 59, 59).millisecondsSinceEpoch,
+          'tzName': 'America/New_York',
+          'externalUuid': 'entry-1',
+        },
+      ]);
+      expect(decoded, isA<HealthReadSamples>());
+      final sample = (decoded as HealthReadSamples).samples.single;
+      expect(sample.recordId, 'uuid-1');
+      expect(sample.flow, HealthFlowValue.medium);
+      expect(sample.start, DateTime.utc(2026, 9, 10, 4));
+      expect(sample.end, DateTime.utc(2026, 9, 11, 3, 59, 59));
+      expect(sample.tzName, 'America/New_York');
+      expect(sample.externalUuid, 'entry-1');
+    });
+
+    test('an empty list is a valid empty result, not a failure', () {
+      final decoded = decodeHealthReadResult(const <Object?>[]);
+      expect((decoded as HealthReadSamples).samples, isEmpty);
+    });
+
+    test('a sample without the optional keys still decodes', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'uuid-2',
+          'flow': 'light',
+          'startMs': 1000,
+          'endMs': 2000,
+        },
+      ]);
+      final sample = (decoded as HealthReadSamples).samples.single;
+      expect(sample.tzName, isNull);
+      expect(sample.externalUuid, isNull);
+    });
+
+    test('platform outcomes decode to their read variants', () {
+      expect(decodeHealthReadResult('unavailable'), isA<HealthReadUnavailable>());
+      expect(
+        decodeHealthReadResult('permissionDenied'),
+        isA<HealthReadPermissionDenied>(),
+      );
+    });
+
+    test('every HealthSyncCheck deny name round-trips to refused', () {
+      for (final check in HealthSyncCheck.values) {
+        if (check == HealthSyncCheck.allowed) continue;
+        final decoded = decodeHealthReadResult(check.name);
+        expect((decoded as HealthReadRefused).check, check);
+      }
+    });
+
+    test('a malformed sample is a failed result, never a silent skip', () {
+      expect(
+        decodeHealthReadResult([
+          {'recordId': 'uuid-3', 'flow': 'medium', 'startMs': 1},
+        ]),
+        isA<HealthReadFailed>(),
+      );
+      expect(
+        decodeHealthReadResult([
+          {
+            'recordId': 'uuid-4',
+            'flow': 'bogus',
+            'startMs': 1,
+            'endMs': 2,
+          },
+        ]),
+        isA<HealthReadFailed>(),
+      );
+    });
+
+    test('an unknown string and a non-list/non-string result are failures',
+        () {
+      expect(decodeHealthReadResult('nonsense'), isA<HealthReadFailed>());
+      expect(decodeHealthReadResult(7), isA<HealthReadFailed>());
     });
   });
 }

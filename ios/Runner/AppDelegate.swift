@@ -211,6 +211,20 @@ enum HealthKitChannelHandler {
       default: return nil
       }
     }
+
+    /// The wire string for the read direction (Issue #217), mirroring
+    /// `HealthFlowValue.toWire()` in `health_channel_codec.dart`. Only the
+    /// three real intensities are ever read back intentionally; a stored
+    /// `unspecified` is still mapped so the Dart codec can recognise and
+    /// count it rather than treat the sample as malformed.
+    var wire: String {
+      switch self {
+      case .unspecified: return "unspecified"
+      case .light: return "light"
+      case .medium: return "medium"
+      case .heavy: return "heavy"
+      }
+    }
   }
 
   /// The guard-args half of every guarded call (mirrors
@@ -358,12 +372,18 @@ enum HealthKitChannelHandler {
         menstrualFlowType,
         intermenstrualBleedingType,
       ]
+      // Issue #217: the read set is no longer empty. It carries only the
+      // menstrual-flow type the user-initiated import reads; the four
+      // Apple-computed cycle-deviation types are deliberately NOT requested
+      // and are never read or written. The one system sheet now covers both
+      // the write types and the read type.
+      let toRead: Set<HKObjectType> = [menstrualFlowType]
       Task {
         do {
           // iOS's sheet reports completion, not the user's choice —
-          // denial only surfaces on the first actual write.
+          // denial only surfaces on the first actual write/read.
           _ = try await store.requestAuthorization(
-            toShare: toShare, read: [])  // async overload takes a non-optional Set; empty = read nothing
+            toShare: toShare, read: toRead)
           result("allowed")
         } catch {
           result(
@@ -535,6 +555,48 @@ enum HealthKitChannelHandler {
         }
       }
 
+    case "readMenstrualFlow":
+      // Issue #217 (#781's read decision): the user-initiated menstrual-flow
+      // import. Guarded identically to a write (the device-binding decision
+      // is the same), then a bounded sample query. Success returns an array
+      // of primitive maps (StandardMessageCodec), not a result string;
+      // authorization opacity means a denied read arrives here as an empty
+      // array, never an error.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "readMenstrualFlow requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+      else {
+        badArgs(result, "readMenstrualFlow requires startMs/endMs")
+        return
+      }
+      Task {
+        do {
+          let payload = try await readMenstrualFlowSamples(
+            start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+            end: Date(timeIntervalSince1970: Double(endMs) / 1000.0))
+          result(payload)
+        } catch {
+          result(
+            FlutterError(
+              code: "readFailed",
+              message: "readMenstrualFlow failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
+
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -546,6 +608,57 @@ enum HealthKitChannelHandler {
 
   private static var intermenstrualBleedingType: HKCategoryType {
     HKObjectType.categoryType(forIdentifier: .intermenstrualBleeding)!
+  }
+
+  /// Reads menstrual-flow samples in `[start, end]` (Issue #217) and flattens
+  /// each into the primitive map `health_channel_codec.dart`'s
+  /// `decodeHealthReadResult` parses.
+  ///
+  /// **Echo prevention is mandatory here.** A sample lunarlog itself wrote
+  /// (#193) comes back with `sourceRevision.source.bundleIdentifier` equal to
+  /// this app's bundle id; re-importing it would duplicate every entry and
+  /// loop the write and read directions, so any such sample is dropped before
+  /// it reaches Dart.
+  ///
+  /// The sample's own IANA zone rides `HKMetadataKeyTimeZone`; Dart resolves
+  /// the civil date from it (day_boundary.dart's #180 contract) — never from
+  /// the device's current zone. `HKMetadataKeyExternalUUID` is passed through
+  /// for diagnostics. A sample whose value is not a known flow intensity is
+  /// skipped rather than guessed.
+  private static func readMenstrualFlowSamples(
+    start: Date,
+    end: Date
+  ) async throws -> [[String: Any]] {
+    let predicate = HKQuery.predicateForSamples(
+      withStart: start, end: end, options: [])
+    let samples = try await querySamples(
+      ofType: menstrualFlowType, predicate: predicate)
+    let ownBundleId = Bundle.main.bundleIdentifier
+    var payload: [[String: Any]] = []
+    for case let sample as HKCategorySample in samples {
+      if let ownBundleId,
+        sample.sourceRevision.source.bundleIdentifier == ownBundleId
+      {
+        continue
+      }
+      guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
+        continue
+      }
+      var entry: [String: Any] = [
+        "recordId": sample.uuid.uuidString,
+        "flow": flow.wire,
+        "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+        "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+      ]
+      if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+        entry["tzName"] = tz
+      }
+      if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
+        entry["externalUuid"] = external
+      }
+      payload.append(entry)
+    }
+    return payload
   }
 
   /// Runs an `HKSampleQuery` over `store` and awaits its results. HealthKit

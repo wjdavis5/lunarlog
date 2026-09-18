@@ -56,8 +56,10 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 
 import '../../domain/health/day_boundary.dart';
+import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
 import '../../domain/health/health_sync_binding.dart';
+import '../../domain/health/health_sync_policy.dart';
 import 'android_health_channel.dart';
 import 'health_channel_codec.dart';
 import 'ios_health_channel.dart';
@@ -74,7 +76,11 @@ const String kHealthChannelName = 'lunarlog/health';
 /// and nothing else — the same single-source rule
 /// `health_sync_policy.dart` states for every other caller; tests pass
 /// their own value.
-class MethodChannelHealthPlatform implements HealthPlatformStore {
+///
+/// It also implements the read port ([HealthImportSource], Issue #217):
+/// the same adapter, one more capability, gated by the same binding.
+class MethodChannelHealthPlatform
+    implements HealthPlatformStore, HealthImportSource {
   MethodChannelHealthPlatform({
     this.channel = const MethodChannel(kHealthChannelName),
     required this.binding,
@@ -92,15 +98,21 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
   /// proceed to the channel"; a non-null result is the refusal to return
   /// instead.
   Future<HealthPlatformResult?> _guard(HealthGuardFacts facts) async {
-    final check = await binding.canWrite(
-      profile: facts.profile,
-      signedInUserId: facts.signedInUserId,
-      ownerUserId: facts.ownerUserId,
-      minorBindingAllowed: minorBindingAllowed,
-    );
+    final check = await _guardCheck(facts);
     if (check.isAllowed) return null;
     return HealthPlatformResult.refused(check);
   }
+
+  /// The raw [HealthSyncCheck] the guard evaluates — the read port needs
+  /// the check itself (it returns [HealthReadResult], not
+  /// [HealthPlatformResult]), while the write port wraps it.
+  Future<HealthSyncCheck> _guardCheck(HealthGuardFacts facts) =>
+      binding.canWrite(
+        profile: facts.profile,
+        signedInUserId: facts.signedInUserId,
+        ownerUserId: facts.ownerUserId,
+        minorBindingAllowed: minorBindingAllowed,
+      );
 
   /// Sends one guarded call. [dayArgs]/[payloadArgs] are *builders*, not
   /// maps: they are evaluated only after the guard allowed, so (a) a
@@ -251,6 +263,47 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
         facts,
         payloadArgs: () => {'recordIds': recordIds},
       );
+
+  /// The read/import half (Issue #217): the same guard ordering as every
+  /// write — the Dart binding is evaluated first and a deny returns
+  /// [HealthReadResult.refused] without any channel call — then the call
+  /// carries the same guard facts so the native handler re-evaluates its
+  /// mirrored predicate before issuing the query. A denial of *read
+  /// permission* never surfaces here as an error: HealthKit returns an
+  /// empty sample list for it, which decodes to
+  /// [HealthReadResult.samples] with no entries, exactly like "no data".
+  @override
+  Future<HealthReadResult> readMenstrualFlow(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final check = await _guardCheck(facts);
+    if (!check.isAllowed) return HealthReadResult.refused(check);
+    try {
+      final raw =
+          await channel.invokeMethod<Object?>(HealthChannelMethods.readMenstrualFlow, {
+        ...encodeGuardArgs(facts, minorBindingAllowed: minorBindingAllowed),
+        ...encodeReadWindowArgs(start, end),
+      });
+      return decodeHealthReadResult(raw);
+    } on PlatformException catch (error) {
+      return _readPlatformFailure(error);
+    } on MissingPluginException {
+      return const HealthReadResult.unavailable();
+    } on Exception catch (error) {
+      return HealthReadResult.failed('readMenstrualFlow failed: $error');
+    }
+  }
+
+  HealthReadResult _readPlatformFailure(PlatformException error) =>
+      switch (error.code) {
+        'unavailable' => const HealthReadResult.unavailable(),
+        'permissionDenied' => const HealthReadResult.permissionDenied(),
+        _ => HealthReadResult.failed(
+            'readMenstrualFlow failed (${error.code}): ${error.message}',
+          ),
+      };
 }
 
 /// The default [HealthPlatformStore] for platforms with no native half
@@ -259,7 +312,8 @@ class MethodChannelHealthPlatform implements HealthPlatformStore {
 /// "an unsupported platform fails cleanly, never crashes" is itself the
 /// testable behavior. Guarded methods answer `unavailable()` without
 /// touching any channel; `isAvailable()` is `false`.
-class UnsupportedHealthPlatform implements HealthPlatformStore {
+class UnsupportedHealthPlatform
+    implements HealthPlatformStore, HealthImportSource {
   const UnsupportedHealthPlatform();
 
   @override
@@ -302,6 +356,14 @@ class UnsupportedHealthPlatform implements HealthPlatformStore {
     List<String> recordIds,
   ) async =>
       const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthReadResult> readMenstrualFlow(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      const HealthReadResult.unavailable();
 }
 
 /// Production wiring entry: the platform adapter for [platform]
@@ -309,6 +371,34 @@ class UnsupportedHealthPlatform implements HealthPlatformStore {
 /// [UnsupportedHealthPlatform] wherever no native half exists — web
 /// above all (health-store sync is a native-only feature, like push).
 HealthPlatformStore createHealthPlatform(
+  TargetPlatform? platform, {
+  required HealthSyncBinding binding,
+  required bool minorBindingAllowed,
+}) {
+  switch (platform ?? defaultTargetPlatform) {
+    case TargetPlatform.iOS:
+      return IOSHealthChannel(
+        binding: binding,
+        minorBindingAllowed: minorBindingAllowed,
+      );
+    case TargetPlatform.android:
+      return AndroidHealthChannel(
+        binding: binding,
+        minorBindingAllowed: minorBindingAllowed,
+      );
+    case TargetPlatform.fuchsia ||
+          TargetPlatform.linux ||
+          TargetPlatform.macOS ||
+          TargetPlatform.windows:
+      return const UnsupportedHealthPlatform();
+  }
+}
+
+/// Production wiring entry for the read/import port (Issue #217) — the same
+/// adapter [createHealthPlatform] builds, exposing its read capability. A
+/// separate factory (rather than widening [createHealthPlatform]'s return
+/// type) keeps each caller dependent on only the port it uses.
+HealthImportSource createHealthImportSource(
   TargetPlatform? platform, {
   required HealthSyncBinding binding,
   required bool minorBindingAllowed,

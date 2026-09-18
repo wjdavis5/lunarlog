@@ -176,4 +176,37 @@ void main() {
       );
     });
   });
+
+  group('flowLevelFromHealthValue / healthFlowValueRank (Issue #217 read '
+      'direction)', () {
+    test('the three real intensities invert their write mapping', () {
+      expect(flowLevelFromHealthValue(HealthFlowValue.light), FlowLevel.light);
+      expect(flowLevelFromHealthValue(HealthFlowValue.medium), FlowLevel.medium);
+      expect(flowLevelFromHealthValue(HealthFlowValue.heavy), FlowLevel.heavy);
+    });
+
+    test('unspecified has no lunarlog equivalent and is null, never guessed',
+        () {
+      expect(flowLevelFromHealthValue(HealthFlowValue.unspecified), isNull);
+    });
+
+    test('rank orders unspecified < light < medium < heavy so the highest '
+        'sample wins a same-day merge', () {
+      expect(
+        healthFlowValueRank(HealthFlowValue.unspecified) <
+            healthFlowValueRank(HealthFlowValue.light),
+        isTrue,
+      );
+      expect(
+        healthFlowValueRank(HealthFlowValue.light) <
+            healthFlowValueRank(HealthFlowValue.medium),
+        isTrue,
+      );
+      expect(
+        healthFlowValueRank(HealthFlowValue.medium) <
+            healthFlowValueRank(HealthFlowValue.heavy),
+        isTrue,
+      );
+    });
+  });
 }
