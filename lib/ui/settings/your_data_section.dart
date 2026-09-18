@@ -238,8 +238,7 @@ class _YourDataSectionState extends State<YourDataSection> {
         leading: const Icon(Icons.file_upload_outlined),
         title: const Text('Import from file'),
         subtitle: const Text(
-          'Restore profiles and day entries from a JSON file this app '
-          'exported.',
+          'Restore from a JSON backup, or bring in a Clue export (.zip).',
         ),
         onTap: () => pushNamedScreen(context, kRouteImportScreen),
       ),

@@ -32,6 +32,7 @@ import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
 import 'package:lunarlog/data/import/account_importer.dart';
+import 'package:lunarlog/data/import/clue_importer.dart';
 import 'package:lunarlog/data/import/import_file_picker.dart';
 import 'package:lunarlog/data/notifications/firebase_push_token_source.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart';
@@ -74,6 +75,8 @@ import 'package:lunarlog/domain/export/csv_export_writer.dart';
 import 'package:lunarlog/domain/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
+    show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
@@ -135,6 +138,7 @@ class AppDependencies {
     required this.exportSnapshot,
     required this.importFileReader,
     required this.accountImportCoordinator,
+    required this.clueImportRunner,
     required this.prediction,
     required this.cycleHistory,
     required this.cycleExclusions,
@@ -189,6 +193,11 @@ class AppDependencies {
   final AccountExportSnapshotRepository exportSnapshot;
   final ImportFileReader importFileReader;
   final AccountImportCoordinator accountImportCoordinator;
+
+  /// Issue #452: the effectful Clue-export write path the import screen
+  /// drives, typed as the domain [ClueImportRunner] so `lib/ui` never names
+  /// `ClueImporter` or the raw storage object.
+  final ClueImportRunner clueImportRunner;
   final CyclePredictionService prediction;
   final CycleHistoryService cycleHistory;
   final CycleExclusionList cycleExclusions;
@@ -341,6 +350,7 @@ AppDependencies buildAppDependencies({
       currentUserIdProvider: currentUserIdProvider,
       importer: accountImporter,
     ),
+    clueImportRunner: ClueImporter(storage),
     // Issue #233: the profile_modes birth-control watcher feeds the
     // predictor's branch (withdrawal-bleed -> pack schedule, continuous ->
     // suppressed). Issue #551: goes through ProfileModesRepository.watch

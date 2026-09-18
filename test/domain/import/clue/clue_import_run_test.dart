@@ -7,14 +7,32 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/import/clue/clue_export_parser.dart';
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
+import 'package:lunarlog/domain/import/clue/clue_zip_reader.dart';
 import 'package:lunarlog/domain/limits.dart';
 
 List<int> _fixtureBytes(String name) =>
     File('test/fixtures/clue/$name').readAsBytesSync();
+
+/// Builds an in-memory, password-protected zip with `ZipEncoder` (the same
+/// package the reader uses), mirroring `clue_zip_reader_test.dart`'s
+/// helper — a real Clue-shaped archive, not a mocked extractor.
+Uint8List _zipOf(Map<String, List<int>> files, {String password = ''}) {
+  final archive = Archive();
+  for (final entry in files.entries) {
+    archive.addFile(ArchiveFile.bytes(entry.key, entry.value));
+  }
+  // `ZipEncoder` cannot take an empty password (it treats '' as an AES key
+  // and throws); omit it for an unencrypted archive.
+  final encoder =
+      password.isEmpty ? ZipEncoder() : ZipEncoder(password: password);
+  return Uint8List.fromList(encoder.encode(archive));
+}
 
 void main() {
   group('clueFileChecksum', () {
@@ -149,6 +167,62 @@ void main() {
       expect(
         summary.summaryLines.join('\n'),
         contains('nothing needed the unrecognised-data fallback'),
+      );
+    });
+  });
+
+  group('looksLikeZipArchive', () {
+    test('recognises a real zip and rejects JSON/short input', () {
+      final zip = _zipOf({'measurements.json': utf8.encode('[]')});
+      expect(looksLikeZipArchive(zip), isTrue);
+      expect(looksLikeZipArchive(utf8.encode('{"schemaVersion":4}')), isFalse);
+      expect(looksLikeZipArchive(const [0x50]), isFalse);
+      expect(looksLikeZipArchive(const []), isFalse);
+    });
+  });
+
+  group('prepareClueImport', () {
+    test('decrypts a Clue-shaped zip and summarises it, writing nothing', () {
+      final zipBytes = _zipOf(
+        {'measurements.json': _fixtureBytes('multi_cycle_bleeding.json')},
+        password: 'clue-pass',
+      );
+      final preview = prepareClueImport(
+        zipBytes: zipBytes,
+        password: 'clue-pass',
+      );
+      expect(preview.parseResult.datapoints, isNotEmpty);
+      expect(preview.fileChecksum, clueFileChecksum(zipBytes));
+      expect(preview.summary.datapointCount, preview.parseResult.datapoints.length);
+      expect(preview.summary.cycleBoundariesReconstructed, greaterThan(0));
+    });
+
+    test('a wrong password throws a typed ClueZipException', () {
+      final zipBytes = _zipOf(
+        {'measurements.json': utf8.encode('[]')},
+        password: 'right',
+      );
+      expect(
+        () => prepareClueImport(zipBytes: zipBytes, password: 'wrong'),
+        throwsA(isA<ClueZipException>()),
+      );
+    });
+
+    test('a zip without measurements.json is not a Clue export', () {
+      final zipBytes = _zipOf({'notes.txt': utf8.encode('hello')});
+      expect(
+        () => prepareClueImport(zipBytes: zipBytes, password: ''),
+        throwsA(isA<ClueZipException>().having(
+            (e) => e.message, 'message', contains('not found'))),
+      );
+    });
+
+    test('a non-array measurements.json throws a typed ClueImportException',
+        () {
+      final zipBytes = _zipOf({'measurements.json': utf8.encode('"nope"')});
+      expect(
+        () => prepareClueImport(zipBytes: zipBytes, password: ''),
+        throwsA(isA<ClueImportException>()),
       );
     });
   });

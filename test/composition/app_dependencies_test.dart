@@ -27,6 +27,8 @@ import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
+import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
+    show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences_service.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
@@ -264,6 +266,7 @@ void main() {
         same(deps.importFileReader));
     expect(context.read<AccountImportCoordinator>(),
         same(deps.accountImportCoordinator));
+    expect(context.read<ClueImportRunner>(), same(deps.clueImportRunner));
     expect(context.read<CyclePredictionService>(), same(deps.prediction));
     expect(context.read<CycleHistoryService>(), same(deps.cycleHistory));
     expect(context.read<CycleExclusionList>(), same(deps.cycleExclusions));

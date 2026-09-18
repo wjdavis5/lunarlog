@@ -3057,6 +3057,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Compare cycles'**
   String get perimenopauseCompareButton;
+
+  /// Import > Clue path: prompt for the one-time password Clue emails with an export (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Clue emails a one-time password with the export. Enter it to open the file.'**
+  String get importCluePasswordPrompt;
+
+  /// Import > Clue path: label of the export-password field (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Export password'**
+  String get importClueExportPasswordLabel;
+
+  /// Import > Clue path: button that decrypts and parses the picked export (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Open export'**
+  String get importClueOpenExport;
+
+  /// Import > Clue path: shown when no profile exists yet, so the import creates one (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'A new profile will be created for this import.'**
+  String get importClueNewProfileNote;
+
+  /// Import > Clue path: label of the new-profile name field (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Profile name'**
+  String get importClueProfileNameLabel;
+
+  /// Import > Clue path: cancel button returning to the pick step (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get importClueCancel;
+
+  /// Import > Clue path: confirm button that writes the prepared export (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importClueImport;
+
+  /// Import > Clue path: closes the screen after a successful import (Issue #452).
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get importClueDone;
 }
 
 class _AppLocalizationsDelegate
