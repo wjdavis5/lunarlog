@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -228,6 +229,7 @@ class _HarnessExportSnapshotRepository implements AccountExportSnapshotRepositor
         profileMode: null,
         cycleOverrides: const <CycleOverride>[],
         mergeEvents: const <DayEntryMergeEvent>[],
+        customTags: const <CustomTag>[],
       );
 }
 
@@ -575,6 +577,7 @@ void main() {
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
+          Map<String, List<CustomTag>>? customTagsByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -614,6 +617,7 @@ void main() {
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
+          Map<String, List<CustomTag>>? customTagsByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -666,6 +670,7 @@ void main() {
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
+          Map<String, List<CustomTag>>? customTagsByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');
@@ -701,6 +706,7 @@ void main() {
           Map<String, ProfileLifecycleMode?>? profileModesByProfile = const {},
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
+          Map<String, List<CustomTag>>? customTagsByProfile = const {},
           required appVersion,
         }) async {
           await exportHold.future;

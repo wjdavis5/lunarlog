@@ -20,6 +20,7 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
+import 'package:lunarlog/data/repositories/drift_tag_registry_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
@@ -50,6 +51,7 @@ Map<String, Object?> _rawProfile(
   List<Map<String, Object?>> dayEntries = const [],
   List<Map<String, Object?>> observations = const [],
   List<Map<String, Object?>> cycleOverrides = const [],
+  List<Map<String, Object?>> customTags = const [],
 }) =>
     {
       'id': id,
@@ -63,6 +65,29 @@ Map<String, Object?> _rawProfile(
       'dayEntries': dayEntries,
       'observations': observations,
       'cycleOverrides': cycleOverrides,
+      'customTags': customTags,
+    };
+
+/// A `profiles[].customTags[]` element (Issue #824).
+Map<String, Object?> _rawCustomTag(
+  String id,
+  String code,
+  String displayName, {
+  String category = 'custom',
+  bool intensityEnabled = false,
+  String? hiddenAt,
+  int? sortOrder,
+}) =>
+    {
+      'id': id,
+      'code': code,
+      'displayName': displayName,
+      'category': category,
+      'intensityEnabled': intensityEnabled,
+      'hiddenAt': hiddenAt,
+      'sortOrder': sortOrder,
+      'createdAt': '2026-01-01T00:00:00.000Z',
+      'updatedAt': '2026-01-01T00:00:00.000Z',
     };
 
 /// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084).
@@ -138,6 +163,7 @@ void main() {
   late DriftDayEntriesRepository entries;
   late DriftObservationsRepository observations;
   late DriftCycleOverridesRepository cycleOverrides;
+  late DriftTagRegistryRepository tagRegistry;
 
   setUp(() {
     db = LunarLogDatabase(NativeDatabase.memory());
@@ -146,6 +172,7 @@ void main() {
     entries = DriftDayEntriesRepository(storage);
     observations = DriftObservationsRepository(storage);
     cycleOverrides = DriftCycleOverridesRepository(storage);
+    tagRegistry = DriftTagRegistryRepository(storage);
   });
 
   tearDown(() => db.close());
@@ -160,6 +187,7 @@ void main() {
         observationsRepository: observations,
         storage: storage,
         cycleOverridesRepository: cycleOverrides,
+        tagRegistryRepository: tagRegistry,
         guardiansForProfile: guardiansForProfile,
         currentUserId: currentUserId,
       );
@@ -579,6 +607,43 @@ void main() {
               'the file row sharing its raw id');
       final added = all.singleWhere((o) => o.id != localOverride.id);
       expect(added.cycleStartDate, '2026-03-01');
+    });
+
+    test('customTags are additive for both a created and a matched profile, '
+        'and a colliding file id is safely re-minted', () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+      final localTag = await storage.upsertProfileTagRegistryEntry(
+        profileId: existingProfile.id,
+        code: 'cramps_mild',
+        displayName: 'Mild Cramps',
+        category: 'custom',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      final document = _parse(_document(profiles: [
+        _rawProfile(existingProfile.id, customTags: [
+          _rawCustomTag(localTag.id, 'herbal_tea', 'Herbal Tea'),
+          _rawCustomTag(
+              '00000000000000000000000099', 'cramps_mild', 'Duplicate Cramps'),
+        ]),
+      ]));
+
+      final plan = await coordinator().buildPlan(document);
+      final tagPlans = plan.profiles.single.customTags;
+      expect(tagPlans[0].outcome, CustomTagImportOutcome.add);
+      expect(tagPlans[1].outcome, CustomTagImportOutcome.skip);
+
+      await coordinator().apply(plan);
+
+      final all = await tagRegistry.listForProfile(existingProfile.id);
+      expect(all, hasLength(2));
+      final untouched = all.singleWhere((t) => t.id == localTag.id);
+      expect(untouched.code, 'cramps_mild');
+      expect(untouched.displayName, 'Mild Cramps');
+      final added = all.singleWhere((t) => t.id != localTag.id);
+      expect(added.code, 'herbal_tea');
+      expect(added.displayName, 'Herbal Tea');
     });
   });
 
@@ -1007,12 +1072,22 @@ void main() {
         code: 'cramps',
         intensity: 3,
       );
+      await storage.upsertProfileTagRegistryEntry(
+        profileId: sourceProfile.id,
+        code: 'cramps_severe',
+        displayName: 'Severe Cramps',
+        category: 'custom',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
 
       final exportDocument = buildAccountExport(
         profiles: [sourceProfile],
         entriesByProfile: {sourceProfile.id: sourceEntries},
         observationsByProfile: {
           sourceProfile.id: await observations.listForProfile(sourceProfile.id),
+        },
+        customTagsByProfile: {
+          sourceProfile.id: await tagRegistry.listForProfile(sourceProfile.id),
         },
         exportedAt: DateTime.utc(2026, 1, 10),
         appVersion: '1.0.0+1',
@@ -1025,11 +1100,13 @@ void main() {
       final targetProfiles = DriftProfilesRepository(targetStorage);
       final targetEntries = DriftDayEntriesRepository(targetStorage);
       final targetObservations = DriftObservationsRepository(targetStorage);
+      final targetTagRegistry = DriftTagRegistryRepository(targetStorage);
       final targetCoordinator = DriftAccountImportCoordinator(
         profilesRepository: targetProfiles,
         dayEntriesRepository: targetEntries,
         observationsRepository: targetObservations,
         storage: targetStorage,
+        tagRegistryRepository: targetTagRegistry,
       );
 
       final parsed = parseAccountImport(_bytes(exportDocument));
@@ -1042,6 +1119,7 @@ void main() {
       expect(summary.profilesCreated, 1);
       expect(summary.entriesAdded, 2);
       expect(summary.observationsAdded, 1);
+      expect(summary.customTagsAdded, 1);
 
       final restoredProfile = (await targetProfiles.list()).single;
       expect(restoredProfile.displayName, sourceProfile.displayName);
@@ -1065,6 +1143,12 @@ void main() {
       expect(restoredObservations.single.category, 'pain');
       expect(restoredObservations.single.code, 'cramps');
       expect(restoredObservations.single.intensity, 3);
+
+      final restoredTags =
+          await targetTagRegistry.listForProfile(restoredProfile.id);
+      expect(restoredTags, hasLength(1));
+      expect(restoredTags.single.code, 'cramps_severe');
+      expect(restoredTags.single.displayName, 'Severe Cramps');
     });
   });
 }

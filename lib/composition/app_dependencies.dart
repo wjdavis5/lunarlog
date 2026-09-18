@@ -278,6 +278,7 @@ AppDependencies buildAppDependencies({
   // Issue #568 (b): the synced source of truth cycle-history omissions read
   // and write through now, instead of the device-local settings list.
   final cycleOverrides = DriftCycleOverridesRepository(storage);
+  final tagRegistry = DriftTagRegistryRepository(storage);
   // One-time carry-over of any pre-existing device-local omissions into
   // cycle_overrides rows (see migrateOmittedCyclesToCycleOverrides's own
   // doc comment for its idempotency). Fired and forgotten:
@@ -318,7 +319,7 @@ AppDependencies buildAppDependencies({
     dayEntries: dayEntries,
     observations: observations,
     careContent: DriftCareContentRepository(storage),
-    tagRegistry: DriftTagRegistryRepository(storage),
+    tagRegistry: tagRegistry,
     settings: settings,
     profileModes: profileModes,
     profileGuardians: profileGuardians,
@@ -340,6 +341,7 @@ AppDependencies buildAppDependencies({
       observationsRepository: observations,
       profileModesRepository: profileModes,
       cycleOverridesRepository: cycleOverrides,
+      tagRegistryRepository: tagRegistry,
     ),
     importFileReader: const PickImportFileReader(),
     accountImportCoordinator: DriftAccountImportCoordinator(
@@ -348,6 +350,7 @@ AppDependencies buildAppDependencies({
       observationsRepository: observations,
       storage: storage,
       cycleOverridesRepository: cycleOverrides,
+      tagRegistryRepository: tagRegistry,
       guardiansForProfile: profileGuardians.getForProfile,
       currentUserIdProvider: currentUserIdProvider,
       importer: accountImporter,

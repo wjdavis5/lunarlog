@@ -40,6 +40,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
@@ -369,6 +370,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       final profileModesByProfile = <String, ProfileLifecycleMode?>{};
       final cycleOverridesByProfile = <String, List<CycleOverride>>{};
       final mergeEventsByProfile = <String, List<DayEntryMergeEvent>>{};
+      final customTagsByProfile = <String, List<CustomTag>>{};
       for (final profile in profiles) {
         final snapshot = await snapshotRepo.forProfile(profile.id);
         entriesByProfile[profile.id] = snapshot.entries;
@@ -376,6 +378,7 @@ class _YourDataSectionState extends State<YourDataSection> {
         profileModesByProfile[profile.id] = snapshot.profileMode;
         cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
         mergeEventsByProfile[profile.id] = snapshot.mergeEvents;
+        customTagsByProfile[profile.id] = snapshot.customTags;
         careNotesByProfile[profile.id] =
             await careContentRepo.listCareNotes(profile.id);
         visitPrepByProfile[profile.id] =
@@ -391,6 +394,7 @@ class _YourDataSectionState extends State<YourDataSection> {
         profileModesByProfile: profileModesByProfile,
         cycleOverridesByProfile: cycleOverridesByProfile,
         mergeEventsByProfile: mergeEventsByProfile,
+        customTagsByProfile: customTagsByProfile,
         appVersion: kAppVersionForExport,
       );
     } catch (error) {
