@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -25,11 +26,13 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:provider/provider.dart';
 
 import '../support/erroring_day_entries_repository.dart';
@@ -54,6 +57,34 @@ DayEntry _entryFor(String profileId, LocalDate date, FlowLevel flow) =>
       tags: const [],
       updatedAt: DateTime.utc(2026, 1, 1),
     );
+
+/// Seeds a spotting observation (issue #761) on [date], creating the day
+/// entry it hangs off [flow] (the day sheet's own `notBleeding` +
+/// observation shape). Returns the entry so a test can seed a bleed level
+/// or a legacy `flow = 'spotting'` row instead and still attach spotting.
+Future<DayEntry> _seedSpotting(
+  LunarLogDatabase db,
+  String profileId,
+  LocalDate date, {
+  FlowLevel flow = FlowLevel.notBleeding,
+}) async {
+  final entry = await DriftDayEntriesRepository(db.storage).save(
+    _entryFor(profileId, date, flow),
+  );
+  await DriftObservationsRepository(db.storage).save(
+    Observation(
+      id: '',
+      dayEntryId: entry.id,
+      profileId: profileId,
+      localDate: date,
+      tz: 'America/Chicago',
+      category: 'spotting',
+      code: 'spotting',
+      updatedAt: DateTime.utc(2026, 1, 1),
+    ),
+  );
+  return entry;
+}
 
 /// Records every `watchForProfile` call's `from`/`to` while delegating
 /// everything else to a real [DriftDayEntriesRepository] (issue #197): lets
@@ -125,6 +156,45 @@ class RecordingDayEntriesRepository implements DayEntriesRepository {
       const [];
 }
 
+/// Issue #761: an observations repository that reports exactly
+/// [spottingIsos] as live spotting observations — proves `MonthCalendar`'s
+/// constructor seam is what drives the marker, not the ambient provider.
+class FakeSpottingObservationsRepository implements ObservationsRepository {
+  FakeSpottingObservationsRepository(this.spottingIsos);
+
+  final Set<String> spottingIsos;
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async => [
+        for (final iso in spottingIsos)
+          Observation(
+            id: 'obs-$iso',
+            dayEntryId: 'entry-$iso',
+            profileId: profileId,
+            localDate: LocalDate.fromIso(iso),
+            tz: 'America/Chicago',
+            category: 'spotting',
+            code: 'spotting',
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+      ];
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+    String dayEntryId,
+  ) async => const [];
+
+  @override
+  Future<Observation> save(Observation observation) async => observation;
+
+  @override
+  Future<void> delete(String id) async {}
+}
+
 Future<Harness> pumpCalendar(
   WidgetTester tester, {
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
@@ -158,6 +228,11 @@ Future<Harness> pumpCalendar(
   // ActivePrediction across an unrelated rebuild — the #550 memoisation
   // guard, so far.
   bool withPredictionServices = false,
+  // Issue #761: mounts the calendar with an explicit `observationsRepository`
+  // constructor seam instead of the ambient provider, proving the widget's
+  // own injected seam — the same shape `RecordingDayEntriesRepository`
+  // exercises for entries. Null keeps every other test on the provider path.
+  ObservationsRepository? observationsRepository,
 }) async {
   tester.view.physicalSize = physicalSize;
   tester.view.devicePixelRatio = 1.0;
@@ -175,6 +250,12 @@ Future<Harness> pumpCalendar(
     MultiProvider(
       providers: [
         Provider<DayEntriesRepository>.value(value: repository),
+        // Issue #761: the spotting marker's data path — the repository
+        // itself is always provided (mirroring `lib/app.dart`), so the
+        // calendar's ambient fallback has something to resolve.
+        Provider<ObservationsRepository>.value(
+          value: observationsRepository ?? DriftObservationsRepository(db.storage),
+        ),
         if (withPredictionServices) ...[
           Provider<CyclePredictionService?>.value(
             value: CyclePredictionService(repository),
@@ -197,6 +278,7 @@ Future<Harness> pumpCalendar(
           body: MonthCalendar(
             profileId: profile.id,
             todayProvider: () => kToday,
+            observationsRepository: observationsRepository,
           ),
         ),
       ),
@@ -224,6 +306,8 @@ void main() {
 
       expect(find.byKey(const ValueKey('calendar-legend')), findsOneWidget);
       for (final label in [
+        // Issue #761: the observation-backed spotting ring is keyed again.
+        'Spotting flow',
         'Light flow',
         'Medium flow',
         'Heavy flow',
@@ -240,17 +324,32 @@ void main() {
           reason: 'missing legend entry: $label',
         );
       }
-      // Issue #247: spotting is no longer a flow level (it reads back as
-      // `notBleeding`, which is never a bleed marker) and the ramp has no
-      // dedicated slot for it, so the legend no longer carries a
-      // "Spotting flow" entry.
       // Issue #220: this harness pumps no prediction service, so no band
       // can exist here at all - the legend must not advertise the PMS
       // swatch when the grid can never show the badge (the positive case
       // lives in forecast_calendar_test.dart's band test, which runs the
       // full provider stack).
       expect(find.text('PMS window'), findsNothing);
-      expect(find.text('Spotting flow'), findsNothing);
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets('issue #761: the legend keys spotting with the ring swatch, '
+        'not a fill (it never counts as a bleed day)', (tester) async {
+      final h = await pumpCalendar(tester);
+
+      final entry = find.byKey(const ValueKey('legend-spotting'));
+      expect(entry, findsOneWidget);
+
+      // The row's swatch is drawn as a ring (`_LegendSwatchStyle.ring`), so
+      // its Container carries a border and no fill colour — the same shape
+      // the grid's spotting cell uses. Asserting the decoration (not just
+      // the label) pins the visual promise the legend makes.
+      final swatch = tester.widget<Container>(
+        find.descendant(of: entry, matching: find.byType(Container)).first,
+      );
+      final decoration = swatch.decoration! as BoxDecoration;
+      expect(decoration.border, isNotNull);
+      expect(decoration.color, isNull);
       await disposeCalendar(tester, h);
     });
 
@@ -359,9 +458,9 @@ void main() {
       },
     );
 
-    testWidgets('the deprecated spotting alias and the explicit notBleeding '
-        'assertion both read back as a non-bleed day (Issue #247): neither '
-        'renders a bleed marker', (tester) async {
+    testWidgets('issue #761: a legacy `flow = spotting` row still renders the '
+        'spotting marker (the repository synthesises the observation), while '
+        'an explicit notBleeding assertion stays bare', (tester) async {
       final h = await pumpCalendar(
         tester,
         seed: (db, profileId) async {
@@ -376,10 +475,138 @@ void main() {
         },
       );
 
+      // Issue #247 still holds: neither day renders a graded bleed fill.
       for (final iso in ['2026-08-06', '2026-08-07']) {
         expect(find.byKey(ValueKey('bleed-$iso')), findsNothing);
       }
+      // ... but pre-#247 data is not lost: the alias renders the same
+      // ring-plus-centre-dot treatment a fresh spotting observation gets,
+      // via `listForProfile`'s synthesised row.
+      expect(
+        find.byKey(const ValueKey('spotting-2026-08-06')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('flow-spotting-dot-2026-08-06')),
+        findsOneWidget,
+      );
+      // The explicit not-bleeding day carries no spotting fact at all.
+      expect(
+        find.byKey(const ValueKey('flow-spotting-dot-2026-08-07')),
+        findsNothing,
+      );
       await disposeCalendar(tester, h);
+    });
+
+    testWidgets('issue #761: a spotting-only day renders the ring-plus-dot '
+        'marker instead of a bare cell', (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        seed: (db, profileId) async {
+          await _seedSpotting(db, profileId, LocalDate(2026, 8, 4));
+        },
+      );
+
+      expect(
+        find.byKey(const ValueKey('flow-spotting-dot-2026-08-04')),
+        findsOneWidget,
+      );
+      // A ring, never a fill — spotting must stay distinguishable from
+      // every graded bleed level without colour.
+      final ring = tester.widget<Container>(
+        find.byKey(const ValueKey('spotting-2026-08-04')),
+      );
+      final decoration = ring.decoration! as BoxDecoration;
+      expect(decoration.border, isNotNull);
+      expect(decoration.color, isNull);
+      expect(find.byKey(const ValueKey('bleed-2026-08-04')), findsNothing);
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets('issue #761: the constructor seam alone drives the marker '
+        '(an injected repository, not the ambient provider)', (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        seed: (db, profileId) async {
+          await DriftDayEntriesRepository(db.storage).save(
+            _entryFor(profileId, LocalDate(2026, 8, 8), FlowLevel.notBleeding),
+          );
+        },
+        // The db-backed provider in the harness holds no observations, so a
+        // rendered marker can only have come from this seam.
+        observationsRepository: FakeSpottingObservationsRepository({
+          '2026-08-08',
+        }),
+      );
+
+      expect(
+        find.byKey(const ValueKey('flow-spotting-dot-2026-08-08')),
+        findsOneWidget,
+      );
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets('issue #761: a day with both a bleed level and spotting '
+        'renders the bleed fill, never the spotting ring', (tester) async {
+      final h = await pumpCalendar(
+        tester,
+        seed: (db, profileId) async {
+          await _seedSpotting(
+            db,
+            profileId,
+            LocalDate(2026, 8, 9),
+            flow: FlowLevel.medium,
+          );
+        },
+      );
+
+      final bleed = tester.widget<Container>(
+        find.byKey(const ValueKey('bleed-2026-08-09')),
+      );
+      final decoration = bleed.decoration! as BoxDecoration;
+      expect(decoration.color, colors.flowMedium);
+      expect(decoration.border, isNull);
+      expect(
+        find.byKey(const ValueKey('flow-spotting-dot-2026-08-09')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('spotting-2026-08-09')), findsNothing);
+      await disposeCalendar(tester, h);
+    });
+
+    test('issue #761: the day-cell semantics name the spotting fact, and a '
+        'bleed level still wins when both are present', () {
+      final l10n = AppLocalizationsEn();
+
+      final spottingOnly = dayCellSemanticLabel(
+        date: LocalDate(2026, 8, 4),
+        entry: _entryFor('p', LocalDate(2026, 8, 4), FlowLevel.notBleeding),
+        today: kToday,
+        cell: null,
+        l10n: l10n,
+        hasSpotting: true,
+      );
+      expect(spottingOnly, contains('Spotting flow'));
+      expect(
+        spottingOnly,
+        isNot(contains('Not bleeding')),
+        reason: 'a spotting day must not be announced as a bleed level',
+      );
+
+      final both = dayCellSemanticLabel(
+        date: LocalDate(2026, 8, 9),
+        entry: _entryFor('p', LocalDate(2026, 8, 9), FlowLevel.medium),
+        today: kToday,
+        cell: null,
+        l10n: l10n,
+        hasSpotting: true,
+      );
+      expect(both, contains('Medium flow'));
+      expect(
+        both,
+        isNot(contains('Spotting')),
+        reason: 'bleed wins: the label matches the rendered bleed fill',
+      );
     });
 
     testWidgets('the four flow levels use four visually distinct ramp tones '

@@ -94,6 +94,7 @@ import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/intensity_selector.dart';
+import 'package:lunarlog/ui/components/sheet_drag_header.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/logging/widgets/custom_tag_manager_sheet.dart';
 import 'package:lunarlog/ui/theme/haptics.dart';
@@ -1805,6 +1806,49 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
+  /// The sheet's date header row (issue #763): the human-readable title
+  /// plus the attribution badge, shared by the editable body (pinned above
+  /// its scroll view) and the read-only body. Split out of [_editableBody]
+  /// so both bodies — and the [SheetDragHeader] wrapping them — read one
+  /// definition, keeping each method under the CRAP gate.
+  ///
+  /// [date] is the title's date: the editable body passes `widget.date`
+  /// while the read-only body passes its entry's own date (the same day in
+  /// practice, but the read-only path historically rendered the entry's).
+  Widget _sheetHeaderRow(ThemeData theme, LocalDate date) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: LLSpace.space2),
+      // A Wrap, not a Row (#198): the human-readable title is
+      // wider than the raw ISO string it replaced, and a long
+      // attribution badge beside it would overflow horizontally
+      // — the badge flows to a second line instead.
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          // #138: flagged as a heading so the sheet's date is
+          // reachable through screen-reader heading navigation.
+          Semantics(
+            header: true,
+            child: Text(
+              key: const ValueKey('day-sheet-date-title'),
+              daySheetDateLabel(date, widget.today, preference: _dateFormat),
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          if (widget.existing != null)
+            CaregiverAttributionBadge(
+              loggedByUserId: widget.existing!.loggedByUserId,
+              lastModifiedByUserId: widget.existing!.lastModifiedByUserId,
+              currentUserId: widget.currentUserId,
+              guardians: widget.guardians,
+              source: widget.existing!.source.toDb(),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _editableBody() {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -1812,48 +1856,22 @@ class _DaySheetState extends State<DaySheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Issue #763: the date header is pinned chrome above the scroll
+        // view (not its first child) and wrapped in [SheetDragHeader], so
+        // a downward drag started on it dismisses the sheet instead of
+        // being eaten by the scrollable — previously only the ~24px drag
+        // handle did. Chips, fields, and the scroll content itself are
+        // untouched, so their gestures keep working as before.
+        SheetDragHeader(
+          key: const ValueKey('day-sheet-drag-header'),
+          child: _sheetHeaderRow(theme, widget.date),
+        ),
         Flexible(
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: LLSpace.space2),
-                  // A Wrap, not a Row (#198): the human-readable title is
-                  // wider than the raw ISO string it replaced, and a long
-                  // attribution badge beside it would overflow horizontally
-                  // — the badge flows to a second line instead.
-                  child: Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      // #138: flagged as a heading so the sheet's date is
-                      // reachable through screen-reader heading navigation.
-                      Semantics(
-                        header: true,
-                        child: Text(
-                          key: const ValueKey('day-sheet-date-title'),
-                          daySheetDateLabel(
-                            widget.date,
-                            widget.today,
-                            preference: _dateFormat,
-                          ),
-                          style: theme.textTheme.titleMedium,
-                        ),
-                      ),
-                      if (widget.existing != null)
-                        CaregiverAttributionBadge(
-                          loggedByUserId: widget.existing!.loggedByUserId,
-                          lastModifiedByUserId:
-                              widget.existing!.lastModifiedByUserId,
-                          currentUserId: widget.currentUserId,
-                          guardians: widget.guardians,
-                          source: widget.existing!.source.toDb(),
-                        ),
-                    ],
-                  ),
-                ),
                 // Issue #130: the quiet, dismissible same-date merge notice
                 // — shown to every guardian (the winner too), with the
                 // losing author's recovery affordance rendered inside.
@@ -2151,14 +2169,14 @@ class _DaySheetState extends State<DaySheet> {
   /// this) spotting/graded-pain-intensity lines could exceed
   /// [_sheetShell]'s `maxHeight` with nothing to scroll, overflowing off
   /// the bottom of a small or heavily text-scaled screen. Mirrors the
-  /// editable body's own `SingleChildScrollView` (`_editableBody`); unlike
-  /// that body, the read-only view has no pinned bottom area sharing space
-  /// with it, so it needs no enclosing `Flexible`/`Column` — this scroll
-  /// view can be [_sheetShell]'s child directly. A `SingleChildScrollView`
-  /// shrink-wraps to its child's actual height when that height already
-  /// fits, so a short read-only day (little or no content) renders exactly
-  /// as tall as before this fix — it only starts scrolling once content
-  /// would otherwise overflow.
+  /// editable body's own `SingleChildScrollView` (`_editableBody`). A
+  /// `SingleChildScrollView` shrink-wraps to its child's actual height when
+  /// that height already fits, so a short read-only day (little or no
+  /// content) renders exactly as tall as before this fix — it only starts
+  /// scrolling once content would otherwise overflow. Issue #763: the date
+  /// header is now pinned above this scroll view (inside a
+  /// [SheetDragHeader]), which is why the scroll view is wrapped in a
+  /// [Flexible]/[Column] the way [_editableBody]'s already was.
   Widget _readOnlyBody() {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -2184,95 +2202,98 @@ class _DaySheetState extends State<DaySheet> {
         ),
       );
     }
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (reason != null) ...[
-            Text(
-              reason,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: LLSpace.space2),
-          ],
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Issue #763: same pinned-header treatment as the editable body —
+        // the date header (with the read-only reason above it) sits
+        // outside the scroll view inside [SheetDragHeader], so a downward
+        // drag started on it dismisses the sheet instead of scrolling.
+        SheetDragHeader(
+          key: const ValueKey('day-sheet-drag-header'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // #138: heading flag mirrors the editable sheet's date title.
-              Semantics(
-                header: true,
-                child: Text(
-                  key: const ValueKey('day-sheet-date-title'),
-                  daySheetDateLabel(
-                    existing.localDate,
-                    widget.today,
-                    preference: _dateFormat,
+              if (reason != null) ...[
+                Text(
+                  reason,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                  style: theme.textTheme.titleMedium,
                 ),
-              ),
-              CaregiverAttributionBadge(
-                loggedByUserId: existing.loggedByUserId,
-                lastModifiedByUserId: existing.lastModifiedByUserId,
-                currentUserId: widget.currentUserId,
-                guardians: widget.guardians,
-                source: existing.source.toDb(),
-              ),
+                const SizedBox(height: LLSpace.space2),
+              ],
+              _sheetHeaderRow(theme, existing.localDate),
             ],
           ),
-          const SizedBox(height: LLSpace.space3),
-          Text(
-            AppLocalizations.of(context).daySheetFlowLabel,
-            style: theme.textTheme.labelMedium,
-          ),
-          Text(
-            localizedFlowLabel(existing.flow, l10n),
-            style: theme.textTheme.titleSmall,
-          ),
-          // Issue #220: the read-only view names the PMS marker too, so a
-          // viewer (or a reviewing guardian) sees the phase even though the
-          // toggle itself is disabled here.
-          if (existing.pms) ...[
-            const SizedBox(height: LLSpace.space3),
-            Text(l10n.daySheetPmsGroup, style: theme.textTheme.labelMedium),
-            Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
-          ],
-          // Issue #642, LLA-011.
-          ..._readOnlyChildObservationsSection(theme, l10n),
-          if (existing.tags.isNotEmpty) ...[
-            const SizedBox(height: LLSpace.space3),
-            Text(
-              AppLocalizations.of(context).daySheetTagsLabel,
-              style: theme.textTheme.labelMedium,
-            ),
-            Wrap(
-              spacing: LLSpace.space2,
-              runSpacing: LLSpace.space1,
+        ),
+        Flexible(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final code in existing.tags)
-                  // Issue #257: registry-aware resolution — a custom tag's
-                  // display name where available (retired tags included),
-                  // the raw code otherwise (never dropped, #237).
-                  Chip(key: ValueKey('read-only-tag-$code'), label: Text(_displayOf(code))),
+                const SizedBox(height: LLSpace.space3),
+                Text(
+                  AppLocalizations.of(context).daySheetFlowLabel,
+                  style: theme.textTheme.labelMedium,
+                ),
+                Text(
+                  localizedFlowLabel(existing.flow, l10n),
+                  style: theme.textTheme.titleSmall,
+                ),
+                // Issue #220: the read-only view names the PMS marker too,
+                // so a viewer (or a reviewing guardian) sees the phase even
+                // though the toggle itself is disabled here.
+                if (existing.pms) ...[
+                  const SizedBox(height: LLSpace.space3),
+                  Text(
+                    l10n.daySheetPmsGroup,
+                    style: theme.textTheme.labelMedium,
+                  ),
+                  Text(l10n.daySheetPmsChip, style: theme.textTheme.titleSmall),
+                ],
+                // Issue #642, LLA-011.
+                ..._readOnlyChildObservationsSection(theme, l10n),
+                if (existing.tags.isNotEmpty) ...[
+                  const SizedBox(height: LLSpace.space3),
+                  Text(
+                    AppLocalizations.of(context).daySheetTagsLabel,
+                    style: theme.textTheme.labelMedium,
+                  ),
+                  Wrap(
+                    spacing: LLSpace.space2,
+                    runSpacing: LLSpace.space1,
+                    children: [
+                      for (final code in existing.tags)
+                        // Issue #257: registry-aware resolution — a custom
+                        // tag's display name where available (retired tags
+                        // included), the raw code otherwise (never dropped,
+                        // #237).
+                        Chip(
+                          key: ValueKey('read-only-tag-$code'),
+                          label: Text(_displayOf(code)),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: LLSpace.space3),
+                Text(
+                  AppLocalizations.of(context).daySheetNoteLabel,
+                  style: theme.textTheme.labelMedium,
+                ),
+                Text(
+                  (existing.note == null || existing.note!.isEmpty)
+                      ? AppLocalizations.of(context).daySheetNoNote
+                      : existing.note!,
+                ),
               ],
             ),
-          ],
-          const SizedBox(height: LLSpace.space3),
-          Text(
-            AppLocalizations.of(context).daySheetNoteLabel,
-            style: theme.textTheme.labelMedium,
           ),
-          Text(
-            (existing.note == null || existing.note!.isEmpty)
-                ? AppLocalizations.of(context).daySheetNoNote
-                : existing.note!,
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

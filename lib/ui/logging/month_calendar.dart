@@ -23,10 +23,11 @@
 /// distinction survives without colour. Issue #247: spotting is no
 /// longer a flow level (it is an `observations` category row, and a
 /// stored legacy `flow = 'spotting'` row reads back as the explicit
-/// `notBleeding` assertion) — it no longer renders here at all, so the
-/// ring-plus-centre-dot spotting treatment this comment used to describe
-/// is gone along with it. A legend strip keys every mark the grid can
-/// show; the month
+/// `notBleeding` assertion). Issue #761: a spotting-only day renders the
+/// old ring-plus-centre-dot treatment again, now driven by that
+/// observation (bleed wins on a day carrying both) rather than by the
+/// deprecated [FlowLevel.spotting] alias. A legend strip keys every mark
+/// the grid can show; the month
 /// grid is a swipeable [PageView] (the chevrons drive the same
 /// controller); a "Today" header action jumps to and highlights the
 /// current month; and tapping the month label opens a month/year picker
@@ -58,6 +59,7 @@ import 'package:lunarlog/domain/prediction/forecast.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
@@ -267,9 +269,10 @@ DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
 /// A logged bleed [level]'s fill/on-fill pair from the #176 `flow*` ramp
 /// (issue #191 B-2). `spotting`'s `fill` doubles as its ring/centre-dot
 /// colour in [_MonthCalendarState._flowCircle] — it never fills the whole
-/// circle. [_MonthCalendarState._dayCircle] only ever calls this with a
-/// bleed level (`isBleed(level)`, which excludes `none`, the deprecated
-/// `spotting` alias, and `notBleeding` — Issue #247); those three share
+/// circle. [_MonthCalendarState._dayCircle] calls this with a bleed level
+/// (`isBleed(level)`) or with the deprecated `spotting` alias as the
+/// observation-backed spotting marker (issue #761 — a spotting-only day
+/// renders through that same branch); `none`/`notBleeding` still share
 /// spotting's case rather than adding branches no caller can reach.
 /// Issue #247: [FlowLevel.superHeavy] has no dedicated ramp slot — it
 /// reuses [LunarLogColors.flowHeavy]/`onFlowHeavy`, distinguished from
@@ -291,7 +294,8 @@ DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
 };
 
 /// The non-colour intensity channel (issue #191 B-2): a small dot count
-/// climbing from 1 (spotting) to 5 (super heavy, issue #247), independent
+/// climbing from 1 (spotting, issue #761's observation-backed marker) to
+/// 5 (super heavy, issue #247), independent
 /// of the `flow*` ramp's hue/saturation — asserted directly in widget
 /// tests via the `flow-mark-<i>-<iso>` keys [_MonthCalendarState._flowCircle]
 /// renders. See [_flowTone] on why `none`/`notBleeding` share spotting's
@@ -377,6 +381,10 @@ String dayCellSemanticLabel({
   List<String>? weekdayNames,
   bool readOnly = false,
   String? fertileWindowLabel,
+  // Issue #761: the observation-backed spotting fact — [DayEntry] carries
+  // no observations field, so the calendar threads its own spotting set
+  // through here alongside the entry.
+  bool hasSpotting = false,
 }) {
   final months = monthNames ?? dates.monthNames();
   final weekdays = weekdayNames ?? dates.fullWeekdayNames();
@@ -398,18 +406,24 @@ String dayCellSemanticLabel({
     parts.add(l10n.calendarCellFuture);
     return parts.join(', ');
   }
-  parts.addAll(_loggedDayParts(entry, l10n));
+  parts.addAll(_loggedDayParts(entry, l10n, hasSpotting: hasSpotting));
   if (date == today) parts.add(l10n.calendarCellToday);
   if (readOnly) parts.add(l10n.calendarCellReadOnly);
   return parts.join(', ');
 }
 
 /// The logged-day fragments of [dayCellSemanticLabel] (#138): a bleed day
-/// names its level plus symptom presence; a symptom-only day says so; a
+/// names its level plus symptom presence; a spotting-only day (issue #761)
+/// names the spotting fact the same way so the screen-reader label matches
+/// the ring the grid draws; a symptom-only day says so; a
 /// bare logged day still answers "was anything logged?" and names the
 /// absence of symptoms, so symptom presence is announced for every logged
 /// cell, not only the ones with tags.
-List<String> _loggedDayParts(DayEntry? entry, AppLocalizations l10n) {
+List<String> _loggedDayParts(
+  DayEntry? entry,
+  AppLocalizations l10n, {
+  bool hasSpotting = false,
+}) {
   if (entry == null) return [l10n.calendarCellNotLogged];
   // Issue #249: pain_free is a positive "none today" assertion, never a
   // symptom — a day carrying only it is announced as symptom-free.
@@ -417,6 +431,17 @@ List<String> _loggedDayParts(DayEntry? entry, AppLocalizations l10n) {
   if (isBleed(entry.flow)) {
     return [
       l10n.calendarCellFlowState(localizedFlowLabel(entry.flow, l10n)),
+      hasSymptoms
+          ? l10n.calendarCellSymptomsLogged
+          : l10n.calendarCellNoSymptoms,
+    ];
+  }
+  // Issue #761: bleed wins — a day carrying both announces only the bleed
+  // level above, matching the grid (which renders the bleed fill, never
+  // the spotting ring, on such a day).
+  if (hasSpotting) {
+    return [
+      l10n.calendarCellFlowState(l10n.flowLevelSpotting),
       hasSymptoms
           ? l10n.calendarCellSymptomsLogged
           : l10n.calendarCellNoSymptoms,
@@ -525,6 +550,7 @@ class MonthCalendar extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.observationsRepository,
     this.bbtUnit = BbtUnit.celsius,
     this.weightUnit = WeightUnit.kg,
   });
@@ -555,6 +581,13 @@ class MonthCalendar extends StatefulWidget {
   /// local-only use (no storage wired up), matching the previous
   /// ambient-provider lookup's own null fallback.
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Source of this profile's observations for the spotting marker (issue
+  /// #761); falls back to `context.read<ObservationsRepository?>()` like
+  /// [guardiansRepository] does for guardians — null in a tree with no
+  /// observations repository wired renders no spotting marker rather than
+  /// throwing. Mirrors `AnalysisTab.observationsRepository`'s own seam.
+  final ObservationsRepository? observationsRepository;
 
   /// Per-profile BBT/weight display units (Issue #457), forwarded to
   /// [DaySheet]. Presentation only.
@@ -592,6 +625,16 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// the old profile's days).
   List<DayEntry>? _entries;
   StreamSubscription<List<DayEntry>>? _entriesSub;
+
+  /// Issue #761: the ISO dates carrying a live `category: 'spotting'`
+  /// observation, refetched on every entries-stream tick (the same
+  /// entries-tick refetch `AnalysisTab` uses for its BBT chart — every
+  /// spotting write also writes the day's `DayEntry` in the same atomic
+  /// call, so the entries tick keeps this live without a dedicated
+  /// observations `watch()`). Empty when no observations repository is in
+  /// scope. Drives the observation-backed spotting ring; bleed wins on a
+  /// day carrying both.
+  Set<String> _spottingIsos = const {};
 
   /// The inclusive range [_entries] is currently subscribed to (issue
   /// #197) — null until the first [_maybeRewatchEntriesFor] call. Tracked
@@ -856,6 +899,9 @@ class _MonthCalendarState extends State<MonthCalendar>
     // Issue #197: the first window is always a fresh subscription (no prior
     // `_entriesWindowFrom`/`_entriesWindowTo` to already cover it).
     _maybeRewatchEntriesFor(_displayedYear, _displayedMonth);
+    // Issue #761: the spotting set seeds alongside the first entries
+    // subscription (and re-seeds on every entries tick after that).
+    unawaited(_refetchObservations());
     _pageController = PageController(
       initialPage: _pageIndexFor(_displayedYear, _displayedMonth),
     );
@@ -908,6 +954,7 @@ class _MonthCalendarState extends State<MonthCalendar>
       _entries = null;
       _entriesWindowFrom = null;
       _entriesWindowTo = null;
+      _spottingIsos = const {};
       unawaited(_syncDisplayedMonthForNewProfile());
       return;
     }
@@ -922,6 +969,31 @@ class _MonthCalendarState extends State<MonthCalendar>
     if (oldWidget.todayProvider != widget.todayProvider) {
       _rewatchPrediction();
     }
+    // Issue #761: the spotting seam changed underneath the same profile
+    // (a test harness swapping collaborators) — re-seed just that set.
+    if (oldWidget.observationsRepository != widget.observationsRepository) {
+      unawaited(_refetchObservations());
+    }
+  }
+
+  /// Issue #761: (re)seeds [_spottingIsos] from the observations seam —
+  /// the same entries-tick refetch shape `AnalysisTab._refetchObservations`
+  /// uses. A null seam (no repository in scope) renders no marker rather
+  /// than throwing. The repository's `listForProfile` already synthesises
+  /// a spotting observation for a legacy `flow = 'spotting'` row, so old
+  /// data is covered with no extra branch here.
+  Future<void> _refetchObservations() async {
+    final repository =
+        widget.observationsRepository ??
+        context.read<ObservationsRepository?>();
+    if (repository == null) return;
+    final observations = await repository.listForProfile(widget.profileId);
+    if (!mounted) return;
+    final spotting = {
+      for (final observation in observations)
+        if (observation.category == 'spotting') observation.localDate.iso,
+    };
+    setState(() => _spottingIsos = spotting);
   }
 
   /// (Re)subscribes [_entries] to a window covering the displayed month
@@ -959,6 +1031,10 @@ class _MonthCalendarState extends State<MonthCalendar>
         .listen((entries) {
           if (!mounted) return;
           setState(() => _entries = entries);
+          // Issue #761: every day-entry write lands here, and every
+          // spotting write rides the same atomic entry write — so this
+          // tick is also the observations refresh (no dedicated watch).
+          unawaited(_refetchObservations());
         });
   }
 
@@ -1682,6 +1758,14 @@ class _MonthCalendarState extends State<MonthCalendar>
     final brightness = theme.brightness;
     final l10n = AppLocalizations.of(context);
     final entries = [
+      // Issue #761: the observation-backed spotting ring comes first —
+      // the lightest mark, mirroring `_flowLevelMarkCount`'s 1..5 climb.
+      _LegendEntry(
+        'spotting',
+        colors.flowSpotting,
+        l10n.calendarLegendSpotting,
+        style: _LegendSwatchStyle.ring,
+      ),
       _LegendEntry('light', colors.flowLight, l10n.calendarLegendLight),
       _LegendEntry('medium', colors.flowMedium, l10n.calendarLegendMedium),
       _LegendEntry('heavy', colors.flowHeavy, l10n.calendarLegendHeavy),
@@ -2008,6 +2092,17 @@ class _MonthCalendarState extends State<MonthCalendar>
       entry == null && isFuture ? forecastByIso[iso] : null,
     );
     final bleedLevel = entry != null && isBleed(entry.flow) ? entry.flow : null;
+    // Issue #761: a spotting-only day renders the ring-plus-centre-dot
+    // treatment through the deprecated `spotting` level's existing
+    // `_flowCircle` branch (bleed wins: a day carrying both keeps the
+    // bleed fill). `listForProfile` already synthesises the observation
+    // for a legacy `flow = 'spotting'` row, so old data needs no extra
+    // branch here.
+    // ignore: deprecated_member_use_from_same_package
+    final effectiveBleed = bleedLevel ??
+        (entry != null && _spottingIsos.contains(iso)
+            ? FlowLevel.spotting
+            : null);
     final selectable = !isFuture && (!_effectiveReadOnly || entry != null);
     final tapHandler = _cellTapHandler(
       selectable: selectable,
@@ -2042,6 +2137,9 @@ class _MonthCalendarState extends State<MonthCalendar>
         ),
         readOnly: _effectiveReadOnly,
         fertileWindowLabel: _copy.fertileWindowLabel,
+        // Issue #761: bleed wins in the label too — a day carrying both
+        // announces only the bleed level, matching the rendered fill.
+        hasSpotting: bleedLevel == null && _spottingIsos.contains(iso),
       ),
       onTap: tapHandler,
       excludeSemantics: true,
@@ -2051,7 +2149,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         child: _cellColumn(
           date,
           entry: entry,
-          bleedLevel: bleedLevel,
+          bleedLevel: effectiveBleed,
           forecastCell: forecastCell,
           isFuture: isFuture,
           isToday: isToday,
@@ -2216,10 +2314,13 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// The graded fill for one bleed [level] (issue #191 B-2): the `flow*`
   /// ramp token carries the colour channel; [_flowLevelMarkCount] small
   /// dots keyed `flow-level-<level>-<iso>` carry a second, non-colour
-  /// channel (1 dot for spotting climbing to 4 for heavy) so the same
+  /// channel (1 dot for spotting climbing to 5 for super heavy) so the same
   /// distinction survives for an operator who can't rely on hue alone.
   /// Spotting additionally renders as a ring plus a small centre dot,
-  /// never a full fill, per the issue's own proposed design. Issue #312
+  /// never a full fill, per the issue's own proposed design — issue #761
+  /// drives this branch from the `spotting` observation (via the
+  /// deprecated [FlowLevel.spotting] alias as the render token), never
+  /// from a stored flow level. Issue #312
   /// review of #191: [isToday] now draws the same outer ring the plain
   /// (no-bleed) today cell and the legend's "Today" swatch already use —
   /// previously a bleed day dropped it entirely, the ring the legend
@@ -2235,10 +2336,12 @@ class _MonthCalendarState extends State<MonthCalendar>
   }) {
     final iso = date.iso;
     final tone = _flowTone(level, colors);
-    // Issue #247: unreachable in practice now (the `isBleed` gate above
-    // this widget's only caller never passes the deprecated `spotting`
-    // alias through), kept only so this comparison still compiles against
-    // every FlowLevel value without a runtime branch this file can't test.
+    // Issue #761: this branch is the observation-backed spotting marker —
+    // [_dayCell] passes the deprecated `spotting` alias as the render
+    // token for a spotting-only day (a stored flow level never reaches
+    // here: the `isBleed` gate keeps real flow levels to bleeds, and the
+    // mapper reads a legacy `flow = 'spotting'` row back as `notBleeding`
+    // while `listForProfile` synthesises the observation for it).
     // ignore: deprecated_member_use_from_same_package
     final isSpotting = level == FlowLevel.spotting;
     final textColor = isSpotting ? theme.colorScheme.onSurface : tone.onFill;
@@ -2269,7 +2372,11 @@ class _MonthCalendarState extends State<MonthCalendar>
     // 4px inset at every scale.
     final innerSize = isToday ? circleSize - 4 : circleSize;
     final circle = Container(
-      key: ValueKey('bleed-$iso'),
+      // Issue #761: a spotting day keeps an honest key of its own — the
+      // `bleed-*` key means a graded bleed fill, and `find.byKey` in the
+      // existing suite relies on that (`notBleeding`/legacy-alias days
+      // carry no `bleed-*` marker).
+      key: ValueKey(isSpotting ? 'spotting-$iso' : 'bleed-$iso'),
       width: innerSize,
       height: innerSize,
       decoration: isSpotting
