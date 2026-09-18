@@ -21,6 +21,11 @@ import 'package:timezone/timezone.dart' as tz;
 
 typedef LocalTimeZoneProvider = Future<String> Function();
 
+/// Resolves the current instant in a scheduling [tz.Location] (issue #171).
+/// Injectable so a test can pin "now" to a fixed clock; production uses
+/// [tz.TZDateTime.now].
+typedef ReminderNowProvider = tz.TZDateTime Function(tz.Location location);
+
 /// The Darwin notification category the reminder actions (Issue #136) are
 /// registered under. Every period-anchored reminder carries this category
 /// identifier so iOS offers its action buttons; the actions themselves are
@@ -117,15 +122,28 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     this.locationProvider,
     this.settingsStore,
     NotificationPermissionGate? permissionGate,
+    ReminderNowProvider? nowProvider,
+    BreadcrumbLog? breadcrumbLog,
   })  : _plugin = plugin ?? FlutterLocalNotificationsPlugin(),
         _localTimeZoneProvider =
             localTimeZoneProvider ?? defaultLocalTimeZoneProvider,
-        _permissionGate = permissionGate ?? defaultNotificationPermissionGate;
+        _permissionGate = permissionGate ?? defaultNotificationPermissionGate,
+        _nowProvider = nowProvider ?? tz.TZDateTime.now,
+        _breadcrumbLog = breadcrumbLog ?? defaultBreadcrumbLog;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final LocalTimeZoneProvider _localTimeZoneProvider;
   final tz.Location Function()? locationProvider;
   bool _initialized = false;
+
+  /// Issue #171: the wall clock [rescheduleAll] resolves each planned fire
+  /// time against, so a slot already past is skipped rather than armed.
+  final ReminderNowProvider _nowProvider;
+
+  /// Issue #171: where a skipped past-due slot and a failed `zonedSchedule`
+  /// call are reported — the repo's observability seam
+  /// (`lib/observability/breadcrumbs.dart`), never a silent swallow.
+  final BreadcrumbLog _breadcrumbLog;
 
   /// Issue #287: serializes every OS permission-request call below against
   /// [FirebasePushTokenSource]'s own `FirebaseMessaging.instance
@@ -433,12 +451,24 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     if (!_initialized) return;
     await _plugin.cancelAllPendingNotifications();
     final loc = locationProvider?.call() ?? tz.local;
-    for (final reminder in reminders) {
-      final fireAt = calculateReminderFireAt(
-        fireOn: reminder.fireOn,
-        location: loc,
-        minuteOfDay: reminder.timeOfDayMinutes,
-      );
+    final resolved = resolveReminderFireTimes(
+      reminders: reminders,
+      location: loc,
+      now: _nowProvider(loc),
+    );
+    for (final entry in resolved) {
+      // Issue #171: a slot whose fire time has already passed is never
+      // delivered (iOS drops a past-dated trigger), so arming it would be a
+      // silent no-op that also burns a day of the reminder's bounded
+      // pre-arm window. Skip it and record that we did. A recurring kind
+      // does not go silent: the planner already pre-armed its next
+      // occurrence (tomorrow's slot, or the next cadence date), so it still
+      // fires there.
+      if (entry.isPast) {
+        _breadcrumbLog.record('reminders', 'skipped past-due slot');
+        continue;
+      }
+      final reminder = entry.reminder;
       // Issue #136: the period reminders (upcoming, period-starting-soon,
       // PMS-watch, late) offer the Started / Spotting / Not yet action
       // buttons; the daily log nudge offers none (a generic nudge opens
@@ -447,67 +477,80 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       // ids ride [kReminderActionIds]; on Darwin they reach the
       // notification via the category registered in [initialize].
       final hasActions = reminderHasActions(reminder.kind);
-      await _plugin.zonedSchedule(
-        id: reminder.id,
-        // Issue #184: the reminder's own resolved text — custom per-type
-        // copy when the profile configured it, else the generic defaults.
-        // The text is baked in here at schedule time (local notifications
-        // have no Dart callback at fire time) and stays current through
-        // #136's replan-on-every-change machinery, which cancels and
-        // re-arms the whole plan the moment stored text changes.
-        title: reminder.title,
-        body: reminder.body,
-        scheduledDate: fireAt,
-        // Issue #136/#178/#183: the shared reminder presentation (channel,
-        // lock-screen privacy) plus this reminder's action buttons, when it
-        // carries any — see [reminderNotificationDetails].
-        // LLA-028 (issue #623) on the actions: `showsUserInterface: true`
-        // on every one — the default (`false`) selects Android's
-        // background-delivery path, which requires
-        // `onDidReceiveBackgroundNotificationResponse` (a top-level
-        // entry-point function running in a separate isolate, no Activity
-        // context) to be registered; it never is, since the gate-aware
-        // executor these actions must route through
-        // (`reminder_action_executor.dart`) needs a running, unlocked app.
-        // Without this flag every tap was silently dropped whenever the app
-        // was not already in the foreground.
-        notificationDetails: NotificationDetails(
-          android: reminderNotificationDetails(
-            actions: hasActions
-                ? const [
-                    AndroidNotificationAction(
-                        kReminderActionStarted, kReminderActionStartedLabel,
-                        showsUserInterface: true),
-                    AndroidNotificationAction(kReminderActionSpotting,
-                        kReminderActionSpottingLabel,
-                        showsUserInterface: true),
-                    AndroidNotificationAction(kReminderActionNotYet,
-                        kReminderActionNotYetLabel,
-                        showsUserInterface: true),
-                  ]
+      // Issue #171: each call is isolated. A single OS rejection (the
+      // notification cap, an invalid date, any plugin error) used to abort
+      // the whole loop -- every remaining reminder for every remaining kind
+      // and profile on the device was silently dropped. Record the failure
+      // through the observability seam and carry on with the next reminder.
+      try {
+        await _plugin.zonedSchedule(
+          id: reminder.id,
+          // Issue #184: the reminder's own resolved text — custom per-type
+          // copy when the profile configured it, else the generic defaults.
+          // The text is baked in here at schedule time (local notifications
+          // have no Dart callback at fire time) and stays current through
+          // #136's replan-on-every-change machinery, which cancels and
+          // re-arms the whole plan the moment stored text changes.
+          title: reminder.title,
+          body: reminder.body,
+          scheduledDate: entry.fireAt,
+          // Issue #136/#178/#183: the shared reminder presentation (channel,
+          // lock-screen privacy) plus this reminder's action buttons, when it
+          // carries any — see [reminderNotificationDetails].
+          // LLA-028 (issue #623) on the actions: `showsUserInterface: true`
+          // on every one — the default (`false`) selects Android's
+          // background-delivery path, which requires
+          // `onDidReceiveBackgroundNotificationResponse` (a top-level
+          // entry-point function running in a separate isolate, no Activity
+          // context) to be registered; it never is, since the gate-aware
+          // executor these actions must route through
+          // (`reminder_action_executor.dart`) needs a running, unlocked app.
+          // Without this flag every tap was silently dropped whenever the app
+          // was not already in the foreground.
+          notificationDetails: NotificationDetails(
+            android: reminderNotificationDetails(
+              actions: hasActions
+                  ? const [
+                      AndroidNotificationAction(
+                          kReminderActionStarted, kReminderActionStartedLabel,
+                          showsUserInterface: true),
+                      AndroidNotificationAction(kReminderActionSpotting,
+                          kReminderActionSpottingLabel,
+                          showsUserInterface: true),
+                      AndroidNotificationAction(kReminderActionNotYet,
+                          kReminderActionNotYetLabel,
+                          showsUserInterface: true),
+                    ]
+                  : null,
+            ),
+            // Previously no Darwin details were passed at all; passing only
+            // the category identifier (every presentation field left null)
+            // keeps iOS/macOS presentation exactly as it was while attaching
+            // the action buttons (Issue #136).
+            iOS: hasActions
+                ? const DarwinNotificationDetails(
+                    categoryIdentifier: kReminderCategoryId)
+                : null,
+            macOS: hasActions
+                ? const DarwinNotificationDetails(
+                    categoryIdentifier: kReminderCategoryId)
                 : null,
           ),
-          // Previously no Darwin details were passed at all; passing only
-          // the category identifier (every presentation field left null)
-          // keeps iOS/macOS presentation exactly as it was while attaching
-          // the action buttons (Issue #136).
-          iOS: hasActions
-              ? const DarwinNotificationDetails(
-                  categoryIdentifier: kReminderCategoryId)
-              : null,
-          macOS: hasActions
-              ? const DarwinNotificationDetails(
-                  categoryIdentifier: kReminderCategoryId)
-              : null,
-        ),
-        // Inexact on purpose: no SCHEDULE_EXACT_ALARM permission needed
-        // (Android 12+), and minute-level drift is fine for ±2-day windows.
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        payload: encodeReminderPayload(
-          profileId: reminder.profileId,
-          kind: reminder.kind,
-        ),
-      );
+          // Inexact on purpose: no SCHEDULE_EXACT_ALARM permission needed
+          // (Android 12+), and minute-level drift is fine for ±2-day windows.
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          payload: encodeReminderPayload(
+            profileId: reminder.profileId,
+            kind: reminder.kind,
+          ),
+        );
+      } catch (error) {
+        // Issue #171: one failed call must never abort the rest of the
+        // batch. The OS is the enforcement boundary; report and continue.
+        _breadcrumbLog.record('reminders', error.runtimeType.toString());
+        debugPrint('lunarlog notifications: zonedSchedule failed '
+            '(${error.runtimeType})');
+      }
     }
   }
 
