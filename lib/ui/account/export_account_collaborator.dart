@@ -7,6 +7,7 @@
 library;
 
 import '../../domain/export/account_export_writer.dart';
+import '../../domain/logging/custom_tag_registry.dart';
 import '../../domain/logging/day_entry_merge_event.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/cycle_override.dart';
@@ -40,6 +41,7 @@ typedef ExportAccountCollaborator = Future<void> Function({
   Map<String, ProfileLifecycleMode?> profileModesByProfile,
   Map<String, List<CycleOverride>> cycleOverridesByProfile,
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile,
+  Map<String, List<CustomTag>> customTagsByProfile,
   required String appVersion,
 });
 
@@ -53,7 +55,7 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// parameter declared, not necessarily used. Issue #128 widens it the same
 /// way with `careNotesByProfile`/`visitPrepByProfile`; Issue #140 review
 /// (LLA-084) with `profileModesByProfile`/`cycleOverridesByProfile`;
-/// Issue #130 with `mergeEventsByProfile`.
+/// Issue #130 with `mergeEventsByProfile`; Issue #824 with `customTagsByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportWriter writer,
 ) =>
@@ -66,6 +68,7 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
       Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
       Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
+      Map<String, List<CustomTag>> customTagsByProfile = const {},
       required String appVersion,
     }) =>
         writer.exportAndShare(
@@ -77,5 +80,6 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
           profileModesByProfile: profileModesByProfile,
           cycleOverridesByProfile: cycleOverridesByProfile,
           mergeEventsByProfile: mergeEventsByProfile,
+          customTagsByProfile: customTagsByProfile,
           appVersion: appVersion,
         );

@@ -27,6 +27,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../domain/export/account_export.dart';
 import '../../domain/export/account_export_remote_source.dart';
 import '../../domain/export/account_export_writer.dart';
+import '../../domain/logging/custom_tag_registry.dart';
 import '../../domain/logging/day_entry_merge_event.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/cycle_override.dart';
@@ -56,6 +57,7 @@ class PlatformAccountExportWriter implements AccountExportWriter {
     Map<String, ProfileLifecycleMode?> profileModesByProfile = const {},
     Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
     Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
+    Map<String, List<CustomTag>> customTagsByProfile = const {},
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
@@ -68,6 +70,7 @@ class PlatformAccountExportWriter implements AccountExportWriter {
       profileModesByProfile: profileModesByProfile,
       cycleOverridesByProfile: cycleOverridesByProfile,
       mergeEventsByProfile: mergeEventsByProfile,
+      customTagsByProfile: customTagsByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
       remoteSource: remoteSource,

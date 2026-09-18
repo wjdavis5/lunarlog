@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/import/account_import.dart' show kMaxImportFileBytes;
 import 'package:lunarlog/domain/limits.dart';
@@ -431,9 +432,10 @@ void main() {
       'portable state: subject metadata, profileMode, cycleOverrides '
       '(Issue #140 review, LLA-084, export v9)', () {
     test('schema version was bumped to 9 for the new keys (since moved to '
-        '10 for profiles[].trackingPreferences, Issue #648, and 11 for '
-        'profiles[].mergeEvents, Issue #130)', () {
-      expect(kAccountExportSchemaVersion, 11);
+        '10 for profiles[].trackingPreferences, Issue #648, 11 for '
+        'profiles[].mergeEvents, Issue #130, and 12 for '
+        'profiles[].customTags, Issue #824)', () {
+      expect(kAccountExportSchemaVersion, 12);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -647,7 +649,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 11);
+      expect(kAccountExportSchemaVersion, 12);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mergeEvents'], isEmpty);
       expect((profiles[1] as Map)['mergeEvents'], isEmpty);
@@ -700,6 +702,87 @@ void main() {
               as Map;
       expect(flowEvent['field'], 'flow');
       expect(flowEvent['losingValueText'], 'heavy');
+    });
+  });
+
+  group('profiles[].customTags (Issue #824, kAccountExportSchemaVersion v12)', () {
+    final tagA = CustomTag(
+      id: 'tag-1',
+      profileId: 'p-1',
+      code: 'cramps_severe',
+      displayName: 'Severe Cramps',
+      category: 'custom',
+      intensityEnabled: true,
+      hiddenAt: null,
+      sortOrder: 1,
+      createdAt: DateTime.utc(2026, 1, 10),
+      updatedAt: DateTime.utc(2026, 1, 10),
+    );
+    final tagB = CustomTag(
+      id: 'tag-2',
+      profileId: 'p-1',
+      code: 'herbal_tea',
+      displayName: 'Herbal Tea',
+      category: 'custom',
+      intensityEnabled: false,
+      hiddenAt: DateTime.utc(2026, 1, 15),
+      sortOrder: 2,
+      createdAt: DateTime.utc(2026, 1, 11),
+      updatedAt: DateTime.utc(2026, 1, 12),
+    );
+
+    test('the schema version was bumped to 12 and each profile carries a '
+        'customTags array (empty for a profile with none)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      expect(kAccountExportSchemaVersion, 12);
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['customTags'], isEmpty);
+      expect((profiles[1] as Map)['customTags'], isEmpty);
+    });
+
+    test('each custom tag round-trips id/code/displayName/category/intensity/hidden/sort/timestamps, '
+        'sorted by id, with attribution ids excluded (R9)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        customTagsByProfile: {
+          'p-1': [tagB, tagA],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final tags = ((doc['profiles'] as List)[0] as Map)['customTags'] as List;
+      expect(tags, hasLength(2));
+      // Sorted by id regardless of input order.
+      expect((tags[0] as Map)['id'], 'tag-1');
+      expect((tags[1] as Map)['id'], 'tag-2');
+      final t1 = tags[0] as Map;
+      expect(t1['code'], 'cramps_severe');
+      expect(t1['displayName'], 'Severe Cramps');
+      expect(t1['category'], 'custom');
+      expect(t1['intensityEnabled'], isTrue);
+      expect(t1['hiddenAt'], isNull);
+      expect(t1['sortOrder'], 1);
+      expect(t1['createdAt'], '2026-01-10T00:00:00.000Z');
+      expect(t1['updatedAt'], '2026-01-10T00:00:00.000Z');
+
+      final t2 = tags[1] as Map;
+      expect(t2['code'], 'herbal_tea');
+      expect(t2['displayName'], 'Herbal Tea');
+      expect(t2['category'], 'custom');
+      expect(t2['intensityEnabled'], isFalse);
+      expect(t2['hiddenAt'], '2026-01-15T00:00:00.000Z');
+      expect(t2['sortOrder'], 2);
+
+      // R9: attribution identifiers are never exported.
+      final encoded = jsonEncode(doc);
+      expect(encoded, isNot(contains('createdBy')));
+      expect(encoded, isNot(contains('created_by')));
     });
   });
 
@@ -828,6 +911,39 @@ void main() {
       expect(observations, hasLength(1));
       expect((observations.single as Map)['id'], 'o1');
       expect((observations.single as Map)['intensity'], 4);
+    });
+
+    test('threads customTagsByProfile through to the local document '
+        '(Issue #824) — the same path AccountExportWriter.exportAndShare '
+        'and its UI callers use end to end', () async {
+      final doc = await buildMergedAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        customTagsByProfile: {
+          'p-1': [
+            CustomTag(
+              id: 'tag-1',
+              profileId: 'p-1',
+              code: 'cramps_severe',
+              displayName: 'Severe Cramps',
+              category: 'custom',
+              intensityEnabled: true,
+              hiddenAt: null,
+              sortOrder: 1,
+              createdAt: DateTime.utc(2026, 1, 10),
+              updatedAt: DateTime.utc(2026, 1, 10),
+            ),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final tags = profile['customTags'] as List;
+      expect(tags, hasLength(1));
+      expect((tags.single as Map)['id'], 'tag-1');
+      expect((tags.single as Map)['code'], 'cramps_severe');
     });
   });
 

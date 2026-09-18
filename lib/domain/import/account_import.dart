@@ -52,6 +52,7 @@ import 'package:meta/meta.dart' show visibleForTesting;
 
 import '../export/account_export.dart' show kAccountExportSchemaVersion;
 import '../limits.dart';
+import '../logging/custom_tag_registry.dart';
 import '../logging/tracking_preferences.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
@@ -309,6 +310,7 @@ class ImportedProfile {
     this.dayEntries = const [],
     this.observations = const [],
     this.cycleOverrides = const [],
+    this.customTags = const [],
   });
 
   /// The id this profile carried in the exporting device's store — the
@@ -385,6 +387,39 @@ class ImportedProfile {
   /// (see [_planCycleOverrides]'s doc comment), unlike [profileMode] and
   /// the subject-metadata fields above.
   final List<ImportedCycleOverride> cycleOverrides;
+
+  /// Every live custom-tag registry entry the file carries (Issue #824,
+  /// kAccountExportSchemaVersion v12) — additive for both a created AND a
+  /// matched profile (see [_planCustomTags]'s doc comment).
+  final List<ImportedCustomTag> customTags;
+}
+
+/// A `profiles[].customTags[]` element straight out of the parsed document
+/// (Issue #824, kAccountExportSchemaVersion v12) — mirrors
+/// [ImportedCycleOverride]'s shape: the file's own values, not yet compared
+/// against anything stored locally.
+class ImportedCustomTag {
+  const ImportedCustomTag({
+    required this.id,
+    required this.code,
+    required this.displayName,
+    required this.category,
+    this.intensityEnabled = false,
+    this.hiddenAt,
+    this.sortOrder,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String code;
+  final String displayName;
+  final String category;
+  final bool intensityEnabled;
+  final DateTime? hiddenAt;
+  final int? sortOrder;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 }
 
 /// A `profiles[].cycleOverrides[]` element straight out of the parsed
@@ -561,6 +596,7 @@ ImportedProfile _parseProfile(Object? raw) {
   final dayEntriesJson = raw['dayEntries'];
   final observationsJson = raw['observations'];
   final cycleOverridesJson = raw['cycleOverrides'];
+  final customTagsJson = raw['customTags'];
   final dayEntries = [
     for (final e in dayEntriesJson is List ? dayEntriesJson : const [])
       _parseDayEntry(e, profileId: id),
@@ -573,11 +609,18 @@ ImportedProfile _parseProfile(Object? raw) {
     for (final o in cycleOverridesJson is List ? cycleOverridesJson : const [])
       _parseCycleOverride(o, profileId: id),
   ];
+  final customTags = [
+    for (final t in customTagsJson is List ? customTagsJson : const [])
+      _parseCustomTag(t, profileId: id),
+  ];
   _rejectDuplicateEntryDates(dayEntries, profileId: id);
   _rejectDuplicateProvenance(dayEntries, profileId: id);
   _rejectOrphanObservations(observations, dayEntries, profileId: id);
   _rejectExcessiveObservationsPerDay(observations, profileId: id);
   _rejectDuplicateCycleOverrideIds(cycleOverrides, profileId: id);
+  _rejectDuplicateCustomTagIds(customTags, profileId: id);
+  _rejectDuplicateCustomTagCodes(customTags, profileId: id);
+  _rejectExcessiveCustomTags(customTags, profileId: id);
   return ImportedProfile(
     id: id,
     displayName: _profileDisplayName(raw['displayName']),
@@ -603,6 +646,7 @@ ImportedProfile _parseProfile(Object? raw) {
     dayEntries: dayEntries,
     observations: observations,
     cycleOverrides: cycleOverrides,
+    customTags: customTags,
   );
 }
 
@@ -795,6 +839,61 @@ ImportedCycleOverride _parseCycleOverride(Object? raw, {required String profileI
   );
 }
 
+String _parseCustomTagCode(Object? raw, String context) {
+  if (raw is! String || raw.trim().isEmpty || raw.length > kMaxTagLength) {
+    throw _ImportFormatException('$context has an invalid code.');
+  }
+  return raw;
+}
+
+String _parseCustomTagDisplayName(Object? raw, String context) {
+  if (raw is! String ||
+      raw.trim().isEmpty ||
+      raw.length > kMaxCustomTagLabelLength) {
+    throw _ImportFormatException('$context has an invalid displayName.');
+  }
+  return raw;
+}
+
+String _parseCustomTagCategory(Object? raw, String context) {
+  if (raw is! String || raw.isEmpty || raw.length > kMaxTagLength) {
+    throw _ImportFormatException('$context has an invalid category.');
+  }
+  return raw;
+}
+
+DateTime? _parseOptionalTimestamp(Object? raw, String field, String context) {
+  if (raw == null) return null;
+  final dt = DateTime.tryParse('$raw');
+  if (dt == null) {
+    throw _ImportFormatException('$context has an invalid $field.');
+  }
+  return dt;
+}
+
+/// A `profiles[].customTags[]` element (Issue #824, kAccountExportSchemaVersion v12) —
+/// mirrors [_parseCycleOverride]'s shape.
+ImportedCustomTag _parseCustomTag(Object? raw, {required String profileId}) {
+  if (raw is! Map<String, Object?>) {
+    throw _ImportFormatException(
+        'A custom tag entry for profile $profileId is not an object.');
+  }
+  final id = _requireUlid(raw['id'],
+      what: 'A custom tag id for profile $profileId');
+  final context = 'custom tag $id';
+  return ImportedCustomTag(
+    id: id,
+    code: _parseCustomTagCode(raw['code'], context),
+    displayName: _parseCustomTagDisplayName(raw['displayName'], context),
+    category: _parseCustomTagCategory(raw['category'], context),
+    intensityEnabled: raw['intensityEnabled'] == true,
+    hiddenAt: _parseOptionalTimestamp(raw['hiddenAt'], 'hiddenAt', context),
+    sortOrder: raw['sortOrder'] is int ? raw['sortOrder'] as int : null,
+    createdAt: _parseOptionalTimestamp(raw['createdAt'], 'createdAt', context),
+    updatedAt: _parseOptionalTimestamp(raw['updatedAt'], 'updatedAt', context),
+  );
+}
+
 /// Rejects a profile carrying two cycle overrides with the same id (Issue
 /// #140 review, LLA-084) — a genuine export can never repeat one, the
 /// [_rejectDuplicateIds] precedent applied per-profile (cycle_overrides'
@@ -812,6 +911,48 @@ void _rejectDuplicateCycleOverrideIds(
           'Profile $profileId has more than one cycle override with id '
           '(${_truncateForMessage(o.id)}).');
     }
+  }
+}
+
+/// Rejects a profile carrying two custom tags with the same id (Issue #824).
+void _rejectDuplicateCustomTagIds(
+  List<ImportedCustomTag> customTags, {
+  required String profileId,
+}) {
+  final seen = <String>{};
+  for (final t in customTags) {
+    if (!seen.add(t.id)) {
+      throw _ImportFormatException(
+          'Profile $profileId has more than one custom tag with id '
+          '(${_truncateForMessage(t.id)}).');
+    }
+  }
+}
+
+/// Rejects a profile carrying two custom tags with the same code (Issue #824) —
+/// case-insensitive, since tag codes are case-insensitively unique in the registry.
+void _rejectDuplicateCustomTagCodes(
+  List<ImportedCustomTag> customTags, {
+  required String profileId,
+}) {
+  final seen = <String>{};
+  for (final t in customTags) {
+    if (!seen.add(t.code.toLowerCase())) {
+      throw _ImportFormatException(
+          'Profile $profileId has more than one custom tag with code '
+          '(${_truncateForMessage(t.code)}).');
+    }
+  }
+}
+
+/// Rejects a profile exceeding the per-profile custom tag ceiling (Issue #824).
+void _rejectExcessiveCustomTags(
+  List<ImportedCustomTag> customTags, {
+  required String profileId,
+}) {
+  if (customTags.length > kMaxCustomTagsPerProfile) {
+    throw _ImportFormatException(
+        'Profile $profileId has more than $kMaxCustomTagsPerProfile custom tags.');
   }
 }
 
@@ -1352,6 +1493,18 @@ class CycleOverridePlan {
   final ImportedCycleOverride imported;
 }
 
+/// Whether a custom tag is a new row or left alone because one already
+/// exists with the same code or id, or because the profile is at the cap
+/// (Issue #824, kAccountExportSchemaVersion v12).
+enum CustomTagImportOutcome { add, skip }
+
+class CustomTagPlan {
+  const CustomTagPlan({required this.outcome, required this.imported});
+
+  final CustomTagImportOutcome outcome;
+  final ImportedCustomTag imported;
+}
+
 /// What happened to one `profiles[]` entry.
 enum ProfileImportOutcome { created, matched, skipped }
 
@@ -1376,6 +1529,7 @@ class ProfilePlan {
     this.entries = const [],
     this.observations = const [],
     this.cycleOverrides = const [],
+    this.customTags = const [],
     this.hasOtherGuardians = false,
     this.restoredFromTombstone = false,
   });
@@ -1416,6 +1570,10 @@ class ProfilePlan {
   /// Issue #140 review, LLA-084: additive for both a created AND a matched
   /// profile — see [_planCycleOverrides]'s doc comment.
   final List<CycleOverridePlan> cycleOverrides;
+
+  /// Issue #824 (kAccountExportSchemaVersion v12): additive for both a
+  /// created AND a matched profile — see [_planCustomTags]'s doc comment.
+  final List<CustomTagPlan> customTags;
 
   /// Whether this *matched* profile has an accepted guardian other than
   /// the importing session's own user (Issue #140 review, item 10) — false
@@ -1463,6 +1621,8 @@ class ImportPlanSummary {
     this.profilesRestored = 0,
     this.cycleOverridesAdded = 0,
     this.cycleOverridesSkipped = 0,
+    this.customTagsAdded = 0,
+    this.customTagsSkipped = 0,
   });
 
   final int profilesCreated;
@@ -1477,6 +1637,11 @@ class ImportPlanSummary {
   /// [observationsSkipped]'s shape for cycle overrides.
   final int cycleOverridesAdded;
   final int cycleOverridesSkipped;
+
+  /// Issue #824 (kAccountExportSchemaVersion v12): mirrors
+  /// [cycleOverridesAdded]/[cycleOverridesSkipped]'s shape for custom tags.
+  final int customTagsAdded;
+  final int customTagsSkipped;
 
   /// Merged entries where a non-empty file note was dropped because the
   /// existing row already had one (Issue #140 review, item 9) — report
@@ -1496,6 +1661,7 @@ class ImportPlanSummary {
     final entryCounts = _entryOutcomeCounts(profiles);
     final observationCounts = _observationOutcomeCounts(profiles);
     final cycleOverrideCounts = _cycleOverrideOutcomeCounts(profiles);
+    final customTagCounts = _customTagOutcomeCounts(profiles);
     return ImportPlanSummary(
       profilesCreated: counts.created,
       profilesMatched: counts.matched,
@@ -1507,6 +1673,8 @@ class ImportPlanSummary {
       profilesRestored: counts.restored,
       cycleOverridesAdded: cycleOverrideCounts.added,
       cycleOverridesSkipped: cycleOverrideCounts.skipped,
+      customTagsAdded: customTagCounts.added,
+      customTagsSkipped: customTagCounts.skipped,
       skippedProfiles: [
         for (final p in profiles)
           if (p.outcome == ProfileImportOutcome.skipped)
@@ -1579,6 +1747,23 @@ _CycleOverrideCounts _cycleOverrideOutcomeCounts(List<ProfilePlan> profiles) {
   for (final p in profiles) {
     for (final o in p.cycleOverrides) {
       if (o.outcome == CycleOverrideImportOutcome.add) {
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+  }
+  return (added: added, skipped: skipped);
+}
+
+typedef _CustomTagCounts = ({int added, int skipped});
+
+_CustomTagCounts _customTagOutcomeCounts(List<ProfilePlan> profiles) {
+  var added = 0;
+  var skipped = 0;
+  for (final p in profiles) {
+    for (final t in p.customTags) {
+      if (t.outcome == CustomTagImportOutcome.add) {
         added++;
       } else {
         skipped++;
@@ -1753,6 +1938,40 @@ List<CycleOverridePlan> _planCycleOverrides(
   ];
 }
 
+/// Decides every imported custom tag's outcome for one profile (Issue #824,
+/// kAccountExportSchemaVersion v12): `add` when its `code` is not already
+/// present and the profile has not reached [kMaxCustomTagsPerProfile], `skip`
+/// otherwise. Deliberately additive for BOTH a created and a matched
+/// profile — the same "restore adds what's missing, never overwrites" policy
+/// applies to it. Keyed by code alone (not an id) since `code` is the
+/// tag's real identity in the profile taxonomy; any id conflict is resolved
+/// at apply time by minting a fresh id.
+List<CustomTagPlan> _planCustomTags(
+  List<ImportedCustomTag> imported,
+  List<CustomTag> existing,
+) {
+  final existingCodes = {for (final t in existing) t.code.toLowerCase()};
+  var liveCount = existing.length;
+  return [
+    for (final t in imported) () {
+      final code = t.code.toLowerCase();
+      if (existingCodes.contains(code) ||
+          liveCount >= kMaxCustomTagsPerProfile) {
+        return CustomTagPlan(
+          outcome: CustomTagImportOutcome.skip,
+          imported: t,
+        );
+      }
+      existingCodes.add(code);
+      liveCount++;
+      return CustomTagPlan(
+        outcome: CustomTagImportOutcome.add,
+        imported: t,
+      );
+    }(),
+  ];
+}
+
 ProfilePlan _planProfile(
   ImportedProfile imported,
   Profile? existing,
@@ -1760,6 +1979,7 @@ ProfilePlan _planProfile(
   List<DayEntry> existingEntries,
   List<Observation> existingObservations,
   List<CycleOverride> existingCycleOverrides,
+  List<CustomTag> existingCustomTags,
   String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians,
 ) {
@@ -1795,6 +2015,7 @@ ProfilePlan _planProfile(
       entries: _planEntries(imported.dayEntries, const []),
       observations: _planObservations(imported.observations, const []),
       cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),
+      customTags: _planCustomTags(imported.customTags, const []),
     );
   }
   final blockReason = writeBlockReason(target);
@@ -1818,6 +2039,7 @@ ProfilePlan _planProfile(
     observations: _planObservations(imported.observations, existingObservations),
     cycleOverrides:
         _planCycleOverrides(imported.cycleOverrides, existingCycleOverrides),
+    customTags: _planCustomTags(imported.customTags, existingCustomTags),
     hasOtherGuardians: hasOtherGuardians(target),
     restoredFromTombstone: existing == null,
   );
@@ -1861,6 +2083,8 @@ ImportPlan planImport({
   // the two maps above — needed only for a profile id appearing in both
   // [document] and [existingProfiles].
   Map<String, List<CycleOverride>> existingCycleOverridesByProfileId = const {},
+  // Issue #824 (kAccountExportSchemaVersion v12): same contract for custom tags.
+  Map<String, List<CustomTag>> existingCustomTagsByProfileId = const {},
   required String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians = _noOtherGuardians,
 }) {
@@ -1874,6 +2098,7 @@ ImportPlan planImport({
         existingEntriesByProfileId[imported.id] ?? const [],
         existingObservationsByProfileId[imported.id] ?? const [],
         existingCycleOverridesByProfileId[imported.id] ?? const [],
+        existingCustomTagsByProfileId[imported.id] ?? const [],
         writeBlockReason,
         hasOtherGuardians,
       ),

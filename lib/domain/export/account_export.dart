@@ -40,6 +40,7 @@ library;
 
 import 'dart:convert';
 
+import '../logging/custom_tag_registry.dart';
 import '../logging/day_entry_merge_event.dart';
 import '../models/care_note.dart';
 import '../models/cycle_override.dart';
@@ -116,7 +117,14 @@ import 'account_export_remote_source.dart';
 /// already happened, not user data a restore needs to replay as fresh
 /// notices (`account_import.dart` reads known keys only, so a v11 file
 /// round-trips through import with the key harmlessly ignored).
-const int kAccountExportSchemaVersion = 11;
+/// v12 (Issue #824) adds `profiles[].customTags`: the profile's live
+/// custom-tag registry entries (one entry per user-defined tag vocabulary,
+/// carrying code, displayName, category, intensityEnabled, hiddenAt,
+/// sortOrder, createdAt, updatedAt). Attribution ids (`created_by`) stay out
+/// per this file's R9 rule, and tombstoned rows are excluded. A reader of
+/// an old (v11) export treats the key's absence as "not yet collected,"
+/// the same v3/v6/v11 precedent.
+const int kAccountExportSchemaVersion = 12;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -143,6 +151,8 @@ Map<String, Object?> buildAccountExport({
   Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
   // Issue #130 (kAccountExportSchemaVersion v11).
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
+  // Issue #824 (kAccountExportSchemaVersion v12).
+  Map<String, List<CustomTag>> customTagsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -163,6 +173,7 @@ Map<String, Object?> buildAccountExport({
           profileModesByProfile[profile.id],
           cycleOverridesByProfile[profile.id] ?? const [],
           mergeEventsByProfile[profile.id] ?? const [],
+          customTagsByProfile[profile.id] ?? const [],
         ),
     ],
   };
@@ -177,6 +188,7 @@ Map<String, Object?> _exportProfile(
   ProfileLifecycleMode? profileMode,
   List<CycleOverride> cycleOverrides,
   List<DayEntryMergeEvent> mergeEvents,
+  List<CustomTag> customTags,
 ) {
   final sortedEntries = [...entries]
     ..sort((a, b) => a.localDate.compareTo(b.localDate));
@@ -189,6 +201,8 @@ Map<String, Object?> _exportProfile(
   final sortedCycleOverrides = [...cycleOverrides]
     ..sort((a, b) => a.cycleStartDate.compareTo(b.cycleStartDate));
   final sortedMergeEvents = [...mergeEvents]
+    ..sort((a, b) => a.id.compareTo(b.id));
+  final sortedCustomTags = [...customTags]
     ..sort((a, b) => a.id.compareTo(b.id));
   return {
     'id': profile.id,
@@ -253,8 +267,28 @@ Map<String, Object?> _exportProfile(
     'mergeEvents': [
       for (final event in sortedMergeEvents) _exportMergeEvent(event),
     ],
+    // Issue #824 (kAccountExportSchemaVersion v12): the profile's live
+    // custom-tag registry entries. Attribution ids (`created_by`) stay out
+    // per R9; tombstoned rows are excluded.
+    'customTags': [
+      for (final tag in sortedCustomTags) _exportCustomTag(tag),
+    ],
   };
 }
+
+/// Issue #824 (kAccountExportSchemaVersion v12): one custom tag registry entry.
+/// Attribution id (`created_by`) stays out per R9; tombstoned rows excluded.
+Map<String, Object?> _exportCustomTag(CustomTag tag) => {
+      'id': tag.id,
+      'code': tag.code,
+      'displayName': tag.displayName,
+      'category': tag.category,
+      'intensityEnabled': tag.intensityEnabled,
+      'hiddenAt': tag.hiddenAt?.toUtc().toIso8601String(),
+      'sortOrder': tag.sortOrder,
+      'createdAt': tag.createdAt.toUtc().toIso8601String(),
+      'updatedAt': tag.updatedAt.toUtc().toIso8601String(),
+    };
 
 /// Issue #130 (kAccountExportSchemaVersion v11): one recorded same-date
 /// merge discard. `field` is the wire string (`flow`/`note`); attribution
@@ -396,6 +430,8 @@ Future<Map<String, Object?>> buildMergedAccountExport({
   Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
   // Issue #130 (kAccountExportSchemaVersion v11).
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
+  // Issue #824 (kAccountExportSchemaVersion v12).
+  Map<String, List<CustomTag>> customTagsByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -410,6 +446,7 @@ Future<Map<String, Object?>> buildMergedAccountExport({
     profileModesByProfile: profileModesByProfile,
     cycleOverridesByProfile: cycleOverridesByProfile,
     mergeEventsByProfile: mergeEventsByProfile,
+    customTagsByProfile: customTagsByProfile,
     exportedAt: exportedAt,
     appName: appName,
     appVersion: appVersion,

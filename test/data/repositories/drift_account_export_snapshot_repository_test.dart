@@ -8,17 +8,18 @@ library;
 import 'dart:async';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show driftRuntimeOptions, Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart'
-    show DayEntryMergeEventsCompanion, LunarLogDatabase;
+    show DayEntryMergeEventsCompanion, LunarLogDatabase, ProfileTagRegistryCompanion;
 import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
+import 'package:lunarlog/data/repositories/drift_tag_registry_repository.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -116,14 +117,15 @@ void main() {
       observationsRepository: DriftObservationsRepository(storage),
       profileModesRepository: DriftProfileModesRepository(storage),
       cycleOverridesRepository: DriftCycleOverridesRepository(storage),
+      tagRegistryRepository: DriftTagRegistryRepository(storage),
     );
     final profile = await storage.upsertProfile(displayName: 'A', isMinor: false);
     profileId = profile.id;
   });
 
   test(
-      'returns entries, observations, profileMode, and cycleOverrides '
-      'together for a fully-populated profile', () async {
+      'returns entries, observations, profileMode, cycleOverrides, and '
+      'customTags together for a fully-populated profile', () async {
     final storage = db.storage;
     final entry = await storage.upsertDayEntry(
       profileId: profileId,
@@ -149,6 +151,16 @@ void main() {
       cycleStartDate: '2026-01-05',
       excludedFromAverage: true,
     );
+    await storage.upsertProfileTagRegistryEntry(
+      id: 'tag-1',
+      profileId: profileId,
+      code: 'cramps_severe',
+      displayName: 'Severe Cramps',
+      category: 'custom',
+      intensityEnabled: true,
+      sortOrder: 1,
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
 
     final snapshot = await snapshotRepo.forProfile(profileId);
 
@@ -161,6 +173,8 @@ void main() {
     expect(snapshot.profileMode!.birthControlMethod, 'pill');
     expect(snapshot.cycleOverrides, hasLength(1));
     expect(snapshot.cycleOverrides.single.excludedFromAverage, isTrue);
+    expect(snapshot.customTags, hasLength(1));
+    expect(snapshot.customTags.single.code, 'cramps_severe');
   });
 
   test('profileMode is null when no profile_modes row was ever written',
@@ -175,6 +189,35 @@ void main() {
     expect(snapshot.observations, isEmpty);
     expect(snapshot.cycleOverrides, isEmpty);
     expect(snapshot.mergeEvents, isEmpty);
+    expect(snapshot.customTags, isEmpty);
+  });
+
+  test('customTags excludes deleted (tombstoned) tags', () async {
+    final storage = db.storage;
+    await storage.upsertProfileTagRegistryEntry(
+      id: 'tag-active',
+      profileId: profileId,
+      code: 'tag_active',
+      displayName: 'Active Tag',
+      category: 'custom',
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+    await db.into(db.profileTagRegistry).insert(
+          ProfileTagRegistryCompanion.insert(
+            id: 'tag-deleted',
+            profileId: profileId,
+            code: 'tag_deleted',
+            displayName: 'Deleted Tag',
+            category: 'custom',
+            deletedAt: Value(DateTime.utc(2026, 1, 2)),
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 2),
+          ),
+        );
+
+    final snapshot = await snapshotRepo.forProfile(profileId);
+    expect(snapshot.customTags, hasLength(1));
+    expect(snapshot.customTags.single.id, 'tag-active');
   });
 
   test(

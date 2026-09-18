@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart' as domain;
 import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -32,6 +33,7 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 
 /// Applies one already-built [ImportPlan] (Issue #140). See this file's
 /// own doc comment for the transactional guarantee.
@@ -40,10 +42,8 @@ class DriftAccountImporter implements AccountImporter {
 
   final LunarLogStorage _storage;
 
-  /// Writes every planned row in one transaction and returns [plan]'s own
-  /// summary (accurate because the transaction is all-or-nothing: either
-  /// every planned write lands, matching the summary exactly, or none of
-  /// them do and this throws).
+  /// Wraps the entire plan in ONE Drift transaction: an error on profile N
+  /// rolls back profiles 1..N-1, entries, and observations atomically.
   @override
   Future<ImportPlanSummary> apply(ImportPlan plan) async {
     await _storage.db.transaction(() async {
@@ -67,6 +67,9 @@ class DriftAccountImporter implements AccountImporter {
     }
     for (final cycleOverridePlan in plan.cycleOverrides) {
       await _applyCycleOverride(profileId, cycleOverridePlan);
+    }
+    for (final customTagPlan in plan.customTags) {
+      await _applyCustomTag(profileId, customTagPlan);
     }
   }
 
@@ -324,6 +327,35 @@ class DriftAccountImporter implements AccountImporter {
     final conflict = await _storage.getObservationById(fileId);
     return conflict == null ? fileId : null;
   }
+
+  /// Issue #824 (kAccountExportSchemaVersion v12): writes one `add`-outcome
+  /// custom tag. Additive like [_applyCycleOverride] — a `skip` outcome
+  /// writes nothing.
+  Future<void> _applyCustomTag(String profileId, CustomTagPlan plan) async {
+    if (plan.outcome != CustomTagImportOutcome.add) return;
+    final tag = plan.imported;
+    final tagId = await _addCustomTagId(tag.id);
+    await _storage.upsertProfileTagRegistryEntry(
+      id: tagId,
+      profileId: profileId,
+      code: tag.code,
+      displayName: tag.displayName,
+      category: tag.category,
+      intensityEnabled: tag.intensityEnabled,
+      hiddenAt: tag.hiddenAt,
+      sortOrder: tag.sortOrder,
+      updatedAt: tag.updatedAt,
+    );
+  }
+
+  /// [fileId] when it is a syntactically valid ULID AND nothing already
+  /// exists with this id in the registry — otherwise null, so
+  /// [LunarLogStorage.upsertProfileTagRegistryEntry] mints a fresh id instead.
+  Future<String?> _addCustomTagId(String fileId) async {
+    if (!isValidUlid(fileId)) return null;
+    final conflict = await _storage.getProfileTagRegistryEntriesById(fileId);
+    return conflict == null ? fileId : null;
+  }
 }
 
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
@@ -337,6 +369,7 @@ class DriftAccountImportCoordinator
     required this.observationsRepository,
     required this.storage,
     this.cycleOverridesRepository,
+    this.tagRegistryRepository,
     this.guardiansForProfile,
     this.currentUserId,
     this.currentUserIdProvider,
@@ -356,6 +389,11 @@ class DriftAccountImportCoordinator
   /// matched profile" — every file cycle override then plans `add`,
   /// mirroring [guardiansForProfile]'s own null-means-no-info default.
   final CycleOverridesRepository? cycleOverridesRepository;
+
+  /// Issue #824 (kAccountExportSchemaVersion v12): feeds `planImport`'s
+  /// `existingCustomTagsByProfileId` for a *matched* profile, so custom tags
+  /// plan additively without clobbering existing codes or exceeding the cap.
+  final TagRegistryRepository? tagRegistryRepository;
 
   /// Null means "no guardian info available" — every matched profile
   /// fails open (writable) unless archived, the same fail-open precedent
@@ -419,12 +457,14 @@ class DriftAccountImportCoordinator
     final entriesByProfileId = <String, List<domain.DayEntry>>{};
     final observationsByProfileId = <String, List<domain.Observation>>{};
     final cycleOverridesByProfileId = <String, List<domain.CycleOverride>>{};
+    final customTagsByProfileId = <String, List<domain.CustomTag>>{};
     final guardiansByProfileId = <String, List<ProfileGuardian>>{};
     for (final id in matchedIds) {
       entriesByProfileId[id] = await dayEntriesRepository.listForProfile(id);
       observationsByProfileId[id] =
           await observationsRepository.listForProfile(id);
       cycleOverridesByProfileId[id] = await _cycleOverridesFor(id);
+      customTagsByProfileId[id] = await _customTagsFor(id);
       guardiansByProfileId[id] = await _guardiansFor(id);
     }
     return planImport(
@@ -434,6 +474,7 @@ class DriftAccountImportCoordinator
       existingEntriesByProfileId: entriesByProfileId,
       existingObservationsByProfileId: observationsByProfileId,
       existingCycleOverridesByProfileId: cycleOverridesByProfileId,
+      existingCustomTagsByProfileId: customTagsByProfileId,
       writeBlockReason: (profile) => writeBlockReasonFor(
         profile: profile,
         guardians: guardiansByProfileId[profile.id] ?? const [],
@@ -460,6 +501,15 @@ class DriftAccountImportCoordinator
   Future<List<domain.CycleOverride>> _cycleOverridesFor(String profileId) {
     final repo = cycleOverridesRepository;
     return repo == null ? Future.value(const []) : repo.listForProfile(profileId);
+  }
+
+  Future<List<domain.CustomTag>> _customTagsFor(String profileId) async {
+    final repo = tagRegistryRepository;
+    if (repo != null) return repo.listForProfile(profileId);
+    return [
+      for (final row in await storage.getProfileTagRegistry(profileId))
+        customTagToDomain(row),
+    ];
   }
 
   /// Applies [plan] via the injected [importer] contract.

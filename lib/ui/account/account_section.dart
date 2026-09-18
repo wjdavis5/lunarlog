@@ -79,6 +79,7 @@ import 'package:lunarlog/app_lifecycle.dart'
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -925,6 +926,7 @@ class _AccountSectionState extends State<AccountSection> {
     final profileModesByProfile = <String, ProfileLifecycleMode?>{};
     final cycleOverridesByProfile = <String, List<CycleOverride>>{};
     final mergeEventsByProfile = <String, List<DayEntryMergeEvent>>{};
+    final customTagsByProfile = <String, List<CustomTag>>{};
     for (final profile in profiles) {
       final snapshot = await snapshotRepo.forProfile(profile.id);
       entriesByProfile[profile.id] = snapshot.entries;
@@ -932,6 +934,7 @@ class _AccountSectionState extends State<AccountSection> {
       profileModesByProfile[profile.id] = snapshot.profileMode;
       cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
       mergeEventsByProfile[profile.id] = snapshot.mergeEvents;
+      customTagsByProfile[profile.id] = snapshot.customTags;
       careNotesByProfile[profile.id] =
           await careContentRepo.listCareNotes(profile.id);
       visitPrepByProfile[profile.id] =
@@ -947,6 +950,7 @@ class _AccountSectionState extends State<AccountSection> {
       profileModesByProfile: profileModesByProfile,
       cycleOverridesByProfile: cycleOverridesByProfile,
       mergeEventsByProfile: mergeEventsByProfile,
+      customTagsByProfile: customTagsByProfile,
       appVersion: kAppVersionForExport,
     );
   }

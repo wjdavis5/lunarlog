@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/account_export.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -77,6 +78,7 @@ Map<String, Object?> _rawProfile(
   List<Map<String, Object?>> dayEntries = const [],
   List<Map<String, Object?>> observations = const [],
   List<Map<String, Object?>> cycleOverrides = const [],
+  List<Map<String, Object?>> customTags = const [],
 }) =>
     {
       'id': id,
@@ -90,6 +92,29 @@ Map<String, Object?> _rawProfile(
       'dayEntries': dayEntries,
       'observations': observations,
       'cycleOverrides': cycleOverrides,
+      'customTags': customTags,
+    };
+
+/// A `profiles[].customTags[]` element (Issue #824).
+Map<String, Object?> _rawCustomTag(
+  String id,
+  String code,
+  String displayName, {
+  String category = 'custom',
+  bool intensityEnabled = false,
+  String? hiddenAt,
+  int? sortOrder,
+}) =>
+    {
+      'id': id,
+      'code': code,
+      'displayName': displayName,
+      'category': category,
+      'intensityEnabled': intensityEnabled,
+      'hiddenAt': hiddenAt,
+      'sortOrder': sortOrder,
+      'createdAt': '2026-01-01T00:00:00.000Z',
+      'updatedAt': '2026-01-01T00:00:00.000Z',
     };
 
 /// A `profiles[].cycleOverrides[]` element (Issue #140 review, LLA-084).
@@ -187,6 +212,8 @@ const String _e3 = '00000000000000000000000013';
 const String _o1 = '00000000000000000000000021';
 const String _o2 = '00000000000000000000000022';
 const String _co1 = '00000000000000000000000031';
+const String _ct1 = '00000000000000000000000051';
+const String _ct2 = '00000000000000000000000052';
 String _obsId(int i) => (900000 + i).toString().padLeft(26, '0');
 
 void main() {
@@ -809,6 +836,140 @@ void main() {
       expect(profile.trackingPreferences!.entries.containsKey('garbage'),
           isFalse);
       expect(profile.trackingPreferences!.entries['mood']?.enabled, isFalse);
+    });
+  });
+
+  group('parseAccountImport — customTags (Issue #824, import v12)', () {
+    test('an absent customTags key parses to empty list (an older export)', () {
+      final raw = _rawDocument(profiles: [_rawProfile(_p1)]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.customTags, isEmpty);
+    });
+
+    test('a non-ULID custom tag id is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag('not-a-ulid', 'cramps_severe', 'Severe Cramps'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an empty custom tag code is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, '   ', 'Severe Cramps'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length custom tag code (>32 chars) is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'x' * (kMaxTagLength + 1), 'Severe Cramps'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length custom tag displayName (>40 chars) is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'x' * (kMaxCustomTagLabelLength + 1)),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an empty custom tag displayName is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', '   '),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length custom tag category (>32 chars) is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'Severe Cramps',
+              category: 'x' * (kMaxTagLength + 1)),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('two custom tags sharing an id in one profile are rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'Severe Cramps'),
+          _rawCustomTag(_ct1, 'herbal_tea', 'Herbal Tea'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('two custom tags sharing a code in one profile are rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'Severe Cramps'),
+          _rawCustomTag(_ct2, 'cramps_severe', 'Another Cramps'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('more than 100 custom tags in one profile are rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          for (var i = 0; i < 101; i++)
+            _rawCustomTag(
+              (950000 + i).toString().padLeft(26, '0'),
+              'tag_$i',
+              'Tag $i',
+            ),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('the same custom tag id under two DIFFERENT profiles is fine', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [_rawCustomTag(_ct1, 'tag_1', 'Tag 1')]),
+        _rawProfile(_p2, customTags: [_rawCustomTag(_ct1, 'tag_1', 'Tag 1')]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParsed>());
+    });
+
+    test('a well-formed custom tag parses correctly', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(
+            _ct1,
+            'cramps_severe',
+            'Severe Cramps',
+            intensityEnabled: true,
+            sortOrder: 1,
+            hiddenAt: '2026-01-15T00:00:00.000Z',
+          ),
+        ]),
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.customTags, hasLength(1));
+      final tag = profile.customTags.single;
+      expect(tag.id, _ct1);
+      expect(tag.code, 'cramps_severe');
+      expect(tag.displayName, 'Severe Cramps');
+      expect(tag.category, 'custom');
+      expect(tag.intensityEnabled, isTrue);
+      expect(tag.sortOrder, 1);
+      expect(tag.hiddenAt?.toIso8601String(), '2026-01-15T00:00:00.000Z');
     });
   });
 
@@ -1452,6 +1613,108 @@ void main() {
       expect(overridePlans[1].outcome, CycleOverrideImportOutcome.add);
       expect(plan.summary.cycleOverridesAdded, 1);
       expect(plan.summary.cycleOverridesSkipped, 1);
+    });
+  });
+
+  group('planImport — customTags merge policy (Issue #824)', () {
+    test(
+        'customTags are additive for a CREATED profile: two distinct tags both add',
+        () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'Severe Cramps'),
+          _rawCustomTag(_ct2, 'herbal_tea', 'Herbal Tea'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: const [],
+        writeBlockReason: _neverBlocked,
+      );
+
+      final tagPlans = plan.profiles.single.customTags;
+      expect(tagPlans, hasLength(2));
+      expect(
+          tagPlans.every((t) => t.outcome == CustomTagImportOutcome.add), isTrue);
+      expect(plan.summary.customTagsAdded, 2);
+      expect(plan.summary.customTagsSkipped, 0);
+    });
+
+    test(
+        'customTags are additive for a MATCHED profile: colliding code or id skips, new adds',
+        () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'cramps_severe', 'Severe Cramps'), // collides with code
+          _rawCustomTag(_ct2, 'herbal_tea', 'Herbal Tea'), // new
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existingTag = CustomTag(
+        id: 'local-tag-1',
+        profileId: _p1,
+        code: 'cramps_severe',
+        displayName: 'Cramps',
+        category: 'custom',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingCustomTagsByProfileId: {
+          _p1: [existingTag],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final tagPlans = plan.profiles.single.customTags;
+      expect(tagPlans[0].outcome, CustomTagImportOutcome.skip,
+          reason: 'a live tag already has code cramps_severe');
+      expect(tagPlans[1].outcome, CustomTagImportOutcome.add);
+      expect(plan.summary.customTagsAdded, 1);
+      expect(plan.summary.customTagsSkipped, 1);
+    });
+
+    test('customTags skip when profile already has max 100 tags', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, customTags: [
+          _rawCustomTag(_ct1, 'new_tag', 'New Tag'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existingTags = [
+        for (var i = 0; i < 100; i++)
+          CustomTag(
+            id: (960000 + i).toString().padLeft(26, '0'),
+            profileId: _p1,
+            code: 'existing_$i',
+            displayName: 'Tag $i',
+            category: 'custom',
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+      ];
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingCustomTagsByProfileId: {
+          _p1: existingTags,
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final tagPlans = plan.profiles.single.customTags;
+      expect(tagPlans.single.outcome, CustomTagImportOutcome.skip,
+          reason: 'profile has hit max 100 tags');
+      expect(plan.summary.customTagsAdded, 0);
+      expect(plan.summary.customTagsSkipped, 1);
     });
   });
 
