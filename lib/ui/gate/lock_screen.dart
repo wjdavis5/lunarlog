@@ -96,8 +96,13 @@ class LockScreen extends StatelessWidget {
   /// and [GateDenialReason.deniedByUser]: the OS did present a prompt, so
   /// "try again" is the primary action.
   List<Widget> _normalContent(ThemeData theme) => [
+        // Issue #258: "Your data is protected" assumed the reader owns the
+        // record — this screen may be guarding someone else's (a minor's)
+        // profile. Name the device as the thing that is protected; see
+        // docs/product/voice-and-copy.md ("second person for the reader").
         const Text(
-          'Your data is protected. Unlock to continue.',
+          'Everything logged on this device stays protected. Unlock to '
+          'continue.',
           textAlign: TextAlign.center,
         ),
         if (controller.denialReason == GateDenialReason.deniedByUser &&
@@ -105,8 +110,8 @@ class LockScreen extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             key: ValueKey('lock-denied-message'),
-            'Not unlocked. Your data stays hidden until the device '
-            'credential is accepted.',
+            'Not unlocked. The profiles on this device stay hidden until '
+            'the device credential is accepted.',
             textAlign: TextAlign.center,
           ),
         ],

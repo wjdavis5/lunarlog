@@ -54,17 +54,17 @@ void main() {
           'Caregiver');
     });
 
-    test('a stranger resolves to the "Caregiver" fallback', () {
+    test('a stranger resolves to the "Guardian" fallback', () {
       expect(careActorCopy(_l10n, 'user-stranger', guardians, 'user-dad'),
-          'Caregiver');
+          'Guardian');
       expect(careActorCopy(_l10n, 'user-stranger', const [], 'user-dad'),
-          'Caregiver');
+          'Guardian');
     });
 
-    test('a null user id resolves to the "Caregiver" fallback, never "you"',
+    test('a null user id resolves to the "Guardian" fallback, never "you"',
         () {
-      expect(careActorCopy(_l10n, null, guardians, 'user-dad'), 'Caregiver');
-      expect(careActorCopy(_l10n, null, guardians, null), 'Caregiver');
+      expect(careActorCopy(_l10n, null, guardians, 'user-dad'), 'Guardian');
+      expect(careActorCopy(_l10n, null, guardians, null), 'Guardian');
     });
   });
 

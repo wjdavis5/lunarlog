@@ -98,8 +98,8 @@ const int kLogNudgeCadencePreArmOccurrences = 4;
 
 /// Generic content only (KTD7): these exact strings are what the lock
 /// screen shows — never a profile name, date, or health detail.
-const String kReminderTitle = 'A reminder from Lunarlog';
-const String kReminderBody = 'Open Lunarlog to see what it is about.';
+const String kReminderTitle = 'A reminder from lunarlog';
+const String kReminderBody = 'Open lunarlog to see what it is about.';
 
 /// The title and body one notification presents (Issue #184): either the
 /// type's user-authored custom text or the generic defaults — never

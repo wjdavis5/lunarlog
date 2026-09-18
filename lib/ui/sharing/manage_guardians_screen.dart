@@ -528,7 +528,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           child: Text(
             guardian.userId == widget.currentUserId
                 ? 'You will leave this profile and no longer receive updates or sync its entries.'
-                : 'This caregiver will lose access to ${widget.profile.displayName}\'s calendar and entries.',
+                : 'This guardian will lose access to ${widget.profile.displayName}\'s calendar and entries.',
           ),
         ),
         actions: [
@@ -833,7 +833,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         widget.notificationPreferencesService;
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.profile.displayName} Caregivers'),
+        title: Text('${widget.profile.displayName} Guardians'),
         // R26: the transfer-ownership entry point is offered only to the
         // profile's accepted primary guardian, and only when an
         // OwnershipTransferService is actually configured on this build.
@@ -914,7 +914,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           return FloatingActionButton.extended(
             onPressed: _openInviteDialog,
             icon: const Icon(Icons.person_add),
-            label: const Text('Invite Caregiver'),
+            label: const Text('Invite guardian'),
           );
         },
       ),
@@ -960,12 +960,12 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'No caregivers linked yet',
+                          'No guardians linked yet',
                           style: theme.textTheme.titleMedium,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Invite a co-parent or caregiver to sync and share tracking.',
+                          'Invite another guardian to sync and share tracking.',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

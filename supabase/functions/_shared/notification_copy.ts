@@ -9,8 +9,8 @@
 // test (below) is the thing that must change with it -- there is
 // deliberately no shared source file between the Dart and Deno runtimes.
 
-const TITLE = "A reminder from Lunarlog";
-const BODY = "Open Lunarlog to see what it is about.";
+const TITLE = "A reminder from lunarlog";
+const BODY = "Open lunarlog to see what it is about.";
 
 /** The FCM HTTP v1 request body shape push-dispatch sends. */
 export interface FcmMessage {

@@ -773,7 +773,7 @@ void main() {
 
   group('caregivers action without a sharing service (U8)', () {
     testWidgets(
-        'tapping Caregivers does nothing when no sharing service is '
+        'tapping Guardians does nothing when no sharing service is '
         'configured', (tester) async {
       final db = await pumpApp(tester, seed: (db) async {
         await DriftProfilesRepository(db.storage)
@@ -785,10 +785,10 @@ void main() {
       await tester.tap(find.descendant(
           of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Caregivers'));
+      await tester.tap(find.text('Guardians'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Alice Caregivers'), findsNothing,
+      expect(find.text('Alice Guardians'), findsNothing,
           reason: 'no sharing service means no navigation at all');
       expect(find.text('Profiles'), findsOneWidget,
           reason: 'still on the picker; nothing was pushed');

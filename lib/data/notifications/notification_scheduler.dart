@@ -48,7 +48,7 @@ const AndroidNotificationChannel kReminderNotificationChannel =
     AndroidNotificationChannel(
   kReminderChannelId,
   'Reminders',
-  description: 'Period reminders from Lunarlog',
+  description: 'Period reminders from lunarlog',
 );
 
 /// The Android notification details every reminder-shaped notification is
@@ -62,7 +62,7 @@ AndroidNotificationDetails reminderNotificationDetails({
     AndroidNotificationDetails(
       kReminderChannelId,
       'Reminders',
-      channelDescription: 'Period reminders from Lunarlog',
+      channelDescription: 'Period reminders from lunarlog',
       // Lock-screen privacy: content hidden on the lock screen; the
       // generic body is the second line of defense. iOS preview
       // visibility is a user OS setting — generic content is the only

@@ -303,9 +303,9 @@ void main() {
         l10n.settingsPrivacySubtitle,
         'Sync & family sharing, protected at rest, zero tracking',
       );
-      expect(l10n.settingsPrivacyDialogTitle, 'LunarLog Privacy Policy');
+      expect(l10n.settingsPrivacyDialogTitle, 'lunarlog Privacy Policy');
       expect(l10n.settingsPrivacyDialogBody, startsWith(
-        'LunarLog is a family cycle tracker built for sync and sharing.',
+        'lunarlog is a family cycle tracker built for sync and sharing.',
       ));
       expect(
         l10n.settingsPrivacyDialogBody,
@@ -317,7 +317,7 @@ void main() {
       expect(
         l10n.settingsPrivacyDialogBody,
         contains(
-          '• Caregiver Alerts: Optional push notifications to another '
+          '• Guardian Alerts: Optional push notifications to another '
           'guardian never carry what was logged - only a generic reminder, '
           'via Firebase Cloud Messaging.',
         ),

@@ -215,7 +215,7 @@ void main() {
     test('the generic defaults themselves contain no name-shaped or '
         'date-shaped content', () {
       expect(RegExp(r'\d').hasMatch(kReminderTitle + kReminderBody), isFalse);
-      expect(kReminderTitle, isNot(contains('Lunarlog (')));
+      expect(kReminderTitle, isNot(contains('lunarlog (')));
     });
   });
 }

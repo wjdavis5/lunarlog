@@ -282,7 +282,7 @@ void main() {
         GuardianRole.caregiver,
       );
       expect(copy, contains('lose'));
-      expect(copy, contains('manage caregivers'));
+      expect(copy, contains('manage guardians'));
       expect(copy, isNot(contains('read-only')));
     });
 
@@ -292,7 +292,7 @@ void main() {
         GuardianRole.coParent,
       );
       expect(copy, contains('gain'));
-      expect(copy, contains('manage caregivers'));
+      expect(copy, contains('manage guardians'));
     });
   });
 }

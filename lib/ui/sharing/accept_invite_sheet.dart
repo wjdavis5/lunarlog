@@ -136,7 +136,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
       );
     }
     return const Text(
-      "You've been invited to a shared profile in LunarLog. "
+      "You've been invited to a shared profile in lunarlog. "
       'Accepting will sync its cycle calendar and health logs to '
       'this device.',
     );

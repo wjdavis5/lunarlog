@@ -220,7 +220,7 @@ void main() {
 
       // Card 1: identity/value — headline, claims, brand wordmark.
       expect(find.text('A private cycle log for your family'), findsOneWidget);
-      expect(find.text('LunarLog'), findsOneWidget);
+      expect(find.text('lunarlog'), findsOneWidget);
       expect(find.byKey(const ValueKey('first-run-card-value')),
           findsOneWidget);
       expect(find.byKey(const ValueKey('first-run-card-notice')),

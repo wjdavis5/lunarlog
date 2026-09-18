@@ -9,8 +9,8 @@ Deno.test("buildPushMessage carries only profile_id in data", () => {
 
 Deno.test("buildPushMessage uses the exact literal title and body", () => {
   const message = buildPushMessage("profile-1", "token-1");
-  assertEquals(message.message.notification.title, "A reminder from Lunarlog");
-  assertEquals(message.message.notification.body, "Open Lunarlog to see what it is about.");
+  assertEquals(message.message.notification.title, "A reminder from lunarlog");
+  assertEquals(message.message.notification.body, "Open lunarlog to see what it is about.");
 });
 
 Deno.test("buildPushMessage's serialized form has no key beyond token/notification/data", () => {

@@ -1162,7 +1162,7 @@ void main() {
           reason: 'the role badge stays announced — the tile subtitle, or '
               'the merged tile node that contains it',
         );
-        expect(find.byTooltip('Remove caregiver'), findsOneWidget,
+        expect(find.byTooltip('Remove guardian'), findsOneWidget,
             reason: 'the revoke action stays unambiguously labelled');
         handle.dispose();
         await tester.pumpWidget(const SizedBox.shrink());

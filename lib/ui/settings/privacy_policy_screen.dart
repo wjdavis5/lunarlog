@@ -3,7 +3,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
-/// Full-screen display of LunarLog's privacy policy (Issue #250).
+/// Full-screen display of lunarlog's privacy policy (Issue #250).
 ///
 /// Promoted from a modal dialog following the dialog/sheet/full-screen rule:
 /// long informational content belongs on a scrollable screen, not in a dialog.

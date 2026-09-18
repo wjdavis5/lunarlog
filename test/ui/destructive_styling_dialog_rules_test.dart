@@ -276,7 +276,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byType(BottomSheet), findsOneWidget);
-      expect(find.text('Invite Caregiver to Alex'), findsOneWidget);
+      expect(find.text('Invite guardian to Alex'), findsOneWidget);
       expect(find.text('Create Link'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
     });
@@ -310,7 +310,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(PrivacyPolicyScreen), findsOneWidget);
-      expect(find.text('LunarLog Privacy Policy'), findsOneWidget);
+      expect(find.text('lunarlog Privacy Policy'), findsOneWidget);
       expect(find.textContaining('Sync & Family Sharing'), findsOneWidget);
 
       // Close button

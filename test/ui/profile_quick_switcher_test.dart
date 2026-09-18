@@ -151,7 +151,7 @@ void main() {
     // ListTile used to carry is still reachable.
     await tester.tap(find.byTooltip('Profile actions').first);
     await tester.pumpAndSettle();
-    expect(find.text('Caregivers'), findsOneWidget);
+    expect(find.text('Guardians'), findsOneWidget);
     expect(find.text('Rename'), findsOneWidget);
     expect(find.text('Archive'), findsOneWidget);
     await h.dispose();

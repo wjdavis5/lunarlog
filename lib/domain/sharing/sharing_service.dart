@@ -404,7 +404,7 @@ List<GuardianRole> allowedNewRoles({
 /// `canManageGuardians`), so the dialog can never promise something the
 /// day sheet won't do. Never empty for distinct roles.
 String roleChangeConsequence(GuardianRole from, GuardianRole to) {
-  const labels = ['log entries', 'edit profile details', 'manage caregivers'];
+  const labels = ['log entries', 'edit profile details', 'manage guardians'];
   final fromCaps = _roleCapabilities(from);
   final toCaps = _roleCapabilities(to);
   final gains = <String>[];

@@ -62,7 +62,7 @@ import 'package:provider/provider.dart';
 
 /// The app's wordmark as rendered on the identity card. A proper noun,
 /// not translatable copy (#340's numeral precedent).
-const String kFirstRunBrandName = 'LunarLog';
+const String kFirstRunBrandName = 'lunarlog';
 
 /// The date-picker callable, injectable so widget tests can answer the
 /// last-period question without driving the Material dialog.

@@ -21,7 +21,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 /// The application name shown on the licence page — a proper noun, not
 /// translatable copy (the same posture as `kSupportEmailAddress`).
-const String kAboutApplicationName = 'LunarLog';
+const String kAboutApplicationName = 'lunarlog';
 
 /// Reads [PackageInfo]; a seam so widget tests never touch the platform
 /// channel (which throws `MissingPluginException` under `flutter test`).

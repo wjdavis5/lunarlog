@@ -135,7 +135,7 @@ void configureSentryOptions(
     // sees it; the only guard the message gets is `scrubBreadcrumb`'s
     // `mentionsDenyListedKey` word scan, which catches a literal key name
     // like `note` appearing as a token but not an arbitrary sensitive
-    // *value* a caller happened to print. Lunarlog's own call sites are
+    // *value* a caller happened to print. lunarlog's own call sites are
     // uniformly type-only now (issue #97), so this pin guards foreign
     // output: third-party packages and Flutter itself print values this
     // codebase does not control. Same posture as `enableTombstone` above:
