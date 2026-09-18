@@ -147,3 +147,26 @@ HealthFlowWritePlan mapSpottingToHealthWrite({
     inPeriodEpisode
         ? const HealthFlowMenstrualSample(HealthFlowValue.light)
         : const HealthFlowIntermenstrualMarker();
+
+/// The inverse direction (Issue #217): a health-store flow value read back
+/// into lunarlog's [FlowLevel]. `unspecified` has no lunarlog equivalent —
+/// the app always knows which value it means — so it returns null and the
+/// import service counts the sample as unsupported rather than guessing.
+FlowLevel? flowLevelFromHealthValue(HealthFlowValue value) => switch (value) {
+      HealthFlowValue.light => FlowLevel.light,
+      HealthFlowValue.medium => FlowLevel.medium,
+      HealthFlowValue.heavy => FlowLevel.heavy,
+      HealthFlowValue.unspecified => null,
+    };
+
+/// Rank for merging several samples that resolve to the same civil day: the
+/// highest intensity wins, so an Apple Health day carrying both a light and
+/// a heavy sample imports as heavy. `unspecified` ranks below every real
+/// intensity (callers map it to null via [flowLevelFromHealthValue] first,
+/// so it never reaches a merge).
+int healthFlowValueRank(HealthFlowValue value) => switch (value) {
+      HealthFlowValue.unspecified => 0,
+      HealthFlowValue.light => 1,
+      HealthFlowValue.medium => 2,
+      HealthFlowValue.heavy => 3,
+    };

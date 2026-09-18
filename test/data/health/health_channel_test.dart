@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/health/ios_health_channel.dart';
 import 'package:lunarlog/data/health/android_health_channel.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -520,6 +521,91 @@ void main() {
         ),
         isA<AndroidHealthChannel>(),
       );
+    });
+  });
+
+  group('readMenstrualFlow (Issue #217)', () {
+    final start = DateTime.utc(2026, 8, 16);
+    final end = DateTime.utc(2026, 9, 17);
+
+    test('a denied read refuses with zero channel invocations', () async {
+      final result = await makePlatform(seed: {}).readMenstrualFlow(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthReadRefused>());
+      expect((result as HealthReadRefused).check, HealthSyncCheck.noBinding);
+      expect(calls, isEmpty);
+    });
+
+    test('an allowed read crosses the channel with the guard and window', () async {
+      nextResult = <Object?>[
+        {
+          'recordId': 'uuid-1',
+          'flow': 'light',
+          'startMs': 1000,
+          'endMs': 2000,
+          'tzName': 'UTC',
+        },
+      ];
+      final result = await makePlatform().readMenstrualFlow(
+        _facts(),
+        start: start,
+        end: end,
+      );
+
+      expect(calls, hasLength(1));
+      final call = calls.single;
+      expect(call.method, 'readMenstrualFlow');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['profileId'], 'p1');
+      expect(args['startMs'], start.millisecondsSinceEpoch);
+      expect(args['endMs'], end.millisecondsSinceEpoch);
+      expect((result as HealthReadSamples).samples.single.recordId, 'uuid-1');
+    });
+
+    test('a platform unavailable error maps to HealthReadUnavailable', () async {
+      nextError = PlatformException(code: 'unavailable');
+      final result = await makePlatform().readMenstrualFlow(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthReadUnavailable>());
+    });
+
+    test('a permissionDenied platform error maps to the read denial', () async {
+      nextError = PlatformException(code: 'permissionDenied');
+      final result = await makePlatform().readMenstrualFlow(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthReadPermissionDenied>());
+    });
+
+    test('the unsupported platform reads as unavailable', () async {
+      const platform = UnsupportedHealthPlatform();
+      final result = await platform.readMenstrualFlow(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthReadUnavailable>());
+    });
+
+    test('createHealthImportSource pins each platform', () {
+      HealthImportSource build(TargetPlatform platform) =>
+          createHealthImportSource(
+            platform,
+            binding: HealthSyncBinding(FakeSettingsStore()),
+            minorBindingAllowed: true,
+          );
+
+      expect(build(TargetPlatform.iOS), isA<IOSHealthChannel>());
+      expect(build(TargetPlatform.android), isA<AndroidHealthChannel>());
+      expect(build(TargetPlatform.windows), isA<UnsupportedHealthPlatform>());
     });
   });
 }

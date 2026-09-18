@@ -24,6 +24,7 @@ import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/birth_control.dart';
@@ -328,6 +329,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   PredictionProjectionPublisher? _predictionProjectionPublisher;
   HealthFlowWriteCoordinator? _healthFlowCoordinator;
   HealthSyncTombstoneCoordinator? _healthSyncTombstoneCoordinator;
+  AppleHealthImportRunner? _appleHealthImporter;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -414,6 +416,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _initAuthController();
     _initHealthFlowWriter();
     _initHealthSyncTombstonePropagation();
+    _initAppleHealthImporter();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -614,6 +617,23 @@ class _LunarLogAppState extends State<LunarLogApp>
     if (coordinator == null) return;
     _healthSyncTombstoneCoordinator = coordinator;
     coordinator.start();
+  }
+
+  /// Issue #217: the user-initiated Apple Health import runner. AC2:
+  /// construction (and the iOS-only gating) lives in `lib/composition/`;
+  /// this only holds the instance the Settings screen reads through a
+  /// provider. It is not started — unlike the write coordinators it has no
+  /// subscriptions or timers; the only thing that runs it is the operator's
+  /// explicit Settings action.
+  void _initAppleHealthImporter() {
+    _appleHealthImporter = buildAppleHealthImportRunner(
+      settings: _settings,
+      profiles: _profiles,
+      dayEntries: _dayEntries,
+      guardiansForProfile: _profileGuardians.getForProfile,
+      signedInUserId: () => confirmedHealthSyncUserId(_authController),
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+    );
   }
 
   bool _isSignedIn() => _authController?.signedIn ?? false;
@@ -1093,6 +1113,8 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<AccountImportCoordinator>.value(
             value: _accountImportCoordinator),
         Provider<ClueImportRunner>.value(value: _clueImportRunner),
+        if (_appleHealthImporter != null)
+          Provider<AppleHealthImportRunner>.value(value: _appleHealthImporter!),
         if (_deps.sharingService != null)
           Provider<SharingService>.value(value: _deps.sharingService!),
         if (_deps.ownershipTransferService != null)

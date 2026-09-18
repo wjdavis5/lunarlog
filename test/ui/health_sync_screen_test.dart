@@ -8,6 +8,8 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -178,6 +180,27 @@ ProfileGuardian _owner(String profileId, String userId) => ProfileGuardian(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
+/// A programmable [AppleHealthImportRunner] for the #217 UI states.
+class _FakeImporter implements AppleHealthImportRunner {
+  _FakeImporter(this.summary);
+
+  AppleHealthImportSummary summary;
+  int calls = 0;
+
+  @override
+  Future<AppleHealthImportSummary> importNow() async {
+    calls++;
+    return summary;
+  }
+}
+
+/// A runner that throws, for the unexpected-failure line.
+class _ThrowingImporter implements AppleHealthImportRunner {
+  @override
+  Future<AppleHealthImportSummary> importNow() async =>
+      throw StateError('boom');
+}
+
 void main() {
   // Fixture: 'eligible' owned by the signed-in user (u1), 'minor' also
   // owned by u1 but is a minor, 'other' owned by a different account,
@@ -208,11 +231,13 @@ void main() {
     required HealthSyncBinding binding,
     String? signedInUserId = 'u1',
     ProfilesRepository? profilesRepository,
+    AppleHealthImportRunner? importer,
   }) async {
     // Issue #186 added revocation/30-day-limit copy above the profile
-    // picker, so give the lazy ListView a tall viewport to keep every
-    // profile tile and the unbind action inside the build window.
-    tester.view.physicalSize = const Size(800, 1400);
+    // picker, and #217 adds an import tile and its result block below it,
+    // so give the lazy ListView a tall viewport to keep every profile tile
+    // and the import/unbind actions inside the build window.
+    tester.view.physicalSize = const Size(800, 1800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -223,6 +248,7 @@ void main() {
           guardiansForProfile: guardiansForProfile,
           binding: binding,
           signedInUserId: signedInUserId,
+          importer: importer,
         ),
       ),
     );
@@ -277,14 +303,17 @@ void main() {
     expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsNothing);
   });
 
-  testWidgets('documents the one-way, forward-only write surface and the '
-      'flow collapse (issue #193, mirroring Clue\'s own disclosure)',
-      (tester) async {
+  testWidgets('documents the forward-only write surface, the flow collapse '
+      '(issue #193, mirroring Clue\'s own disclosure) and the user-initiated '
+      'import (issue #217)', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await pumpScreen(tester, binding: binding);
 
+    // Issue #217 rewrote the old "nothing is ever read back" claim: import
+    // exists, but only when the operator starts it.
     expect(
-      find.textContaining('nothing is ever read back'),
+      find.textContaining('nothing is read unless you start that import '
+          'yourself'),
       findsOneWidget,
     );
     expect(
@@ -458,5 +487,132 @@ void main() {
 
     expect(find.byKey(const ValueKey('health-sync-loading')), findsNothing);
     expect(find.byKey(const ValueKey('health-sync-load-error')), findsOneWidget);
+  });
+
+  group('Issue #217 import', () {
+    Future<HealthSyncBinding> boundBinding(FakeSettingsStore settings) async {
+      final binding = HealthSyncBinding(settings);
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    testWidgets('the import tile is hidden when no runner is provided or '
+        'nothing is bound', (tester) async {
+      final settings = FakeSettingsStore();
+      final binding = HealthSyncBinding(settings);
+      await pumpScreen(tester, binding: binding);
+      // Not bound: no tile even with a runner.
+      expect(
+        find.byKey(const ValueKey('health-sync-import-tile')),
+        findsNothing,
+      );
+
+      await pumpScreen(
+        tester,
+        binding: await boundBinding(FakeSettingsStore()),
+      );
+      // Bound but no runner (an unconfigured/test build): still hidden.
+      expect(
+        find.byKey(const ValueKey('health-sync-import-tile')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('tapping Import runs the runner once and renders the '
+        'positive summary', (tester) async {
+      final importer = _FakeImporter(const AppleHealthImportSummary(
+        samplesRead: 2,
+        daysWritten: 2,
+        daysKeptManual: 1,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      expect(
+        find.byKey(const ValueKey('health-sync-import-tile')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(importer.calls, 1);
+      expect(
+        find.textContaining('Updated 2 days from Apple Health.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Kept your own logged value on 1 day.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an empty result renders the neutral ambiguity copy, never '
+        '"nothing tracked" or "permission denied"', (tester) async {
+      final importer = _FakeImporter(const AppleHealthImportSummary());
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kAppleHealthImportEmptyCopy), findsOneWidget);
+      // The neutral copy itself states both possibilities; it must not
+      // assert either as fact, and no denial line is rendered.
+      expect(find.textContaining('permission denied'), findsNothing);
+    });
+
+    testWidgets('a denied read renders the same neutral copy as an empty '
+        'one (HealthKit opacity)', (tester) async {
+      final importer = _FakeImporter(const AppleHealthImportSummary(
+        blocked: HealthPlatformPermissionDenied(),
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kAppleHealthImportEmptyCopy), findsOneWidget);
+      expect(find.textContaining('permission denied'), findsNothing);
+    });
+
+    testWidgets('a guard refusal renders the cannot-import line', (tester) async {
+      final importer = _FakeImporter(const AppleHealthImportSummary(
+        blocked: HealthPlatformRefused(HealthSyncCheck.notOwner),
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("This profile can't import from Apple Health"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a throwing runner renders the generic failure line',
+        (tester) async {
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        importer: _ThrowingImporter(),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining("Couldn't finish the import. Please try again."),
+        findsOneWidget,
+      );
+    });
   });
 }

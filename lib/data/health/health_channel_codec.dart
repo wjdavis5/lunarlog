@@ -17,6 +17,7 @@
 /// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
 /// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
+/// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
 /// *Guard args* (every guarded method): `profileId`, `signedInUserId?`,
 /// `ownerUserId?`, `isMinor`, `birthYear?`, `transferredAtMs?`,
@@ -65,6 +66,7 @@
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
+import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -79,6 +81,11 @@ abstract final class HealthChannelMethods {
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
   static const writeMenstrualPeriod = 'writeMenstrualPeriod';
   static const deleteRecords = 'deleteRecords';
+
+  /// The read/import method (Issue #217). Its success result is a `List` of
+  /// sample maps rather than a result string — see
+  /// [decodeHealthReadResult].
+  static const readMenstrualFlow = 'readMenstrualFlow';
 }
 
 /// The canonical Apple SDK raw integer for each [HealthFlowValue], per
@@ -148,6 +155,77 @@ HealthSyncCheck? _checkFromWire(String raw) {
   }
   return null;
 }
+
+/// Parses a `readMenstrualFlow` result into the typed [HealthReadResult].
+/// Two wire shapes are accepted: a `List` of sample maps (success) and a
+/// result `String` (`unavailable` / `permissionDenied` / a
+/// [HealthSyncCheck] deny name). Total — an unrecognised shape or a
+/// malformed sample map becomes [HealthReadResult.failed], never a silent
+/// empty success (a protocol error must surface).
+HealthReadResult decodeHealthReadResult(Object? raw) {
+  if (raw is List) {
+    final samples = <HealthFlowSample>[];
+    for (final entry in raw) {
+      final sample = _decodeFlowSample(entry);
+      if (sample == null) {
+        return HealthReadResult.failed('malformed readMenstrualFlow sample');
+      }
+      samples.add(sample);
+    }
+    return HealthReadResult.samples(samples);
+  }
+  if (raw is String) {
+    switch (raw) {
+      case 'unavailable':
+        return const HealthReadResult.unavailable();
+      case 'permissionDenied':
+        return const HealthReadResult.permissionDenied();
+      default:
+        final check = _checkFromWire(raw);
+        if (check != null && check != HealthSyncCheck.allowed) {
+          return HealthReadResult.refused(check);
+        }
+        return HealthReadResult.failed('unknown readMenstrualFlow result: $raw');
+    }
+  }
+  return HealthReadResult.failed(
+    'unexpected readMenstrualFlow result (${raw.runtimeType}): $raw',
+  );
+}
+
+/// One sample map from `readMenstrualFlow`, or null when a required key is
+/// missing/typed wrong. Optional keys (`tzName`, `externalUuid`) are
+/// genuinely nullable. [start]/[end] cross as epoch-millisecond numbers and
+/// become UTC instants; the sample's own zone rides [HealthFlowSample.tzName]
+/// (the #180 import contract — the conversion to a civil date happens in Dart,
+/// never from the device's current zone).
+HealthFlowSample? _decodeFlowSample(Object? entry) {
+  if (entry is! Map) return null;
+  final recordId = entry['recordId'];
+  final flow = HealthFlowValue.fromWire(entry['flow'] as String?);
+  final startMs = (entry['startMs'] as num?)?.toInt();
+  final endMs = (entry['endMs'] as num?)?.toInt();
+  if (recordId is! String || flow == null || startMs == null || endMs == null) {
+    return null;
+  }
+  return HealthFlowSample(
+    recordId: recordId,
+    flow: flow,
+    start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
+    end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
+    tzName: entry['tzName'] as String?,
+    externalUuid: entry['externalUuid'] as String?,
+  );
+}
+
+/// The window-args half of `readMenstrualFlow`: the absolute query bounds as
+/// epoch milliseconds. Widened by the caller (`health_import_service.dart`)
+/// so a sample recorded in any zone inside the civil window is returned; the
+/// precise civil-date filter happens in Dart against the sample's own zone.
+Map<String, Object?> encodeReadWindowArgs(DateTime start, DateTime end) => {
+      'startMs': start.millisecondsSinceEpoch,
+      'endMs': end.millisecondsSinceEpoch,
+    };
 
 /// The guard-args half of every guarded call. [minorBindingAllowed] is
 /// passed in by the adapter (sourced from

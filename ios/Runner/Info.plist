@@ -60,28 +60,27 @@
 	<!-- U7: why the app requests Face ID (device-credential gate). -->
 	<key>NSFaceIDUsageDescription</key>
 	<string>lunarlog uses Face ID to unlock your data.</string>
-	<!-- Issue #156/#173: HealthKit platform plumbing, write-only by design
-	     (issue #515) — AppDelegate.swift's `requestAuthorization` call
-	     passes an empty `read` set (`toShare: toShare, read: []`), so this
-	     app never reads HealthKit data.
+	<!-- Issue #156/#173/#217: HealthKit platform plumbing. Issue #217
+	     (#781's owner decision) reverses the write-only posture this
+	     comment used to describe: the app now asks for a non-empty read
+	     set so the user-initiated "Import from Apple Health" action can
+	     read menstrual-flow samples. The read set carries ONLY
+	     menstrualFlow; Apple's four computed cycle-deviation types are
+	     never requested, read, or written (App Review 5.1.3).
 
-	     BOTH strings are nevertheless required, and NSHealthShareUsageDescription
-	     must NOT be removed again (issue #766). #515 removed it as a
+	     BOTH strings are required, and NSHealthShareUsageDescription
+	     must NOT be removed (issue #766). #515 removed it as a
 	     privacy-accuracy correction on the reasoning that an unused read
-	     capability should not be declared; App Store Connect rejected build
-	     1135 for exactly that omission with ITMS-90683. That check fires on
-	     *entitlements that permit access*, not only on call sites, and
-	     Runner.entitlements declares `com.apple.developer.healthkit`, which
-	     permits read. An empty `read:` array does not exempt the bundle.
-	     Removing the key again re-breaks every upload.
-
-	     #515's substantive point is preserved in the string's wording: it
-	     states that the app does not read, rather than inventing a read
-	     purpose the code does not have. If a real read call site is ever
-	     added, rewrite this string to describe what is read and why, and
-	     update PRIVACY.md to match. -->
+	     capability should not be declared; App Store Connect rejected
+	     build 1135 for exactly that omission with ITMS-90683. That check
+	     fires on *entitlements that permit access*, not only on call
+	     sites, and Runner.entitlements declares
+	     `com.apple.developer.healthkit`, which permits read. Removing the
+	     key again re-breaks every upload. The string below now honestly
+	     describes the read the code performs, and PRIVACY.md carries the
+	     matching disclosure. -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>lunarlog never reads anything from Apple Health. iOS requires this permission text because the app is able to write to Apple Health; only writing is ever requested.</string>
+	<string>lunarlog reads menstrual flow from Apple Health only when you choose to import it into the profile you have bound to this device, so you can bring in history you recorded elsewhere. Nothing is read automatically, and only menstrual-flow samples in the date range you import are read.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>lunarlog writes the bound profile's period and symptom data to Apple Health, only for the one profile you choose in Settings.</string>
 	<!-- Issue #207: required by image_picker_ios the moment a gallery source
