@@ -1664,4 +1664,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get postpartumExitExclusionDone =>
       'Postpartum interval excluded from cycle averages';
+
+  @override
+  String get conceiveTitle => 'Conceive mode';
+
+  @override
+  String get conceiveWindowLabel => 'Estimated fertile window';
+
+  @override
+  String conceivePeakDay(String date, int percent) {
+    return 'Most likely day: $date (about $percent% in one study)';
+  }
 }

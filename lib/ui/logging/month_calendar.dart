@@ -52,6 +52,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
@@ -546,6 +547,7 @@ class MonthCalendar extends StatefulWidget {
     required this.profileId,
     this.readOnly = false,
     this.mode = ProfileMode.standard,
+    this.lifecycleMode,
     this.trackingPreferences,
     this.isMinor = false,
     this.todayProvider = LocalDate.today,
@@ -562,6 +564,11 @@ class MonthCalendar extends StatefulWidget {
   /// The profile's care mode (Issue #131): forwarded to [DaySheet] for its
   /// category headings and surfacing order. Presentation only.
   final ProfileMode mode;
+
+  /// The profile's life-stage mode (Issue #188/#204), forwarded to
+  /// [DaySheet] so Conceive mode surfaces Tests/Discharge first. Null means
+  /// no life-stage context: the standard order, never a guess.
+  final LifecycleMode? lifecycleMode;
 
   /// The profile's curated tracking categories (Issue #259), forwarded to
   /// [DaySheet]; null means never customized. Presentation only.
@@ -1263,6 +1270,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         existing: entry,
         today: widget.todayProvider(),
         mode: widget.mode,
+        lifecycleMode: widget.lifecycleMode,
         trackingPreferences: widget.trackingPreferences,
         isMinor: widget.isMinor,
         readOnly: _effectiveReadOnly,

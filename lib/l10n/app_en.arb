@@ -2103,6 +2103,27 @@
   "postpartumExitExclusionDone": "Postpartum interval excluded from cycle averages",
   "@postpartumExitExclusionDone": {
     "description": "Snackbar confirming the postpartum exclusion rows were written (Issue #455)."
+  },
+
+  "conceiveTitle": "Conceive mode",
+  "@conceiveTitle": {
+    "description": "Heading of the Conceive-mode Cycle View card, shown while profile_modes.mode is conceive (Issue #204)."
+  },
+  "conceiveWindowLabel": "Estimated fertile window",
+  "@conceiveWindowLabel": {
+    "description": "Label above the estimated fertile-window date range on the Conceive-mode card (Issue #204)."
+  },
+  "conceivePeakDay": "Most likely day: {date} (about {percent}% in one study)",
+  "@conceivePeakDay": {
+    "description": "Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Deliberately says 'in one study' so the number never reads as a personal probability.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
   }
 
 }

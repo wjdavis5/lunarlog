@@ -44,6 +44,8 @@ import 'package:lunarlog/app_lifecycle.dart'
     show RequestNotificationPermissionCallback;
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/conceive.dart'
+    show currentConceptionEstimate;
 import 'package:lunarlog/domain/episodes/episodes.dart' show bleedDatesOf;
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
@@ -70,6 +72,7 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/app_shell_scope.dart';
 import 'package:lunarlog/ui/components/async_snapshot_view.dart';
+import 'package:lunarlog/ui/components/conceive_card.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/predictions_disabled_card.dart';
 import 'package:lunarlog/ui/components/predictions_suppressed_card.dart';
@@ -445,6 +448,7 @@ class _OverviewPanelState extends State<OverviewPanel>
         existing: existing,
         today: today,
         mode: widget.mode,
+        lifecycleMode: _modeRow?.mode ?? LifecycleMode.tracking,
         trackingPreferences: widget.trackingPreferences,
         isMinor: widget.isMinor,
         readOnly: _effectiveReadOnly,
@@ -550,9 +554,18 @@ class _OverviewPanelState extends State<OverviewPanel>
     CyclePrediction prediction,
     NotificationAvailability availability,
   ) {
+    // Issue #204: in Conceive mode the fertility curve is the Cycle View's
+    // headline, rendered above the ordinary period estimate (which stays —
+    // Conceive does not suppress prediction). Null in every other mode,
+    // and null when there is no current curve to show (too little history,
+    // or a pack-driven estimate that carries no ovulatory signal).
+    final conceiveCard = _modeRow?.mode == LifecycleMode.conceive
+        ? _conceiveCard(context, prediction)
+        : null;
     return ListView(
       padding: const EdgeInsets.all(LLSpace.space4),
       children: [
+        ?conceiveCard,
         // Issue #192: while the profile is in Pregnancy mode, the
         // week-of-pregnancy counter replaces the ordinary cycle countdown
         // as the panel's headline. Prediction below stays suppressed
@@ -627,6 +640,25 @@ class _OverviewPanelState extends State<OverviewPanel>
       showReturnOffer: _postpartumBleedLogged,
       canSwitch: !_effectiveReadOnly,
       onSwitchToTracking: _switchPostpartumToTracking,
+    );
+  }
+
+  /// Issue #204: the Conceive-mode fertility headline — the per-day
+  /// conception-likelihood curve computed by `currentConceptionEstimate`
+  /// (pure, `lib/domain/conceive.dart`). Null unless [prediction] is an
+  /// [ActivePrediction] with a current curve, so the panel never renders a
+  /// fabricated window. The curve is derived from period start dates
+  /// alone; it never reads a logged ovulation test or BBT reading.
+  Widget? _conceiveCard(BuildContext context, CyclePrediction prediction) {
+    if (prediction is! ActivePrediction) return null;
+    final estimate = currentConceptionEstimate(prediction);
+    if (estimate == null) return null;
+    return ConceiveCard(
+      estimate: estimate,
+      dateText: (date) => dates.formatMonthDayYear(
+        DateTime(date.year, date.month, date.day),
+        locale: dates.calendarLocale(context),
+      ),
     );
   }
 

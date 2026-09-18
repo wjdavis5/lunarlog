@@ -63,6 +63,7 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/conceive.dart' show conceiveCategoryOrder;
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show describeUnmappedRaw;
 import 'package:lunarlog/domain/limits.dart';
@@ -75,6 +76,7 @@ import 'package:lunarlog/domain/logging/tag_recents_store.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/measurement_validation.dart';
@@ -227,6 +229,7 @@ class DaySheet extends StatefulWidget {
     required this.today,
     this.existing,
     this.mode = ProfileMode.standard,
+    this.lifecycleMode,
     this.trackingPreferences,
     this.isMinor = false,
     this.readOnly = false,
@@ -250,6 +253,15 @@ class DaySheet extends StatefulWidget {
   /// The profile's care mode (Issue #131): category headings and surfacing
   /// order. Presentation only — never a permission.
   final ProfileMode mode;
+
+  /// The profile's life-stage mode (Issue #188/#204): when
+  /// [LifecycleMode.conceive], the sheet surfaces the fertility-signal
+  /// categories (Tests, then Discharge) ahead of everything else — see
+  /// [_resolveCategoriesInOrder] and `domain/conceive.dart`. Null means the
+  /// caller has no life-stage context (an older/test call site): the sheet
+  /// falls back to the ordinary order, never guessing. Orthogonal to
+  /// [mode] — this never changes vocabulary or permissions.
+  final LifecycleMode? lifecycleMode;
 
   /// The profile's curated tracking categories (Issue #259): the synced
   /// preference document the day sheet reads to decide which categories
@@ -518,11 +530,23 @@ class _DaySheetState extends State<DaySheet> {
   /// route whose State is not recreated by a shell rebuild, so a document
   /// change arriving while the sheet is open applies the next time the
   /// sheet opens. (The `mode` copy getter above IS rebuilt per access.)
-  late final List<TagCategory> _categoriesInOrder = resolveTrackingCategories(
-    defaultOrder: _copy.categoriesInOrder,
-    preferences: widget.trackingPreferences,
-    isMinor: widget.isMinor,
-  );
+  late final List<TagCategory> _categoriesInOrder =
+      _resolveCategoriesInOrder();
+
+  /// Issue #204: the resolved category order for this sheet — #259's curated
+  /// order, then Conceive mode's fertility-first reordering (Tests, then
+  /// Discharge) when [DaySheet.lifecycleMode] is [LifecycleMode.conceive].
+  /// `conceiveCategoryOrder` only reorders; it never drops a category, so
+  /// Conceive mode still logs everything the other modes do.
+  List<TagCategory> _resolveCategoriesInOrder() {
+    final resolved = resolveTrackingCategories(
+      defaultOrder: _copy.categoriesInOrder,
+      preferences: widget.trackingPreferences,
+      isMinor: widget.isMinor,
+    );
+    if (widget.lifecycleMode != LifecycleMode.conceive) return resolved;
+    return conceiveCategoryOrder(resolved);
+  }
 
   /// Stored codes absent from [kTagTaxonomy] at load time (#237): the chip
   /// grid below only ever renders [kTagTaxonomy] members, so a code the
