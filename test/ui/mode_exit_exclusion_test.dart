@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/profiles/mode_exit_exclusion.dart';
@@ -60,23 +61,39 @@ class _StubSettingsStore implements SettingsStore {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
-/// Enough of a day-entries repository for the tree wrapper: returns the
-/// same pregnancy-shaped bleed history the pure tests use (the
-/// pregnancy-long period, one mid-pregnancy breakthrough episode, and the
-/// exit-day period).
 class _StubDayEntriesRepository implements DayEntriesRepository {
+  _StubDayEntriesRepository([this.dates = const []]);
+
+  final List<LocalDate> dates;
+
   @override
   Future<List<DayEntry>> listForProfile(String profileId) async => [
-          for (final date in kPastPregnancyBleedDates)
-            DayEntry(
-              id: 'entry-${date.iso}',
-              profileId: profileId,
-              localDate: date,
-              tz: 'UTC',
-              flow: FlowLevel.medium,
-              updatedAt: DateTime.utc(2025, 1, 1),
-            ),
-        ];
+        for (final date in dates.isEmpty ? kPastPregnancyBleedDates : dates)
+          DayEntry(
+            id: 'entry-${date.iso}',
+            profileId: profileId,
+            localDate: date,
+            tz: 'UTC',
+            flow: FlowLevel.medium,
+            updatedAt: DateTime.utc(2025, 1, 1),
+          ),
+      ];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+class _StubProfileModesRepository implements ProfileModesRepository {
+  _StubProfileModesRepository({this.dueDate});
+  final String? dueDate;
+  @override
+  Future<ProfileLifecycleMode?> find(String profileId) async => (
+        mode: LifecycleMode.pregnancy,
+        modeStartedOn: '2025-02-28',
+        estimatedDueDate: dueDate,
+        birthControlMethod: null,
+        birthControlStartedOn: null,
+        birthControlStoppedOn: null,
+      );
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
@@ -386,5 +403,104 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('postpartum-exit-exclusion-accept')),
         findsNothing);
+  });
+
+  testWidgets('pregnancy: normal pregnancy with modeStartedOn weeks after LMP '
+      'and zero gestational bleeds offers dialog and excludes LMP (Issue #823)',
+      (tester) async {
+    final overrides = _RecordingOverrides();
+    final exclusions = CycleExclusionList(
+      _StubSettingsStore(),
+      overrides: overrides,
+    );
+    var offered = false;
+    // Pre-pregnancy cycle starts 2026-01-24; mode started weeks later on 2026-03-01;
+    // exit-day period on 2026-10-30; NO bleeds during pregnancy.
+    final normalPregnancyBleeds = [
+      LocalDate(2026, 1, 1),
+      LocalDate(2026, 1, 24), // LMP
+      LocalDate(2026, 10, 30), // exit-day period
+    ];
+    await tester.pumpWidget(_host(Builder(
+      builder: (context) => TextButton(
+        onPressed: () async {
+          final outcome = await offerModeExitExclusion(
+            context,
+            exitedMode: LifecycleMode.pregnancy,
+            modeStartedOn: '2026-03-01',
+            exitedOn: LocalDate(2026, 10, 30),
+            bleedDates: normalPregnancyBleeds,
+            exclusions: exclusions,
+            profileId: 'p1',
+            readOnly: false,
+            estimatedDueDate: '2026-10-31',
+          );
+          offered = outcome.accepted;
+        },
+        child: const Text('offer'),
+      ),
+    )));
+    await tester.tap(find.text('offer'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pregnancy-exit-exclusion-accept')),
+        findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey('pregnancy-exit-exclusion-accept')));
+    await tester.pumpAndSettle();
+    expect(offered, isTrue);
+    // LMP 2026-01-24 is excluded; earlier 2026-01-01 and exit-day 2026-10-30 are not.
+    expect(overrides.writes, [('p1', '2026-01-24')]);
+  });
+
+  testWidgets('the tree wrapper resolves estimatedDueDate from '
+      'ProfileModesRepository when not supplied directly', (tester) async {
+    final overrides = _RecordingOverrides();
+    final exclusions = CycleExclusionList(
+      _StubSettingsStore(),
+      overrides: overrides,
+    );
+    final normalBleeds = [
+      LocalDate(2025, 1, 1),
+      LocalDate(2025, 1, 24), // LMP
+    ];
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        Provider<CycleExclusionList>.value(value: exclusions),
+        Provider<DayEntriesRepository>.value(
+          value: _StubDayEntriesRepository(normalBleeds),
+        ),
+        Provider<ProfileModesRepository>.value(
+          value: _StubProfileModesRepository(dueDate: '2025-10-31'),
+        ),
+      ],
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => offerModeExitExclusionFromTree(
+                context,
+                exitedMode: LifecycleMode.pregnancy,
+                profileId: 'p1',
+                modeStartedOn: '2025-03-01',
+              ),
+              child: const Text('offer'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('offer'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pregnancy-exit-exclusion-accept')),
+        findsOneWidget);
+    await tester
+        .tap(find.byKey(const ValueKey('pregnancy-exit-exclusion-accept')));
+    await tester.pump();
+    expect(
+        find.byKey(const ValueKey('pregnancy-exit-exclusion-snackbar')),
+        findsOneWidget);
+    expect(overrides.writes, [('p1', '2025-01-24')]);
   });
 }

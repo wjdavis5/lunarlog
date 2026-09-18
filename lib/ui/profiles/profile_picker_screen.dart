@@ -317,6 +317,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     if (result == null) return;
     final priorMode = priorModeRow?.mode ?? LifecycleMode.tracking;
     final priorStartedOn = priorModeRow?.modeStartedOn;
+    final priorDueDate = priorModeRow?.estimatedDueDate;
     await controller.renameProfile(
       profile,
       displayName: result.displayName,
@@ -335,6 +336,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         exitedMode: priorMode,
         profileId: profile.id,
         modeStartedOn: priorStartedOn,
+        estimatedDueDate: priorDueDate,
       );
     }
   }
