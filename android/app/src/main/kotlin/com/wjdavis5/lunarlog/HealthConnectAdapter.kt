@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import androidx.activity.ComponentActivity
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
-import androidx.health.connect.client.changes.ChangesTokenExpiredException
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.IntermenstrualBleedingRecord
@@ -62,10 +61,15 @@ import java.util.Calendar
 // Issue #458 adds the read half: getChangesToken/getChanges over the two
 // user-recorded menstrual types, with dataOrigin filtering so this app's
 // own writes are never re-imported (the Android counterpart of #217's
-// sourceRevision filtering) and a ChangesTokenExpiredException fallback so
-// a token older than Health Connect's 30-day window recovers with a full
-// time-range read instead of failing. The first import backfills the bound
-// window directly, then stores a change token for later incremental passes.
+// sourceRevision filtering) and a change-token-expiry fallback (connect-
+// client 1.1.0 reports expiry as ChangesPage.changesTokenExpired, not a
+// thrown exception) so a token older than Health Connect's 30-day window
+// recovers with a full time-range read instead of failing. The first import
+// backfills the bound window directly, then stores a change token for later
+// incremental passes. A record whose nullable `zoneOffset` is absent is
+// passed through with no offset so the Dart side counts and skips it — never
+// guessed from the device zone, matching #217's rule for a HealthKit sample
+// with no HKMetadataKeyTimeZone.
 //
 // The stored value is a random profile ULID, not health data.
 class HealthConnectAdapter(context: Context) {
@@ -515,10 +519,12 @@ class HealthConnectAdapter(context: Context) {
 
     // Issue #458: the read/import half. Reads the requested window through
     // the Changes API when a stored token exists (an incremental pass),
-    // recovering from ChangesTokenExpiredException with a full window read,
-    // and directly when no token exists (the first import backfill). A
-    // fresh token for the next pass is stored either way. Records this app
-    // itself wrote are dropped by dataOrigin — the mandatory loop-breaker.
+    // recovering from an expired token (connect-client 1.1.0 surfaces this
+    // as ChangesPage.changesTokenExpired, not a thrown exception) with a
+    // full window read, and directly when no token exists (the first import
+    // backfill). A fresh token for the next pass is stored either way.
+    // Records this app itself wrote are dropped by dataOrigin — the
+    // mandatory loop-breaker.
     private suspend fun readSamples(
         client: HealthConnectClient,
         profileId: String,
@@ -533,14 +539,19 @@ class HealthConnectAdapter(context: Context) {
         if (storedToken == null) {
             records.putAll(readWindow(client, start, end))
         } else {
-            try {
-                records.putAll(changedRecords(client, storedToken))
-            } catch (e: ChangesTokenExpiredException) {
+            val page = client.getChanges(storedToken)
+            if (page.changesTokenExpired) {
                 // Health Connect tokens expire after 30 days: clear the
                 // stale anchor and recover with the same full window read a
                 // first import uses, rather than failing the pass.
                 prefs.edit().remove(tokenKey).apply()
                 records.putAll(readWindow(client, start, end))
+            } else {
+                for (change in page.changes) {
+                    if (change is UpsertionChange) {
+                        records[change.record.metadata.id] = change.record
+                    }
+                }
             }
         }
         // Mint the next incremental anchor. Best-effort: a token failure
@@ -566,21 +577,6 @@ class HealthConnectAdapter(context: Context) {
             ReadRecordsRequest(IntermenstrualBleedingRecord::class, filter)
         ).records) {
             records[record.metadata.id] = record
-        }
-        return records
-    }
-
-    // Upserts since [token]. Deletions are a deliberate no-op on import for
-    // v1 (#186); a change carrying a non-menstrual record is ignored too.
-    private suspend fun changedRecords(
-        client: HealthConnectClient,
-        token: String,
-    ): Map<String, Record> {
-        val records = LinkedHashMap<String, Record>()
-        for (change in client.getChanges(token).changes) {
-            if (change is UpsertionChange) {
-                records[change.record.metadata.id] = change.record
-            }
         }
         return records
     }
@@ -647,21 +643,31 @@ class HealthConnectAdapter(context: Context) {
         else -> "unspecified"
     }
 
+    // [zoneOffset] is deliberately nullable: connect-client 1.1.0 types it
+    // `ZoneOffset?`, and a record that does not know its own offset must not
+    // be resolved against the device's current zone. Omitting the key makes
+    // the Dart codec report it as samplesWithoutZone and skip it — the same
+    // rule #217 applies to a HealthKit sample with no HKMetadataKeyTimeZone.
     private fun sampleMap(
         id: String,
         kind: String,
         time: Instant,
-        zoneOffset: ZoneOffset,
-    ): MutableMap<String, Any> = mutableMapOf(
-        "recordId" to id,
-        "kind" to kind,
-        // These records are instantaneous; the codec needs only one bound.
-        "startMs" to time.toEpochMilli(),
-        "endMs" to time.toEpochMilli(),
-        // A Health Connect record carries a raw offset, not an IANA name;
-        // the Dart side resolves the civil date from it (the #180 contract).
-        "zoneOffsetSeconds" to zoneOffset.totalSeconds,
-    )
+        zoneOffset: ZoneOffset?,
+    ): MutableMap<String, Any> {
+        val map = mutableMapOf<String, Any>(
+            "recordId" to id,
+            "kind" to kind,
+            // These records are instantaneous; the codec needs one bound.
+            "startMs" to time.toEpochMilli(),
+            "endMs" to time.toEpochMilli(),
+        )
+        if (zoneOffset != null) {
+            // A Health Connect record carries a raw offset, not an IANA
+            // name; the Dart side resolves the civil date from it (#180).
+            map["zoneOffsetSeconds"] = zoneOffset.totalSeconds
+        }
+        return map
+    }
 
     private fun changesTokenKey(profileId: String): String =
         "lunarlog.health.changesToken.$profileId"
