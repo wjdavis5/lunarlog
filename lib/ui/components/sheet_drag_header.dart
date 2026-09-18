@@ -66,6 +66,21 @@ class _SheetDragHeaderState extends State<SheetDragHeader> {
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      // excludeFromSemantics is required, not cosmetic. A GestureDetector
+      // that contributes semantics introduces a container node, which
+      // merges the header's own children into ONE node: the read-only
+      // reason and the date row came back as a single run-on label
+      // ("You have view-only access to this profile." followed by
+      // "Friday, August 14..."), which a screen reader then reads as one
+      // blob. Caught by
+      // test/ui/a11y_pass_test.dart's read-only announcement (#138).
+      //
+      // Excluding it is also correct on its own terms: this drag is a
+      // redundant convenience for pointer users. The sheet is still
+      // dismissible by the drag handle, the scrim, and the system back
+      // gesture, all of which remain announced -- so nothing is lost to
+      // assistive tech, and the header's real content keeps its own nodes.
+      excludeFromSemantics: true,
       onVerticalDragUpdate: _onDragUpdate,
       onVerticalDragEnd: _onDragEnd,
       onVerticalDragCancel: _onDragCancel,
