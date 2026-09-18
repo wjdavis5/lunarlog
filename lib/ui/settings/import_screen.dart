@@ -32,7 +32,7 @@ import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart';
 import 'package:lunarlog/domain/import/clue/clue_zip_reader.dart'
-    show ClueZipException, looksLikeZipArchive;
+    show looksLikeZipArchive;
 import 'package:lunarlog/domain/import/import_file_cap.dart' show ImportFileTooLargeException;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -71,6 +71,38 @@ const String kImportSharedProfileGuardianSentence =
 /// can visibly block the UI thread; a small file isn't worth an isolate's
 /// spin-up cost.
 const int kImportComputeOffloadThresholdBytes = 2 * 1024 * 1024;
+
+/// The `compute`-shaped seam [defaultClueImportPrepare] sends a large zip's
+/// prepare through (issue #795). Production uses [_isolateCluePrepare];
+/// a test injects a recorder so the offload branch is provable without
+/// spinning up (and waiting on) a real isolate.
+typedef CluePrepareOffload = Future<CluePrepareResult> Function(
+  CluePrepareRequest request,
+);
+
+/// The production offload: [prepareClueImportResult] is a top-level function
+/// and [CluePrepareRequest] is a sendable value, so the whole
+/// extraction/SHA-256/JSON-parse body runs on a worker isolate.
+Future<CluePrepareResult> _isolateCluePrepare(CluePrepareRequest request) =>
+    compute(prepareClueImportResult, request);
+
+/// Runs a Clue prepare inline for a small zip, or off the UI isolate via
+/// [compute] once [kImportComputeOffloadThresholdBytes] is reached — the
+/// same threshold and shape [_parse] uses for the JSON path (issue #795).
+/// The Clue path's zip extraction, SHA-256, and JSON parse are pure CPU
+/// work big enough to stall a frame on a real export, so it reuses the
+/// established seam rather than inventing a second threshold. The result
+/// is a typed [CluePrepareResult], never a thrown exception, so a typed
+/// failure crosses the isolate boundary intact.
+Future<CluePrepareResult> defaultClueImportPrepare(
+  CluePrepareRequest request, {
+  CluePrepareOffload offload = _isolateCluePrepare,
+}) {
+  if (request.zipBytes.length >= kImportComputeOffloadThresholdBytes) {
+    return offload(request);
+  }
+  return Future.value(prepareClueImportResult(request));
+}
 
 /// Shown when a picked `.zip` cannot be read as a Clue export — a wrong
 /// password, a corrupt archive, or a ZIP that simply is not Clue's (Issue
@@ -284,10 +316,11 @@ class _ImportScreenState extends State<ImportScreen> {
   // ---------------------------------------------------------------------
 
   /// Decrypts/parses the held Clue zip with the entered password and loads
-  /// the profiles it could write into. Runs on the UI isolate deliberately:
-  /// [prepareClueImport] can throw the typed [ClueZipException]/
-  /// [ClueImportException] this screen must map to honest copy, and those
-  /// do not survive a `compute` isolate boundary cleanly.
+  /// the profiles it could write into. The heavy work goes through
+  /// [defaultClueImportPrepare] — off the UI isolate for a large export
+  /// (issue #795) — and comes back as a typed [CluePrepareResult], so this
+  /// screen maps a typed failure to honest copy rather than substring-
+  /// matching an exception's English message.
   Future<void> _prepareClue() async {
     final bytes = _clueZipBytes;
     if (bytes == null || _busy) return;
@@ -297,32 +330,50 @@ class _ImportScreenState extends State<ImportScreen> {
       _error = null;
     });
     try {
-      final preview = prepareClueImport(
-        zipBytes: bytes,
-        password: _cluePassword.text,
+      final result = await defaultClueImportPrepare(
+        CluePrepareRequest(zipBytes: bytes, password: _cluePassword.text),
       );
-      final profiles = await repository.list();
-      if (!mounted) return;
-      setState(() {
-        _cluePreview = preview;
-        _clueProfiles = profiles;
-        _clueProfileId = profiles.isEmpty ? null : profiles.first.id;
-      });
+      await _handleCluePrepareResult(repository, result);
     } catch (error) {
       debugPrint('lunarlog import: clue read failed (${error.runtimeType})');
-      _showImportError(_clueReadFailureMessage(error));
+      _showImportError(kClueImportReadFailureCopy);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  /// The honest copy for a failed Clue read: a ZIP without
-  /// `measurements.json` is not a Clue export; everything else (wrong
-  /// password, corrupt archive, malformed entry) is the retry copy.
-  String _clueReadFailureMessage(Object error) =>
-      error is ClueZipException && error.message.contains('not found')
-          ? kClueImportNotClueCopy
-          : kClueImportReadFailureCopy;
+  /// Applies a typed [CluePrepareResult] (issue #795): a prepared preview
+  /// loads the writable profiles and moves to the preview step; a typed
+  /// failure shows its honest copy. Split out of [_prepareClue] so that
+  /// method's own branching stays inside the CRAP gate.
+  Future<void> _handleCluePrepareResult(
+    ProfilesRepository repository,
+    CluePrepareResult result,
+  ) async {
+    switch (result) {
+      case CluePrepared(:final preview):
+        final profiles = await repository.list();
+        if (!mounted) return;
+        setState(() {
+          _cluePreview = preview;
+          _clueProfiles = profiles;
+          _clueProfileId = profiles.isEmpty ? null : profiles.first.id;
+        });
+      case CluePrepareFailed(:final failure):
+        _showImportError(_clueReadFailureMessage(failure));
+    }
+  }
+
+  /// The honest copy for a typed Clue prepare failure (issue #795): a ZIP
+  /// without `measurements.json` is not a Clue export; everything else
+  /// (wrong password, corrupt archive, malformed entry) is the retry copy.
+  String _clueReadFailureMessage(CluePrepareFailure failure) =>
+      switch (failure) {
+        CluePrepareFailure.entryNotFound => kClueImportNotClueCopy,
+        CluePrepareFailure.unreadable ||
+        CluePrepareFailure.malformed =>
+          kClueImportReadFailureCopy,
+      };
 
   /// Applies the prepared Clue preview to the chosen/created profile.
   Future<void> _confirmClue() async {

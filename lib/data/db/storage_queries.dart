@@ -257,14 +257,31 @@ mixin LunarLogStorageQueries {
   /// #240, used by [DriftObservationsRepository.listForProfile] for account
   /// export (`kAccountExportSchemaVersion` v3). UI reads (default) filter
   /// tombstones, mirroring [getObservationsForDayEntry].
+  ///
+  /// [fromLocalDate]/[toLocalDate] narrow to an inclusive `yyyy-MM-dd` range
+  /// and [category] to one `observations.category` (issue #795): the
+  /// calendar's spotting marker needs only the windowed spotting rows, never
+  /// the profile's full observation history.
   Future<List<Observation>> getObservationsForProfile(
     String profileId, {
     bool includeTombstones = false,
+    String? fromLocalDate,
+    String? toLocalDate,
+    String? category,
   }) {
     final query = db.select(db.observations)
       ..where((t) {
         var condition = t.profileId.equals(profileId);
         if (!includeTombstones) condition = condition & t.deletedAt.isNull();
+        if (fromLocalDate != null) {
+          condition =
+              condition & t.localDate.isBiggerOrEqualValue(fromLocalDate);
+        }
+        if (toLocalDate != null) {
+          condition =
+              condition & t.localDate.isSmallerOrEqualValue(toLocalDate);
+        }
+        if (category != null) condition = condition & t.category.equals(category);
         return condition;
       })
       ..orderBy([(t) => OrderingTerm(expression: t.id)]);

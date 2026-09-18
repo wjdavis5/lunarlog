@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
@@ -243,6 +244,137 @@ void main() {
   setUpAll(() {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     storage = LunarLogStorage(LunarLogDatabase(NativeDatabase.memory()));
+  });
+
+  group('Clue prepare offload (issue #795)', () {
+    test('a small zip runs inline, never through the offload seam', () async {
+      var offloadCalls = 0;
+      final result = await defaultClueImportPrepare(
+        CluePrepareRequest(
+          zipBytes: _clueZip(
+            {'measurements.json': _fixture('unknown_type_and_option.json')},
+          ),
+          password: '',
+        ),
+        offload: (request) async {
+          offloadCalls++;
+          return const CluePrepareFailed(CluePrepareFailure.malformed);
+        },
+      );
+      expect(result, isA<CluePrepared>());
+      expect(offloadCalls, 0);
+    });
+
+    test('a zip at the threshold goes through the offload seam exactly once',
+        () async {
+      final request = CluePrepareRequest(
+        zipBytes: List<int>.filled(kImportComputeOffloadThresholdBytes, 0),
+        password: 'pw',
+      );
+      CluePrepareRequest? seen;
+      final result = await defaultClueImportPrepare(
+        request,
+        offload: (r) async {
+          seen = r;
+          return const CluePrepareFailed(CluePrepareFailure.malformed);
+        },
+      );
+      expect(seen, same(request));
+      expect(
+        result,
+        isA<CluePrepareFailed>().having(
+          (f) => f.failure,
+          'failure',
+          CluePrepareFailure.malformed,
+        ),
+      );
+    });
+
+    test(
+        'prepareClueImportResult really crosses an isolate boundary with the '
+        'typed result intact (the production `compute` shape)', () async {
+      final result = await compute(
+        prepareClueImportResult,
+        CluePrepareRequest(
+          zipBytes: _clueZip(
+            {'measurements.json': _fixture('unknown_type_and_option.json')},
+          ),
+          password: '',
+        ),
+      );
+      expect(result, isA<CluePrepared>());
+    });
+
+    test('a zip one byte under the threshold stays inline', () async {
+      var offloadCalls = 0;
+      await defaultClueImportPrepare(
+        CluePrepareRequest(
+          zipBytes:
+              List<int>.filled(kImportComputeOffloadThresholdBytes - 1, 0),
+          password: 'pw',
+        ),
+        offload: (r) async {
+          offloadCalls++;
+          return const CluePrepareFailed(CluePrepareFailure.malformed);
+        },
+      );
+      expect(offloadCalls, 0);
+    });
+
+    test('a ZIP without measurements.json maps to a typed entryNotFound',
+        () async {
+      final result = await defaultClueImportPrepare(
+        CluePrepareRequest(
+          zipBytes: _clueZip({'notes.txt': 'hello'}),
+          password: '',
+        ),
+      );
+      expect(
+        result,
+        isA<CluePrepareFailed>().having(
+          (f) => f.failure,
+          'failure',
+          CluePrepareFailure.entryNotFound,
+        ),
+      );
+    });
+
+    test('a malformed measurements.json maps to a typed malformed', () async {
+      final result = await defaultClueImportPrepare(
+        CluePrepareRequest(
+          zipBytes: _clueZip({'measurements.json': 'not json'}),
+          password: '',
+        ),
+      );
+      expect(
+        result,
+        isA<CluePrepareFailed>().having(
+          (f) => f.failure,
+          'failure',
+          CluePrepareFailure.malformed,
+        ),
+      );
+    });
+
+    test('a wrong password maps to a typed unreadable', () async {
+      final result = await defaultClueImportPrepare(
+        CluePrepareRequest(
+          zipBytes: _clueZip(
+            {'measurements.json': _fixture('unknown_type_and_option.json')},
+            password: 'right',
+          ),
+          password: 'wrong',
+        ),
+      );
+      expect(
+        result,
+        isA<CluePrepareFailed>().having(
+          (f) => f.failure,
+          'failure',
+          CluePrepareFailure.unreadable,
+        ),
+      );
+    });
   });
 
   group('pick step', () {

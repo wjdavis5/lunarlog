@@ -309,7 +309,7 @@ class _OverviewPanelState extends State<OverviewPanel>
       // start behind.
       final logged = hasLoggedBleedSince(
         bleedDates: bleedDatesOf(entries),
-        modeStartedOn: _parseStoredDate(_modeRow?.modeStartedOn),
+        modeStartedOn: LocalDate.tryParseIso(_modeRow?.modeStartedOn),
       );
       if (logged != _postpartumBleedLogged) {
         setState(() => _postpartumBleedLogged = logged);
@@ -627,7 +627,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// week math is `pregnancyWeekOf` (pure, `lib/domain/pregnancy.dart`);
   /// this only renders it.
   Widget _pregnancyCard(BuildContext context) {
-    final due = _parseStoredDate(_modeRow?.estimatedDueDate);
+    final due = LocalDate.tryParseIso(_modeRow?.estimatedDueDate);
     final today = widget.todayProvider();
     return PregnancyCard(
       week: due == null ? null : pregnancyWeekOf(dueDate: due, today: today),
@@ -646,7 +646,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// `daysSincePostpartumStart` (pure, `lib/domain/postpartum.dart`); the
   /// offer's action switches the mode and offers the interval exclusion.
   Widget _postpartumCard(BuildContext context) {
-    final startedOn = _parseStoredDate(_modeRow?.modeStartedOn);
+    final startedOn = LocalDate.tryParseIso(_modeRow?.modeStartedOn);
     final today = widget.todayProvider();
     return PostpartumCard(
       daysSinceStart: startedOn == null
@@ -675,17 +675,6 @@ class _OverviewPanelState extends State<OverviewPanel>
         locale: dates.calendarLocale(context),
       ),
     );
-  }
-
-  /// Tolerant `yyyy-MM-dd` parse for a stored `profile_modes` date: a
-  /// malformed value renders as unset rather than taking the panel down.
-  static LocalDate? _parseStoredDate(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    try {
-      return LocalDate.fromIso(iso);
-    } on ArgumentError {
-      return null;
-    }
   }
 
   /// Issue #314: replaces the [CycleHistorySection] this panel used to

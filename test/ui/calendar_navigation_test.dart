@@ -195,6 +195,47 @@ class FakeSpottingObservationsRepository implements ObservationsRepository {
   Future<void> delete(String id) async {}
 }
 
+/// Issue #795: an observations repository that *does* implement the
+/// date-scoped spotting capability, recording the window it is asked for —
+/// proves `MonthCalendar` reads the windowed spotting set, not the
+/// profile's full observation history.
+class RecordingSpottingRangeRepository
+    implements SpottingObservationsRangeRepository {
+  final List<({LocalDate from, LocalDate to})> rangeCalls = [];
+  int listForProfileCalls = 0;
+
+  @override
+  Future<List<Observation>> listSpottingObservationsInRange({
+    required String profileId,
+    required LocalDate from,
+    required LocalDate to,
+  }) async {
+    rangeCalls.add((from: from, to: to));
+    return const [];
+  }
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) async {
+    listForProfileCalls++;
+    return const [];
+  }
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+    String dayEntryId,
+  ) async => const [];
+
+  @override
+  Future<Observation> save(Observation observation) async => observation;
+
+  @override
+  Future<void> delete(String id) async {}
+}
+
 Future<Harness> pumpCalendar(
   WidgetTester tester, {
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
@@ -1024,6 +1065,29 @@ void main() {
       final (expectedFrom, expectedTo) = calendarEntriesWindowFor(2026, 8);
       expect(recording.calls.single.from, expectedFrom);
       expect(recording.calls.single.to, expectedTo);
+
+      await disposeCalendar(tester, h);
+    });
+
+    testWidgets(
+        'issue #795: the spotting read is scoped to the same displayed-month '
+        'window as the entries subscription — never the full profile history',
+        (tester) async {
+      final spotting = RecordingSpottingRangeRepository();
+      final h = await pumpCalendar(tester, observationsRepository: spotting);
+
+      final (expectedFrom, expectedTo) = calendarEntriesWindowFor(2026, 8);
+      expect(spotting.rangeCalls, isNotEmpty);
+      for (final call in spotting.rangeCalls) {
+        expect(call.from, expectedFrom);
+        expect(call.to, expectedTo);
+      }
+      expect(
+        spotting.listForProfileCalls,
+        0,
+        reason: 'the calendar marker read must go through the windowed '
+            'capability, not the profile-wide fallback',
+      );
 
       await disposeCalendar(tester, h);
     });
