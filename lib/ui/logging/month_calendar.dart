@@ -1562,7 +1562,20 @@ class _MonthCalendarState extends State<MonthCalendar>
           // least one layer is active. With none, the empty-state entry
           // point lives in the info sheet's "Symptom layers" action instead
           // (see [_openCalendarInfoSheet]).
-          if (layerList.isNotEmpty) _layersHeader(layerList, theme),
+          //
+          // Issue #809: the row's appearance/disappearance is wrapped in an
+          // [AnimatedSize] so the grid below glides into its new position
+          // instead of jumping a whole row when a layer is toggled on or
+          // off. The empty replacement keeps the column's full width so the
+          // animated box only ever changes height; `alignment: topCenter`
+          // pins the collapse to the row's own top edge.
+          AnimatedSize(
+            duration: LLMotion.resolve(context, LLMotion.base),
+            alignment: Alignment.topCenter,
+            child: layerList.isNotEmpty
+                ? _layersHeader(layerList, theme)
+                : const SizedBox(width: double.infinity),
+          ),
           ResponsiveBody(
             maxWidth: kCalendarGridMaxWidth,
             child: Padding(

@@ -204,33 +204,58 @@ class CycleWheel extends StatelessWidget {
       // own label -- without this, a screen reader would announce the
       // cycle figures twice.
       excludeSemantics: true,
-      child: SizedBox(
-        width: diameter,
-        height: diameter,
-        child: CustomPaint(
-          painter: _CycleWheelPainter(
-            cycleDay: cycleDay,
-            cycleLengthDays: cycleLengthDays,
-            periodLengthDays: periodLengthDays,
-            trackColor: theme.colorScheme.surfaceContainerHighest,
-            progressColor: theme.colorScheme.primary,
-            predictedBandColor:
-                colors?.predictedBand ?? theme.colorScheme.primaryContainer,
-            predictedBorderColor:
-                colors?.predictedBorder ?? theme.colorScheme.primary,
-            todayMarkerColor: theme.colorScheme.onSurface,
-          ),
-          child: Center(
-            child: Padding(
-              // Issue #836: symmetric horizontal-only padding allowed large
-              // text (e.g. Dynamic Type XXXL) to expand vertically until it
-              // overlapped the ring's stroke and today's dot marker. Padding on
-              // all sides ensures FittedBox constrains the content safely
-              // inside the inner circle.
-              padding: const EdgeInsets.all(LLSpace.space5),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: _centerContent(theme, l10n),
+      // Issue #809: the elapsed arc sweeps instead of jumping when the
+      // cycle day changes (a quick-log tap is the app's one "I did the
+      // thing" moment). The tween's `end` follows [cycleDay]; a rebuild
+      // with a new value animates from wherever the arc currently is.
+      // [LLMotion.resolve] collapses it to zero under reduced motion.
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(
+          begin: cycleDay.toDouble(),
+          end: cycleDay.toDouble(),
+        ),
+        duration: LLMotion.resolve(context, LLMotion.slow),
+        curve: Curves.easeOutCubic,
+        builder: (context, animatedDay, _) => SizedBox(
+          width: diameter,
+          height: diameter,
+          child: CustomPaint(
+            painter: _CycleWheelPainter(
+              cycleDay: animatedDay,
+              cycleLengthDays: cycleLengthDays,
+              periodLengthDays: periodLengthDays,
+              trackColor: theme.colorScheme.surfaceContainerHighest,
+              progressColor: theme.colorScheme.primary,
+              predictedBandColor:
+                  colors?.predictedBand ?? theme.colorScheme.primaryContainer,
+              predictedBorderColor:
+                  colors?.predictedBorder ?? theme.colorScheme.primary,
+              todayMarkerColor: theme.colorScheme.onSurface,
+            ),
+            child: Center(
+              child: Padding(
+                // Issue #836: symmetric horizontal-only padding allowed large
+                // text (e.g. Dynamic Type XXXL) to expand vertically until it
+                // overlapped the ring's stroke and today's dot marker. Padding on
+                // all sides ensures FittedBox constrains the content safely
+                // inside the inner circle.
+                padding: const EdgeInsets.all(LLSpace.space5),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  // Issue #809: the centre label cross-fades rather than
+                  // snapping when the cycle day (or the bleed/mid-cycle
+                  // phrasing) changes -- the visual half of the same
+                  // quick-log reward the arc sweep provides.
+                  child: AnimatedSwitcher(
+                    duration: LLMotion.resolve(context, LLMotion.base),
+                    child: KeyedSubtree(
+                      key: ValueKey(
+                        'cycle-wheel-center-$cycleDay-$duringEpisode',
+                      ),
+                      child: _centerContent(theme, l10n),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -252,7 +277,9 @@ class _CycleWheelPainter extends CustomPainter {
     required this.todayMarkerColor,
   });
 
-  final int cycleDay;
+  /// Doubled from the widget's int (issue #809): the [TweenAnimationBuilder]
+  /// in [CycleWheel.build] interpolates this so the elapsed arc sweeps.
+  final double cycleDay;
   final int cycleLengthDays;
   final int periodLengthDays;
   final Color trackColor;
@@ -264,15 +291,18 @@ class _CycleWheelPainter extends CustomPainter {
   static const double _strokeWidth = LLSpace.space4;
   static const double _startAngle = -math.pi / 2;
 
-  double _sweepFor(int days) =>
-      2 * math.pi * cycleWheelFraction(days, cycleLengthDays);
+  /// [cycleWheelFraction]'s double-valued twin (issue #809): the animated
+  /// elapsed arc needs a fractional day count, so the int-taking public
+  /// helper cannot be reused directly here. Same floor-at-1 guard.
+  double _sweepFor(double days) =>
+      2 * math.pi * days / (cycleLengthDays > 0 ? cycleLengthDays : 1);
 
   /// [cycleDay] clamped to at most one full lap -- used by both the
   /// elapsed arc and today's marker so an overdue/open cycle (cycleDay
   /// past cycleLengthDays) still draws today's position at the top of the
   /// ring rather than wrapping past it.
-  int get _elapsedDays =>
-      cycleDay > cycleLengthDays ? cycleLengthDays : cycleDay;
+  double get _elapsedDays =>
+      cycleDay > cycleLengthDays ? cycleLengthDays.toDouble() : cycleDay;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -302,7 +332,7 @@ class _CycleWheelPainter extends CustomPainter {
   void _paintPredictedBand(Canvas canvas, Offset center, double radius) {
     if (!cycleWheelShowsPredictedBand(periodLengthDays)) return;
     final rect = Rect.fromCircle(center: center, radius: radius);
-    final sweep = _sweepFor(periodLengthDays);
+    final sweep = _sweepFor(periodLengthDays.toDouble());
     canvas.drawArc(
       rect,
       _startAngle,
