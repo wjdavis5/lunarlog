@@ -12,20 +12,24 @@ import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/claim_profile_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 import 'package:lunarlog/ui/sharing/transfer_ownership_screen.dart';
+import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
 import '../support/fake_notification_preferences_service.dart';
+import '../support/fake_settings_store.dart';
 
 class FakeSharingService implements SharingService {
   GeneratedInvite? scriptedInvite;
@@ -1459,6 +1463,156 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
+    });
+
+    group('signed-out operator (issue #885)', () {
+      testWidgets(
+        'makes no listPendingInvites call, shows no red failure, renders the '
+        'sign-in prompt, and hides the Invite FAB',
+        (tester) async {
+          // A scripted list failure would be shown if the screen called out
+          // at all; the assertion below that no call happened is what proves
+          // the calm state is not just masking it.
+          sharingService.scriptedListError =
+              const SharingUnauthorizedFailure();
+
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: null,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            sharingService.listPendingInvitesCallCount,
+            0,
+            reason: 'a signed-out screen must not hit the network at all',
+          );
+          expect(
+            find.byKey(const ValueKey('pending-invites-error')),
+            findsNothing,
+            reason: 'no session is not a permissions failure',
+          );
+          expect(
+            find.text('Could not load pending invitations.'),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const ValueKey('sharing-needs-account')),
+            findsOneWidget,
+          );
+          expect(
+            find.text(
+              'Sharing needs an account. Sign in to invite a guardian.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.byIcon(Icons.person_add),
+            findsNothing,
+            reason: 'there is nobody to invite, and the RPC could only be '
+                'refused',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'the sign-in prompt routes to the existing SignInScreen',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+          final controller = AuthController(authService: auth);
+          addTearDown(controller.dispose);
+          final settings = FakeSettingsStore();
+          addTearDown(settings.close);
+
+          await tester.pumpWidget(
+            MultiProvider(
+              providers: [
+                ChangeNotifierProvider<AuthController>.value(
+                  value: controller,
+                ),
+                Provider<SettingsStore>.value(value: settings),
+              ],
+              child: MaterialApp(
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                home: ManageGuardiansScreen(
+                  profile: testProfile,
+                  guardiansRepository: DriftProfileGuardiansRepository(storage),
+                  sharingService: sharingService,
+                  currentUserId: null,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.byKey(const ValueKey('sharing-sign-in-action')),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byType(SignInScreen),
+            findsOneWidget,
+            reason: 'reuse the existing auth screen, never a new route',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'a signed-in operator whose guardian rows are still null keeps the '
+        'Invite FAB enabled (#13 must not regress)',
+        (tester) async {
+          // No applyRemoteRows: rows are still null, the not-yet-synced case
+          // the FAB gate deliberately fails open for.
+          await tester.pumpWidget(
+            MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: ManageGuardiansScreen(
+                profile: testProfile,
+                guardiansRepository: DriftProfileGuardiansRepository(storage),
+                sharingService: sharingService,
+                currentUserId: 'user-mom',
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          expect(
+            find.byKey(const ValueKey('sharing-needs-account')),
+            findsNothing,
+            reason: 'the calm state is only for the no-session branch',
+          );
+          expect(find.byIcon(Icons.person_add), findsOneWidget);
+
+          // Enabled, not merely present: tapping it opens the real dialog.
+          await tester.tap(find.byIcon(Icons.person_add));
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Invite guardian to ${testProfile.displayName}'),
+            findsOneWidget,
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
     });
 
     testWidgets("#544: shows a spinner before the guardian stream's first "

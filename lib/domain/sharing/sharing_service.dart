@@ -209,6 +209,12 @@ sealed class SharingFailure implements Exception {
   const factory SharingFailure.alreadyAccepted() = SharingAlreadyAcceptedFailure;
   const factory SharingFailure.alreadyGuardian() = SharingAlreadyGuardianFailure;
   const factory SharingFailure.unauthorized() = SharingUnauthorizedFailure;
+
+  /// The caller reached a sharing surface with no session at all (Issue
+  /// #885) — distinct from [unauthorized], which means a signed-in caller
+  /// lacks permission. The server refuses both, but only a session fixes
+  /// the former, so the copy must say "sign in", never "no permission".
+  const factory SharingFailure.notSignedIn() = SharingNotSignedInFailure;
   const factory SharingFailure.invalidToken() = SharingInvalidTokenFailure;
   const factory SharingFailure.other() = SharingOtherFailure;
 
@@ -253,6 +259,12 @@ final class SharingUnauthorizedFailure extends SharingFailure {
   const SharingUnauthorizedFailure();
   @override
   String toString() => 'SharingFailure.unauthorized';
+}
+
+final class SharingNotSignedInFailure extends SharingFailure {
+  const SharingNotSignedInFailure();
+  @override
+  String toString() => 'SharingFailure.notSignedIn';
 }
 
 final class SharingInvalidTokenFailure extends SharingFailure {

@@ -1467,6 +1467,18 @@
   "@sharingFailureInvalidToken": {
     "description": "SharingFailure.invalidToken copy."
   },
+  "sharingFailureNotSignedIn": "Sign in to your account to manage sharing.",
+  "@sharingFailureNotSignedIn": {
+    "description": "SharingFailure.notSignedIn copy, rendered by sharingFailureCopy (lib/ui/l10n/sharing_failure_copy.dart). A no-session refusal at a sharing surface, distinct from commonUnauthorized (issue #885)."
+  },
+  "sharingNeedsAccount": "Sharing needs an account. Sign in to invite a guardian.",
+  "@sharingNeedsAccount": {
+    "description": "Calm state shown in place of a failed pending-invitations load when the device has no session (issue #885)."
+  },
+  "sharingSignInAction": "Sign in",
+  "@sharingSignInAction": {
+    "description": "Action button beside sharingNeedsAccount, routing to the existing sign-in screen (issue #885)."
+  },
   "sharingFailureOther": "Failed to accept invitation. Please try again.",
   "@sharingFailureOther": {
     "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."

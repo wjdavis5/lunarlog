@@ -231,6 +231,7 @@ void main() {
       expect(const SharingFailure.notFound(), isA<SharingNotFoundFailure>());
       expect(const SharingFailure.invalidToken(), isA<SharingInvalidTokenFailure>());
       expect(const SharingFailure.unauthorized(), isA<SharingUnauthorizedFailure>());
+      expect(const SharingFailure.notSignedIn(), isA<SharingNotSignedInFailure>());
       expect(const SharingFailure.network(), isA<SharingNetworkFailure>());
       expect(const SharingFailure.other(), isA<SharingOtherFailure>());
     });

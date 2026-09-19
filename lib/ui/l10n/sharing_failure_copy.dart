@@ -17,6 +17,7 @@ String sharingFailureCopy(AppLocalizations l10n, SharingFailure failure) =>
       SharingAlreadyAcceptedFailure() => l10n.sharingFailureAlreadyAccepted,
       SharingAlreadyGuardianFailure() => l10n.sharingFailureAlreadyGuardian,
       SharingUnauthorizedFailure() => l10n.commonUnauthorized,
+      SharingNotSignedInFailure() => l10n.sharingFailureNotSignedIn,
       SharingInvalidTokenFailure() => l10n.sharingFailureInvalidToken,
       SharingOtherFailure() => l10n.sharingFailureOther,
     };

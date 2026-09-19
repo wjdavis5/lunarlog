@@ -410,9 +410,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
 
   void _loadPendingInvites() {
     setState(() {
-      _pendingInvitesFuture = widget.sharingService.listPendingInvites(
-        widget.profile.id,
-      );
+      // Issue #885: without a session there is nothing to list and the RPC
+      // would only be refused. Skip the network call entirely and leave a
+      // resolved future behind it; the section renders the sign-in prompt
+      // instead of a failure the operator can never retry away.
+      _pendingInvitesFuture = widget.currentUserId == null
+          ? Future.value(const <PendingInvite>[])
+          : widget.sharingService.listPendingInvites(widget.profile.id);
     });
   }
 
@@ -700,6 +704,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     GuardianRole? callerRole,
   ) {
     final theme = Theme.of(context);
+    // Issue #885: no session at all is a different state from "signed in,
+    // not a manager". There is no pending-invitations list to show, no
+    // network call worth making, and no retry that could ever succeed, so
+    // render one calm sign-in prompt instead of the failure the FutureBuilder
+    // would produce. This keys on currentUserId == null only.
+    if (widget.currentUserId == null) {
+      return _signInPromptSection(theme);
+    }
     // Mirrors the FAB gate's null-vs-empty discipline: rows still null
     // (not yet synced) must not collapse this into "not a manager".
     final knownNonManager =
@@ -770,6 +782,41 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// Issue #885: the calm state a signed-out operator sees in place of the
+  /// pending-invitations section. No red failure, no retry that could never
+  /// succeed — just the one true statement and a route to the existing
+  /// sign-in screen (the same `SignInScreen` Settings' Account section
+  /// pushes), never a bespoke auth flow.
+  Widget _signInPromptSection(ThemeData theme) {
+    final l10n = AppLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            l10n.sharingNeedsAccount,
+            key: const ValueKey('sharing-needs-account'),
+            style: theme.textTheme.bodyMedium,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              key: const ValueKey('sharing-sign-in-action'),
+              onPressed: () =>
+                  pushNamedScreen<void>(context, kRouteSignInScreen),
+              child: Text(l10n.sharingSignInAction),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -904,6 +951,13 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       floatingActionButton: StreamBuilder<List<ProfileGuardian>?>(
         stream: _guardianRows,
         builder: (context, snapshot) {
+          // Issue #885: with no session there is nobody to invite, and the
+          // create-invite RPC could only be refused. This is the one gate
+          // that keys on the absent session; the null-rows default for a
+          // signed-in operator is deliberately left in place below.
+          if (widget.currentUserId == null) {
+            return const SizedBox.shrink();
+          }
           final rows = snapshot.data;
           final callerRole = _callerRoleOf(rows);
           final knownNonManager =
