@@ -7,6 +7,9 @@
 /// `test/ui/profile_quick_switcher_test.dart`.
 library;
 
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/birth_control.dart';
@@ -20,6 +23,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/profile_card.dart';
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart' show contrastRatio;
 
 /// Fixed "today" so cycle-day numbers are deterministic (the shape
 /// `test/ui/calendar_navigation_test.dart` uses).
@@ -85,6 +89,7 @@ Future<void> pumpCard(
   required DayEntriesRepository entries,
   CyclePredictionService? service,
   Widget? trailing,
+  Profile? profile,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -94,7 +99,7 @@ Future<void> pumpCard(
         body: ListView(
           children: [
             ProfileCard(
-              profile: _profile(),
+              profile: profile ?? _profile(),
               info: const SharingProfileInfo.unknown(),
               predictionService: service,
               todayProvider: () => kToday,
@@ -107,6 +112,29 @@ Future<void> pumpCard(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// An [ImageProvider] that resolves to a pre-built 1x1 test image, so the
+/// avatar's image branch renders without a network or asset dependency.
+/// The image is created in the test body via `createTestImage` (a guarded
+/// test API) and handed in already resolved.
+class _TestAvatarImage extends ImageProvider<_TestAvatarImage> {
+  _TestAvatarImage(this.image);
+
+  final ui.Image image;
+
+  @override
+  Future<_TestAvatarImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<_TestAvatarImage>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    _TestAvatarImage key,
+    ImageDecoderCallback decode,
+  ) =>
+      OneFrameImageStreamCompleter(
+        SynchronousFuture<ImageInfo>(ImageInfo(image: image)),
+      );
 }
 
 CyclePredictionService _service(_StubDayEntries entries) =>
@@ -142,6 +170,128 @@ void main() {
       expect(hslLight.saturation, greaterThan(0.3));
       expect(hslDark.lightness, greaterThan(hslLight.lightness),
           reason: 'the dark-theme disc must be the lighter tone');
+    });
+  });
+
+  group('profileAvatarOnColor / profileAvatarColorForHue (issue #811)', () {
+    test('the label stays legible at every generated hue in both themes', () {
+      // The exact failure the issue warns about: an initial on a hashed hue
+      // must never fall below WCAG AA (4.5:1). This sweeps the whole
+      // generated palette rather than eyeballing one case.
+      for (final brightness in Brightness.values) {
+        for (var hue = 0; hue < 360; hue++) {
+          final background =
+              profileAvatarColorForHue(hue.toDouble(), brightness);
+          final foreground = profileAvatarOnColor(background);
+          expect(
+            contrastRatio(background, foreground),
+            greaterThanOrEqualTo(4.5),
+            reason: 'hue $hue under $brightness must keep its initial '
+                'legible',
+          );
+        }
+      }
+    });
+
+    test('the foreground is always pure black or pure white', () {
+      final foreground = profileAvatarOnColor(
+        profileAvatarColorForHue(200, Brightness.light),
+      );
+      expect(foreground, anyOf(Colors.black, Colors.white));
+    });
+  });
+
+  group('profileAvatarInitials (pure, issue #811)', () {
+    test('a single-word name yields its first letter, uppercased', () {
+      expect(profileAvatarInitials('Alice'), 'A');
+      expect(profileAvatarInitials('  alice  '), 'A');
+    });
+
+    test('a multi-word name yields first + last word initials', () {
+      expect(profileAvatarInitials('Alice Mae Smith'), 'AS');
+      expect(profileAvatarInitials('mary jane watson'), 'MW');
+    });
+
+    test('non-Latin scripts yield one whole character per word', () {
+      expect(profileAvatarInitials('李雷'), '李');
+      expect(profileAvatarInitials('李雷 王芳'), '李王');
+      expect(profileAvatarInitials('فاطمة'), 'ف');
+    });
+
+    test('an emoji is one whole code point, never a broken surrogate pair',
+        () {
+      // A non-BMP code point: naive `[0]` would return half a surrogate.
+      expect(profileAvatarInitials('🌙'), '🌙');
+      expect(profileAvatarInitials('😀 Moon'), '😀M');
+      // A ZWJ sequence still yields its leading code point, not a crash.
+      expect(profileAvatarInitials('👨‍👩‍👧'), isNotEmpty);
+    });
+
+    test('blank or whitespace-only names have no initial', () {
+      expect(profileAvatarInitials(''), isNull);
+      expect(profileAvatarInitials('   '), isNull);
+      expect(profileAvatarInitials('\t\n'), isNull);
+    });
+  });
+
+  group('ProfileAvatar rendering (issue #811)', () {
+    Future<void> pumpAvatar(
+      WidgetTester tester, {
+      String displayName = 'Alice',
+      ImageProvider? imageProvider,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ProfileAvatar(
+              profileId: 'p-avatar-1',
+              displayName: displayName,
+              imageProvider: imageProvider,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('draws the profile initials on the disc', (tester) async {
+      await pumpAvatar(tester);
+      expect(find.byKey(const ValueKey('profile-avatar-p-avatar-1')),
+          findsOneWidget);
+      expect(find.text('A'), findsOneWidget);
+    });
+
+    testWidgets('a blank name falls back to a person glyph, never a crash '
+        'or a bare disc', (tester) async {
+      await pumpAvatar(tester, displayName: '   ');
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const ValueKey('profile-avatar-p-avatar-1')),
+          findsOneWidget);
+      expect(find.byIcon(Icons.person), findsOneWidget);
+    });
+
+    testWidgets('a real image replaces the initial when one is supplied',
+        (tester) async {
+      // `createTestImage` decodes on a real event loop, so it must run
+      // outside the fake-async test zone.
+      final image =
+          (await tester.runAsync(() => createTestImage(width: 1, height: 1)))!;
+      await pumpAvatar(tester, imageProvider: _TestAvatarImage(image));
+      expect(find.byKey(const ValueKey('profile-avatar-p-avatar-1')),
+          findsOneWidget);
+      expect(find.text('A'), findsNothing,
+          reason: 'the photo is the avatar; no initial is drawn over it');
+    });
+
+    testWidgets('the decorative avatar is not a second announced element',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpAvatar(tester);
+      // The name rendered beside the avatar is what a screen reader should
+      // meet; the initial must not be announced as its own "A" node.
+      expect(find.bySemanticsLabel('A'), findsNothing);
+      expect(find.text('A'), findsOneWidget);
+      handle.dispose();
     });
   });
 

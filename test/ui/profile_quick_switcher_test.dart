@@ -130,6 +130,31 @@ void main() {
     await h.dispose();
   });
 
+  testWidgets('the app bar shows the active profile avatar, and the '
+      'switcher rows show each profile\'s cycle status (issue #811)',
+      (tester) async {
+    final h = Harness(tester);
+    await h.pump(activeProfile: 'alice');
+
+    // Issue #811: the active profile is identifiable on every tab without
+    // opening the switcher — the app-bar avatar carries its initial.
+    expect(find.byKey(ValueKey('profile-avatar-${h.aliceId}')),
+        findsOneWidget);
+    expect(find.text('A'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('app-shell-profile-switcher')));
+    await tester.pumpAndSettle();
+
+    // Issue #811: every switcher row now carries the same one-line status
+    // the picker's ProfileCard renders (reused, not reinvented).
+    for (final id in [h.aliceId, h.bobId, h.charlieId]) {
+      expect(find.byKey(ValueKey('profile-cycle-status-$id')),
+          findsOneWidget);
+    }
+    expect(find.text('No history yet'), findsNWidgets(3));
+    await h.dispose();
+  });
+
   testWidgets('the picker\'s rows are ProfileCards: avatar, cycle status, '
       'and the per-row overflow menu preserved (issue #241)', (tester) async {
     final h = Harness(tester);

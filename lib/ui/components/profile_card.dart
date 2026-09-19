@@ -1,16 +1,25 @@
-/// `ProfileCard` (issue #241, B-15): one profile row carrying the facts a
-/// multi-profile guardian actually scans for — a deterministic-hue avatar
-/// (colour is the identifier, so minors' names never *need* to be read at
-/// a glance), the profile name, a one-line cycle status sourced from
+/// `ProfileCard` (issue #241, B-15; issue #811): one profile row carrying
+/// the facts a multi-profile guardian actually scans for — an avatar
+/// showing the profile's initials, or a real image when one exists
+/// (issue #811), the profile name, a one-line cycle status sourced from
 /// [CyclePredictionService] ("Cycle day 14" / "Period, day 2" / "No
 /// history yet"), and the #126 shared/pending badges — replacing the
 /// picker's former created-date-only `ListTile` (the created date stays
 /// as the secondary line under the status).
 ///
+/// Issue #811 withdrew the earlier "no initial, no icon — colour is the
+/// identifier, precisely so a minor's name never has to be" stance: this
+/// is an app for a family to track cycles together, the name is already
+/// rendered next to the avatar, and a bare hash-hue disc made several
+/// profiles hard to tell apart. Initials and avatar images are both fine.
+/// The deterministic hue remains as the disc's background, but it is no
+/// longer the *only* thing distinguishing one profile from another.
+///
 /// Everything status-shaped is pure and testable with no widget tree:
 /// [profileAvatarHue]/[profileAvatarColor] derive the avatar from the
 /// profile id alone (djb2 — a stable, cross-platform hash; never
-/// `String.hashCode`, which Dart does not guarantee across runs), and
+/// `String.hashCode`, which Dart does not guarantee across runs),
+/// [profileAvatarInitials] derives the label shown on it, and
 /// [profileCycleStatus] maps a [CyclePrediction] onto localized copy,
 /// reusing the exact `cycleWheel*` strings the overview wheel renders so
 /// the same state never reads two ways in one app. No business logic
@@ -20,7 +29,10 @@
 /// Colours follow the repo's theme discipline (#727): no literal hex, the
 /// avatar derives from a data hue the same way `LunarLogColors` derives
 /// its flow ramp, with a brightness-aware tone pair so both themes keep
-/// the avatar glanceable against their own surfaces.
+/// the avatar glanceable against their own surfaces. The initials' own
+/// foreground comes from [profileAvatarOnColor], which picks black or
+/// white by WCAG contrast so the label stays legible at every hue in both
+/// themes.
 library;
 
 import 'package:flutter/material.dart';
@@ -32,6 +44,7 @@ import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/pending_invite_badge.dart';
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart' show contrastRatio;
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 /// The avatar's hue for [profileId], in `[0, 360)` — deterministic and
@@ -46,16 +59,63 @@ int profileAvatarHue(String profileId) {
   return hash % 360;
 }
 
-/// The avatar's colour for [profileId] under [brightness]. The hue is
-/// [profileAvatarHue]; saturation/lightness are fixed per brightness so
-/// the disc always separates from the list background (a colour-only
-/// identifier must not also carry a glyph, so no foreground is derived).
-Color profileAvatarColor(String profileId, Brightness brightness) {
-  final hue = profileAvatarHue(profileId).toDouble();
+/// The avatar's disc colour at [hue] under [brightness] (issue #811):
+/// [profileAvatarColor]'s hue-driven core, exposed separately so contrast
+/// can be verified across the whole generated palette rather than a few
+/// sampled profile ids. Saturation/lightness are fixed per brightness so
+/// the disc always separates from the list background; the label drawn on
+/// it takes [profileAvatarOnColor].
+Color profileAvatarColorForHue(double hue, Brightness brightness) {
   return brightness == Brightness.light
       ? HSLColor.fromAHSL(1, hue, 0.45, 0.44).toColor()
       : HSLColor.fromAHSL(1, hue, 0.30, 0.62).toColor();
 }
+
+/// The avatar's disc colour for [profileId] under [brightness]. The hue is
+/// [profileAvatarHue]; saturation/lightness are fixed per brightness so
+/// the disc always separates from the list background.
+Color profileAvatarColor(String profileId, Brightness brightness) =>
+    profileAvatarColorForHue(
+      profileAvatarHue(profileId).toDouble(),
+      brightness,
+    );
+
+/// The foreground for an avatar label drawn on [background] (issue #811):
+/// whichever of black/white has the greater WCAG contrast. The two
+/// extremes always reach at least ~4.58:1 against any colour, so an
+/// initial can never be illegible regardless of the profile's hue. Mirrors
+/// `_ToneOnTone` in `lunarlog_colors.dart`; `test/ui/components/
+/// profile_card_test.dart` sweeps every generated colour to hold it.
+Color profileAvatarOnColor(Color background) =>
+    contrastRatio(background, Colors.black) >=
+            contrastRatio(background, Colors.white)
+        ? Colors.black
+        : Colors.white;
+
+/// The one-or-two initials [ProfileAvatar] draws for [displayName] (issue
+/// #811), or null for a blank/whitespace name (the avatar then falls back
+/// to a person glyph rather than a bare disc).
+///
+/// Takes the first code point of the first word plus the first code point
+/// of the last word when there is more than one word ("Alice Mae Smith" ->
+/// "AS"), else just the first word's ("Alice" -> "A"). Splitting is on
+/// Unicode whitespace and extraction is by code point, not UTF-16 code
+/// unit — an emoji or a character outside the BMP yields one whole
+/// character instead of half a surrogate pair. Upper-casing is a no-op for
+/// scripts and emoji that have no case.
+String? profileAvatarInitials(String displayName) {
+  final words = displayName
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .toList();
+  if (words.isEmpty) return null;
+  final first = _firstCodePoint(words.first);
+  if (words.length == 1) return first.toUpperCase();
+  return (first + _firstCodePoint(words.last)).toUpperCase();
+}
+
+String _firstCodePoint(String word) => String.fromCharCode(word.runes.first);
 
 /// The one-line cycle status for a picker/switcher row (issue #241),
 /// from the prediction the [CyclePredictionService] already computed —
@@ -89,24 +149,75 @@ String? profileCycleStatus({
   }
 }
 
-/// The colour-identified avatar itself (B-15): a plain disc whose hue is
-/// [profileAvatarColor] of the profile id. No initial, no icon — colour
-/// is the identifier, precisely so a minor's name never has to be.
+/// The profile avatar (B-15; issue #811): [profileAvatarInitials] drawn on
+/// the deterministic [profileAvatarColor] disc, or [imageProvider] when the
+/// profile has a real avatar image. This replaces the original bare-hue
+/// disc — see the library doc for the #811 decision that withdrew the
+/// "no initial" stance.
+///
+/// The avatar is decorative: every call site renders the profile's name
+/// beside it, so it is excluded from semantics wholesale rather than
+/// announced as a second element repeating that name (the same merging
+/// discipline `chip_semantics.dart` applies to chips). No profile carries
+/// an image today; [imageProvider] is the presentation seam that lets one
+/// render here when an image source exists.
 class ProfileAvatar extends StatelessWidget {
-  const ProfileAvatar({super.key, required this.profileId, this.radius = 20});
+  const ProfileAvatar({
+    super.key,
+    required this.profileId,
+    required this.displayName,
+    this.imageProvider,
+    this.radius = 20,
+  });
 
   final String profileId;
+
+  /// The name [profileAvatarInitials] draws from.
+  final String displayName;
+
+  /// A real avatar image, when the profile has one; the initials render
+  /// otherwise.
+  final ImageProvider? imageProvider;
 
   /// Visual radius; the picker row uses the 40dp Material list avatar.
   final double radius;
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      key: ValueKey('profile-avatar-$profileId'),
-      radius: radius,
-      backgroundColor:
-          profileAvatarColor(profileId, Theme.of(context).colorScheme.brightness),
+    final background = profileAvatarColor(
+      profileId,
+      Theme.of(context).colorScheme.brightness,
+    );
+    final foreground = profileAvatarOnColor(background);
+    final initials = profileAvatarInitials(displayName);
+    return ExcludeSemantics(
+      child: CircleAvatar(
+        key: ValueKey('profile-avatar-$profileId'),
+        radius: radius,
+        backgroundColor: background,
+        backgroundImage: imageProvider,
+        // The image carries the avatar when there is one; otherwise the
+        // initials, or a person glyph for a blank name.
+        child: imageProvider != null ? null : _label(initials, foreground),
+      ),
+    );
+  }
+
+  Widget _label(String? initials, Color foreground) {
+    if (initials == null) {
+      return Icon(Icons.person, size: radius * 1.1, color: foreground);
+    }
+    return Text(
+      initials,
+      // The disc is a fixed size, so its label must not grow with the
+      // user's text scale and spill out of the circle.
+      textScaler: TextScaler.noScaling,
+      style: TextStyle(
+        color: foreground,
+        fontSize: radius * 0.9,
+        fontWeight: FontWeight.w600,
+        height: 1,
+      ),
     );
   }
 }
@@ -237,7 +348,10 @@ class ProfileCard extends StatelessWidget {
     final subtitleText = subtitle;
     final trailingRow = _trailingRow();
     return ListTile(
-      leading: ProfileAvatar(profileId: profile.id),
+      leading: ProfileAvatar(
+        profileId: profile.id,
+        displayName: profile.displayName,
+      ),
       title: Text(profile.displayName),
       subtitle: _subtitle(theme, service, subtitleText),
       isThreeLine: service != null && subtitleText != null,

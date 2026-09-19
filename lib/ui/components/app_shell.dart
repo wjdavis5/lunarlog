@@ -52,6 +52,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -64,7 +65,8 @@ import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
-import 'package:lunarlog/ui/components/profile_card.dart' show ProfileAvatar;
+import 'package:lunarlog/ui/components/profile_card.dart'
+    show ProfileAvatar, ProfileCycleStatusText;
 import 'package:lunarlog/ui/components/today_log_fab.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart';
@@ -449,6 +451,13 @@ class _AppShellState extends State<AppShell> {
 /// Issue #126: carries the co-managed mark ([_SharedMark]) right after the
 /// name, so a co-managed record always reads as one without opening any
 /// menu. Solo profiles render nothing extra.
+///
+/// Issue #811: the title leads with the active profile's [ProfileAvatar],
+/// so the profile is identifiable at a glance on every tab without opening
+/// the switcher, and each menu row shows that profile's one-line cycle
+/// status on a second line (reusing [ProfileCycleStatusText], the same
+/// status copy the picker's `ProfileCard` renders — no second status
+/// vocabulary).
 class _ProfileSwitcher extends StatelessWidget {
   const _ProfileSwitcher(
       {required this.profile,
@@ -483,57 +492,85 @@ class _ProfileSwitcher extends StatelessWidget {
     );
   }
 
-  /// One menu row per active profile (avatar, name, a check on the
-  /// active one), then the divider and the "Manage profiles…" entry.
+  /// One menu row per active profile (avatar, name, its one-line cycle
+  /// status, a check on the active one — issue #811), then the divider and
+  /// the "Manage profiles…" entry.
   List<PopupMenuEntry<String>> _menuItems(
     BuildContext context,
     List<Profile> active,
-  ) =>
-      [
-        for (final other in active)
-          PopupMenuItem<String>(
-            key: ValueKey('quick-switcher-profile-${other.id}'),
-            value: other.id,
-            height: 56,
-            child: Row(
-              children: [
-                ProfileAvatar(profileId: other.id, radius: 14),
-                const SizedBox(width: LLSpace.space3),
-                Expanded(
-                  child: Text(
-                    other.displayName,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                // Fixed-width slot either way, so every name aligns in
-                // one column whether or not the check renders.
-                other.id == profile.id
-                    ? const Icon(Icons.check, size: 18)
-                    : const SizedBox(width: 18),
-              ],
-            ),
-          ),
-        const PopupMenuDivider(),
+  ) {
+    final theme = Theme.of(context);
+    // Null in an unconfigured tree: the rows stay name-only, exactly as
+    // `ProfileCard` handles a missing prediction service.
+    final predictionService =
+        Provider.of<CyclePredictionService?>(context, listen: false);
+    return [
+      for (final other in active)
         PopupMenuItem<String>(
-          key: const ValueKey('quick-switcher-manage'),
-          value: _kManageProfilesValue,
+          key: ValueKey('quick-switcher-profile-${other.id}'),
+          value: other.id,
+          // Two lines (name + status) need more than the single-line 48dp
+          // default; the item still grows if a large text scale needs it.
+          height: 64,
           child: Row(
             children: [
-              const Icon(Icons.manage_accounts_outlined),
+              ProfileAvatar(
+                profileId: other.id,
+                displayName: other.displayName,
+                radius: 14,
+              ),
               const SizedBox(width: LLSpace.space3),
-              // Flexible + ellipsis: the label never forces the menu wider
-              // than its bounded item width (a wide locale or the test
-              // binding's wide Ahem font).
-              Flexible(
-                child: Text(
-                  AppLocalizations.of(context).quickSwitcherManageProfiles,
-                  overflow: TextOverflow.ellipsis,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      other.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (predictionService != null)
+                      ProfileCycleStatusText(
+                        profileId: other.id,
+                        predictionService: predictionService,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
               ),
+              // Fixed-width slot either way, so every name aligns in
+              // one column whether or not the check renders.
+              other.id == profile.id
+                  ? const Icon(Icons.check, size: 18)
+                  : const SizedBox(width: 18),
             ],
           ),
         ),
-      ];
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        key: const ValueKey('quick-switcher-manage'),
+        value: _kManageProfilesValue,
+        child: Row(
+          children: [
+            const Icon(Icons.manage_accounts_outlined),
+            const SizedBox(width: LLSpace.space3),
+            // Flexible + ellipsis: the label never forces the menu wider
+            // than its bounded item width (a wide locale or the test
+            // binding's wide Ahem font).
+            Flexible(
+              child: Text(
+                AppLocalizations.of(context).quickSwitcherManageProfiles,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
 
   /// Shows the switcher menu and applies the selection: a profile id
   /// makes that profile active in place; the manage entry opens the full
@@ -581,6 +618,15 @@ class _ProfileSwitcher extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Issue #811: the active profile's avatar in the app bar,
+                // so it is identifiable on every tab without opening the
+                // switcher.
+                ProfileAvatar(
+                  profileId: profile.id,
+                  displayName: profile.displayName,
+                  radius: 12,
+                ),
+                const SizedBox(width: LLSpace.space2),
                 Flexible(
                   child: Text(
                     profile.displayName,
