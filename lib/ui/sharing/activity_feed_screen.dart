@@ -30,6 +30,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/async_snapshot_view.dart';
+import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/l10n/activity_actor_copy.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/routes.dart';
@@ -153,63 +154,31 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
   }
 
   Widget _singleGuardianState(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.people_outline,
-              size: 48,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 12),
-            Text('Just you for now', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'This profile has one guardian, so there is no shared activity '
-              'to review. When a second guardian joins, both of your changes '
-              'appear here.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+    return EmptyState(
+      key: const ValueKey('activity-single-guardian'),
+      illustration: Icon(
+        Icons.people_outline,
+        size: 48,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
+      title: 'Just you for now',
+      body:
+          'This profile has one guardian, so there is no shared activity '
+          'to review. When a second guardian joins, both of your changes '
+          'appear here.',
     );
   }
 
   Widget _noActivityState(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.event_note,
-              size: 48,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: 12),
-            Text('No activity yet', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Changes either guardian makes to this profile will appear '
-              'here.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+    return EmptyState(
+      key: const ValueKey('activity-no-activity'),
+      illustration: Icon(
+        Icons.event_note,
+        size: 48,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
+      title: 'No activity yet',
+      body: 'Changes either guardian makes to this profile will appear here.',
     );
   }
 

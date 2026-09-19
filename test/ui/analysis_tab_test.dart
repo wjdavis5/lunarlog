@@ -272,6 +272,35 @@ void main() {
   });
 
   testWidgets(
+      'issue #813: a stat row\'s value and label carry distinct styles — '
+      'the number is the content, the label a quiet caption', (tester) async {
+    final h = Harness(tester);
+    await h.pump(starts: kSteadyStarts);
+
+    final valueFinder =
+        find.byKey(const ValueKey('analysis-mean-cycle-length'));
+    final labelFinder = find.text('Average cycle length');
+    final value = tester.widget<Text>(valueFinder);
+    final label = tester.widget<Text>(labelFinder);
+
+    expect(value.style, isNotNull);
+    expect(label.style, isNotNull);
+    expect(value.style, isNot(equals(label.style)),
+        reason: 'the two used to share one bodyMedium style');
+    expect(value.style!.fontWeight, FontWeight.w600);
+    expect(value.style!.fontFeatures, isNotEmpty);
+    expect(value.style!.fontFeatures!.first.feature, 'tnum',
+        reason: 'tabular figures keep a column of numbers aligned');
+    expect(label.style!.fontSize, lessThan(value.style!.fontSize!));
+    expect(
+      label.style!.color,
+      Theme.of(tester.element(labelFinder)).colorScheme.onSurfaceVariant,
+    );
+
+    await h.dispose();
+  });
+
+  testWidgets(
     'fewer than 3 valid cycles shows an honest not-enough-history state, '
     'not a misleading chart',
     (tester) async {

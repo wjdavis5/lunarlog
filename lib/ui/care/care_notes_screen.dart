@@ -35,11 +35,13 @@ import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/caregiver_attribution_badge.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/sharing/guardian_watch_mixin.dart';
+import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
 
 /// Formats an instant as a bare, locale-aware civil date (issue #554 --
@@ -375,8 +377,10 @@ class _CareNotesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Care notes', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const ListSectionHeader(
+          title: 'Care notes',
+          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ),
         StreamBuilder<List<CareNote>>(
           stream: notesStream,
           builder: (context, snapshot) {
@@ -387,17 +391,23 @@ class _CareNotesSection extends StatelessWidget {
                 key: ValueKey('care-notes-empty'),
               );
             }
-            return Column(
-              children: [
-                for (final note in notes)
-                  _CareNoteRow(
-                    note: note,
-                    guardians: guardians,
-                    currentUserId: currentUserId,
-                    canWrite: canWrite,
-                    onDelete: onDelete,
-                  ),
-              ],
+            return Card(
+              key: const ValueKey('care-notes-card'),
+              child: Column(
+                children: [
+                  for (var i = 0; i < notes.length; i++) ...[
+                    if (i > 0) const Divider(height: 1),
+                    _CareNoteRow(
+                      key: ValueKey('care-note-${notes[i].id}'),
+                      note: notes[i],
+                      guardians: guardians,
+                      currentUserId: currentUserId,
+                      canWrite: canWrite,
+                      onDelete: onDelete,
+                    ),
+                  ],
+                ],
+              ),
             );
           },
         ),
@@ -442,6 +452,7 @@ class _CareNotesSection extends StatelessWidget {
 
 class _CareNoteRow extends StatelessWidget {
   const _CareNoteRow({
+    super.key,
     required this.note,
     required this.guardians,
     required this.currentUserId,
@@ -462,37 +473,33 @@ class _CareNoteRow extends StatelessWidget {
     // CaregiverAttributionBadge precedent: nothing known, nothing shown).
     final hasAttribution =
         note.loggedByUserId != null || note.lastModifiedByUserId != null;
-    return Card(
-      key: ValueKey('care-note-${note.id}'),
-      child: ListTile(
-        title: Text(note.body),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (hasAttribution)
-              CaregiverAttributionBadge(
-                loggedByUserId: note.loggedByUserId,
-                lastModifiedByUserId: note.lastModifiedByUserId,
-                currentUserId: currentUserId,
-                guardians: guardians,
-              ),
-            Text(
-              careAttributionDate(context, note.updatedAt),
-              key: ValueKey('care-note-by-${note.id}'),
+    return ListTile(
+      title: Text(note.body),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (hasAttribution)
+            CaregiverAttributionBadge(
+              loggedByUserId: note.loggedByUserId,
+              lastModifiedByUserId: note.lastModifiedByUserId,
+              currentUserId: currentUserId,
+              guardians: guardians,
             ),
-          ],
-        ),
-        trailing: canWrite
-            ? IconButton(
-                key: ValueKey('care-note-delete-${note.id}'),
-                tooltip: AppLocalizations.of(context)
-                    .careNotesRemoveNoteTooltip,
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => onDelete(note),
-              )
-            : null,
+          Text(
+            careAttributionDate(context, note.updatedAt),
+            key: ValueKey('care-note-by-${note.id}'),
+          ),
+        ],
       ),
+      trailing: canWrite
+          ? IconButton(
+              key: ValueKey('care-note-delete-${note.id}'),
+              tooltip: AppLocalizations.of(context).careNotesRemoveNoteTooltip,
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => onDelete(note),
+            )
+          : null,
     );
   }
 }
@@ -527,8 +534,10 @@ class _VisitPrepSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Visit prep', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
+        const ListSectionHeader(
+          title: 'Visit prep',
+          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ),
         StreamBuilder<List<VisitPrepItem>>(
           stream: prepStream,
           builder: (context, snapshot) {
@@ -541,16 +550,27 @@ class _VisitPrepSection extends StatelessWidget {
             }
             final checkedCount = items.where((i) => i.isChecked).length;
             return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final item in items)
-                  _VisitPrepRow(
-                    item: item,
-                    guardians: guardians,
-                    currentUserId: currentUserId,
-                    canWrite: canWrite,
-                    onToggle: onToggle,
-                    onDelete: onDelete,
+                Card(
+                  key: const ValueKey('visit-prep-card'),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < items.length; i++) ...[
+                        if (i > 0) const Divider(height: 1),
+                        _VisitPrepRow(
+                          key: ValueKey('visit-prep-${items[i].id}'),
+                          item: items[i],
+                          guardians: guardians,
+                          currentUserId: currentUserId,
+                          canWrite: canWrite,
+                          onToggle: onToggle,
+                          onDelete: onDelete,
+                        ),
+                      ],
+                    ],
                   ),
+                ),
                 if (canWrite && checkedCount > 0)
                   Align(
                     alignment: Alignment.centerRight,
@@ -597,6 +617,7 @@ class _VisitPrepSection extends StatelessWidget {
 
 class _VisitPrepRow extends StatelessWidget {
   const _VisitPrepRow({
+    super.key,
     required this.item,
     required this.guardians,
     required this.currentUserId,
@@ -622,31 +643,27 @@ class _VisitPrepRow extends StatelessWidget {
             currentUserId,
           )
         : null;
-    return Card(
-      key: ValueKey('visit-prep-${item.id}'),
-      child: CheckboxListTile(
-        key: ValueKey('visit-prep-check-${item.id}'),
-        value: item.isChecked,
-        onChanged: canWrite
-            ? (checked) => onToggle(item, checked ?? false)
-            : null,
-        title: Text(item.body),
-        subtitle: checkedBy == null
-            ? null
-            : Text(
-                'Checked by $checkedBy',
-                key: ValueKey('visit-prep-checked-by-${item.id}'),
-              ),
-        secondary: canWrite
-            ? IconButton(
-                key: ValueKey('visit-prep-delete-${item.id}'),
-                tooltip: AppLocalizations.of(context)
-                    .careNotesRemoveItemTooltip,
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () => onDelete(item),
-              )
-            : null,
-      ),
+    return CheckboxListTile(
+      key: ValueKey('visit-prep-check-${item.id}'),
+      value: item.isChecked,
+      onChanged: canWrite
+          ? (checked) => onToggle(item, checked ?? false)
+          : null,
+      title: Text(item.body),
+      subtitle: checkedBy == null
+          ? null
+          : Text(
+              'Checked by $checkedBy',
+              key: ValueKey('visit-prep-checked-by-${item.id}'),
+            ),
+      secondary: canWrite
+          ? IconButton(
+              key: ValueKey('visit-prep-delete-${item.id}'),
+              tooltip: AppLocalizations.of(context).careNotesRemoveItemTooltip,
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => onDelete(item),
+            )
+          : null,
     );
   }
 }

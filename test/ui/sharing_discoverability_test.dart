@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/sharing/prediction_projection.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_picker_screen.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
@@ -690,6 +691,10 @@ void main() {
             findsOneWidget);
         expect(find.byKey(const ValueKey('shared-with-me-header')),
             findsOneWidget);
+        // Issue #813: both grouped sections head through the shared
+        // component, not a per-screen bold `Text`.
+        expect(find.byType(ListSectionHeader), findsNWidgets(2),
+            reason: 'one shared header per grouped section');
         // Owned section sits above the shared one.
         final ownedY =
             tester.getTopLeft(find.byKey(const ValueKey('my-profiles-header'))).dy;

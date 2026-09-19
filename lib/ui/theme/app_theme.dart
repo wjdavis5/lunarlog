@@ -93,13 +93,18 @@ abstract final class AppTheme {
   }
 
   static CardThemeData _cardTheme(ColorScheme colorScheme) {
+    // Issue #813: no implicit margin. A themed 8dp margin put every card in
+    // a `ListView(padding: 16)` at a 24dp gutter while its neighbouring
+    // `ListTile`s sat at 16 — the misalignment this issue exists to remove.
+    // Call sites own their spacing instead (see the per-site audit in that
+    // PR), so a card can align with its list.
     return CardThemeData(
       elevation: LLElevation.e1,
       color: colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(LLRadius.rLg),
       ),
-      margin: const EdgeInsets.all(LLSpace.space2),
+      margin: EdgeInsets.zero,
     );
   }
 

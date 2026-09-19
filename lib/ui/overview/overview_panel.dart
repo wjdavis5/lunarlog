@@ -597,24 +597,31 @@ class _OverviewPanelState extends State<OverviewPanel>
         // explanatory card, exactly as in Pregnancy mode.
         if (_modeRow?.mode == LifecycleMode.postpartum)
           _postpartumCard(context),
-        switch (prediction) {
-          ActivePrediction() => _activeCard(context, prediction),
-          NotEnoughHistory() => _notEnoughCard(context, prediction),
-          // Issue #233/#528: an in-effect continuous birth-control
-          // method, or a life-stage mode the averaging model doesn't
-          // apply to, replaces the estimate with an explicit suppressed
-          // state — never NotEnoughHistory and never a silent
-          // late/paused line.
-          PredictionsSuppressed() => PredictionsSuppressedCard(
-            method: prediction.method,
-            lifecycleMode: prediction.lifecycleMode,
-          ),
-          // Issue #225: per-profile predictions disabled toggle.
-          PredictionsDisabled() => PredictionsDisabledCard(
-            onManageSettings: () =>
-                pushNamedScreen<void>(context, kRouteSettingsScreen),
-          ),
-        },
+        // Issue #813: the themed card margin is gone, so the estimate card
+        // states its own top gutter. This preserves the old 8dp gap from a
+        // preceding mode card (Pregnancy/Postpartum/Perimenopause/Conceive)
+        // and the old top inset when it is the first child.
+        Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space2),
+          child: switch (prediction) {
+            ActivePrediction() => _activeCard(context, prediction),
+            NotEnoughHistory() => _notEnoughCard(context, prediction),
+            // Issue #233/#528: an in-effect continuous birth-control
+            // method, or a life-stage mode the averaging model doesn't
+            // apply to, replaces the estimate with an explicit suppressed
+            // state — never NotEnoughHistory and never a silent
+            // late/paused line.
+            PredictionsSuppressed() => PredictionsSuppressedCard(
+              method: prediction.method,
+              lifecycleMode: prediction.lifecycleMode,
+            ),
+            // Issue #225: per-profile predictions disabled toggle.
+            PredictionsDisabled() => PredictionsDisabledCard(
+              onManageSettings: () =>
+                  pushNamedScreen<void>(context, kRouteSettingsScreen),
+            ),
+          },
+        ),
         _seeHistoryLink(context),
         if (availability == NotificationAvailability.denied)
           const _ReminderHint(),

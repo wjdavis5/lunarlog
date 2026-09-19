@@ -33,7 +33,9 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
-import 'package:lunarlog/ui/care/care_notes_screen.dart';import 'package:lunarlog/ui/profiles/profile_controller.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:provider/single_child_widget.dart';
@@ -222,6 +224,54 @@ void main() {
               'authorship');
       expect(stored.single.dirty, isTrue,
           reason: 'the note is flagged for the next sync');
+      await disposeCare(tester, h);
+    });
+
+    testWidgets(
+        'issue #813: both sections render the shared header, and multiple '
+        'rows sit inside one Card per section separated by dividers',
+        (tester) async {
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-mom',
+        seed: (db, profileId) async {
+          await db.storage.upsertCareNote(
+              id: 'n-1', profileId: profileId, body: 'First note.');
+          await db.storage.upsertCareNote(
+              id: 'n-2', profileId: profileId, body: 'Second note.');
+          await db.storage.addVisitPrepItem(
+              id: 'i-1', profileId: profileId, body: 'First item.');
+          await db.storage.addVisitPrepItem(
+              id: 'i-2', profileId: profileId, body: 'Second item.');
+        },
+      );
+
+      // One shared header per section (not a per-screen bold Text).
+      expect(find.byType(ListSectionHeader), findsNWidgets(2));
+      expect(find.text('Care notes'), findsOneWidget);
+      expect(find.text('Visit prep'), findsOneWidget);
+
+      // Four rows, but one Card per section — not a deck of floating tiles.
+      expect(find.byKey(const ValueKey('care-notes-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('visit-prep-card')), findsOneWidget);
+      expect(find.byType(Card), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('care-notes-card')),
+          matching: find.text('First note.'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('visit-prep-card')),
+          matching: find.text('First item.'),
+        ),
+        findsOneWidget,
+      );
+      // One Divider(height: 1) between the two rows of each section.
+      expect(find.byType(Divider), findsNWidgets(2));
+
       await disposeCare(tester, h);
     });
 

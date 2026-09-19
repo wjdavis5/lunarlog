@@ -34,6 +34,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/components/profile_card.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
@@ -189,22 +190,14 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       return [for (final profile in owned) _row(context, overview, sharing, profile)];
     }
     return [
-      const Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: Text(
-          'My profiles',
-          key: ValueKey('my-profiles-header'),
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+      const ListSectionHeader(
+        key: ValueKey('my-profiles-header'),
+        title: 'My profiles',
       ),
       for (final profile in owned) _row(context, overview, sharing, profile),
-      const Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: Text(
-          'Shared with me',
-          key: ValueKey('shared-with-me-header'),
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+      const ListSectionHeader(
+        key: ValueKey('shared-with-me-header'),
+        title: 'Shared with me',
       ),
       for (final profile in shared) _row(context, overview, sharing, profile),
     ];
