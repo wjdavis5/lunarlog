@@ -1766,17 +1766,17 @@ abstract class AppLocalizations {
   /// **'Clear'**
   String get daySheetIntensityClear;
 
-  /// Overview line naming the predicted PMS band (Issue #220); range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
+  /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:
-  /// **'Predicted PMS: {range}'**
-  String overviewPmsBandLabel(String range);
+  /// **'Predicted PMS: {range} — usually starts about {days} days before your period and lasts about {length} days.'**
+  String overviewPmsBandLabel(String range, int days, int length);
 
-  /// Overview copy under the predicted PMS band stating the 6-cycle averages behind it (Issue #220).
+  /// Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.
   ///
   /// In en, this message translates to:
-  /// **'usually starts about {days} days before your period and lasts about {length} days'**
-  String overviewPmsDaysBeforePeriod(int days, int length);
+  /// **'PMS estimate: {tier}'**
+  String overviewPmsTierLabel(String tier);
 
   /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
   ///

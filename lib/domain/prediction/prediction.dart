@@ -43,10 +43,12 @@
 /// [ActivePrediction.originalEstimatedNextStart] keeps the un-rolled date
 /// so the day count can keep growing regardless; (2) the old
 /// `PausedAwaitingNextPeriod` dead end past [kMaxOpenCycleDays] is gone —
-/// that case now stays an [ActivePrediction] (forced to
-/// [CycleConfidence.irregular], flagged [ActivePrediction.unusuallyLongCycle])
-/// with the same rolled estimate, so reminder planning (which only ever
-/// sees [ActivePrediction]s) keeps a nudge alive instead of going quiet.
+/// that case now stays an [ActivePrediction] (flagged
+/// [ActivePrediction.unusuallyLongCycle]) with the same rolled estimate, so
+/// reminder planning (which only ever sees [ActivePrediction]s) keeps a
+/// nudge alive instead of going quiet. Issue #858: the flag no longer
+/// forces the tier to [CycleConfidence.irregular] — see
+/// [_lowerForLongOpenCycle].
 ///
 /// Issue #218 adds the [CycleConfidence.provisional] tier and
 /// [seedProvisionalPrediction]: an [ActivePrediction]-equivalent seeded
@@ -173,11 +175,13 @@ LocalDate endOfHorizonMonth(LocalDate today, int months) {
 const int kAverageWindowCycles = 6;
 
 /// An open cycle longer than this is "unusually long" (issue #221/A2-12):
-/// [ActivePrediction.unusuallyLongCycle] flags it and [ActivePrediction.tier]
-/// is forced to [CycleConfidence.irregular]. Before issue #221 this
+/// [ActivePrediction.unusuallyLongCycle] flags it. Before issue #221 this
 /// threshold instead returned the dead-end `PausedAwaitingNextPeriod`
 /// state — no date, no reminders; predictions never go silent now, they
-/// just get less confident.
+/// just get less confident. Issue #858: the flag lowers the tier at most
+/// one rung ([_lowerForLongOpenCycle]) rather than forcing
+/// [CycleConfidence.irregular], whose copy asserts observed
+/// cycle-to-cycle variability a long open cycle does not demonstrate.
 const int kMaxOpenCycleDays = 60;
 
 /// Fallback bleed length used only when the period-length window carries
@@ -378,6 +382,20 @@ CycleConfidence _stepTierDown(CycleConfidence tier) => switch (tier) {
       CycleConfidence.irregular => CycleConfidence.irregular,
       CycleConfidence.provisional => CycleConfidence.provisional,
     };
+
+/// Issue #858: the confidence reduction an unusually long open cycle earns.
+/// A fully-steady history (`high`) drops one rung to `learning`; a history
+/// already at `learning`/`irregular` stays put. It deliberately never steps
+/// *into* `irregular`: that tier's copy asserts observed cycle-to-cycle
+/// variability ("Cycles vary a lot"), which an open cycle merely running
+/// long does not demonstrate — the dedicated
+/// [ActivePrediction.unusuallyLongCycle] prompt says that part honestly
+/// instead. Delegates the rung arithmetic to [_stepTierDown] so the tier
+/// ladder lives in exactly one place.
+CycleConfidence _lowerForLongOpenCycle(CycleConfidence tier) {
+  final stepped = _stepTierDown(tier);
+  return stepped == CycleConfidence.irregular ? tier : stepped;
+}
 
 /// One forecasted future cycle (issue #213, item 4): [cycleIndex] is
 /// 1-based (1 = the next cycle, the same one [estimatedNextStart] names).
@@ -594,6 +612,7 @@ class ActivePrediction extends CyclePrediction {
     required this.validCycleCount,
     this.meanPeriodLengthDays = 0,
     this.spreadDays = 0,
+    this.validRatio = 1.0,
     this.tier = CycleConfidence.learning,
     this.forecast = const [],
     this.unusuallyLongCycle = false,
@@ -657,6 +676,16 @@ class ActivePrediction extends CyclePrediction {
   /// metric behind [tier] and the range rendering below.
   final double spreadDays;
 
+  /// The recency-windowed ratio of valid (15–60 day) cycles [tier] was
+  /// derived from (issue #858) — valid cycles over the last
+  /// [kRecencyWindowCycles] completed ones, the same data-quality signal
+  /// [_spreadAndTier] feeds [confidenceTierFor]. Exposed so a consumer can
+  /// tell genuine cycle-to-cycle variability from a tier lowered for some
+  /// other reason (a long open cycle); see [hasHighCycleVariability].
+  /// Defaults to `1.0` on the branches that derive no ratio (pack-driven,
+  /// provisional).
+  final double validRatio;
+
   /// Confidence tier (issue #213), from [spreadDays] and the valid ratio
   /// over [kRecencyWindowCycles]. Render the estimate as a range rather
   /// than one exact date whenever this is not [CycleConfidence.high].
@@ -674,11 +703,11 @@ class ActivePrediction extends CyclePrediction {
   /// [kMaxOpenCycleDays] (issue #221/A2-12). Before this issue this
   /// threshold returned the dead-end `PausedAwaitingNextPeriod` state
   /// instead — no date, no reminders. Now it stays an [ActivePrediction]
-  /// (forced to [CycleConfidence.irregular], per #213) with
-  /// [estimatedNextStart] rolled forward the same way any other late
+  /// with [estimatedNextStart] rolled forward the same way any other late
   /// estimate is; this flag is the seam the UI uses to show the "this
   /// cycle is unusually long" prompt (exclude this cycle / turn off
-  /// predictions) alongside it.
+  /// predictions) alongside it. Issue #858: it lowers [tier] at most one
+  /// rung (never into [CycleConfidence.irregular]) rather than forcing it.
   final bool unusuallyLongCycle;
 
   /// The predicted PMS phase (Issue #220): averages over the logged
@@ -764,6 +793,17 @@ class ActivePrediction extends CyclePrediction {
   LocalDate get estimatedRangeEnd =>
       estimatedNextStart.addDays(spreadDays.round());
 
+  /// Whether the recorded cycles themselves show the variability the
+  /// [CycleConfidence.irregular] tier's copy describes ("Cycles vary a
+  /// lot") — the actual signal behind the #225 "cycles vary a lot"
+  /// suggestion (issue #858). Derived directly from [spreadDays] and
+  /// [validRatio] rather than from [tier], because [tier] can also be
+  /// lowered by an open cycle merely running long, which is not
+  /// cycle-to-cycle variability.
+  bool get hasHighCycleVariability =>
+      spreadDays > kIrregularSpreadThresholdDays ||
+      validRatio < kIrregularValidRatioThreshold;
+
   @override
   String toString() => 'ActivePrediction('
       'lastEpisodeStart: ${lastEpisodeStart.iso}, '
@@ -803,9 +843,11 @@ class ActivePrediction extends CyclePrediction {
 ///    [kSkipAdvanceCycles] averaged cycles beyond the last episode start.
 ///    Once the open cycle (today − last episode start) passes
 ///    [kMaxOpenCycleDays] (issue #221/A2-12), [ActivePrediction
-///    .unusuallyLongCycle] is set and [ActivePrediction.tier] is forced to
-///    [CycleConfidence.irregular] — a skip does not lift this flag; "log
-///    it" (R6) is still the only way an open cycle actually closes.
+///    .unusuallyLongCycle] is set and [ActivePrediction.tier] is lowered at
+///    most one rung from the honest spread-based tier, never into
+///    [CycleConfidence.irregular] (issue #858: see
+///    [_lowerForLongOpenCycle]) — a skip does not lift this flag; "log it"
+///    (R6) is still the only way an open cycle actually closes.
 CyclePrediction computePrediction({
   required List<Episode> episodes,
   required LocalDate today,
@@ -876,15 +918,23 @@ CyclePrediction computePrediction({
     usableLengths: windows.usableLengths,
     recentLengths: windows.recentLengths,
   );
-  // #221 follow-up (review fix): derive the forced tier once and pass it
-  // into _buildForecast too — otherwise the forecast built its per-cycle
-  // tiers by stepping down from the un-forced spreadAndTier.tier, while
-  // ActivePrediction.tier (forecast.first's tier, by the invariant above)
-  // was separately forced to irregular for unusuallyLongCycle. Two
-  // derivations of the same "first cycle" tier could disagree; there must
-  // be exactly one (#299 invariant).
-  final tier =
-      unusuallyLongCycle ? CycleConfidence.irregular : spreadAndTier.tier;
+  // #221 follow-up (review fix): derive the first-cycle tier once and pass
+  // it into _buildForecast too — otherwise the forecast built its per-cycle
+  // tiers from a different base than ActivePrediction.tier
+  // (forecast.first's tier, by the invariant above). Two derivations of the
+  // same "first cycle" tier could disagree; there must be exactly one
+  // (#299 invariant).
+  //
+  // Issue #858: a long open cycle no longer *forces* `irregular`. The
+  // honest tier comes from the observed spread (so a 29/29/29 history reads
+  // `learning`, not `irregular`); the long cycle lowers it at most one
+  // rung and never into `irregular`, whose copy asserts cycle-to-cycle
+  // variability the open cycle does not demonstrate. #221's "never go
+  // silent" posture is untouched: the estimate and its forecast are still
+  // produced, only the tier's wording changes.
+  final tier = unusuallyLongCycle
+      ? _lowerForLongOpenCycle(spreadAndTier.tier)
+      : spreadAndTier.tier;
   final periodLength = _meanPeriodLength(
     sorted: sorted,
     omittedCycleStarts: omittedCycleStarts,
@@ -923,6 +973,7 @@ CyclePrediction computePrediction({
     validCycleCount: windows.validLengths.length,
     meanPeriodLengthDays: periodLength.meanPeriodLengthDays,
     spreadDays: spreadAndTier.spreadDays,
+    validRatio: spreadAndTier.validRatio,
     tier: tier,
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
@@ -1158,10 +1209,16 @@ class _SpreadAndTier {
   const _SpreadAndTier({
     required this.spreadDays,
     required this.tier,
+    required this.validRatio,
   });
 
   final double spreadDays;
   final CycleConfidence tier;
+
+  /// The recency-windowed valid-cycle ratio this tier was derived from
+  /// (issue #858) — carried alongside the spread so [ActivePrediction] can
+  /// expose the honest variability signal without re-deriving it.
+  final double validRatio;
 }
 
 _SpreadAndTier _spreadAndTier({
@@ -1195,6 +1252,7 @@ _SpreadAndTier _spreadAndTier({
   return _SpreadAndTier(
     spreadDays: spreadDays,
     tier: tier,
+    validRatio: validRatio,
   );
 }
 

@@ -31,6 +31,9 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show ActivePrediction, CyclePrediction;
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -168,6 +171,18 @@ final List<LocalDate> kIrregularSpreadStarts = [
   LocalDate(2026, 5, 30), // 15, open
 ];
 final LocalDate kIrregularSpreadToday = LocalDate(2026, 6, 5);
+
+/// Issue #858: three perfectly regular 29-day cycles then a long open cycle
+/// (64 days, past kMaxOpenCycleDays) — the combination that used to be
+/// mislabelled `Irregular`. The honest tier is `learning` (three usable
+/// cycles, spread 0), and the cycles themselves show no variability.
+final List<LocalDate> kRegularLongOpenStarts = [
+  LocalDate(2026, 1, 1),
+  LocalDate(2026, 1, 30), // 29
+  LocalDate(2026, 2, 28), // 29
+  LocalDate(2026, 3, 29), // 29, open
+];
+final LocalDate kRegularLongOpenToday = LocalDate(2026, 6, 1);
 
 class Harness {
   Harness(this.db, this.profile, this.profiles, this.entries, this._settings);
@@ -419,14 +434,32 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
-      // The range joins with an en dash (see _pmsSection's formatter).
-      expect(find.textContaining('Predicted PMS: September 1, 2026'),
-          findsOneWidget);
-      expect(find.textContaining('September 3, 2026'), findsOneWidget);
-      expect(find.text('usually starts about 3 days before your period and '
-          'lasts about 3 days'), findsOneWidget);
-      // Same tier vocabulary as the period estimate - never a second one.
-      expect(find.byKey(const ValueKey('overview-pms-tier')), findsOneWidget);
+      // Issue #874: band and averages render as one sentence; the range
+      // joins with an en dash (see _pmsSection's formatter).
+      expect(
+        find.text('Predicted PMS: September 1, 2026 – September 3, 2026 — '
+            'usually starts about 3 days before your period and lasts '
+            'about 3 days.'),
+        findsOneWidget,
+        reason: 'issue #874: the averages must be part of the band '
+            'sentence, not a subject-less fragment on their own line',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-pms-averages')),
+        findsNothing,
+        reason: 'issue #874: the separate averages line is gone',
+      );
+      // Issue #874: the PMS tier equals the period estimate's tier (the
+      // common case), so the subject-less bare tier line is omitted.
+      expect(find.byKey(const ValueKey('overview-pms-tier')), findsNothing);
+      // Issue #874 defect 1: the tier caption no longer stutters.
+      expect(
+        find.text('Still learning — estimates improve after a few more '
+            'cycles.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Learning — Still learning'), findsNothing,
+          reason: 'issue #874: drop the duplicated label prefix');
       // Issue #807: single disclaimer per screen at the bottom of overview.
       expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
       expect(find.text(kEstimateDisclaimer), findsOneWidget);
@@ -532,7 +565,7 @@ void main() {
       );
 
       // The old dead-end card is gone: this is the same active-estimate
-      // card every other state renders, just at irregular confidence with
+      // card every other state renders, just at a lowered confidence with
       // a rolled-forward estimate and the extra prompt below.
       expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
       expect(find.text('Awaiting next period'), findsNothing);
@@ -547,11 +580,22 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
       await tester.pumpAndSettle();
       expect(
-        find.text('Irregular — Cycles vary a lot — treat estimates as '
-            'rough guides.'),
+        find.text('Still learning — estimates improve after a few more '
+            'cycles.'),
         findsOneWidget,
-        reason: 'issue #221/A2-12 forces the irregular tier past 60 open '
-            'days',
+        reason: 'issue #858: three steady 30-day cycles read learning past '
+            '60 open days, not irregular -- a long open cycle lowers the '
+            'tier one rung (a no-op from learning) and never asserts the '
+            'variability `irregular` describes. Issue #874: the summary '
+            'renders alone, without the "Learning —" label prefix.',
+      );
+      expect(find.textContaining('Cycles vary a lot'), findsNothing,
+          reason: 'issue #858: the forced-irregular mislabel is gone');
+      expect(
+        find.byKey(const ValueKey('overview-irregular-prediction-suggestion')),
+        findsNothing,
+        reason: 'issue #225/#858: the suggestion card keys on genuine '
+            'cycle-to-cycle variability, which this steady history lacks',
       );
       // Issue #132 (AC7): still resolves through the resolver — "log it"
       // is right there — and now also the dedicated long-cycle prompt.
@@ -708,8 +752,10 @@ void main() {
           findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
       await tester.pumpAndSettle();
-      expect(find.text('Provisional — Based on your onboarding answers — '
-          'estimates improve once real cycles are logged.'), findsOneWidget);
+      expect(find.text('Based on your onboarding answers — estimates '
+          'improve once real cycles are logged.'), findsOneWidget);
+      expect(find.textContaining('Provisional — Based on'), findsNothing,
+          reason: 'issue #874: the tier caption renders the summary alone');
       expect(find.byKey(const ValueKey('overview-days-until')), findsOneWidget);
       expect(find.text('5'), findsOneWidget);
       expect(find.text('days'), findsOneWidget);
@@ -997,9 +1043,9 @@ void main() {
       expect(find.byKey(const ValueKey('overview-tier-caption')),
           findsOneWidget);
       expect(
-        find.text('Irregular — Cycles vary a lot — treat estimates as '
-            'rough guides.'),
+        find.text('Cycles vary a lot — treat estimates as rough guides.'),
         findsOneWidget,
+        reason: 'issue #874: the tier caption renders the summary alone',
       );
       expect(
         find.text('Next period estimate: June 8, 2026 – July 20, 2026'),
@@ -1033,9 +1079,10 @@ void main() {
       expect(find.byKey(const ValueKey('overview-tier-caption')),
           findsOneWidget);
       expect(
-        find.text('Learning — Still learning — estimates improve after a '
-            'few more cycles.'),
+        find.text('Still learning — estimates improve after a few more '
+            'cycles.'),
         findsOneWidget,
+        reason: 'issue #874: the tier caption renders the summary alone',
       );
       expect(find.text('Next period estimate: September 4, 2026'),
           findsOneWidget,
@@ -1044,6 +1091,71 @@ void main() {
       expect(
         find.textContaining('September 4, 2026 – September 4, 2026'),
         findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #858: a long open cycle over a regular 29/29/29 '
+        'history renders no irregular variability copy and no #225 '
+        'suggestion card', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        today: kRegularLongOpenToday,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kRegularLongOpenStarts),
+      );
+
+      // The dedicated long-cycle state is genuinely active...
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
+      expect(find.text('This cycle is unusually long'), findsOneWidget);
+      // ...and the honest tier is learning, not irregular.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('today-card-confidence-chip')),
+          matching: find.text('Learning'),
+        ),
+        findsOneWidget,
+      );
+      // The variability copy and the #225 card never leak.
+      expect(find.textContaining('Cycles vary a lot'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-prediction-suggestion')),
+        findsNothing,
+      );
+      await tester.tap(
+          find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Still learning — estimates improve after a few more '
+            'cycles.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Cycles vary a lot'), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #858: a genuinely irregular spread still renders the '
+        'variability copy and the #225 suggestion card', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        today: kIrregularSpreadToday,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kIrregularSpreadStarts),
+      );
+
+      expect(
+        find.byKey(const ValueKey('overview-irregular-prediction-suggestion')),
+        findsOneWidget,
+        reason: 'the fix must not make the irregular path unreachable',
+      );
+      expect(find.text('Cycles vary a lot'), findsOneWidget);
+      await tester.tap(
+          find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Cycles vary a lot — treat estimates as rough guides.'),
+        findsOneWidget,
       );
       await disposeOverview(tester, h);
     });
@@ -1811,4 +1923,124 @@ void main() {
       await db.close();
     });
   });
+
+  group('issue #874: PMS tier line', () {
+    /// Emits one caller-supplied prediction regardless of the watched
+    /// profile, so a hand-built [ActivePrediction] can drive the panel
+    /// directly (the domain never produces a PMS tier that differs from
+    /// the period estimate's, so the subject-prefixed branch is otherwise
+    /// unreachable through seeded entries).
+    testWidgets('the bare PMS tier line is omitted when it matches the '
+        'cycle tier and subject-prefixed when it differs', (tester) async {
+      final db = LunarLogDatabase(NativeDatabase.memory());
+      final entries = DriftDayEntriesRepository(db.storage);
+      final settings = DriftSettingsStore(db.storage);
+
+      ActivePrediction predictionWithPmsTier(CycleConfidence pmsTier) =>
+          ActivePrediction(
+            today: kToday,
+            lastEpisodeStart: LocalDate(2026, 8, 5),
+            estimatedNextStart: LocalDate(2026, 9, 4),
+            originalEstimatedNextStart: LocalDate(2026, 9, 4),
+            averagedCycleLengths: const [30, 30, 30, 30, 30, 30],
+            meanCycleLengthDays: 30,
+            cycleDay: 26,
+            duringEpisode: false,
+            completedCycleCount: 6,
+            validCycleCount: 6,
+            meanPeriodLengthDays: 4,
+            spreadDays: 0,
+            tier: CycleConfidence.learning,
+            pms: PmsEstimate(
+              meanOnsetDaysBeforeNextPeriod: 3,
+              meanLengthDays: 3,
+              usableIntervalCount: 3,
+              tier: pmsTier,
+              predictedStart: LocalDate(2026, 9, 1),
+              predictedEnd: LocalDate(2026, 9, 3),
+            ),
+          );
+
+      Future<void> pumpWith(CycleConfidence pmsTier) async {
+        // Unmount first: OverviewPanel captures its service in initState,
+        // so a fresh tree is required to read the next fixed prediction.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<SettingsStore>.value(value: settings),
+            Provider<CyclePredictionService>.value(
+              value: _FixedPredictionService(
+                entries,
+                predictionWithPmsTier(pmsTier),
+              ),
+            ),
+            Provider<CycleExclusionList>.value(
+              value: CycleExclusionList(settings),
+            ),
+            ChangeNotifierProvider<NotificationPermissionState>.value(
+              value: NotificationPermissionState(
+                  NotificationAvailability.available),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.lightTheme,
+            home: Scaffold(
+              body: OverviewPanel(
+                profileId: 'p1',
+                todayProvider: () => kToday,
+              ),
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(
+            find.byKey(const ValueKey('overview-about-estimate-toggle')));
+        await tester.pumpAndSettle();
+      }
+
+      // Matching tier (the common case): the bare line is omitted.
+      await pumpWith(CycleConfidence.learning);
+      expect(
+        find.byKey(const ValueKey('overview-pms-tier')),
+        findsNothing,
+        reason: 'issue #874: no subject-less tier line when it matches the '
+            'cycle estimate',
+      );
+      expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
+
+      // Differing tier (defensive): the line gains a subject.
+      await pumpWith(CycleConfidence.high);
+      expect(
+        find.byKey(const ValueKey('overview-pms-tier')),
+        findsOneWidget,
+      );
+      expect(find.text('PMS estimate: High confidence'), findsOneWidget);
+      expect(find.text('High confidence'), findsNothing,
+          reason: 'only the subject-prefixed PMS line, never a bare label');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+  });
+}
+
+/// A [CyclePredictionService] that ignores the watched profile and emits a
+/// single caller-supplied prediction — the seam the issue #874 PMS-tier
+/// test needs to drive a hand-built [ActivePrediction] through the panel.
+class _FixedPredictionService extends CyclePredictionService {
+  _FixedPredictionService(super.entries, this.prediction);
+
+  final CyclePrediction prediction;
+
+  @override
+  Stream<CyclePrediction> watch(
+    String profileId, {
+    LocalDate Function()? today,
+  }) =>
+      Stream<CyclePrediction>.value(prediction);
 }
