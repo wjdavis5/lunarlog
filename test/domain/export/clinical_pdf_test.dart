@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/clinical_pdf.dart';
 import 'package:lunarlog/domain/export/clinical_pdf_summary.dart';
 import 'package:lunarlog/domain/export/fhir_export_range.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -187,5 +188,63 @@ void main() {
     final text = latin1.decode(buildClinicalPdfDocument(summary));
     expect(text, contains('No completed cycles in the selected range.'));
     expect(text, contains('No symptoms were logged in the cycles shown'));
+  });
+
+  test('renders custom tags, disambiguated labels, and spotting in PDF bytes (#834, #822, #794)', () {
+    final starts = _starts(8);
+    final entries = [
+      for (final start in starts)
+        DayEntry(
+          id: 'e-${start.iso}',
+          profileId: 'p1',
+          localDate: start,
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          tags: start == starts[1]
+              ? const ['great_digestion', 'great_stool', 'acupuncture']
+              : const [],
+          updatedAt: DateTime.utc(2026, 1, 1),
+        ),
+    ];
+    final observations = [
+      Observation(
+        id: 'o-spotting',
+        dayEntryId: 'd-spotting',
+        profileId: 'p1',
+        localDate: starts[1],
+        tz: 'UTC',
+        category: 'spotting',
+        code: 'light',
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ];
+    final customTags = [
+      CustomTag(
+        id: 'ct-1',
+        profileId: 'p1',
+        code: 'acupuncture',
+        displayName: 'Acupuncture',
+        category: 'custom',
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+    ];
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: entries,
+      observations: observations,
+      customTags: customTags,
+      range: FhirExportRange(
+        preset: FhirExportRangePreset.last6Cycles,
+        start: starts[1],
+      ),
+      rangeLabel: 'Last 6 cycles',
+      generatedAt: DateTime.utc(2026, 6, 1),
+    );
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    expect(text, contains('Acupuncture'));
+    expect(text, contains(r'Great \(digestion\)'));
+    expect(text, contains(r'Great \(stool\)'));
+    expect(text, contains('Spotting'));
   });
 }

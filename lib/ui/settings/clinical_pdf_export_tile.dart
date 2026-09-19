@@ -26,6 +26,7 @@ import '../../domain/export/clinical_pdf.dart';
 import '../../domain/export/clinical_pdf_summary.dart';
 import '../../domain/export/clinical_pdf_writer.dart';
 import '../../domain/export/fhir_export_range.dart';
+import '../../domain/logging/custom_tag_registry.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile.dart';
@@ -34,6 +35,7 @@ import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profile_modes_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
+import '../../domain/repositories/tag_registry_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import '../overview/estimate_copy.dart' show kEstimateDisclaimer;
@@ -245,11 +247,14 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     final omittedCycleStarts =
         await deps.exclusions?.load(profile.id) ?? const <LocalDate>{};
     final mode = await deps.modes?.find(profile.id);
+    final customTags =
+        await deps.tagRegistry?.listForProfile(profile.id) ?? const <CustomTag>[];
     return buildClinicalPdfDocument(
       buildClinicalPdfSummary(
         profile: profile,
         dayEntries: dayEntries,
         observations: observations,
+        customTags: customTags,
         range: range,
         rangeLabel: _rangeLabelFor(range),
         generatedAt: exportedAt,
@@ -300,6 +305,7 @@ class _PdfExportDeps {
     required this.entries,
     required this.observations,
     required this.modes,
+    required this.tagRegistry,
   });
 
   final ClinicalPdfWriter? writer;
@@ -307,6 +313,7 @@ class _PdfExportDeps {
   final DayEntriesRepository entries;
   final ObservationsRepository observations;
   final ProfileModesRepository? modes;
+  final TagRegistryRepository? tagRegistry;
 
   static _PdfExportDeps read(BuildContext context) => _PdfExportDeps(
     writer: context.read<ClinicalPdfWriter?>(),
@@ -314,5 +321,6 @@ class _PdfExportDeps {
     entries: context.read<DayEntriesRepository>(),
     observations: context.read<ObservationsRepository>(),
     modes: context.read<ProfileModesRepository?>(),
+    tagRegistry: context.read<TagRegistryRepository?>(),
   );
 }

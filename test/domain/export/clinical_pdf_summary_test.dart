@@ -4,6 +4,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/clinical_pdf_summary.dart';
 import 'package:lunarlog/domain/export/fhir_export_range.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -66,6 +67,7 @@ List<LocalDate> _starts(int count, {int gapDays = 28}) => [
 ClinicalPdfSummary _summary(
   List<DayEntry> entries, {
   List<Observation> observations = const [],
+  List<CustomTag> customTags = const [],
   Set<LocalDate> omitted = const {},
   String? birthControlMethod,
   List<String> medications = const [],
@@ -79,6 +81,7 @@ ClinicalPdfSummary _summary(
     profile: _profile(),
     dayEntries: entries,
     observations: observations,
+    customTags: customTags,
     range: FhirExportRange(
       preset: FhirExportRangePreset.last6Cycles,
       start: starts[1],
@@ -217,10 +220,114 @@ void main() {
     ];
     final summary = _summary(entries, observations: observations);
     final migraine = summary.symptomGrid.singleWhere(
-      (row) => row.label == 'migraine',
+      (row) => row.label == 'Migraine',
     );
     expect(migraine.counts[0], 1);
     expect(summary.symptomGrid.any((row) => row.label == 'bbt'), isFalse);
+  });
+
+  test('Issue #834: custom tags appear in symptom grid with displayName', () {
+    final customTag = CustomTag(
+      id: 'ct1',
+      profileId: 'p1',
+      code: 'acupuncture',
+      displayName: 'Acupuncture',
+      category: 'custom',
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+    final tombstonedTag = CustomTag(
+      id: 'ct2',
+      profileId: 'p1',
+      code: 'deleted_tag',
+      displayName: 'Deleted Tag',
+      category: 'custom',
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+      deletedAt: DateTime.utc(2026, 2, 1),
+    );
+    final withCustomTags = [
+      for (final start in starts)
+        _bleed(
+          'ct-${start.iso}',
+          start,
+          tags: start == starts[1]
+              ? const ['acupuncture', 'deleted_tag']
+              : const [],
+        ),
+    ];
+    final summary = _summary(
+      withCustomTags,
+      customTags: [customTag, tombstonedTag],
+    );
+    final acupuncture = summary.symptomGrid.singleWhere(
+      (row) => row.label == 'Acupuncture',
+    );
+    expect(acupuncture.counts[0], 1);
+    expect(
+      summary.symptomGrid.any((row) => row.label == 'Deleted Tag'),
+      isFalse,
+    );
+  });
+
+  test('Issue #822: great_digestion and great_stool produce distinct rows', () {
+    final withGreat = [
+      for (final start in starts)
+        _bleed(
+          'g-${start.iso}',
+          start,
+          tags: start == starts[1]
+              ? const ['great_digestion', 'great_stool']
+              : const [],
+        ),
+    ];
+    final summary = _summary(withGreat);
+    expect(
+      summary.symptomGrid.any((row) => row.label == 'Great'),
+      isFalse,
+      reason: 'Colliding display "Great" must be disambiguated',
+    );
+    final digestion = summary.symptomGrid.singleWhere(
+      (row) => row.label == 'Great (digestion)',
+    );
+    final stool = summary.symptomGrid.singleWhere(
+      (row) => row.label == 'Great (stool)',
+    );
+    expect(digestion.counts[0], 1);
+    expect(stool.counts[0], 1);
+  });
+
+  test('Issue #794: observation cramps and tag cramps deduplicate to single Cramps row', () {
+    final withCrampsTag = [
+      for (final start in starts)
+        _bleed(
+          'c-${start.iso}',
+          start,
+          tags: start == starts[1] ? const ['cramps'] : const [],
+        ),
+    ];
+    final obsCramps = [
+      _observation('oc1', starts[1], category: 'pain', code: 'cramps'),
+    ];
+    final summary = _summary(withCrampsTag, observations: obsCramps);
+    final cramps = summary.symptomGrid.where((row) => row.label == 'Cramps');
+    expect(cramps, hasLength(1));
+    expect(cramps.first.counts[0], 1);
+    expect(summary.symptomGrid.any((row) => row.label == 'cramps'), isFalse);
+  });
+
+  test('Issue #794: spotting observations render as Spotting', () {
+    final obsSpotting = [
+      _observation('s1', starts[1], category: 'spotting', code: 'spotting'),
+      _observation('s2', starts[2], category: 'spotting', code: 'light'),
+    ];
+    final summary = _summary(entries, observations: obsSpotting);
+    final spotting = summary.symptomGrid.singleWhere(
+      (row) => row.label == 'Spotting',
+    );
+    expect(spotting.counts[0], 2);
+    expect(summary.symptomGrid.any((row) => row.label == 'light'), isFalse);
+    expect(summary.symptomGrid.any((row) => row.label == 'spotting'), isFalse);
   });
 
   test('profile name, range label, generated instant, and injected metadata '
