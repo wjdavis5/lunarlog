@@ -145,6 +145,7 @@ class Harness {
     AuthController? authController,
     ProfileGuardiansRepository? guardiansRepository,
     LocalDate? today,
+    double textScale = 1.0,
   }) {
     final settings = DriftSettingsStore(db.storage);
     final entries = DriftDayEntriesRepository(db.storage);
@@ -163,6 +164,12 @@ class Harness {
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: child!,
+        ),
         home: Scaffold(
           body: AnalysisTab(
             profileId: profileId,
@@ -687,4 +694,41 @@ void main() {
       },
     );
   });
+
+  group('dynamic type accessibility (#836)', () {
+    for (final scale in [1.0, 2.0, 3.1]) {
+      testWidgets(
+        'renders with no overflow at ${scale}x text scale',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+
+          final harness = Harness(tester);
+          final profile = await DriftProfilesRepository(harness.db.storage)
+              .create(displayName: 'Test', isMinor: false);
+          final entries = DriftDayEntriesRepository(harness.db.storage);
+          await seedEpisodes(entries, profile.id, kSteadyStarts);
+
+          await tester.pumpWidget(
+            harness.widgetFor(profile.id, textScale: scale),
+          );
+          await tester.pumpAndSettle();
+
+          expect(tester.takeException(), isNull);
+          expect(find.byKey(const ValueKey('analysis-stats')), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('analysis-mean-cycle-length')),
+            findsOneWidget,
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+          await harness.db.close();
+        },
+      );
+    }
+  });
 }
+

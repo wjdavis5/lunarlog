@@ -150,7 +150,7 @@ class _TodayCardState extends State<TodayCard> {
           ),
         ],
         const SizedBox(height: LLSpace.space3),
-        _estimateRow(theme),
+        _estimateRow(context, theme),
         if (widget.canLog) ...[
           const SizedBox(height: LLSpace.space3),
           _logTodayButton(l10n),
@@ -167,7 +167,36 @@ class _TodayCardState extends State<TodayCard> {
     );
   }
 
-  Widget _estimateRow(ThemeData theme) {
+  Widget _estimateRow(BuildContext context, ThemeData theme) {
+    final textScaler = MediaQuery.textScalerOf(context);
+    final isLargeText = textScaler.scale(1) > 1.2;
+
+    Widget buildChip() => Semantics(
+          label: AppLocalizations.of(context).futureExplainerConfidence(
+            tierLabel(AppLocalizations.of(context), widget.tier).toLowerCase(),
+          ),
+          excludeSemantics: true,
+          child: _ConfidenceChip(tier: widget.tier),
+        );
+
+    // Issue #836: at accessibility text scales, a side-by-side Row cramps
+    // the estimate label and causes mid-word character breaks ("perio / d").
+    // Stacking vertically gives the estimate headline the full card width.
+    if (isLargeText && widget.showConfidenceChip) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.estimateText,
+            key: const ValueKey('overview-next-period'),
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: LLSpace.space1),
+          buildChip(),
+        ],
+      );
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -180,17 +209,7 @@ class _TodayCardState extends State<TodayCard> {
         ),
         if (widget.showConfidenceChip) ...[
           const SizedBox(width: LLSpace.space2),
-          // #138: the chip's bare tier word ("High") reads ambiguously on
-          // its own — the wrapper announces the same phrase the calendar's
-          // future-day explainer uses, reusing its ARB key rather than
-          // adding a near-duplicate string.
-          Semantics(
-            label: AppLocalizations.of(context).futureExplainerConfidence(
-              tierLabel(AppLocalizations.of(context), widget.tier).toLowerCase(),
-            ),
-            excludeSemantics: true,
-            child: _ConfidenceChip(tier: widget.tier),
-          ),
+          buildChip(),
         ],
       ],
     );

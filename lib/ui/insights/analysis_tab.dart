@@ -432,8 +432,8 @@ class _AnalysisTabState extends State<AnalysisTab>
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: LLSpace.space2),
-            ..._headlineStats(theme, l10n, prediction),
-            ..._fertileWindowSection(theme, l10n, prediction),
+            ..._headlineStats(context, theme, l10n, prediction),
+            ..._fertileWindowSection(context, theme, l10n, prediction),
             const SizedBox(height: LLSpace.space3),
             Text(
               kEstimateDisclaimer,
@@ -455,24 +455,28 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// how [OverviewPanel]'s separate tier caption is the only thing
   /// `irregular` mode silences, never the estimate date next to it.
   List<Widget> _headlineStats(
+    BuildContext context,
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
   ) {
     return [
       _statRow(
+        context,
         theme,
         'analysis-mean-cycle-length',
         'Average cycle length',
         formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
+        context,
         theme,
         'analysis-mean-period-length',
         'Average period length',
         formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
+        context,
         theme,
         'analysis-variability',
         'Variability',
@@ -501,6 +505,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// passed, hiding the row entirely if none remain (defensive — see that
   /// function's own doc comment).
   List<Widget> _fertileWindowSection(
+    BuildContext context,
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
@@ -510,6 +515,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     if (fertile == null) return const [];
     return [
       _statRow(
+        context,
         theme,
         'analysis-fertile-window',
         _copy.fertileWindowLabel,
@@ -543,31 +549,70 @@ class _AnalysisTabState extends State<AnalysisTab>
   String _formatDate(LocalDate date) =>
       dates.formatLocalDateMonthDayYear(date);
 
-  // Issue #143 review: the fertile-window row's value ("High confidence
-  // (August 16, 2026 – August 22, 2026)") is far longer than the other
-  // rows' plain "±N days" — the value is now wrapped in `Expanded` with
-  // right-aligned, wrapping text instead of two bare `Text`s in a
-  // `spaceBetween` row, so a long value wraps onto a second line rather
-  // than overflowing the card horizontally.
-  Widget _statRow(ThemeData theme, String key, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: LLSpace.space1),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: theme.textTheme.bodyMedium),
-          const SizedBox(width: LLSpace.space2),
-          Expanded(
-            child: Text(
-              value,
-              key: ValueKey(key),
-              textAlign: TextAlign.end,
-              style: theme.textTheme.bodyMedium,
+  // Issue #143 review / Issue #836: the fertile-window row's value ("High confidence
+  // (August 16, 2026 – August 22, 2026)") and large Dynamic Type scales cause
+  // horizontal overflow or mid-word breaks if forced into a side-by-side Row.
+  // When text scale is large (> 1.2) or constraints are narrow (< 320), the
+  // row stacks vertically so label and value have full width to wrap naturally.
+  // In side-by-side mode, Flexible on the label prevents horizontal overflow.
+  Widget _statRow(
+    BuildContext context,
+    ThemeData theme,
+    String key,
+    String label,
+    String value,
+  ) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textScaler = MediaQuery.textScalerOf(context);
+        final isLargeText =
+            textScaler.scale(1) > 1.2 || constraints.maxWidth < 320;
+
+        if (isLargeText) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: LLSpace.space2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: LLSpace.space1),
+                Text(
+                  value,
+                  key: ValueKey(key),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: LLSpace.space1),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(label, style: theme.textTheme.bodyMedium),
+              ),
+              const SizedBox(width: LLSpace.space2),
+              Expanded(
+                child: Text(
+                  value,
+                  key: ValueKey(key),
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

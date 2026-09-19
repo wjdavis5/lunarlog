@@ -578,7 +578,7 @@ void main() {
       await db.close();
     });
 
-    for (final scale in [1.0, 1.5, 2.0]) {
+    for (final scale in [1.0, 1.5, 2.0, 3.1]) {
       testWidgets('the calendar renders with no overflow at ${scale}x text '
           'scale on a phone-class viewport', (tester) async {
         final db = await pumpCalendar(tester, textScale: scale);
@@ -1020,7 +1020,7 @@ void main() {
       handle.dispose();
     });
 
-    for (final scale in [1.0, 1.5, 2.0]) {
+    for (final scale in [1.0, 1.5, 2.0, 3.1]) {
       testWidgets('the overview renders with no overflow at ${scale}x text '
           'scale on a phone-class viewport', (tester) async {
         await pumpTodayCard(tester, textScale: scale);
@@ -1030,7 +1030,7 @@ void main() {
 
     // The mounted [OverviewPanel] (the AC names the panel, not just its
     // TodayCard) over the same steady history, across the same sweep.
-    for (final scale in [1.0, 1.5, 2.0]) {
+    for (final scale in [1.0, 1.5, 2.0, 3.1]) {
       testWidgets('the mounted OverviewPanel renders with no overflow at '
           '${scale}x text scale', (tester) async {
         tester.view.physicalSize = const Size(390, 844);
