@@ -512,10 +512,20 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       for (final observation in observationRows)
         if (observation.category == ObservationCategory.spotting) observation,
     ];
-    // Issue #238: the day's graded pain intensity (if any) supplies the
-    // severity every one of its symptom samples carries — see
-    // `health_symptom_mapping.dart`'s fidelity note.
-    final gradedPain = gradedPainIntensitiesFrom(observationRows);
+    // Issue #238 / Issue #934: index pain observations by entry id and date
+    // so each entry resolves its own graded pain severity rather than
+    // inheriting the profile's lifetime maximum.
+    final painByEntryId = <String, List<Observation>>{};
+    final painByDate = <LocalDate, List<Observation>>{};
+    for (final observation in observationRows) {
+      if (observation.category != ObservationCategory.pain) continue;
+      painByEntryId
+          .putIfAbsent(observation.dayEntryId, () => [])
+          .add(observation);
+      painByDate
+          .putIfAbsent(observation.localDate, () => [])
+          .add(observation);
+    }
     final episodes = deriveEpisodes(bleedDatesOf(entries));
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
@@ -540,6 +550,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           inPeriodEpisode: containing != null,
         ),
         containing,
+      );
+      final gradedPain = _gradedPainForEntry(
+        entry,
+        painByEntryId,
+        painByDate,
       );
       final symptomWrite = _symptomWriteFor(entry, gradedPain);
       if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
@@ -695,6 +710,27 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           ),
       ],
     );
+  }
+
+  /// Resolves the pain intensity map for a single [entry] from the profile's
+  /// pain observations (Issue #934). Groups by entry id and date so an entry
+  /// only inherits pain intensities logged for that specific day, avoiding
+  /// profile-lifetime severity leakage.
+  Map<String, int> _gradedPainForEntry(
+    DayEntry entry,
+    Map<String, List<Observation>> painByEntryId,
+    Map<LocalDate, List<Observation>> painByDate,
+  ) {
+    final entryPain = painByEntryId[entry.id];
+    final datePain = painByDate[entry.localDate];
+    if (entryPain == null && datePain == null) {
+      return const {};
+    }
+    final combined = {
+      ...?entryPain,
+      ...?datePain,
+    }.toList();
+    return gradedPainIntensitiesFrom(combined);
   }
 
   /// One `MenstruationPeriodRecord` write per period episode that contains
