@@ -608,4 +608,28 @@ void main() {
       expect(kSingleSelectTagCategories.contains(TagCategory.tests), isFalse);
     });
   });
+
+  group('flatDisplayForTag (issue #822)', () {
+    test('every taxonomy code produces a unique flat display string', () {
+      final displays = kTagTaxonomy.map(flatDisplayForTag).toList();
+      expect(displays.toSet(), hasLength(kTagTaxonomy.length));
+    });
+
+    test('disambiguates great_digestion and great_stool with category wire names', () {
+      expect(
+        flatDisplayForTag(tagByCode('great_digestion')!),
+        'Great (digestion)',
+      );
+      expect(
+        flatDisplayForTag(tagByCode('great_stool')!),
+        'Great (stool)',
+      );
+    });
+
+    test('leaves non-colliding displays untouched', () {
+      expect(flatDisplayForTag(tagByCode('cramps')!), 'Cramps');
+      expect(flatDisplayForTag(tagByCode('headache')!), 'Headache');
+      expect(flatDisplayForTag(tagByCode('acne')!), 'Acne');
+    });
+  });
 }

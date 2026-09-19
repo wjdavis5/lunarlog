@@ -48,6 +48,7 @@
 library;
 
 import '../episodes/episodes.dart';
+import '../logging/custom_tag_registry.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
@@ -186,6 +187,7 @@ ClinicalPdfSummary buildClinicalPdfSummary({
   required Profile profile,
   required List<DayEntry> dayEntries,
   List<Observation> observations = const [],
+  List<CustomTag> customTags = const [],
   required FhirExportRange range,
   required String rangeLabel,
   required DateTime generatedAt,
@@ -233,7 +235,12 @@ ClinicalPdfSummary buildClinicalPdfSummary({
     ],
     cyclesInRange: windowCycles.length,
     excludedCycleCount: windowCycles.where((entry) => entry.excluded).length,
-    symptomGrid: _buildSymptomGrid(graphCycles, dayEntries, observations),
+    symptomGrid: _buildSymptomGrid(
+      graphCycles,
+      dayEntries,
+      observations,
+      customTags,
+    ),
     graphCycleCount: graphCycles.length,
     medications: List.unmodifiable(medications),
     birthControlMethod: birthControlMethod,
@@ -311,6 +318,7 @@ List<ClinicalSymptomRow> _buildSymptomGrid(
   List<_Cycle> graphCycles,
   List<DayEntry> dayEntries,
   List<Observation> observations,
+  List<CustomTag> customTags,
 ) {
   if (graphCycles.isEmpty) return const [];
   final maxDay = graphCycles
@@ -327,12 +335,21 @@ List<ClinicalSymptomRow> _buildSymptomGrid(
         .putIfAbsent(observation.localDate, () => [])
         .add(observation);
   }
+  final customTagsByCode = <String, CustomTag>{
+    for (final tag in customTags)
+      if (tag.deletedAt == null) tag.code: tag,
+  };
 
   final counts = <String, List<int>>{};
   for (final cycle in graphCycles) {
     for (var day = 1; day <= cycle.cycleLengthDays; day++) {
       final date = cycle.start.addDays(day - 1);
-      for (final label in _labelsOn(date, entriesByDate, observationsByDate)) {
+      for (final label in _labelsOn(
+        date,
+        entriesByDate,
+        observationsByDate,
+        customTagsByCode,
+      )) {
         final row = counts.putIfAbsent(label, () => List.filled(maxDay, 0));
         row[day - 1] += 1;
       }
@@ -357,32 +374,74 @@ Set<String> _labelsOn(
   LocalDate date,
   Map<LocalDate, DayEntry> entriesByDate,
   Map<LocalDate, List<Observation>> observationsByDate,
+  Map<String, CustomTag> customTagsByCode,
 ) => {
-  ..._tagLabelsOn(entriesByDate[date]),
-  ..._observationLabelsOn(observationsByDate[date] ?? const <Observation>[]),
+  ..._tagLabelsOn(entriesByDate[date], customTagsByCode),
+  ..._observationLabelsOn(
+    observationsByDate[date] ?? const <Observation>[],
+    customTagsByCode,
+  ),
 };
 
-/// Symptom labels from [entry]'s tags: known taxonomy codes that are not
-/// positive "none today" assertions, rendered with their display string.
-Set<String> _tagLabelsOn(DayEntry? entry) {
+/// Symptom labels from [entry]'s tags: known taxonomy codes or registered
+/// custom tag codes that are not positive "none today" assertions,
+/// rendered with their display string (disambiguated if taxonomy displays
+/// collide, e.g. "Great (digestion)" vs "Great (stool)").
+Set<String> _tagLabelsOn(
+  DayEntry? entry,
+  Map<String, CustomTag> customTagsByCode,
+) {
   if (entry == null) return const {};
-  return {
-    for (final code in entry.tags)
-      if (_isSymptomTag(code)) tags.tagByCode(code)?.display ?? code,
-  };
+  final labels = <String>{};
+  for (final code in entry.tags) {
+    if (tags.kPositiveAssertionCodes.contains(code)) continue;
+    final customTag = customTagsByCode[code];
+    if (customTag != null) {
+      labels.add(customTag.displayName);
+      continue;
+    }
+    final taxonomyTag = tags.tagByCode(code);
+    if (taxonomyTag != null) {
+      labels.add(tags.flatDisplayForTag(taxonomyTag));
+      continue;
+    }
+  }
+  return labels;
 }
-
-bool _isSymptomTag(String code) =>
-    tags.isValidTagCode(code) && !tags.kPositiveAssertionCodes.contains(code);
 
 /// Symptom labels from logged option rows: an excluded row (the BBT
 /// per-point flag) and a measurement category are not symptoms.
-Set<String> _observationLabelsOn(List<Observation> observations) => {
-  for (final observation in observations)
-    if (!observation.excluded &&
-        !_kMeasurementCategories.contains(observation.category))
-      observation.code ?? observation.category,
-};
+/// Spotting resolves to 'Spotting' (Issue #794). Taxonomy codes resolve to
+/// their display strings, custom tag codes to their display names, and
+/// unmapped option codes fall back to their raw code.
+Set<String> _observationLabelsOn(
+  List<Observation> observations,
+  Map<String, CustomTag> customTagsByCode,
+) {
+  final labels = <String>{};
+  for (final observation in observations) {
+    if (observation.excluded) continue;
+    if (_kMeasurementCategories.contains(observation.category)) continue;
+    if (observation.category == 'spotting') {
+      labels.add('Spotting');
+      continue;
+    }
+    final symptomCode = observation.code ?? observation.category;
+    if (tags.kPositiveAssertionCodes.contains(symptomCode)) continue;
+    final customTag = customTagsByCode[symptomCode];
+    if (customTag != null) {
+      labels.add(customTag.displayName);
+      continue;
+    }
+    final taxonomyTag = tags.tagByCode(symptomCode);
+    if (taxonomyTag != null) {
+      labels.add(tags.flatDisplayForTag(taxonomyTag));
+      continue;
+    }
+    labels.add(symptomCode);
+  }
+  return labels;
+}
 
 /// Observation categories that hold a logged measurement rather than a
 /// symptom (mirrors `csv_export.dart`'s dedicated bbt/weight columns).

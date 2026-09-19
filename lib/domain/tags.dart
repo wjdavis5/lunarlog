@@ -518,6 +518,29 @@ TagCode? tagByCode(String code) => _tagsByCode[code];
 
 bool isValidTagCode(String code) => _tagsByCode.containsKey(code);
 
+final Set<String> _collidingDisplays = () {
+  final counts = <String, int>{};
+  for (final tag in kTagTaxonomy) {
+    counts[tag.display] = (counts[tag.display] ?? 0) + 1;
+  }
+  return {
+    for (final entry in counts.entries)
+      if (entry.value > 1) entry.key,
+  };
+}();
+
+/// The display string disambiguated for a flat namespace (e.g. the PDF
+/// clinician summary symptom grid, Issue #822) where category headings are
+/// not rendered. If two or more taxonomy codes share a [TagCode.display]
+/// (such as `great_digestion` and `great_stool`, both "Great"), the
+/// category wire name is appended: "Great (digestion)" and "Great (stool)".
+String flatDisplayForTag(TagCode tag) {
+  if (_collidingDisplays.contains(tag.display)) {
+    return '${tag.display} (${tag.category.wireName})';
+  }
+  return tag.display;
+}
+
 /// Throws [ArgumentError] naming the first tag not in the taxonomy.
 ///
 /// Issue #257: [registryCodes] -- the profile's custom-tag registry codes

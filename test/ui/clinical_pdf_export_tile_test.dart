@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -15,6 +16,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/settings/clinical_pdf_export_tile.dart';
 import 'package:provider/provider.dart';
@@ -87,10 +89,22 @@ class FakeObservationsRepository implements ObservationsRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class FakeTagRegistryRepository implements TagRegistryRepository {
+  Map<String, List<CustomTag>> tagsByProfile = const {};
+
+  @override
+  Future<List<CustomTag>> listForProfile(String profileId) async =>
+      tagsByProfile[profileId] ?? const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Future<void> _pump(
   WidgetTester tester, {
   required FakeProfilesRepository profiles,
   FakeDayEntriesRepository? dayEntries,
+  FakeTagRegistryRepository? tagRegistry,
   ClinicalPdfExportCollaborator? exportPdf,
 }) async {
   addTearDown(profiles.dispose);
@@ -106,6 +120,9 @@ Future<void> _pump(
           ),
           Provider<ObservationsRepository>.value(
             value: FakeObservationsRepository(),
+          ),
+          Provider<TagRegistryRepository?>.value(
+            value: tagRegistry,
           ),
         ],
         child: Scaffold(body: ClinicalPdfExportTile(exportPdf: exportPdf)),
@@ -253,5 +270,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(key('clinical-pdf-export-error'), findsOneWidget);
     expect(find.text(kClinicalPdfExportFailureCopy), findsOneWidget);
+  });
+
+  testWidgets(
+      'export passes custom tags from TagRegistryRepository to PDF document (Issue #834)',
+      (tester) async {
+    final entries = _cycleEntries('p1');
+    entries[2] = DayEntry(
+      id: entries[2].id,
+      profileId: 'p1',
+      localDate: entries[2].localDate,
+      tz: 'UTC',
+      flow: entries[2].flow,
+      tags: const ['acupuncture'],
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+    final dayEntries = FakeDayEntriesRepository()
+      ..entriesByProfile = {'p1': entries};
+    final tagRegistry = FakeTagRegistryRepository()
+      ..tagsByProfile = {
+        'p1': [
+          CustomTag(
+            id: 'ct1',
+            profileId: 'p1',
+            code: 'acupuncture',
+            displayName: 'Acupuncture',
+            category: 'custom',
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      };
+    Uint8List? capturedBytes;
+    await _pump(
+      tester,
+      profiles: FakeProfilesRepository([_profile('p1')]),
+      dayEntries: dayEntries,
+      tagRegistry: tagRegistry,
+      exportPdf: ({required pdfBytes, required exportedAt}) async {
+        capturedBytes = pdfBytes;
+      },
+    );
+
+    await tester.tap(key('clinical-pdf-export'));
+    await tester.pumpAndSettle();
+    await tester.tap(key('export-range-confirm'));
+    await tester.pumpAndSettle();
+
+    expect(capturedBytes, isNotNull);
+    final pdfText = latin1.decode(capturedBytes!);
+    expect(pdfText, contains('Acupuncture'));
   });
 }
