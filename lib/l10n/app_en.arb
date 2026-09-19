@@ -426,6 +426,14 @@
   "@daySheetNoteLabel": {
     "description": "Label of the day sheet's free-text note field."
   },
+  "daySheetNoteHint": "Anything worth remembering about today?",
+  "@daySheetNoteHint": {
+    "description": "Hint text in the day sheet's free-text note field (issue #812), in the voice guide's register — an invitation, not an instruction."
+  },
+  "daySheetDoneLabel": "Done",
+  "@daySheetDoneLabel": {
+    "description": "The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means \"save\"."
+  },
   "daySheetSaveError": "Couldn't save — try again",
   "@daySheetSaveError": {
     "description": "Inline retry error shown when a day entry save fails."

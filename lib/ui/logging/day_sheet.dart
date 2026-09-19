@@ -1587,6 +1587,57 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
+  /// The shared free-text day note plus its disclosure (issue #800/#801),
+  /// its own method so [_editableBody] keeps a low CRAP score and so the
+  /// order of the sheet's fields is legible in one place (issue #812).
+  ///
+  /// Issue #812: rendered directly after the searchable taxonomy and ahead of
+  /// the two numeric measurement fields (and the rarely-populated
+  /// unrecognised/unmapped sections), so a guardian writing an observation
+  /// reaches it without first wading through BBT/weight — the issue's stated
+  /// minimum. The field grows with its content ([minLines]/[maxLines]) and
+  /// carries a hint in the voice guide's register.
+  Widget _noteField(AppLocalizations l10n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space3),
+          child: TextFormField(
+            key: const ValueKey('note-field'),
+            controller: _noteController,
+            focusNode: _noteFocus,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: l10n.daySheetNoteLabel,
+              hintText: l10n.daySheetNoteHint,
+              alignLabelWithHint: true,
+            ),
+            minLines: 2,
+            maxLines: 6,
+            // #165: the note is multiline — the honest keyboard action is
+            // "newline" (a "done" action would steal the enter key from note
+            // line breaks).
+            textInputAction: TextInputAction.newline,
+            // Mirrors the server CHECK; a longer note is rejected forever.
+            maxLength: kMaxNoteLength,
+            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+          ),
+        ),
+        // Issue #800/#801: who can read what a guardian writes is stated at
+        // the point of writing, not buried in settings.
+        Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space1),
+          child: Text(
+            kCareNotesDisclosure,
+            key: const ValueKey('day-note-disclosure'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Selects [level] as the day's flow — the single write path behind both
   /// the visible ChoiceChip's `onSelected` and the #138 semantics wrapper's
   /// accessibility tap.
@@ -1782,14 +1833,16 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 
-  /// A section heading for the editable sheet (#138): visible like before
-  /// (labelMedium), and flagged [Semantics.header] so screen readers offer
-  /// heading navigation between the chip groups.
+  /// A section heading for the editable sheet (#138): flagged
+  /// [Semantics.header] so screen readers offer heading navigation between
+  /// the chip groups. Issue #812: `titleSmall` (14/20 w500) — one step above
+  /// the `labelMedium`/12 chip labels it introduces, so the heading outranks
+  /// the content it labels instead of being the smallest text on the sheet.
   Widget _sectionHeading(ThemeData theme, String label) => Padding(
-    padding: const EdgeInsets.only(top: LLSpace.space3, bottom: LLSpace.space1),
+    padding: const EdgeInsets.only(top: LLSpace.space4, bottom: LLSpace.space1),
     child: Semantics(
       header: true,
-      child: Text(label, style: theme.textTheme.labelMedium),
+      child: Text(label, style: theme.textTheme.titleSmall),
     ),
   );
 
@@ -1890,13 +1943,15 @@ class _DaySheetState extends State<DaySheet> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           // #138: flagged as a heading so the sheet's date is
-          // reachable through screen-reader heading navigation.
+          // reachable through screen-reader heading navigation. Issue #812:
+          // `titleLarge` (22/28 w500) — the sheet's own title now outranks
+          // the `titleSmall` section headings.
           Semantics(
             header: true,
             child: Text(
               key: const ValueKey('day-sheet-date-title'),
               daySheetDateLabel(date, widget.today, preference: _dateFormat),
-              style: theme.textTheme.titleMedium,
+              style: theme.textTheme.titleLarge,
             ),
           ),
           if (widget.existing != null)
@@ -2004,6 +2059,14 @@ class _DaySheetState extends State<DaySheet> {
                   onManageCustomTags:
                       _tagRegistry == null ? null : _manageCustomTags,
                 ),
+                // Issue #812: the shared note now sits directly after the
+                // taxonomy and ahead of the two numeric measurement fields —
+                // the issue's own stated minimum. The taxonomy stays directly
+                // under Flow (the primary logging surface, and a position the
+                // existing chip-tap tests pin), so the note is not pushed
+                // above it; a guardian gets to the note as soon as the tags
+                // are done rather than at the very bottom of the sheet.
+                _noteField(l10n),
                 // Issue #457: BBT/weight, standalone like the PMS toggle —
                 // neither is a `TagCategory` (they are numeric, not
                 // chip-selected options), so this section sits outside the
@@ -2022,7 +2085,10 @@ class _DaySheetState extends State<DaySheet> {
                   onToggleExcluded: _toggleBbtExcluded,
                   excludeKey: const ValueKey('bbt-exclude-toggle'),
                   errorKey: const ValueKey('bbt-error'),
-                  // #165: BBT → weight → note is the sheet's field order.
+                  // #165: BBT → weight → note is the keyboard focus order
+                  // (`forms_a11y_test` pins it). Issue #812 moved the note's
+                  // visual position ahead of these fields; the next-key chain
+                  // itself is deliberately unchanged.
                   focusNode: _bbtFocus,
                   textInputAction: TextInputAction.next,
                   onFieldSubmitted: (_) => _weightFocus.requestFocus(),
@@ -2050,37 +2116,6 @@ class _DaySheetState extends State<DaySheet> {
                   ..._unrecognisedTagsSection(theme),
                 if (_unmappedObservations.isNotEmpty)
                   ..._unmappedObservationsSection(theme),
-                Padding(
-                  padding: const EdgeInsets.only(top: LLSpace.space3),
-                  child: TextFormField(
-                    key: const ValueKey('note-field'),
-                    controller: _noteController,
-                    focusNode: _noteFocus,
-                    enabled: !_busy,
-                    decoration: InputDecoration(
-                      labelText: l10n.daySheetNoteLabel,
-                      alignLabelWithHint: true,
-                    ),
-                    maxLines: 3,
-                    // #165: the sheet's last field is multiline — the
-                    // honest keyboard action is "newline" (a "done" action
-                    // would steal the enter key from note line breaks).
-                    textInputAction: TextInputAction.newline,
-                    // Mirrors the server CHECK; a longer note is rejected forever.
-                    maxLength: kMaxNoteLength,
-                    maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                  ),
-                ),
-                // Issue #800/#801: who can read what a guardian writes is
-                // stated at the point of writing, not buried in settings.
-                Padding(
-                  padding: const EdgeInsets.only(top: LLSpace.space1),
-                  child: Text(
-                    kCareNotesDisclosure,
-                    key: const ValueKey('day-note-disclosure'),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
                 // Issue #801: the per-guardian dated notes, beside the shared
                 // day note — never a rework of it.
                 if (!widget.readOnly)
@@ -2103,10 +2138,16 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// The persistent bottom area inside the sheet (#198): the delete
-  /// affordance and the autosave status (plus the save/delete retry
-  /// errors) sit here, below the scroll view, so they stay on screen no
-  /// matter how many chip categories are expanded — and above the
-  /// keyboard, thanks to the shell's view-inset padding.
+  /// affordance, the autosave status, and the affirmative Done control
+  /// (plus the save/delete retry errors) sit here, below the scroll view, so
+  /// they stay on screen no matter how many chip categories are expanded —
+  /// and above the keyboard, thanks to the shell's view-inset padding.
+  ///
+  /// Issue #812: [Done] gives the interaction an end. It is a dismissal, not
+  /// a save — autosave already persisted the edit — so it simply pops the
+  /// sheet, exactly like the scrim, the back gesture, or the drag handle;
+  /// `PopScope`'s `_onSheetPop` still flushes any debounced change and still
+  /// refuses to close a failed-pending sheet without an explicit discard.
   Widget _pinnedBottomArea(ThemeData theme) {
     final l10n = AppLocalizations.of(context);
     return Column(
@@ -2139,6 +2180,24 @@ class _DaySheetState extends State<DaySheet> {
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: _autosaveStatusSlot(theme),
+                ),
+              ),
+              const SizedBox(width: LLSpace.space2),
+              ConstrainedBox(
+                // Issue #812 + #460: an expanded/translated label must never
+                // overflow the pinned bar (the RTL + pseudo-locale smoke
+                // expands every message), so the affirmative control is
+                // capped and ellipsized rather than forcing the row wider
+                // than the sheet.
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: FilledButton.tonal(
+                  key: const ValueKey('day-sheet-done'),
+                  onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                  child: Text(
+                    l10n.daySheetDoneLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],

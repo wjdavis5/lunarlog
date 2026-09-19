@@ -628,6 +628,18 @@ abstract class AppLocalizations {
   /// **'Note'**
   String get daySheetNoteLabel;
 
+  /// Hint text in the day sheet's free-text note field (issue #812), in the voice guide's register — an invitation, not an instruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Anything worth remembering about today?'**
+  String get daySheetNoteHint;
+
+  /// The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means "save".
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get daySheetDoneLabel;
+
   /// Inline retry error shown when a day entry save fails.
   ///
   /// In en, this message translates to:
