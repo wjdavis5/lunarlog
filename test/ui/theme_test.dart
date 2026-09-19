@@ -7,26 +7,13 @@
 library;
 
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 
-/// WCAG 2.x relative luminance of an sRGB colour, in `[0, 1]`.
-/// https://www.w3.org/TR/WCAG21/#dfn-relative-luminance
-double _luminance(Color color) {
-  double linearize(double channel) {
-    return channel <= 0.03928
-        ? channel / 12.92
-        : math.pow((channel + 0.055) / 1.055, 2.4).toDouble();
-  }
-
-  return 0.2126 * linearize(color.r) +
-      0.7152 * linearize(color.g) +
-      0.0722 * linearize(color.b);
-}
+import '../support/wcag_contrast.dart';
 
 /// Circular distance between two hue-circle degrees (`[0, 360)` each), in
 /// `[0, 180]` — the short way around the wheel, so e.g. 350 and 10 are 20
@@ -34,16 +21,6 @@ double _luminance(Color color) {
 double _hueDistance(double a, double b) {
   final diff = (a - b).abs() % 360;
   return diff > 180 ? 360 - diff : diff;
-}
-
-/// WCAG 2.x contrast ratio between two colours, in `[1, 21]`.
-/// https://www.w3.org/TR/WCAG21/#dfn-contrast-ratio
-double _contrast(Color a, Color b) {
-  final luminanceA = _luminance(a);
-  final luminanceB = _luminance(b);
-  final lighter = math.max(luminanceA, luminanceB);
-  final darker = math.min(luminanceA, luminanceB);
-  return (lighter + 0.05) / (darker + 0.05);
 }
 
 /// Strips `//`-style line comments (including `///` doc comments) from
@@ -111,7 +88,7 @@ void main() {
       });
 
       test('$name theme: onSurfaceVariant on surface clears 4.5:1', () {
-        final ratio = _contrast(
+        final ratio = wcagContrastRatio(
           theme.colorScheme.onSurfaceVariant,
           theme.colorScheme.surface,
         );
@@ -133,7 +110,7 @@ void main() {
         for (final pair in pairs.entries) {
           final on = pair.value[0];
           final tone = pair.value[1];
-          final ratio = _contrast(on, tone);
+          final ratio = wcagContrastRatio(on, tone);
           expect(
             ratio,
             greaterThanOrEqualTo(4.5),
@@ -153,7 +130,7 @@ void main() {
           'flowHeavy': colors.flowHeavy,
         };
         for (final tone in tones.entries) {
-          final ratio = _contrast(
+          final ratio = wcagContrastRatio(
             tone.value,
             theme.colorScheme.surfaceContainerLow,
           );
@@ -185,7 +162,7 @@ void main() {
           'crampsBadge': colors.crampsBadge,
         };
         for (final mark in marks.entries) {
-          final ratio = _contrast(
+          final ratio = wcagContrastRatio(
             mark.value,
             theme.colorScheme.surfaceContainerLow,
           );
@@ -200,7 +177,7 @@ void main() {
 
       test('$name theme: symptomDot clears 3:1 against surface', () {
         final colors = theme.extension<LunarLogColors>()!;
-        final ratio = _contrast(colors.symptomDot, theme.colorScheme.surface);
+        final ratio = wcagContrastRatio(colors.symptomDot, theme.colorScheme.surface);
         expect(
           ratio,
           greaterThanOrEqualTo(3.0),
@@ -217,7 +194,7 @@ void main() {
       test(
           '$name theme: onSurface clears 4.5:1 against surface (spotting-day '
           'numeral halo)', () {
-        final ratio = _contrast(
+        final ratio = wcagContrastRatio(
           theme.colorScheme.onSurface,
           theme.colorScheme.surface,
         );
@@ -230,7 +207,7 @@ void main() {
 
       test('$name theme: predictedBorder clears 3:1 against surface', () {
         final colors = theme.extension<LunarLogColors>()!;
-        final ratio = _contrast(
+        final ratio = wcagContrastRatio(
           colors.predictedBorder,
           theme.colorScheme.surface,
         );
@@ -245,7 +222,7 @@ void main() {
           '$name theme: fertileBorder clears 3:1 against surface, and is a '
           'distinct colour from predictedBorder (issue #143)', () {
         final colors = theme.extension<LunarLogColors>()!;
-        final ratio = _contrast(
+        final ratio = wcagContrastRatio(
           colors.fertileBorder,
           theme.colorScheme.surface,
         );
@@ -450,7 +427,7 @@ void main() {
           'surfaceContainerHighest': scheme.surfaceContainerHighest,
         };
         for (final background in backgrounds.entries) {
-          final ratio = _contrast(
+          final ratio = wcagContrastRatio(
             scheme.onSurfaceVariant,
             background.value,
           );

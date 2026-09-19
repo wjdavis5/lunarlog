@@ -1832,6 +1832,18 @@ abstract class AppLocalizations {
   /// **'Show cycle estimates, fertile window, and prediction reminders'**
   String get settingsPredictionsSubtitle;
 
+  /// Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).
+  ///
+  /// In en, this message translates to:
+  /// **'Turned off by {mode} mode — change the life-stage mode to resume.'**
+  String settingsPredictionsSuppressedByModeSubtitle(String mode);
+
+  /// Subtitle of the settings predictions toggle when an active continuous birth-control method ({method}) suppresses predictions; the toggle is disabled and the method name comes from the shared birth-control picker vocabulary (Issue #877).
+  ///
+  /// In en, this message translates to:
+  /// **'Turned off by {method} — change or clear the birth-control method to resume.'**
+  String settingsPredictionsSuppressedByMethodSubtitle(String method);
+
   /// Title of the suggestion banner offered when cycle variation is irregular (issue #225).
   ///
   /// In en, this message translates to:

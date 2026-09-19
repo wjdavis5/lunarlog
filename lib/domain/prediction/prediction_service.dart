@@ -575,7 +575,7 @@ class CyclePredictionService {
     required BirthControlState? birthControlState,
     required LifecycleMode lifecycleMode,
   }) {
-    if (_suppressesPrediction(lifecycleMode)) {
+    if (suppressesPrediction(lifecycleMode)) {
       return PredictionsSuppressed(lifecycleMode: lifecycleMode);
     }
     final birthControl = _activeBirthControlFor(birthControlState, today);
@@ -597,7 +597,12 @@ class CyclePredictionService {
   /// of these are the regular ovulatory cycle the averaging model assumes.
   /// `tracking` and `conceive` are unaffected — conceive is still trying to
   /// predict a fertile window from an ordinary cycle.
-  static bool _suppressesPrediction(LifecycleMode mode) => switch (mode) {
+  ///
+  /// Public (issue #877) so UI that must report the *same* suppression the
+  /// predictor applies — Settings' "Show predictions" tile above all — reads
+  /// this one predicate rather than re-enumerating the modes. The predictor
+  /// owns this policy; the settings layer is only a consumer.
+  static bool suppressesPrediction(LifecycleMode mode) => switch (mode) {
         LifecycleMode.pregnancy ||
         LifecycleMode.postpartum ||
         LifecycleMode.perimenopause =>

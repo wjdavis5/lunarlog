@@ -15,7 +15,7 @@ the app computes and tracks. Perimenopause mode is for cycles that are
 legitimately, naturally irregular, so:
 
 1. **Period prediction is suppressed.** `prediction_service.dart`'s
-   `_suppressesPrediction` already returns `PredictionsSuppressed` for
+   `suppressesPrediction` already returns `PredictionsSuppressed` for
    `perimenopause` (Issue #528). There is therefore no days-late countdown
    and no next-period estimate to show, and none is fabricated.
 2. **The Cycle View leads with comparison, not lateness.** The

@@ -1034,6 +1034,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Show cycle estimates, fertile window, and prediction reminders';
 
   @override
+  String settingsPredictionsSuppressedByModeSubtitle(String mode) {
+    return 'Turned off by $mode mode — change the life-stage mode to resume.';
+  }
+
+  @override
+  String settingsPredictionsSuppressedByMethodSubtitle(String method) {
+    return 'Turned off by $method — change or clear the birth-control method to resume.';
+  }
+
+  @override
   String get overviewIrregularSuggestionTitle => 'Cycles vary a lot';
 
   @override
