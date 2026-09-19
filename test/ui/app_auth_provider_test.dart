@@ -286,12 +286,18 @@ void main() {
     // A write through the *provided* repository replans: the coordinator
     // and the subtree are looking at the same data source.
     final plansBefore = scheduler.rescheduleCalls.length;
-    await homeContext(tester)
+    final bea = await homeContext(tester)
         .read<ProfilesRepository>()
         .create(displayName: 'Bea', isMinor: false);
+    await seedPredictableHistory(
+        DriftDayEntriesRepository(db.storage), bea.id);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(scheduler.rescheduleCalls.length, greaterThan(plansBefore));
+    expect(
+      scheduler.rescheduleCalls.last.map((r) => r.profileId).toSet(),
+      {profile.id, bea.id},
+    );
 
     await disposeApp(tester, db);
   });

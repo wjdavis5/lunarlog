@@ -29,6 +29,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 import 'package:lunarlog/data/notifications/notification_scheduler.dart'
     show LocalTimeZoneProvider, defaultLocalTimeZoneProvider;
@@ -126,6 +127,14 @@ class ReminderCoordinator with WidgetsBindingObserver {
       {};
   final Map<String, ActivePrediction> _latest = {};
 
+  /// The reminder plan last applied to [_scheduler] via `rescheduleAll`
+  /// (Issue #840). When a newly-computed plan is element-wise unchanged from
+  /// this snapshot, `rescheduleAll` is skipped entirely — avoiding ~61
+  /// sequential platform-channel calls on every prediction emission or
+  /// autosave. Reset to null on permission denial or timezone change so the
+  /// next eligible pass unconditionally re-arms the scheduler.
+  List<PlannedReminder>? _lastAppliedPlan;
+
   /// Each active profile's last-observed birth-control state (Issue #183),
   /// carried into every replan for [planReminders]'s
   /// `birthControlModes`. Null rows (no mode row yet) leave no entry.
@@ -216,9 +225,15 @@ class ReminderCoordinator with WidgetsBindingObserver {
       _predictionSubs.putIfAbsent(
         id,
         () => _predictionFor(id).listen((prediction) {
+          final previous = _latest[id];
+          // Issue #840: skip replanning when the prediction stream re-emits
+          // the identical memo-cached prediction instance (the common
+          // day-sheet entries write / autosave path).
+          if (identical(prediction, previous)) return;
           if (prediction is ActivePrediction) {
             _latest[id] = prediction;
           } else {
+            if (previous == null) return;
             _latest.remove(id);
           }
           _scheduleReplan();
@@ -247,6 +262,8 @@ class ReminderCoordinator with WidgetsBindingObserver {
       _birthControlSubs.putIfAbsent(
         id,
         () => birthControlStateFor(id).listen((state) {
+          final previous = _birthControlStates[id];
+          if (state == previous) return;
           if (state == null) {
             _birthControlStates.remove(id);
           } else {
@@ -306,6 +323,9 @@ class ReminderCoordinator with WidgetsBindingObserver {
     return result;
   }
 
+  bool _isSuperseded(int generation) =>
+      _disposed || generation != _replanGeneration;
+
   Future<void> _runReplan() async {
     if (_disposed) return;
     // Issue #634, LLA-097: stamps this pass so a superseded one (a newer
@@ -315,25 +335,56 @@ class ReminderCoordinator with WidgetsBindingObserver {
     // scheduler.
     final generation = ++_replanGeneration;
     if (_availability == NotificationAvailability.denied) {
+      _lastAppliedPlan = null;
       await _runOnSchedulerQueue(_scheduler.cancelAll);
       return;
     }
-    // Issue #136: the stored per-profile configs and late snoozes are
-    // re-read on every replan rather than mirrored in memory — a settings
-    // edit (or a "Not yet" tap) is then live at the very next pass with
-    // no cache to invalidate, and a profile with nothing stored still
-    // plans from its care-mode preset defaults via planReminders.
-    Map<String, ReminderConfig> configs = const {};
-    Map<String, LocalDate> lateSnoozes = const {};
-    Map<String, LocalDate> statisticSignals = const {};
-    final localSettings = _localSettings;
-    if (localSettings != null) {
-      configs = await localSettings.loadAll();
-      lateSnoozes = await localSettings.loadLateSnoozes();
-      statisticSignals = await _detectStatisticChanges(localSettings);
+    final (:configs, :lateSnoozes, :statisticSignals) =
+        await _loadReplanSettings(_localSettings);
+    if (_isSuperseded(generation)) return;
+    final plan = _buildPlan(
+      configs: configs,
+      lateSnoozes: lateSnoozes,
+      statisticSignals: statisticSignals,
+    );
+    // Issue #840: skip rescheduleAll when the computed reminder plan is
+    // element-wise unchanged from the last applied one. Each rescheduleAll
+    // cancels all pending notifications and reschedules up to 60 reminders
+    // (~61 sequential platform calls). Returning early when the plan hasn't
+    // changed avoids redundant platform-channel churn on the UI event loop.
+    if (listEquals(plan, _lastAppliedPlan)) return;
+    if (_isSuperseded(generation)) return;
+    await _runOnSchedulerQueue(() => _scheduler.rescheduleAll(plan));
+    if (_isSuperseded(generation)) return;
+    _lastAppliedPlan = plan;
+  }
+
+  Future<
+      ({
+        Map<String, ReminderConfig> configs,
+        Map<String, LocalDate> lateSnoozes,
+        Map<String, LocalDate> statisticSignals,
+      })> _loadReplanSettings(ReminderConfigService? localSettings) async {
+    if (localSettings == null) {
+      return (
+        configs: const <String, ReminderConfig>{},
+        lateSnoozes: const <String, LocalDate>{},
+        statisticSignals: const <String, LocalDate>{},
+      );
     }
-    if (_disposed || generation != _replanGeneration) return;
-    final plan = planReminders(
+    return (
+      configs: await localSettings.loadAll(),
+      lateSnoozes: await localSettings.loadLateSnoozes(),
+      statisticSignals: await _detectStatisticChanges(localSettings),
+    );
+  }
+
+  List<PlannedReminder> _buildPlan({
+    required Map<String, ReminderConfig> configs,
+    required Map<String, LocalDate> lateSnoozes,
+    required Map<String, LocalDate> statisticSignals,
+  }) {
+    return planReminders(
       today: today(),
       predictions: Map.of(_latest),
       presets: {
@@ -355,7 +406,6 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // stream) can then never plan a reminder.
       activeProfileIds: _modes.keys.toSet(),
     );
-    await _runOnSchedulerQueue(() => _scheduler.rescheduleAll(plan));
   }
 
   /// The `cycleStatisticChange` detection pass (Issue #178): compares each
@@ -458,6 +508,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
       if (_disposed || generation != _permissionProbeGeneration) return;
       if (tz.local.name != tzName && isValidIanaTimeZone(tzName)) {
         tz.setLocalLocation(tz.getLocation(tzName));
+        _lastAppliedPlan = null;
         if (_availability != NotificationAvailability.denied) {
           _scheduleReplan();
         }
