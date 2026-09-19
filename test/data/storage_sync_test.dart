@@ -1825,6 +1825,71 @@ void main() {
       );
     });
 
+    test(
+        'Issue #825: same-code collision resolution via applyPushResult and remote pull',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      // Device B creates local tag 'cramps'
+      final losingTag = await storage.upsertProfileTagRegistryEntry(
+        profileId: p.id,
+        code: 'cramps',
+        displayName: 'Device B Cramps',
+      );
+      expect(losingTag.dirty, isTrue);
+
+      final pushTime = losingTag.updatedAt.add(const Duration(seconds: 1));
+      const winningId = '01J8ZQ9K7MC2X3V4B5N6P7Q8W1';
+      final winningRemote = RemoteProfileTagRegistryRow(
+        id: winningId,
+        profileId: p.id,
+        code: 'cramps',
+        displayName: 'Device A Cramps',
+        category: 'custom',
+        createdAt: t0,
+        updatedAt: pushTime,
+        deletedAt: null,
+      );
+      final losingResolved = RemoteProfileTagRegistryRow(
+        id: losingTag.id,
+        profileId: p.id,
+        code: 'cramps',
+        displayName: '',
+        category: '',
+        createdAt: t0,
+        updatedAt: pushTime,
+        deletedAt: pushTime,
+      );
+
+      // Device B's sync_push returns accepted: [losingTag.id], resolved: [winningRemote, losingResolved]
+      await storage.applyPushResult(
+        accepted: [
+          (
+            table: SyncTable.profileTagRegistry,
+            id: losingTag.id,
+            localRevAtPush: losingTag.localRev,
+          )
+        ],
+        resolved: [winningRemote, losingResolved],
+      );
+
+      // Losing tag is now tombstoned, clean, and payload-cleared
+      final storedLoser =
+          await storage.getProfileTagRegistryEntriesById(losingTag.id);
+      expect(storedLoser!.deletedAt, isNotNull);
+      expect(storedLoser.dirty, isFalse);
+      expect(storedLoser.displayName, '');
+
+      // Winning tag arrives via pull and lands clean as live
+      await storage.applyRemoteProfileTagRegistryEntry(winningRemote);
+
+      final liveRows = await storage.getProfileTagRegistry(p.id);
+      expect(liveRows, hasLength(1));
+      expect(liveRows.single.id, winningId);
+      expect(liveRows.single.displayName, 'Device A Cramps');
+      expect(liveRows.single.dirty, isFalse);
+      expect(await storage.readDirtyProfileTagRegistry(), isEmpty);
+    });
+
     test('a later live remote edit to a resolved loser revives it and '
         're-runs the same-date rule', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);

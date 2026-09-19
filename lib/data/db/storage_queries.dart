@@ -760,7 +760,24 @@ mixin LunarLogStorageQueries {
   Future<ProfileTagRegistryEntry?> getProfileTagRegistryEntriesById(
           String id) =>
       (db.select(db.profileTagRegistry)..where((t) => t.id.equals(id)))
-          .getSingleOrNull();  /// Number of rows, live and tombstoned, in every synced table that still
+          .getSingleOrNull();
+
+  /// Finds a live registry entry by profile id and case-insensitive code
+  /// (Issue #825).
+  Future<ProfileTagRegistryEntry?> findProfileTagByCode(
+    String profileId,
+    String code,
+  ) {
+    final lower = code.toLowerCase();
+    return (db.select(db.profileTagRegistry)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.code.lower().equals(lower) &
+              t.deletedAt.isNull()))
+        .getSingleOrNull();
+  }
+
+  /// Number of rows, live and tombstoned, in every synced table that still
   /// need pushing.
   Future<int> dirtyCount() async {
     final p = await _count(db.profiles, db.profiles.id,

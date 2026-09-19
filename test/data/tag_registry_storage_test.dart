@@ -230,4 +230,127 @@ void main() {
       expect(stored.code, 'doomed');
     });
   });
+
+  group('Issue #825: same-code deduplication', () {
+    test('findProfileTagByCode looks up live tag case-insensitively',
+        () async {
+      final created = await repository.create(
+        profileId: profileUlid,
+        label: 'Back cracking',
+      );
+      final matchLower =
+          await storage.findProfileTagByCode(profileUlid, 'back_cracking');
+      expect(matchLower?.id, created.id);
+
+      final matchUpper =
+          await storage.findProfileTagByCode(profileUlid, 'BACK_CRACKING');
+      expect(matchUpper?.id, created.id);
+
+      final matchOtherProfile =
+          await storage.findProfileTagByCode('other-profile-id', 'back_cracking');
+      expect(matchOtherProfile, isNull);
+
+      // Tombstone is excluded
+      await storage.applyRemoteProfileTagRegistryEntry(
+        RemoteProfileTagRegistryRow(
+          id: created.id,
+          profileId: profileUlid,
+          code: 'back_cracking',
+          displayName: '',
+          category: '',
+          createdAt: t0,
+          updatedAt: t1,
+          deletedAt: t1,
+        ),
+      );
+      final matchAfterTombstone =
+          await storage.findProfileTagByCode(profileUlid, 'back_cracking');
+      expect(matchAfterTombstone, isNull);
+    });
+
+    test(
+        'upsertProfileTagRegistryEntry with id: null reuses existing live row with same code',
+        () async {
+      final first = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'cramps',
+        displayName: 'Cramps',
+      );
+      expect(first.localRev, 1);
+
+      // Second write with id: null and same code (case-insensitive) reuses first.id
+      final second = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'CRAMPS',
+        displayName: 'Severe Cramps',
+      );
+      expect(second.id, first.id);
+      expect(second.displayName, 'Severe Cramps');
+      expect(second.localRev, 2);
+
+      final rows = await storage.getProfileTagRegistry(profileUlid);
+      expect(rows, hasLength(1));
+      expect(rows.single.id, first.id);
+      expect(rows.single.displayName, 'Severe Cramps');
+    });
+
+    test(
+        'upsertProfileTagRegistryEntry un-retires existing retired row when re-created',
+        () async {
+      final first = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'nausea',
+        displayName: 'Nausea',
+        hiddenAt: t0,
+      );
+      expect(first.hiddenAt, isNotNull);
+
+      final second = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'nausea',
+        displayName: 'Nausea (un-retired)',
+        hiddenAt: null,
+      );
+      expect(second.id, first.id);
+      expect(second.hiddenAt, isNull);
+      expect(second.displayName, 'Nausea (un-retired)');
+    });
+
+    test(
+        'upsertProfileTagRegistryEntry does not reuse tombstoned row, mints new id',
+        () async {
+      final first = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'bloating',
+        displayName: 'Bloating',
+      );
+      // Tombstone first
+      await storage.applyRemoteProfileTagRegistryEntry(
+        RemoteProfileTagRegistryRow(
+          id: first.id,
+          profileId: profileUlid,
+          code: 'bloating',
+          displayName: '',
+          category: '',
+          createdAt: t0,
+          updatedAt: t1,
+          deletedAt: t1,
+        ),
+      );
+
+      final second = await storage.upsertProfileTagRegistryEntry(
+        profileId: profileUlid,
+        code: 'bloating',
+        displayName: 'Bloating (reborn)',
+      );
+      expect(second.id, isNot(equals(first.id)));
+      expect(second.deletedAt, isNull);
+
+      final all = await storage.getProfileTagRegistryEntriesById(first.id);
+      expect(all!.deletedAt, isNotNull);
+      final live = await storage.getProfileTagRegistry(profileUlid);
+      expect(live, hasLength(1));
+      expect(live.single.id, second.id);
+    });
+  });
 }

@@ -7,7 +7,7 @@
 -- the sync_pull key, the Realtime never-publish posture + sync_signals
 -- wake, and tombstone_profile_content()'s registry tombstone step.
 begin;
-select plan(35);
+select plan(41);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -210,8 +210,10 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Group C: the case-insensitive live-code dedupe (partial unique index).
+-- Group C: the case-insensitive live-code collision resolution (Issue #825).
 -- ---------------------------------------------------------------------------
+-- Incoming wins: 915 is newer than stored 910, so 915 becomes live and 910
+-- becomes a payload-free tombstone returned in resolved (0 rejections).
 insert into r select 'c_case', public.sync_push(
   '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
   '[]'::jsonb, '[]'::jsonb,
@@ -221,16 +223,58 @@ insert into r select 'c_case', public.sync_push(
     'updated_at', '2026-09-10T14:00:00Z')));
 
 select is(
-  (select (r.v -> 'rejected') @> jsonb_build_array(jsonb_build_object('id', tests.ulid(915), 'rejected', true))
-     from r where name = 'c_case'),
+  (select coalesce(r.v -> 'rejected', '[]'::jsonb) from r where name = 'c_case'),
+  '[]'::jsonb,
+  'a colliding code in different case is resolved via LWW, not rejected'
+);
+select is(
+  (select (deleted_at is not null and display_name = '') from public.profile_tag_registry where id = tests.ulid(910)),
   true,
-  'a second live row with the same code in different case is rejected (case-insensitive dedupe)'
+  'the older stored sibling becomes a payload-free tombstone'
+);
+select is(
+  (select (deleted_at is null and display_name = 'Duplicate') from public.profile_tag_registry where id = tests.ulid(915)),
+  true,
+  'the newer incoming row is stored as live'
 );
 select is(
   (select count(*) from public.profile_tag_registry
-    where profile_id = tests.ulid(901) and lower(code) = 'back_cracking'),
+    where profile_id = tests.ulid(901) and lower(code) = 'back_cracking' and deleted_at is null),
   1::bigint,
-  'the case-duplicate was never stored'
+  'exactly one live row survives incoming-wins same-code collision'
+);
+
+-- Incoming loses: 918 is older than stored 915 (13:00 < 14:00), so 918 is
+-- stored as a payload-free tombstone, 915 stays live, and both are returned
+-- in resolved (0 rejections).
+insert into r select 'c_case_loses', public.sync_push(
+  '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+  '[]'::jsonb, '[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(918), 'profile_id', tests.ulid(901), 'code', 'back_cracking',
+    'display_name', 'Older duplicate', 'category', 'custom',
+    'updated_at', '2026-09-10T13:00:00Z')));
+
+select is(
+  (select coalesce(r.v -> 'rejected', '[]'::jsonb) from r where name = 'c_case_loses'),
+  '[]'::jsonb,
+  'an older colliding code is not rejected (incoming-loses collision)'
+);
+select is(
+  (select (deleted_at is not null and display_name = '') from public.profile_tag_registry where id = tests.ulid(918)),
+  true,
+  'the older incoming row is stored as a payload-free tombstone'
+);
+select is(
+  (select deleted_at is null from public.profile_tag_registry where id = tests.ulid(915)),
+  true,
+  'the newer stored row remains live'
+);
+select is(
+  (select count(*) from public.profile_tag_registry
+    where profile_id = tests.ulid(901) and lower(code) = 'back_cracking' and deleted_at is null),
+  1::bigint,
+  'exactly one live row survives incoming-loses same-code collision'
 );
 
 -- The same code under a DIFFERENT profile is fine (the dedupe is per-profile).
