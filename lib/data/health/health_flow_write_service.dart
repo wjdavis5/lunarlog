@@ -71,6 +71,7 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
+import 'health_fertility_mapping.dart';
 import 'health_flow_mapping.dart';
 import 'health_symptom_mapping.dart';
 
@@ -172,13 +173,76 @@ class _PendingSymptomWrite {
   final DateTime updatedAt;
 }
 
+/// One day's resolved cervical-mucus write (Issue #228), before the port
+/// payload's guard facts are attached.
+class _PendingCervicalMucusWrite {
+  const _PendingCervicalMucusWrite({
+    required this.date,
+    required this.tzName,
+    required this.resolved,
+    required this.recordId,
+    required this.updatedAt,
+  });
+
+  final LocalDate date;
+  final String tzName;
+  final ResolvedCervicalMucus resolved;
+  final String recordId;
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
+/// One day's resolved ovulation-test write (Issue #228).
+class _PendingOvulationWrite {
+  const _PendingOvulationWrite({
+    required this.date,
+    required this.tzName,
+    required this.resolved,
+    required this.recordId,
+    required this.updatedAt,
+  });
+
+  final LocalDate date;
+  final String tzName;
+  final ResolvedOvulationTest resolved;
+  final String recordId;
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
+/// One resolved BBT observation write (Issue #228).
+class _PendingBbtWrite {
+  const _PendingBbtWrite({
+    required this.date,
+    required this.tzName,
+    required this.resolved,
+    required this.recordId,
+    required this.updatedAt,
+  });
+
+  final LocalDate date;
+  final String tzName;
+  final ResolvedBasalBodyTemperature resolved;
+  final String recordId;
+  final DateTime updatedAt;
+
+  int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
 /// Accumulates one pass's write plan: every day (whatever it maps to,
 /// [HealthFlowNoWrite] included since Issue #619's LLA-024 — see [add])
 /// joins [pending], days mapped to no sample are additionally counted in
-/// [withoutSample], and period episodes join [pendingPeriods].
+/// [withoutSample], period episodes join [pendingPeriods], and the Issue
+/// #228 fertility/measurement signals join their own lists.
 class _Batch {
   final List<_PendingWrite> pending = [];
   final List<_PendingPeriodWrite> pendingPeriods = [];
+  final List<_PendingSymptomWrite> pendingSymptoms = [];
+  final List<_PendingCervicalMucusWrite> pendingCervicalMucus = [];
+  final List<_PendingOvulationWrite> pendingOvulation = [];
+  final List<_PendingBbtWrite> pendingBbt = [];
   int withoutSample = 0;
 
   void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
@@ -221,6 +285,32 @@ class _Batch {
         ));
     }
   }
+}
+
+/// One pass's aggregate write outcome, across every type (flow, period,
+/// symptom, and Issue #228's fertility/measurement signals).
+class _BatchOutcome {
+  const _BatchOutcome({
+    required this.written,
+    required this.reconciled,
+    required this.periodRecordsWritten,
+    required this.symptomSamplesWritten,
+    required this.cervicalMucusSamplesWritten,
+    required this.ovulationTestSamplesWritten,
+    required this.basalBodyTemperatureSamplesWritten,
+    required this.failure,
+    required this.newest,
+  });
+
+  final int written;
+  final int reconciled;
+  final int periodRecordsWritten;
+  final int symptomSamplesWritten;
+  final int cervicalMucusSamplesWritten;
+  final int ovulationTestSamplesWritten;
+  final int basalBodyTemperatureSamplesWritten;
+  final HealthPlatformResult? failure;
+  final DateTime? newest;
 }
 
 class LocalHealthFlowWriteService implements HealthFlowWriteService {
@@ -310,12 +400,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome = await _writeBatch(
-      batch.pending,
-      batch.pendingPeriods,
-      batch.pendingSymptoms,
-      bound.facts,
-    );
+    final outcome = await _writeBatch(batch, bound.facts);
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -330,6 +415,10 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       samplesWritten: outcome.written,
       periodRecordsWritten: outcome.periodRecordsWritten,
       symptomSamplesWritten: outcome.symptomSamplesWritten,
+      cervicalMucusSamplesWritten: outcome.cervicalMucusSamplesWritten,
+      ovulationTestSamplesWritten: outcome.ovulationTestSamplesWritten,
+      basalBodyTemperatureSamplesWritten:
+          outcome.basalBodyTemperatureSamplesWritten,
       daysWithoutSample: batch.withoutSample,
       samplesReconciled: outcome.reconciled,
     );
@@ -376,17 +465,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   }
 
   /// Builds the pass's write batch from the bound profile's day entries
-  /// and spotting observations: everything strictly newer than [cursor]
-  /// (forward-only), mapped through `health_flow_mapping.dart`, plus one
-  /// `MenstruationPeriodRecord` per period episode that contains an
-  /// eligible bleed day (Issue #202 — see [_periodWritesFor]).
-  Future<
-      ({
-        List<_PendingWrite> pending,
-        List<_PendingPeriodWrite> pendingPeriods,
-        List<_PendingSymptomWrite> pendingSymptoms,
-        int withoutSample,
-      })> _collectBatch(String profileId, DateTime cursor) async {
+  /// and observations: everything strictly newer than [cursor]
+  /// (forward-only), mapped through `health_flow_mapping.dart`,
+  /// `health_symptom_mapping.dart`, and — Issue #228 —
+  /// `health_fertility_mapping.dart`, plus one `MenstruationPeriodRecord`
+  /// per period episode that contains an eligible bleed day (Issue #202 —
+  /// see [_periodWritesFor]).
+  Future<_Batch> _collectBatch(String profileId, DateTime cursor) async {
     final entries = await _dayEntries.listForProfile(profileId);
     final observationRows = await _observations.listForProfile(profileId);
     final spottingRows = [
@@ -400,7 +485,6 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final episodes = deriveEpisodes(bleedDatesOf(entries));
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
-    final pendingSymptoms = <_PendingSymptomWrite>[];
 
     // Eligible bleed days keyed by date, for period-record derivation.
     final eligibleBleed = <LocalDate, _EligibleBleed>{};
@@ -424,9 +508,38 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         containing,
       );
       final symptomWrite = _symptomWriteFor(entry, gradedPain);
-      if (symptomWrite != null) pendingSymptoms.add(symptomWrite);
+      if (symptomWrite != null) batch.pendingSymptoms.add(symptomWrite);
+      final fertility = _fertilityWritesFor(entry);
+      final cervical = fertility.cervicalMucus;
+      if (cervical != null) batch.pendingCervicalMucus.add(cervical);
+      batch.pendingOvulation.addAll(fertility.ovulation);
     }
 
+    _collectObservationWrites(
+      observationRows: observationRows,
+      spottingRows: spottingRows,
+      bleedDays: bleedDays,
+      episodes: episodes,
+      batch: batch,
+      cursor: cursor,
+    );
+
+    batch.pendingPeriods
+        .addAll(_periodWritesFor(profileId, episodes, eligibleBleed));
+    return batch;
+  }
+
+  /// The two observation-row loops of [_collectBatch] (spotting markers and
+  /// Issue #228's BBT values), extracted so [_collectBatch]'s own
+  /// cyclomatic complexity stays under the quality gate's CRAP ceiling.
+  void _collectObservationWrites({
+    required List<Observation> observationRows,
+    required List<Observation> spottingRows,
+    required Set<LocalDate> bleedDays,
+    required List<Episode> episodes,
+    required _Batch batch,
+    required DateTime cursor,
+  }) {
     for (final row in spottingRows) {
       if (!_isEligible(row.updatedAt, row.source, cursor)) continue;
       if (bleedDays.contains(row.localDate)) {
@@ -447,13 +560,63 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
 
-    batch.pendingPeriods
-        .addAll(_periodWritesFor(profileId, episodes, eligibleBleed));
+    // Issue #228: the bbt observations. `_bbtWriteFor` enforces source
+    // separation (resolveBasalBodyTemperature returns null for a
+    // platform/wearable-sourced or excluded row).
+    for (final row in observationRows) {
+      final bbt = _bbtWriteFor(row, cursor);
+      if (bbt != null) batch.pendingBbt.add(bbt);
+    }
+  }
+
+  /// Resolves one eligible day entry's fertility tags (Issue #228): its
+  /// cervical-mucus appearance (at most one — discharge is single-select)
+  /// and its ovulation-test results (deduplicated by platform result).
+  ({
+    _PendingCervicalMucusWrite? cervicalMucus,
+    List<_PendingOvulationWrite> ovulation,
+  }) _fertilityWritesFor(DayEntry entry) {
+    final cervical = resolveCervicalMucus(entry.tags);
+    final ovulation = resolveOvulationTests(entry.tags);
     return (
-      pending: batch.pending,
-      pendingPeriods: batch.pendingPeriods,
-      pendingSymptoms: pendingSymptoms,
-      withoutSample: batch.withoutSample,
+      cervicalMucus: cervical == null
+          ? null
+          : _PendingCervicalMucusWrite(
+              date: entry.localDate,
+              tzName: entry.tz,
+              resolved: cervical,
+              recordId: 'cervical-mucus-${entry.id}',
+              updatedAt: entry.updatedAt,
+            ),
+      ovulation: [
+        for (final result in ovulation)
+          _PendingOvulationWrite(
+            date: entry.localDate,
+            tzName: entry.tz,
+            resolved: result,
+            recordId: 'ovulation-${entry.id}-${result.healthKitResult}',
+            updatedAt: entry.updatedAt,
+          ),
+      ],
+    );
+  }
+
+  /// Resolves one BBT observation row (Issue #228), or null when it is not
+  /// an eligible manually tracked/imported `bbt` value. Source separation
+  /// is enforced by [resolveBasalBodyTemperature] (a platform- or
+  /// wearable-sourced value produces no write) and by [_isEligible]
+  /// (forward-only, never echo a health-store-sourced row).
+  _PendingBbtWrite? _bbtWriteFor(Observation row, DateTime cursor) {
+    if (row.category != kBbtObservationCategory) return null;
+    if (!_isEligible(row.updatedAt, row.source, cursor)) return null;
+    final resolved = resolveBasalBodyTemperature(row);
+    if (resolved == null) return null;
+    return _PendingBbtWrite(
+      date: row.localDate,
+      tzName: row.tz,
+      resolved: resolved,
+      recordId: 'bbt-${row.id}',
+      updatedAt: row.updatedAt,
     );
   }
 
@@ -531,30 +694,36 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// failure (one bad day must not hide the others), remembering the first
   /// failure and leaving the cursor — the next pass retries the batch
   /// rather than half-skipping (see the class doc's forward-only note).
-  Future<
-      ({
-        int written,
-        int reconciled,
-        int periodRecordsWritten,
-        int symptomSamplesWritten,
-        HealthPlatformResult? failure,
-        DateTime? newest,
-      })> _writeBatch(
-    List<_PendingWrite> pending,
-    List<_PendingPeriodWrite> pendingPeriods,
-    List<_PendingSymptomWrite> pendingSymptoms,
+  Future<_BatchOutcome> _writeBatch(
+    _Batch batch,
     HealthGuardFacts facts,
   ) async {
-    final flow = await _writeFlowRecords(pending, facts);
-    final periods = await _writePeriodRecords(pendingPeriods, facts);
-    final symptoms = await _writeSymptomRecords(pendingSymptoms, facts);
-    return (
+    final flow = await _writeFlowRecords(batch.pending, facts);
+    final periods = await _writePeriodRecords(batch.pendingPeriods, facts);
+    final symptoms = await _writeSymptomRecords(batch.pendingSymptoms, facts);
+    final cervical =
+        await _writeCervicalMucusRecords(batch.pendingCervicalMucus, facts);
+    final ovulation =
+        await _writeOvulationTestRecords(batch.pendingOvulation, facts);
+    final bbt = await _writeBbtRecords(batch.pendingBbt, facts);
+    return _BatchOutcome(
       written: flow.written,
       reconciled: flow.reconciled,
       periodRecordsWritten: periods.written,
       symptomSamplesWritten: symptoms.written,
-      failure: flow.failure ?? periods.failure ?? symptoms.failure,
-      newest: _latest(_latest(flow.newest, periods.newest), symptoms.newest),
+      cervicalMucusSamplesWritten: cervical.written,
+      ovulationTestSamplesWritten: ovulation.written,
+      basalBodyTemperatureSamplesWritten: bbt.written,
+      failure: flow.failure ??
+          periods.failure ??
+          symptoms.failure ??
+          cervical.failure ??
+          ovulation.failure ??
+          bbt.failure,
+      newest: _latest(
+        _latest(_latest(flow.newest, periods.newest), symptoms.newest),
+        _latest(_latest(cervical.newest, ovulation.newest), bbt.newest),
+      ),
     );
   }
 
@@ -796,6 +965,146 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written += symptom.samples.length;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
+      } else {
+        failure ??= result;
+      }
+    }
+    return (written: written, failure: failure, newest: newest);
+  }
+
+  /// Sends the per-day cervical-mucus writes (Issue #228). Both platforms
+  /// have the type, so `unavailable` is not expected — but it is still a
+  /// graceful skip rather than a pass-blocking failure, for parity with the
+  /// other writers and so a future platform gap cannot wedge a pass. Stops
+  /// on the same mid-pass authority drift as [_writeFlowRecords].
+  Future<
+      ({
+        int written,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeCervicalMucusRecords(
+    List<_PendingCervicalMucusWrite> pending,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final item in pending) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
+      if (newest == null || item.updatedAt.isAfter(newest)) {
+        newest = item.updatedAt;
+      }
+      final result = await _platform.writeCervicalMucus(
+        HealthCervicalMucusWrite(
+          facts: facts,
+          date: item.date,
+          tzName: item.tzName,
+          healthKitValue: item.resolved.healthKitValue,
+          healthConnectAppearance: item.resolved.healthConnectAppearance,
+          recordId: item.recordId,
+          recordVersionMs: item.recordVersionMs,
+        ),
+      );
+      if (result is HealthPlatformAllowed) {
+        written++;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
+      } else {
+        failure ??= result;
+      }
+    }
+    return (written: written, failure: failure, newest: newest);
+  }
+
+  /// Sends the per-day ovulation-test writes (Issue #228). Same error
+  /// handling as [_writeCervicalMucusRecords] and the same mid-pass
+  /// authority-drift stop.
+  Future<
+      ({
+        int written,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeOvulationTestRecords(
+    List<_PendingOvulationWrite> pending,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final item in pending) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
+      if (newest == null || item.updatedAt.isAfter(newest)) {
+        newest = item.updatedAt;
+      }
+      final result = await _platform.writeOvulationTest(
+        HealthOvulationTestWrite(
+          facts: facts,
+          date: item.date,
+          tzName: item.tzName,
+          healthKitResult: item.resolved.healthKitResult,
+          healthConnectResult: item.resolved.healthConnectResult,
+          recordId: item.recordId,
+          recordVersionMs: item.recordVersionMs,
+        ),
+      );
+      if (result is HealthPlatformAllowed) {
+        written++;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
+      } else {
+        failure ??= result;
+      }
+    }
+    return (written: written, failure: failure, newest: newest);
+  }
+
+  /// Sends the per-observation BBT writes (Issue #228). Same error handling
+  /// and mid-pass authority-drift stop as [_writeCervicalMucusRecords].
+  Future<
+      ({
+        int written,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeBbtRecords(
+    List<_PendingBbtWrite> pending,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final item in pending) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
+      if (newest == null || item.updatedAt.isAfter(newest)) {
+        newest = item.updatedAt;
+      }
+      final result = await _platform.writeBasalBodyTemperature(
+        HealthBasalBodyTemperatureWrite(
+          facts: facts,
+          date: item.date,
+          tzName: item.tzName,
+          celsius: item.resolved.celsius,
+          healthConnectMeasurementLocation:
+              item.resolved.healthConnectMeasurementLocation,
+          recordId: item.recordId,
+          recordVersionMs: item.recordVersionMs,
+        ),
+      );
+      if (result is HealthPlatformAllowed) {
+        written++;
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {

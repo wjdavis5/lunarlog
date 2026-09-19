@@ -469,6 +469,12 @@ enum HealthKitChannelHandler {
         intermenstrualBleedingType,
       ]
       toShare.formUnion(symptomCategoryTypes)
+      // Issue #228: the fertility/measurement write types join the write
+      // set. basalBodyTemperature is a *quantity* type — explicitly upcast
+      // to HKSampleType for the set (see symptomCategoryTypes' note).
+      toShare.insert(cervicalMucusType as HKSampleType)
+      toShare.insert(ovulationTestType as HKSampleType)
+      toShare.insert(basalBodyTemperatureType as HKSampleType)
       // Issue #217: the read set is no longer empty. It carries only the
       // menstrual-flow type the user-initiated import reads; the four
       // Apple-computed cycle-deviation types are deliberately NOT requested
@@ -663,6 +669,155 @@ enum HealthKitChannelHandler {
       }
       save(toSave, result: result)
 
+    case "writeCervicalMucus":
+      // Issue #228: the appearance decision lives in Dart
+      // (health_fertility_mapping.dart); this case only resolves the
+      // already-decided value into an HKCategorySample. Health Connect's
+      // required `sensation` field has no HealthKit concept and is not sent.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "writeCervicalMucus requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let valueWire = args?["healthKitValue"] as? String,
+        let recordId = args?["recordId"] as? String,
+        let recordVersionMs = args?["recordVersionMs"] as? NSNumber
+      else {
+        badArgs(
+          result,
+          "writeCervicalMucus requires startMs/endMs/healthKitValue/recordId/recordVersionMs")
+        return
+      }
+      let cervicalValue: HKCategoryValueCervicalMucusQuality
+      switch valueWire {
+      case "dry": cervicalValue = .dry
+      case "sticky": cervicalValue = .sticky
+      case "creamy": cervicalValue = .creamy
+      case "watery": cervicalValue = .watery
+      case "eggWhite": cervicalValue = .eggWhite
+      default:
+        badArgs(result, "unknown cervical-mucus value: \(valueWire)")
+        return
+      }
+      let mucusSample = HKCategorySample(
+        type: cervicalMucusType,
+        value: cervicalValue.rawValue,
+        start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+        metadata: [
+          HKMetadataKeyExternalUUID: recordId,
+          HKMetadataKeySyncIdentifier: recordId,
+          HKMetadataKeySyncVersion: recordVersionMs,
+        ]
+      )
+      save([mucusSample], result: result)
+
+    case "writeOvulationTest":
+      // Issue #228: the result decision (including positive/peak collapse
+      // and the luteinizingHormoneSurge naming) lives in Dart; this case
+      // only translates the resolved case name.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "writeOvulationTest requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let resultWire = args?["healthKitResult"] as? String,
+        let recordId = args?["recordId"] as? String,
+        let recordVersionMs = args?["recordVersionMs"] as? NSNumber
+      else {
+        badArgs(
+          result,
+          "writeOvulationTest requires startMs/endMs/healthKitResult/recordId/recordVersionMs")
+        return
+      }
+      let ovulationResult: HKCategoryValueOvulationTestResult
+      switch resultWire {
+      case "negative": ovulationResult = .negative
+      case "luteinizingHormoneSurge": ovulationResult = .luteinizingHormoneSurge
+      case "indeterminate": ovulationResult = .indeterminate
+      default:
+        badArgs(result, "unknown ovulation-test result: \(resultWire)")
+        return
+      }
+      let ovulationSample = HKCategorySample(
+        type: ovulationTestType,
+        value: ovulationResult.rawValue,
+        start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+        metadata: [
+          HKMetadataKeyExternalUUID: recordId,
+          HKMetadataKeySyncIdentifier: recordId,
+          HKMetadataKeySyncVersion: recordVersionMs,
+        ]
+      )
+      save([ovulationSample], result: result)
+
+    case "writeBasalBodyTemperature":
+      // Issue #228: the value is already in Celsius (Dart converts via
+      // #255's convertTemperature); this case only builds the HKQuantity.
+      // A platform/wearable-sourced value never reaches here — the Dart
+      // resolver filters by source before the write is built.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "writeBasalBodyTemperature requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let celsius = args?["celsius"] as? NSNumber,
+        let recordId = args?["recordId"] as? String,
+        let recordVersionMs = args?["recordVersionMs"] as? NSNumber
+      else {
+        badArgs(
+          result,
+          "writeBasalBodyTemperature requires startMs/endMs/celsius/recordId/recordVersionMs")
+        return
+      }
+      let temperatureSample = HKQuantitySample(
+        type: basalBodyTemperatureType,
+        quantity: HKQuantity(
+          unit: HKUnit.degreeCelsius(), doubleValue: celsius.doubleValue),
+        start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+        metadata: [
+          HKMetadataKeyExternalUUID: recordId,
+          HKMetadataKeySyncIdentifier: recordId,
+          HKMetadataKeySyncVersion: recordVersionMs,
+        ]
+      )
+      save([temperatureSample], result: result)
+
     case "deleteRecords":
       // Issue #186 tombstone propagation: delete the samples whose
       // HKMetadataKeyExternalUUID is one of the supplied lunarlog record
@@ -776,6 +931,22 @@ enum HealthKitChannelHandler {
 
   private static var intermenstrualBleedingType: HKCategoryType {
     HKObjectType.categoryType(forIdentifier: .intermenstrualBleeding)!
+  }
+
+  /// Issue #228: the fertility/measurement write types. `cervicalMucusQuality`
+  /// and `ovulationTestResult` are category types; `basalBodyTemperature` is
+  /// a quantity type (a different native code path — see
+  /// `writeBasalBodyTemperature`).
+  private static var cervicalMucusType: HKCategoryType {
+    HKObjectType.categoryType(forIdentifier: .cervicalMucusQuality)!
+  }
+
+  private static var ovulationTestType: HKCategoryType {
+    HKObjectType.categoryType(forIdentifier: .ovulationTestResult)!
+  }
+
+  private static var basalBodyTemperatureType: HKQuantityType {
+    HKObjectType.quantityType(forIdentifier: .basalBodyTemperature)!
   }
 
   /// Reads menstrual-flow samples in `[start, end]` (Issue #217) and flattens

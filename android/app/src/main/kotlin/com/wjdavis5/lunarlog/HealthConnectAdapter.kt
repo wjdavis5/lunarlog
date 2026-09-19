@@ -7,10 +7,15 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.BasalBodyTemperatureRecord
+import androidx.health.connect.client.records.BodyTemperatureMeasurementLocation
+import androidx.health.connect.client.records.CervicalMucusRecord
 import androidx.health.connect.client.records.IntermenstrualBleedingRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
 import androidx.health.connect.client.records.MenstruationPeriodRecord
+import androidx.health.connect.client.records.OvulationTestRecord
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.units.Temperature
 // Aliased because a plain `Metadata` import resolves to the compiler's
 // own kotlin.Metadata annotation in constructor-argument position here.
 import androidx.health.connect.client.records.metadata.Metadata as HcMetadata
@@ -108,6 +113,11 @@ class HealthConnectAdapter(context: Context) {
         // underlying permission string.
         HealthPermission.getWritePermission(MenstruationPeriodRecord::class),
         HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class),
+        // Issue #228: the fertility/measurement write types. Each has its
+        // own Health Connect permission, unlike the menstruation family.
+        HealthPermission.getWritePermission(CervicalMucusRecord::class),
+        HealthPermission.getWritePermission(OvulationTestRecord::class),
+        HealthPermission.getWritePermission(BasalBodyTemperatureRecord::class),
     )
 
     // Issue #458 (the owner's #781 read decision, already applied to iOS in
@@ -166,6 +176,13 @@ class HealthConnectAdapter(context: Context) {
     private val storedBoundProfileId: String?
         get() = prefs.getString(BOUND_PROFILE_KEY, null)
 
+    // Issue #228: `CervicalMucusRecord` is published by the Health Connect
+    // client for app use but its source file carries a library-scoped
+    // `@file:RestrictTo`, which Android Lint flags as RestrictedApi even
+    // though the class is a normal part of the app-facing record API
+    // (Google's own data-type samples construct it directly). Scoped to this
+    // handler, the one place the adapter touches it.
+    @Suppress("RestrictedApi")
     fun handle(call: MethodCall, result: MethodChannel.Result) {
         val args = call.arguments as? Map<*, *>
         when (call.method) {
@@ -409,6 +426,187 @@ class HealthConnectAdapter(context: Context) {
                     "the unsupported symptom-type registry must name the types"
                 }
                 result.success("unavailable")
+            }
+
+            "writeCervicalMucus" -> {
+                // Issue #228: the appearance decision lives in Dart
+                // (health_fertility_mapping.dart); this handler only
+                // translates the resolved appearance constant and supplies
+                // the mandatory sensation as SENSATION_UNKNOWN. The domain
+                // deliberately has no sensation concept (the issue's
+                // instruction), so no value is invented.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeCervicalMucus requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val instantMs = GuardArgs.number(args, "instantMs")
+                val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
+                val appearanceWire = args?.get("healthConnectAppearance") as? String
+                val appearance = when (appearanceWire) {
+                    "APPEARANCE_DRY" -> CervicalMucusRecord.APPEARANCE_DRY
+                    "APPEARANCE_STICKY" -> CervicalMucusRecord.APPEARANCE_STICKY
+                    "APPEARANCE_CREAMY" -> CervicalMucusRecord.APPEARANCE_CREAMY
+                    "APPEARANCE_WATERY" -> CervicalMucusRecord.APPEARANCE_WATERY
+                    "APPEARANCE_EGG_WHITE" -> CervicalMucusRecord.APPEARANCE_EGG_WHITE
+                    else -> null
+                }
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null || appearance == null ||
+                    recordId == null || recordVersionMs == null) {
+                    return result.error(
+                        "bad_args",
+                        "writeCervicalMucus requires instantMs/zoneOffsetMs/healthConnectAppearance/recordId/recordVersionMs",
+                        null)
+                }
+                val record = CervicalMucusRecord(
+                    time = Instant.ofEpochMilli(instantMs),
+                    zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
+                    appearance = appearance,
+                    sensation = CervicalMucusRecord.SENSATION_UNKNOWN,
+                )
+                insert(client, listOf(record), result)
+            }
+
+            "writeOvulationTest" -> {
+                // Issue #228: the result decision (including the positive/
+                // peak collapse) lives in Dart; this handler only translates
+                // the resolved result constant.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeOvulationTest requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val instantMs = GuardArgs.number(args, "instantMs")
+                val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
+                val resultWire = args?.get("healthConnectResult") as? String
+                val ovulationResult = when (resultWire) {
+                    "RESULT_NEGATIVE" -> OvulationTestRecord.RESULT_NEGATIVE
+                    "RESULT_POSITIVE" -> OvulationTestRecord.RESULT_POSITIVE
+                    "RESULT_INCONCLUSIVE" -> OvulationTestRecord.RESULT_INCONCLUSIVE
+                    "RESULT_HIGH" -> OvulationTestRecord.RESULT_HIGH
+                    else -> null
+                }
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null ||
+                    ovulationResult == null || recordId == null ||
+                    recordVersionMs == null) {
+                    return result.error(
+                        "bad_args",
+                        "writeOvulationTest requires instantMs/zoneOffsetMs/healthConnectResult/recordId/recordVersionMs",
+                        null)
+                }
+                val record = OvulationTestRecord(
+                    time = Instant.ofEpochMilli(instantMs),
+                    zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
+                    result = ovulationResult,
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
+                )
+                insert(client, listOf(record), result)
+            }
+
+            "writeBasalBodyTemperature" -> {
+                // Issue #228: the value arrives already in Celsius (Dart
+                // converts via #255's convertTemperature). The measurement
+                // location is the Dart-resolved constant; the domain has no
+                // location field, so it is the honest unknown — never a
+                // guessed site. A platform/wearable-sourced value never
+                // reaches here (Dart filters by source).
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeBasalBodyTemperature requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                val client = healthConnectClient()
+                if (client == null) {
+                    result.success("unavailable")
+                    return
+                }
+                val instantMs = GuardArgs.number(args, "instantMs")
+                val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
+                val celsius = (args?.get("celsius") as? Number)?.toDouble()
+                val locationWire =
+                    args?.get("healthConnectMeasurementLocation") as? String
+                val recordId = args?.get("recordId") as? String
+                val recordVersionMs = GuardArgs.number(args, "recordVersionMs")
+                if (instantMs == null || zoneOffsetMs == null || celsius == null ||
+                    locationWire == null || recordId == null ||
+                    recordVersionMs == null) {
+                    return result.error(
+                        "bad_args",
+                        "writeBasalBodyTemperature requires instantMs/zoneOffsetMs/celsius/healthConnectMeasurementLocation/recordId/recordVersionMs",
+                        null)
+                }
+                val measurementLocation = when (locationWire) {
+                    "MEASUREMENT_LOCATION_UNKNOWN" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_UNKNOWN
+                    "MEASUREMENT_LOCATION_ARMPIT" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_ARMPIT
+                    "MEASUREMENT_LOCATION_FINGER" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_FINGER
+                    "MEASUREMENT_LOCATION_FOREHEAD" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_FOREHEAD
+                    "MEASUREMENT_LOCATION_MOUTH" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_MOUTH
+                    "MEASUREMENT_LOCATION_RECTUM" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_RECTUM
+                    "MEASUREMENT_LOCATION_TEMPORAL_ARTERY" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_TEMPORAL_ARTERY
+                    "MEASUREMENT_LOCATION_TOE" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_TOE
+                    "MEASUREMENT_LOCATION_EAR" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_EAR
+                    "MEASUREMENT_LOCATION_WRIST" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_WRIST
+                    "MEASUREMENT_LOCATION_VAGINA" ->
+                        BodyTemperatureMeasurementLocation.MEASUREMENT_LOCATION_VAGINA
+                    else -> null
+                }
+                if (measurementLocation == null) {
+                    return result.error(
+                        "bad_args",
+                        "unknown measurement location: $locationWire",
+                        null)
+                }
+                val record = BasalBodyTemperatureRecord(
+                    time = Instant.ofEpochMilli(instantMs),
+                    zoneOffset = ZoneOffset.ofTotalSeconds((zoneOffsetMs / 1000).toInt()),
+                    metadata = HcMetadata.manualEntry(
+                        clientRecordId = recordId,
+                        clientRecordVersion = recordVersionMs,
+                    ),
+                    temperature = Temperature.celsius(celsius),
+                    measurementLocation = measurementLocation,
+                )
+                insert(client, listOf(record), result)
             }
 
             "deleteRecords" -> {

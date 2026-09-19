@@ -124,6 +124,23 @@ class _FakePlatform implements HealthPlatformStore {
     return symptomResult;
   }
 
+  // Issue #228: this fake predates the fertility/measurement port methods;
+  // the symptom tests never emit those, so they succeed trivially.
+  @override
+  Future<HealthPlatformResult> writeCervicalMucus(
+    HealthCervicalMucusWrite write,
+  ) async => const HealthPlatformAllowed();
+
+  @override
+  Future<HealthPlatformResult> writeOvulationTest(
+    HealthOvulationTestWrite write,
+  ) async => const HealthPlatformAllowed();
+
+  @override
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
+  ) async => const HealthPlatformAllowed();
+
   @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,

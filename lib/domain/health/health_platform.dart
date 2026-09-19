@@ -413,6 +413,112 @@ class HealthSymptomSamplesWrite {
   final List<HealthSymptomSample> samples;
 }
 
+/// A `writeCervicalMucus` payload (Issue #228): one logged day's
+/// cervical-mucus appearance for the bound profile. HealthKit writes a
+/// single `HKCategoryValueCervicalMucusQuality`; Health Connect needs both
+/// an `appearance` and a `sensation`. The domain has no sensation concept,
+/// so the native half always writes `SENSATION_UNKNOWN` — only the
+/// appearance is carried here. Both platform identifiers are resolved in
+/// Dart (`lib/data/health/health_fertility_mapping.dart`); the native half
+/// translates the one its platform uses and adds no mapping decision of its
+/// own.
+class HealthCervicalMucusWrite {
+  const HealthCervicalMucusWrite({
+    required this.facts,
+    required this.date,
+    required this.tzName,
+    required this.healthKitValue,
+    required this.healthConnectAppearance,
+    required this.recordId,
+    required this.recordVersionMs,
+  });
+
+  final HealthGuardFacts facts;
+  final LocalDate date;
+  final String tzName;
+
+  /// The `HKCategoryValueCervicalMucusQuality` case name (`sticky`,
+  /// `creamy`, `eggWhite`).
+  final String healthKitValue;
+
+  /// The `CervicalMucusRecord` appearance constant name
+  /// (`APPEARANCE_STICKY`, …).
+  final String healthConnectAppearance;
+
+  /// As [HealthMenstrualFlowWrite.recordId] — the source day entry's ULID
+  /// paired with the concept, so a re-write replaces and a tombstone can
+  /// address the sample.
+  final String recordId;
+
+  final int recordVersionMs;
+}
+
+/// A `writeOvulationTest` payload (Issue #228): one logged day's resolved
+/// ovulation-test result. The two platforms' vocabularies differ
+/// (`luteinizingHormoneSurge` vs `RESULT_POSITIVE`), and `positive`/`peak`
+/// collapse onto one platform value; those decisions live in Dart, so the
+/// payload carries both already-resolved identifiers and the native half
+/// only translates.
+class HealthOvulationTestWrite {
+  const HealthOvulationTestWrite({
+    required this.facts,
+    required this.date,
+    required this.tzName,
+    required this.healthKitResult,
+    required this.healthConnectResult,
+    required this.recordId,
+    required this.recordVersionMs,
+  });
+
+  final HealthGuardFacts facts;
+  final LocalDate date;
+  final String tzName;
+
+  /// The `HKCategoryValueOvulationTestResult` case name (`negative`,
+  /// `luteinizingHormoneSurge`).
+  final String healthKitResult;
+
+  /// The `OvulationTestRecord` result constant name (`RESULT_NEGATIVE`,
+  /// `RESULT_POSITIVE`).
+  final String healthConnectResult;
+
+  final String recordId;
+  final int recordVersionMs;
+}
+
+/// A `writeBasalBodyTemperature` payload (Issue #228): the first non-enum
+/// (quantity) type. [celsius] is already converted to Celsius by Dart, so
+/// neither native half does unit math — HealthKit writes it in
+/// `HKUnit.degreeCelsius()`, Health Connect as `Temperature.celsius`.
+///
+/// [healthConnectMeasurementLocation] is the resolved Health Connect
+/// `measurementLocation` constant; the live domain has no location field,
+/// so it is always the honest unknown. HealthKit has no such field.
+class HealthBasalBodyTemperatureWrite {
+  const HealthBasalBodyTemperatureWrite({
+    required this.facts,
+    required this.date,
+    required this.tzName,
+    required this.celsius,
+    required this.healthConnectMeasurementLocation,
+    required this.recordId,
+    required this.recordVersionMs,
+  });
+
+  final HealthGuardFacts facts;
+  final LocalDate date;
+  final String tzName;
+
+  /// The value in °C.
+  final double celsius;
+
+  /// The `BasalBodyTemperatureRecord.measurementLocation` constant name.
+  final String healthConnectMeasurementLocation;
+
+  final String recordId;
+  final int recordVersionMs;
+}
+
 /// The platform-neutral health-store port (see the library doc for the
 /// (a)-vs-(b) design decision). Implementations: `lib/data/health/`
 /// (`MethodChannelHealthPlatform` shared, `IOSHealthChannel` and
@@ -487,6 +593,28 @@ abstract interface class HealthPlatformStore {
   /// failure, exactly as it does for `writeMenstrualPeriod` on iOS.
   Future<HealthPlatformResult> writeSymptomSamples(
     HealthSymptomSamplesWrite write,
+  );
+
+  /// Writes one logged day's cervical-mucus appearance for the bound
+  /// profile (Issue #228). Both platforms have a type here, so this is not
+  /// the iOS-only asymmetry `writeSymptomSamples` is.
+  Future<HealthPlatformResult> writeCervicalMucus(
+    HealthCervicalMucusWrite write,
+  );
+
+  /// Writes one logged day's ovulation-test result for the bound profile
+  /// (Issue #228). Both platforms have a type here.
+  Future<HealthPlatformResult> writeOvulationTest(
+    HealthOvulationTestWrite write,
+  );
+
+  /// Writes one logged day's basal body temperature for the bound profile
+  /// (Issue #228). A quantity type on HealthKit, an instantaneous record on
+  /// Health Connect. A value sourced from a wearable or a health platform
+  /// never reaches this method — `resolveBasalBodyTemperature` filters by
+  /// source before the write service ever builds the payload.
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
   );
 
   /// Deletes the health-store samples whose recorded external id (Health
