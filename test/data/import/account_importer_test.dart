@@ -17,6 +17,7 @@ import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/import/account_importer.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
@@ -52,6 +53,7 @@ Map<String, Object?> _rawProfile(
   List<Map<String, Object?>> observations = const [],
   List<Map<String, Object?>> cycleOverrides = const [],
   List<Map<String, Object?>> customTags = const [],
+  List<Map<String, Object?>> guardianNotes = const [],
 }) =>
     {
       'id': id,
@@ -66,6 +68,23 @@ Map<String, Object?> _rawProfile(
       'observations': observations,
       'cycleOverrides': cycleOverrides,
       'customTags': customTags,
+      'guardianNotes': guardianNotes,
+    };
+
+/// A `profiles[].guardianNotes[]` element (Issue #870).
+Map<String, Object?> _rawGuardianNote(
+  String id,
+  String localDate, {
+  String tz = 'America/New_York',
+  String body = 'Test guardian note',
+  String updatedAt = '2026-01-01T00:00:00.000Z',
+}) =>
+    {
+      'id': id,
+      'localDate': localDate,
+      'tz': tz,
+      'body': body,
+      'updatedAt': updatedAt,
     };
 
 /// A `profiles[].customTags[]` element (Issue #824).
@@ -153,6 +172,8 @@ const String _e1 = '00000000000000000000000011';
 const String _o1 = '00000000000000000000000021';
 const String _fileP1 = '00000000000000000000000031';
 const String _co1 = '00000000000000000000000041';
+const String _gn1 = '00000000000000000000000051';
+const String _gn2 = '00000000000000000000000052';
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -164,6 +185,7 @@ void main() {
   late DriftObservationsRepository observations;
   late DriftCycleOverridesRepository cycleOverrides;
   late DriftTagRegistryRepository tagRegistry;
+  late DriftGuardianNotesRepository guardianNotes;
 
   setUp(() {
     db = LunarLogDatabase(NativeDatabase.memory());
@@ -173,6 +195,7 @@ void main() {
     observations = DriftObservationsRepository(storage);
     cycleOverrides = DriftCycleOverridesRepository(storage);
     tagRegistry = DriftTagRegistryRepository(storage);
+    guardianNotes = DriftGuardianNotesRepository(storage);
   });
 
   tearDown(() => db.close());
@@ -188,6 +211,7 @@ void main() {
         storage: storage,
         cycleOverridesRepository: cycleOverrides,
         tagRegistryRepository: tagRegistry,
+        guardianNotesRepository: guardianNotes,
         guardiansForProfile: guardiansForProfile,
         currentUserId: currentUserId,
       );
@@ -1041,6 +1065,139 @@ void main() {
     });
   });
 
+  group('AccountImportCoordinator — guardian notes (Issue #870)', () {
+    test(
+        'guardian notes are additive: colliding id skips without overwriting live note, new adds',
+        () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+
+      await storage.upsertGuardianNote(
+        id: _gn1,
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        body: 'Original live note',
+      );
+
+      final document = _document(profiles: [
+        _rawProfile(
+          existingProfile.id,
+          guardianNotes: [
+            _rawGuardianNote(_gn1, '2026-01-05', body: 'Conflicting imported note'),
+            _rawGuardianNote(_gn2, '2026-01-06', body: 'Brand new imported note'),
+          ],
+        ),
+      ]);
+
+      final parsed = _parse(document);
+      final c = coordinator();
+      final plan = await c.buildPlan(parsed);
+      final summary = await c.apply(plan);
+
+      expect(summary.guardianNotesAdded, 1);
+      expect(summary.guardianNotesSkipped, 1);
+
+      final liveNotes = await guardianNotes.listForProfile(existingProfile.id);
+      expect(liveNotes, hasLength(2));
+
+      final note1 = liveNotes.firstWhere((n) => n.id == _gn1);
+      expect(note1.body, 'Original live note',
+          reason: 'the existing live note must not be overwritten');
+
+      final note2 = liveNotes.firstWhere((n) => n.id == _gn2);
+      expect(note2.body, 'Brand new imported note');
+    });
+
+    test(
+        'a soft-deleted tombstoned guardian note is revived with its file id on import',
+        () async {
+      final existingProfile =
+          await profiles.create(displayName: 'Riley', isMinor: true);
+
+      await storage.upsertGuardianNote(
+        id: _gn1,
+        profileId: existingProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        body: 'Pre-existing note before deletion',
+      );
+      await storage.softDeleteGuardianNote(_gn1);
+
+      // Confirm it is soft-deleted.
+      final tombstone = await storage.getGuardianNoteById(_gn1);
+      expect(tombstone, isNotNull);
+      expect(tombstone!.deletedAt, isNotNull);
+
+      final document = _document(profiles: [
+        _rawProfile(
+          existingProfile.id,
+          guardianNotes: [
+            _rawGuardianNote(_gn1, '2026-01-05', body: 'Revived note content'),
+          ],
+        ),
+      ]);
+
+      final parsed = _parse(document);
+      final c = coordinator();
+      final plan = await c.buildPlan(parsed);
+      final summary = await c.apply(plan);
+
+      expect(summary.guardianNotesAdded, 1);
+      expect(summary.guardianNotesSkipped, 0);
+
+      final liveNotes = await guardianNotes.listForProfile(existingProfile.id);
+      expect(liveNotes, hasLength(1));
+      expect(liveNotes.single.id, _gn1);
+      expect(liveNotes.single.body, 'Revived note content');
+      expect(liveNotes.single.deletedAt, isNull);
+    });
+
+    test(
+        'a colliding id on a DIFFERENT profile mints a fresh ULID, leaving both rows intact',
+        () async {
+      final profileA =
+          await profiles.create(displayName: 'Profile A', isMinor: true);
+      final profileB =
+          await profiles.create(displayName: 'Profile B', isMinor: true);
+
+      await storage.upsertGuardianNote(
+        id: _gn1,
+        profileId: profileA.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        body: 'Profile A note',
+      );
+
+      final document = _document(profiles: [
+        _rawProfile(
+          profileB.id,
+          guardianNotes: [
+            _rawGuardianNote(_gn1, '2026-01-05', body: 'Profile B note with colliding id'),
+          ],
+        ),
+      ]);
+
+      final parsed = _parse(document);
+      final c = coordinator();
+      final plan = await c.buildPlan(parsed);
+      final summary = await c.apply(plan);
+
+      expect(summary.guardianNotesAdded, 1);
+      expect(summary.guardianNotesSkipped, 0);
+
+      final notesA = await guardianNotes.listForProfile(profileA.id);
+      expect(notesA.single.id, _gn1);
+      expect(notesA.single.body, 'Profile A note');
+
+      final notesB = await guardianNotes.listForProfile(profileB.id);
+      expect(notesB, hasLength(1));
+      expect(notesB.single.id, isNot(_gn1),
+          reason: 'conflicting id across different profile must mint a new ULID');
+      expect(notesB.single.body, 'Profile B note with colliding id');
+    });
+  });
+
   group('round trip — export then import into an empty store', () {
     test('produces the same set of profiles, entries, and observations, '
         'preserving the source profile id (Issue #140 review, item 2) and '
@@ -1079,6 +1236,12 @@ void main() {
         category: 'custom',
         updatedAt: DateTime.utc(2026, 1, 1),
       );
+      await storage.upsertGuardianNote(
+        profileId: sourceProfile.id,
+        localDate: '2026-01-05',
+        tz: 'UTC',
+        body: 'Riley reported cramps to school nurse.',
+      );
 
       final exportDocument = buildAccountExport(
         profiles: [sourceProfile],
@@ -1088,6 +1251,9 @@ void main() {
         },
         customTagsByProfile: {
           sourceProfile.id: await tagRegistry.listForProfile(sourceProfile.id),
+        },
+        guardianNotesByProfile: {
+          sourceProfile.id: await guardianNotes.listForProfile(sourceProfile.id),
         },
         exportedAt: DateTime.utc(2026, 1, 10),
         appVersion: '1.0.0+1',
@@ -1101,12 +1267,14 @@ void main() {
       final targetEntries = DriftDayEntriesRepository(targetStorage);
       final targetObservations = DriftObservationsRepository(targetStorage);
       final targetTagRegistry = DriftTagRegistryRepository(targetStorage);
+      final targetGuardianNotes = DriftGuardianNotesRepository(targetStorage);
       final targetCoordinator = DriftAccountImportCoordinator(
         profilesRepository: targetProfiles,
         dayEntriesRepository: targetEntries,
         observationsRepository: targetObservations,
         storage: targetStorage,
         tagRegistryRepository: targetTagRegistry,
+        guardianNotesRepository: targetGuardianNotes,
       );
 
       final parsed = parseAccountImport(_bytes(exportDocument));
@@ -1120,6 +1288,7 @@ void main() {
       expect(summary.entriesAdded, 2);
       expect(summary.observationsAdded, 1);
       expect(summary.customTagsAdded, 1);
+      expect(summary.guardianNotesAdded, 1);
 
       final restoredProfile = (await targetProfiles.list()).single;
       expect(restoredProfile.displayName, sourceProfile.displayName);
@@ -1149,6 +1318,11 @@ void main() {
       expect(restoredTags, hasLength(1));
       expect(restoredTags.single.code, 'cramps_severe');
       expect(restoredTags.single.displayName, 'Severe Cramps');
+
+      final restoredNotes =
+          await targetGuardianNotes.listForProfile(restoredProfile.id);
+      expect(restoredNotes, hasLength(1));
+      expect(restoredNotes.single.body, 'Riley reported cramps to school nurse.');
     });
   });
 }

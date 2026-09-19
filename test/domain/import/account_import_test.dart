@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
@@ -79,6 +80,7 @@ Map<String, Object?> _rawProfile(
   List<Map<String, Object?>> observations = const [],
   List<Map<String, Object?>> cycleOverrides = const [],
   List<Map<String, Object?>> customTags = const [],
+  List<Map<String, Object?>> guardianNotes = const [],
 }) =>
     {
       'id': id,
@@ -93,6 +95,7 @@ Map<String, Object?> _rawProfile(
       'observations': observations,
       'cycleOverrides': cycleOverrides,
       'customTags': customTags,
+      'guardianNotes': guardianNotes,
     };
 
 /// A `profiles[].customTags[]` element (Issue #824).
@@ -131,6 +134,22 @@ Map<String, Object?> _rawCycleOverride(
       'excludedFromAverage': excludedFromAverage,
       'manualStart': manualStart,
       'noteId': noteId,
+    };
+
+/// A `profiles[].guardianNotes[]` element (Issue #870).
+Map<String, Object?> _rawGuardianNote(
+  String id,
+  String localDate, {
+  String tz = 'America/New_York',
+  String body = 'Test note',
+  String updatedAt = '2026-01-01T00:00:00.000Z',
+}) =>
+    {
+      'id': id,
+      'localDate': localDate,
+      'tz': tz,
+      'body': body,
+      'updatedAt': updatedAt,
     };
 
 Map<String, Object?> _rawDocument({
@@ -198,6 +217,24 @@ Observation _observation(
       updatedAt: DateTime.utc(2026, 1, 2),
     );
 
+GuardianNote _guardianNote(
+  String id,
+  String profileId,
+  String localDate, {
+  String tz = 'America/New_York',
+  String body = 'Test note',
+  DateTime? deletedAt,
+}) =>
+    GuardianNote(
+      id: id,
+      profileId: profileId,
+      localDate: LocalDate.fromIso(localDate),
+      tz: tz,
+      body: body,
+      updatedAt: DateTime.utc(2026, 1, 1),
+      deletedAt: deletedAt,
+    );
+
 String? _neverBlocked(Profile p) => null;
 
 // Issue #140 review round 2, item 1: fixture ids must be syntactically
@@ -214,6 +251,8 @@ const String _o2 = '00000000000000000000000022';
 const String _co1 = '00000000000000000000000031';
 const String _ct1 = '00000000000000000000000051';
 const String _ct2 = '00000000000000000000000052';
+const String _gn1 = '00000000000000000000000061';
+const String _gn2 = '00000000000000000000000062';
 String _obsId(int i) => (900000 + i).toString().padLeft(26, '0');
 
 void main() {
@@ -973,6 +1012,106 @@ void main() {
     });
   });
 
+  group('parseAccountImport — guardianNotes (Issue #870, import v13)', () {
+    test('an absent guardianNotes key parses to empty list (an older export)', () {
+      final profileMap = _rawProfile(_p1)..remove('guardianNotes');
+      final raw = _rawDocument(profiles: [profileMap]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.guardianNotes, isEmpty);
+    });
+
+    test('a non-ULID guardian note id is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote('not-a-ulid', '2026-01-01'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an over-length guardian note body (>2000 chars) is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01',
+              body: 'x' * (kMaxCareNoteLength + 1)),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a non-string guardian note body is rejected', () {
+      final badNote = _rawGuardianNote(_gn1, '2026-01-01');
+      badNote['body'] = 12345;
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [badNote]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an invalid time zone is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01', tz: 'Invalid/Zone'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a missing updatedAt is rejected', () {
+      final badNote = _rawGuardianNote(_gn1, '2026-01-01');
+      badNote.remove('updatedAt');
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [badNote]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('an invalid updatedAt is rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01', updatedAt: 'not-a-date'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('two guardian notes sharing an id in one profile are rejected', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01', body: 'Note 1'),
+          _rawGuardianNote(_gn1, '2026-01-02', body: 'Note 2'),
+        ]),
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('a well-formed guardian note parses correctly', () {
+      final raw = _rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(
+            _gn1,
+            '2026-01-15',
+            tz: 'America/New_York',
+            body: 'Observation details for guardian',
+            updatedAt: '2026-01-15T12:00:00.000Z',
+          ),
+        ]),
+      ]);
+      final result = parseAccountImport(_bytes(raw));
+      expect(result, isA<AccountImportParsed>());
+      final profile = (result as AccountImportParsed).document.profiles.single;
+      expect(profile.guardianNotes, hasLength(1));
+      final note = profile.guardianNotes.single;
+      expect(note.id, _gn1);
+      expect(note.localDate.iso, '2026-01-15');
+      expect(note.tz, 'America/New_York');
+      expect(note.body, 'Observation details for guardian');
+      expect(note.updatedAt.toIso8601String(), '2026-01-15T12:00:00.000Z');
+    });
+  });
+
   group('parseAccountImport — id validation (Issue #140 review round 2, '
       'item 1)', () {
     test('a non-ULID profile id ("riley") is rejected', () {
@@ -1715,6 +1854,90 @@ void main() {
           reason: 'profile has hit max 100 tags');
       expect(plan.summary.customTagsAdded, 0);
       expect(plan.summary.customTagsSkipped, 1);
+    });
+  });
+
+  group('planImport — guardianNotes merge policy (Issue #870)', () {
+    test(
+        'guardianNotes are additive for a CREATED profile: two distinct notes both add',
+        () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01', body: 'First note'),
+          _rawGuardianNote(_gn2, '2026-01-02', body: 'Second note'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: const [],
+        writeBlockReason: _neverBlocked,
+      );
+
+      final notePlans = plan.profiles.single.guardianNotes;
+      expect(notePlans, hasLength(2));
+      expect(
+          notePlans.every((n) => n.outcome == GuardianNoteImportOutcome.add),
+          isTrue);
+      expect(plan.summary.guardianNotesAdded, 2);
+      expect(plan.summary.guardianNotesSkipped, 0);
+    });
+
+    test(
+        'guardianNotes are additive for a MATCHED profile: colliding id skips, new adds',
+        () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01', body: 'Colliding note'),
+          _rawGuardianNote(_gn2, '2026-01-02', body: 'New note'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final existingNote = _guardianNote(
+        _gn1,
+        _p1,
+        '2026-01-01',
+        body: 'Existing note',
+      );
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1)],
+        existingGuardianNotesByProfileId: {
+          _p1: [existingNote],
+        },
+        writeBlockReason: _neverBlocked,
+      );
+
+      final notePlans = plan.profiles.single.guardianNotes;
+      expect(notePlans[0].outcome, GuardianNoteImportOutcome.skip,
+          reason: 'a live guardian note already has id $_gn1');
+      expect(notePlans[1].outcome, GuardianNoteImportOutcome.add);
+      expect(plan.summary.guardianNotesAdded, 1);
+      expect(plan.summary.guardianNotesSkipped, 1);
+    });
+
+    test('guardianNotes are skipped when profile itself is skipped', () {
+      final document = (parseAccountImport(_bytes(_rawDocument(profiles: [
+        _rawProfile(_p1, guardianNotes: [
+          _rawGuardianNote(_gn1, '2026-01-01'),
+        ]),
+      ]))) as AccountImportParsed)
+          .document;
+
+      final plan = planImport(
+        document: document,
+        existingProfiles: [_profile(_p1, archivedAt: DateTime.utc(2026, 1, 1))],
+        writeBlockReason: (p) => writeBlockReasonFor(profile: p),
+      );
+
+      final profilePlan = plan.profiles.single;
+      expect(profilePlan.outcome, ProfileImportOutcome.skipped);
+      expect(profilePlan.guardianNotes, isEmpty);
+      expect(plan.summary.guardianNotesAdded, 0);
+      expect(plan.summary.guardianNotesSkipped, 0);
     });
   });
 

@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
+import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -433,9 +434,9 @@ void main() {
       '(Issue #140 review, LLA-084, export v9)', () {
     test('schema version was bumped to 9 for the new keys (since moved to '
         '10 for profiles[].trackingPreferences, Issue #648, 11 for '
-        'profiles[].mergeEvents, Issue #130, and 12 for '
-        'profiles[].customTags, Issue #824)', () {
-      expect(kAccountExportSchemaVersion, 12);
+        'profiles[].mergeEvents, Issue #130, 12 for profiles[].customTags, '
+        'Issue #824, and 13 for profiles[].guardianNotes, Issue #870)', () {
+      expect(kAccountExportSchemaVersion, 13);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -649,7 +650,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 12);
+      expect(kAccountExportSchemaVersion, 13);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mergeEvents'], isEmpty);
       expect((profiles[1] as Map)['mergeEvents'], isEmpty);
@@ -739,7 +740,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 12);
+      expect(kAccountExportSchemaVersion, 13);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['customTags'], isEmpty);
       expect((profiles[1] as Map)['customTags'], isEmpty);
@@ -783,6 +784,77 @@ void main() {
       final encoded = jsonEncode(doc);
       expect(encoded, isNot(contains('createdBy')));
       expect(encoded, isNot(contains('created_by')));
+    });
+  });
+
+  group('profiles[].guardianNotes (Issue #870, kAccountExportSchemaVersion v13)', () {
+    final noteA = GuardianNote(
+      id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+      profileId: 'p-1',
+      localDate: LocalDate(2026, 9, 2),
+      tz: 'America/New_York',
+      body: 'Note A body',
+      updatedAt: DateTime.utc(2026, 9, 2, 9),
+      loggedByUserId: 'user-a',
+      lastModifiedByUserId: 'user-b',
+    );
+    final noteB = GuardianNote(
+      id: '01ARZ3NDEKTSV4RRFFQ69G5FAW',
+      profileId: 'p-1',
+      localDate: LocalDate(2026, 9, 1),
+      tz: 'America/New_York',
+      body: 'Note B body',
+      updatedAt: DateTime.utc(2026, 9, 1, 9),
+      loggedByUserId: 'user-c',
+    );
+
+    test(
+        'default export wires an empty '
+        'guardianNotes array (empty for a profile with none)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1'), _profile('p-2')],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      expect(kAccountExportSchemaVersion, 13);
+      final profiles = doc['profiles'] as List;
+      expect((profiles[0] as Map)['guardianNotes'], isEmpty);
+      expect((profiles[1] as Map)['guardianNotes'], isEmpty);
+    });
+
+    test(
+        'each guardian note round-trips id/localDate/tz/body/updatedAt, '
+        'sorted by localDate then id, with attribution ids excluded (R9)', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: const {},
+        guardianNotesByProfile: {
+          'p-1': [noteA, noteB],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final notes =
+          ((doc['profiles'] as List)[0] as Map)['guardianNotes'] as List;
+      expect(notes, hasLength(2));
+      // Sorted by localDate then id (noteB is on 2026-09-01, noteA on 2026-09-02).
+      expect((notes[0] as Map)['id'], '01ARZ3NDEKTSV4RRFFQ69G5FAW');
+      expect((notes[1] as Map)['id'], '01ARZ3NDEKTSV4RRFFQ69G5FAV');
+
+      final n0 = notes[0] as Map;
+      expect(n0['localDate'], '2026-09-01');
+      expect(n0['tz'], 'America/New_York');
+      expect(n0['body'], 'Note B body');
+      expect(n0['updatedAt'], '2026-09-01T09:00:00.000Z');
+
+      // R9: attribution identifiers are never exported.
+      final encoded = jsonEncode(doc);
+      expect(encoded, isNot(contains('user-a')));
+      expect(encoded, isNot(contains('user-b')));
+      expect(encoded, isNot(contains('user-c')));
+      expect(encoded, isNot(contains('loggedByUserId')));
+      expect(encoded, isNot(contains('lastModifiedByUserId')));
     });
   });
 

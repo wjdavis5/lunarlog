@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -232,6 +233,7 @@ class _FakeExportSnapshotRepository implements AccountExportSnapshotRepository {
         cycleOverrides: const <CycleOverride>[],
         mergeEvents: const <DayEntryMergeEvent>[],
         customTags: const <CustomTag>[],
+        guardianNotes: const <GuardianNote>[],
       );
 }
 
@@ -312,6 +314,7 @@ void main() {
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           Map<String, List<CustomTag>>? customTagsByProfile = const {},
+          Map<String, List<GuardianNote>>? guardianNotesByProfile = const {},
           required appVersion,
         }) async {
           exportCalls++;
@@ -366,6 +369,7 @@ void main() {
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           Map<String, List<CustomTag>>? customTagsByProfile = const {},
+          Map<String, List<GuardianNote>>? guardianNotesByProfile = const {},
           required appVersion,
         }) async {
           captured = observationsByProfile;
@@ -468,6 +472,7 @@ void main() {
           Map<String, List<CycleOverride>>? cycleOverridesByProfile = const {},
           Map<String, List<DayEntryMergeEvent>>? mergeEventsByProfile = const {},
           Map<String, List<CustomTag>>? customTagsByProfile = const {},
+          Map<String, List<GuardianNote>>? guardianNotesByProfile = const {},
           required appVersion,
         }) async {
           throw StateError('disk full');

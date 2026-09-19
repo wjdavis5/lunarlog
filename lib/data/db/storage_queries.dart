@@ -387,6 +387,12 @@ mixin LunarLogStorageQueries {
         .get();
   }
 
+  /// One guardian note by [id] (live or tombstoned), or null (Issue #870).
+  /// Used by restore-from-file import to dedup against existing rows before
+  /// reusing a file's id.
+  Future<GuardianNoteData?> getGuardianNoteById(String id) =>
+      _guardianNoteOrNull(id);
+
   /// Stream variant of [getGuardianNotesForProfile] for reactive UI.
   Stream<List<GuardianNoteData>> watchGuardianNotesForProfile(
     String profileId, {

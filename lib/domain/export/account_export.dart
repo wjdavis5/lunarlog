@@ -45,6 +45,7 @@ import '../logging/day_entry_merge_event.dart';
 import '../models/care_note.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
+import '../models/guardian_note.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
 import '../logging/tracking_preferences.dart';
@@ -124,7 +125,13 @@ import 'account_export_remote_source.dart';
 /// per this file's R9 rule, and tombstoned rows are excluded. A reader of
 /// an old (v11) export treats the key's absence as "not yet collected,"
 /// the same v3/v6/v11 precedent.
-const int kAccountExportSchemaVersion = 12;
+/// v13 (Issue #870) adds `profiles[].guardianNotes`: the profile's live
+/// dated guardian notes (one entry per guardian note, carrying id,
+/// localDate, tz, body, updatedAt). Attribution ids (`logged_by_user_id`,
+/// `last_modified_by_user_id`) stay out per this file's R9 rule, and
+/// tombstoned rows are excluded. A reader of an old (v12) export treats
+/// the key's absence as "not yet collected," the same v3/v6/v11/v12 precedent.
+const int kAccountExportSchemaVersion = 13;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -153,6 +160,8 @@ Map<String, Object?> buildAccountExport({
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
   // Issue #824 (kAccountExportSchemaVersion v12).
   Map<String, List<CustomTag>> customTagsByProfile = const {},
+  // Issue #870 (kAccountExportSchemaVersion v13).
+  Map<String, List<GuardianNote>> guardianNotesByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -174,6 +183,7 @@ Map<String, Object?> buildAccountExport({
           cycleOverridesByProfile[profile.id] ?? const [],
           mergeEventsByProfile[profile.id] ?? const [],
           customTagsByProfile[profile.id] ?? const [],
+          guardianNotesByProfile[profile.id] ?? const [],
         ),
     ],
   };
@@ -189,6 +199,7 @@ Map<String, Object?> _exportProfile(
   List<CycleOverride> cycleOverrides,
   List<DayEntryMergeEvent> mergeEvents,
   List<CustomTag> customTags,
+  List<GuardianNote> guardianNotes,
 ) {
   final sortedEntries = [...entries]
     ..sort((a, b) => a.localDate.compareTo(b.localDate));
@@ -204,6 +215,11 @@ Map<String, Object?> _exportProfile(
     ..sort((a, b) => a.id.compareTo(b.id));
   final sortedCustomTags = [...customTags]
     ..sort((a, b) => a.id.compareTo(b.id));
+  final sortedGuardianNotes = [...guardianNotes]
+    ..sort((a, b) {
+      final c = a.localDate.compareTo(b.localDate);
+      return c != 0 ? c : a.id.compareTo(b.id);
+    });
   return {
     'id': profile.id,
     'displayName': profile.displayName,
@@ -273,8 +289,24 @@ Map<String, Object?> _exportProfile(
     'customTags': [
       for (final tag in sortedCustomTags) _exportCustomTag(tag),
     ],
+    // Issue #870 (kAccountExportSchemaVersion v13): the profile's live dated
+    // guardian notes. Attribution ids (`logged_by_user_id`,
+    // `last_modified_by_user_id`) stay out per R9; tombstoned rows excluded.
+    'guardianNotes': [
+      for (final note in sortedGuardianNotes) _exportGuardianNote(note),
+    ],
   };
 }
+
+/// Issue #870 (kAccountExportSchemaVersion v13): one dated guardian note.
+/// Attribution ids stay out per this file's R9 rule; tombstoned rows excluded.
+Map<String, Object?> _exportGuardianNote(GuardianNote note) => {
+      'id': note.id,
+      'localDate': note.localDate.iso,
+      'tz': note.tz,
+      'body': note.body,
+      'updatedAt': note.updatedAt.toUtc().toIso8601String(),
+    };
 
 /// Issue #824 (kAccountExportSchemaVersion v12): one custom tag registry entry.
 /// Attribution id (`created_by`) stays out per R9; tombstoned rows excluded.
@@ -432,6 +464,8 @@ Future<Map<String, Object?>> buildMergedAccountExport({
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
   // Issue #824 (kAccountExportSchemaVersion v12).
   Map<String, List<CustomTag>> customTagsByProfile = const {},
+  // Issue #870 (kAccountExportSchemaVersion v13).
+  Map<String, List<GuardianNote>> guardianNotesByProfile = const {},
   required DateTime exportedAt,
   String appName = kAccountExportAppName,
   required String appVersion,
@@ -447,6 +481,7 @@ Future<Map<String, Object?>> buildMergedAccountExport({
     cycleOverridesByProfile: cycleOverridesByProfile,
     mergeEventsByProfile: mergeEventsByProfile,
     customTagsByProfile: customTagsByProfile,
+    guardianNotesByProfile: guardianNotesByProfile,
     exportedAt: exportedAt,
     appName: appName,
     appVersion: appVersion,

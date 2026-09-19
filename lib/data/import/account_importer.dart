@@ -19,14 +19,16 @@ import 'package:lunarlog/data/repositories/mappers.dart';
 import 'package:lunarlog/domain/import/account_import.dart';
 import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/account_importer.dart';
+import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
+import 'package:lunarlog/domain/models/guardian_note.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
-import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart' as domain;
 import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
     show GuardiansForProfile;
@@ -70,6 +72,9 @@ class DriftAccountImporter implements AccountImporter {
     }
     for (final customTagPlan in plan.customTags) {
       await _applyCustomTag(profileId, customTagPlan);
+    }
+    for (final guardianNotePlan in plan.guardianNotes) {
+      await _applyGuardianNote(profileId, guardianNotePlan);
     }
   }
 
@@ -356,6 +361,39 @@ class DriftAccountImporter implements AccountImporter {
     final conflict = await _storage.getProfileTagRegistryEntriesById(fileId);
     return conflict == null ? fileId : null;
   }
+
+  /// Issue #870 (kAccountExportSchemaVersion v13): writes one `add`-outcome
+  /// guardian note. Additive like [_applyCustomTag] — a `skip` outcome
+  /// writes nothing.
+  Future<void> _applyGuardianNote(
+      String profileId, GuardianNotePlan plan) async {
+    if (plan.outcome != GuardianNoteImportOutcome.add) return;
+    final note = plan.imported;
+    final noteId = await _addGuardianNoteId(note.id, profileId);
+    await _storage.upsertGuardianNote(
+      id: noteId,
+      profileId: profileId,
+      localDate: note.localDate.iso,
+      tz: note.tz,
+      body: note.body,
+      updatedAt: note.updatedAt,
+    );
+  }
+
+  /// [fileId] when it is a syntactically valid ULID AND nothing already
+  /// exists under it on another profile (or live on this profile) — otherwise
+  /// null, so [LunarLogStorage.upsertGuardianNote] mints a fresh id instead.
+  /// If a row exists with [fileId] on this same profile and is tombstoned,
+  /// [fileId] is reused so [LunarLogStorage.upsertGuardianNote] revives it.
+  Future<String?> _addGuardianNoteId(String fileId, String profileId) async {
+    if (!isValidUlid(fileId)) return null;
+    final conflict = await _storage.getGuardianNoteById(fileId);
+    if (conflict == null) return fileId;
+    if (conflict.profileId == profileId && conflict.deletedAt != null) {
+      return fileId;
+    }
+    return null;
+  }
 }
 
 /// The glue between a UI caller and [AccountImporter]/`planImport`:
@@ -370,6 +408,7 @@ class DriftAccountImportCoordinator
     required this.storage,
     this.cycleOverridesRepository,
     this.tagRegistryRepository,
+    this.guardianNotesRepository,
     this.guardiansForProfile,
     this.currentUserId,
     this.currentUserIdProvider,
@@ -394,6 +433,11 @@ class DriftAccountImportCoordinator
   /// `existingCustomTagsByProfileId` for a *matched* profile, so custom tags
   /// plan additively without clobbering existing codes or exceeding the cap.
   final TagRegistryRepository? tagRegistryRepository;
+
+  /// Issue #870 (kAccountExportSchemaVersion v13): feeds `planImport`'s
+  /// `existingGuardianNotesByProfileId` for a *matched* profile, so guardian
+  /// notes plan additively without clobbering existing notes.
+  final GuardianNotesRepository? guardianNotesRepository;
 
   /// Null means "no guardian info available" — every matched profile
   /// fails open (writable) unless archived, the same fail-open precedent
@@ -458,6 +502,7 @@ class DriftAccountImportCoordinator
     final observationsByProfileId = <String, List<domain.Observation>>{};
     final cycleOverridesByProfileId = <String, List<domain.CycleOverride>>{};
     final customTagsByProfileId = <String, List<domain.CustomTag>>{};
+    final guardianNotesByProfileId = <String, List<domain.GuardianNote>>{};
     final guardiansByProfileId = <String, List<ProfileGuardian>>{};
     for (final id in matchedIds) {
       entriesByProfileId[id] = await dayEntriesRepository.listForProfile(id);
@@ -465,6 +510,7 @@ class DriftAccountImportCoordinator
           await observationsRepository.listForProfile(id);
       cycleOverridesByProfileId[id] = await _cycleOverridesFor(id);
       customTagsByProfileId[id] = await _customTagsFor(id);
+      guardianNotesByProfileId[id] = await _guardianNotesFor(id);
       guardiansByProfileId[id] = await _guardiansFor(id);
     }
     return planImport(
@@ -475,6 +521,7 @@ class DriftAccountImportCoordinator
       existingObservationsByProfileId: observationsByProfileId,
       existingCycleOverridesByProfileId: cycleOverridesByProfileId,
       existingCustomTagsByProfileId: customTagsByProfileId,
+      existingGuardianNotesByProfileId: guardianNotesByProfileId,
       writeBlockReason: (profile) => writeBlockReasonFor(
         profile: profile,
         guardians: guardiansByProfileId[profile.id] ?? const [],
@@ -509,6 +556,15 @@ class DriftAccountImportCoordinator
     return [
       for (final row in await storage.getProfileTagRegistry(profileId))
         customTagToDomain(row),
+    ];
+  }
+
+  Future<List<domain.GuardianNote>> _guardianNotesFor(String profileId) async {
+    final repo = guardianNotesRepository;
+    if (repo != null) return repo.listForProfile(profileId);
+    return [
+      for (final row in await storage.getGuardianNotesForProfile(profileId))
+        guardianNoteToDomain(row),
     ];
   }
 

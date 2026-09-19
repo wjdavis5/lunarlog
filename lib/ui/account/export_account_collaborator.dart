@@ -12,6 +12,7 @@ import '../../domain/logging/day_entry_merge_event.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/cycle_override.dart';
 import '../../domain/models/day_entry.dart';
+import '../../domain/models/guardian_note.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
@@ -42,6 +43,7 @@ typedef ExportAccountCollaborator = Future<void> Function({
   Map<String, List<CycleOverride>> cycleOverridesByProfile,
   Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile,
   Map<String, List<CustomTag>> customTagsByProfile,
+  Map<String, List<GuardianNote>> guardianNotesByProfile,
   required String appVersion,
 });
 
@@ -55,7 +57,8 @@ typedef ExportAccountCollaborator = Future<void> Function({
 /// parameter declared, not necessarily used. Issue #128 widens it the same
 /// way with `careNotesByProfile`/`visitPrepByProfile`; Issue #140 review
 /// (LLA-084) with `profileModesByProfile`/`cycleOverridesByProfile`;
-/// Issue #130 with `mergeEventsByProfile`; Issue #824 with `customTagsByProfile`.
+/// Issue #130 with `mergeEventsByProfile`; Issue #824 with `customTagsByProfile`;
+/// Issue #870 with `guardianNotesByProfile`.
 ExportAccountCollaborator defaultExportAccountCollaborator(
   AccountExportWriter writer,
 ) =>
@@ -69,6 +72,7 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
       Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
       Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
       Map<String, List<CustomTag>> customTagsByProfile = const {},
+      Map<String, List<GuardianNote>> guardianNotesByProfile = const {},
       required String appVersion,
     }) =>
         writer.exportAndShare(
@@ -81,5 +85,6 @@ ExportAccountCollaborator defaultExportAccountCollaborator(
           cycleOverridesByProfile: cycleOverridesByProfile,
           mergeEventsByProfile: mergeEventsByProfile,
           customTagsByProfile: customTagsByProfile,
+          guardianNotesByProfile: guardianNotesByProfile,
           appVersion: appVersion,
         );

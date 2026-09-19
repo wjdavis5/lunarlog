@@ -57,6 +57,7 @@ import '../logging/tracking_preferences.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
 import '../models/flow_level.dart';
+import '../models/guardian_note.dart';
 import '../models/lifecycle_mode.dart';
 import '../models/local_date.dart';
 import '../models/measurement_unit.dart';
@@ -311,6 +312,7 @@ class ImportedProfile {
     this.observations = const [],
     this.cycleOverrides = const [],
     this.customTags = const [],
+    this.guardianNotes = const [],
   });
 
   /// The id this profile carried in the exporting device's store — the
@@ -392,6 +394,31 @@ class ImportedProfile {
   /// kAccountExportSchemaVersion v12) — additive for both a created AND a
   /// matched profile (see [_planCustomTags]'s doc comment).
   final List<ImportedCustomTag> customTags;
+
+  /// Every live guardian note the file carries (Issue #870,
+  /// kAccountExportSchemaVersion v13) — additive for both a created AND a
+  /// matched profile (see [_planGuardianNotes]'s doc comment).
+  final List<ImportedGuardianNote> guardianNotes;
+}
+
+/// A `profiles[].guardianNotes[]` element straight out of the parsed document
+/// (Issue #870, kAccountExportSchemaVersion v13) — mirrors
+/// [ImportedCustomTag]'s shape: the file's own values, not yet compared
+/// against anything stored locally.
+class ImportedGuardianNote {
+  const ImportedGuardianNote({
+    required this.id,
+    required this.localDate,
+    required this.tz,
+    required this.body,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final LocalDate localDate;
+  final String tz;
+  final String body;
+  final DateTime updatedAt;
 }
 
 /// A `profiles[].customTags[]` element straight out of the parsed document
@@ -597,6 +624,7 @@ ImportedProfile _parseProfile(Object? raw) {
   final observationsJson = raw['observations'];
   final cycleOverridesJson = raw['cycleOverrides'];
   final customTagsJson = raw['customTags'];
+  final guardianNotesJson = raw['guardianNotes'];
   final dayEntries = [
     for (final e in dayEntriesJson is List ? dayEntriesJson : const [])
       _parseDayEntry(e, profileId: id),
@@ -613,6 +641,10 @@ ImportedProfile _parseProfile(Object? raw) {
     for (final t in customTagsJson is List ? customTagsJson : const [])
       _parseCustomTag(t, profileId: id),
   ];
+  final guardianNotes = [
+    for (final n in guardianNotesJson is List ? guardianNotesJson : const [])
+      _parseGuardianNote(n, profileId: id),
+  ];
   _rejectDuplicateEntryDates(dayEntries, profileId: id);
   _rejectDuplicateProvenance(dayEntries, profileId: id);
   _rejectOrphanObservations(observations, dayEntries, profileId: id);
@@ -621,6 +653,7 @@ ImportedProfile _parseProfile(Object? raw) {
   _rejectDuplicateCustomTagIds(customTags, profileId: id);
   _rejectDuplicateCustomTagCodes(customTags, profileId: id);
   _rejectExcessiveCustomTags(customTags, profileId: id);
+  _rejectDuplicateGuardianNoteIds(guardianNotes, profileId: id);
   return ImportedProfile(
     id: id,
     displayName: _profileDisplayName(raw['displayName']),
@@ -647,6 +680,7 @@ ImportedProfile _parseProfile(Object? raw) {
     observations: observations,
     cycleOverrides: cycleOverrides,
     customTags: customTags,
+    guardianNotes: guardianNotes,
   );
 }
 
@@ -953,6 +987,50 @@ void _rejectExcessiveCustomTags(
   if (customTags.length > kMaxCustomTagsPerProfile) {
     throw _ImportFormatException(
         'Profile $profileId has more than $kMaxCustomTagsPerProfile custom tags.');
+  }
+}
+
+/// A `profiles[].guardianNotes[]` element (Issue #870, kAccountExportSchemaVersion v13).
+ImportedGuardianNote _parseGuardianNote(Object? raw, {required String profileId}) {
+  if (raw is! Map<String, Object?>) {
+    throw _ImportFormatException(
+        'A guardian note for profile $profileId is not an object.');
+  }
+  final id = _requireUlid(raw['id'],
+      what: 'A guardian note id for profile $profileId');
+  final context = 'guardian note $id';
+  final localDate = _parseLocalDate(raw['localDate'], context: context);
+  final tz = _parseTz(raw['tz'], context: context);
+  final rawBody = raw['body'];
+  if (rawBody is! String || rawBody.length > kMaxCareNoteLength) {
+    throw _ImportFormatException('$context has an invalid body.');
+  }
+  final rawUpdatedAt = raw['updatedAt'];
+  final updatedAt = DateTime.tryParse('$rawUpdatedAt');
+  if (rawUpdatedAt == null || updatedAt == null) {
+    throw _ImportFormatException('$context has an invalid updatedAt.');
+  }
+  return ImportedGuardianNote(
+    id: id,
+    localDate: localDate,
+    tz: tz,
+    body: rawBody,
+    updatedAt: updatedAt,
+  );
+}
+
+/// Rejects a profile carrying two guardian notes with the same id (Issue #870).
+void _rejectDuplicateGuardianNoteIds(
+  List<ImportedGuardianNote> notes, {
+  required String profileId,
+}) {
+  final seen = <String>{};
+  for (final n in notes) {
+    if (!seen.add(n.id)) {
+      throw _ImportFormatException(
+          'Profile $profileId has more than one guardian note with id '
+          '(${_truncateForMessage(n.id)}).');
+    }
   }
 }
 
@@ -1505,6 +1583,17 @@ class CustomTagPlan {
   final ImportedCustomTag imported;
 }
 
+/// Whether a guardian note is added as a new row or left alone because one
+/// already exists with the same id (Issue #870, kAccountExportSchemaVersion v13).
+enum GuardianNoteImportOutcome { add, skip }
+
+class GuardianNotePlan {
+  const GuardianNotePlan({required this.outcome, required this.imported});
+
+  final GuardianNoteImportOutcome outcome;
+  final ImportedGuardianNote imported;
+}
+
 /// What happened to one `profiles[]` entry.
 enum ProfileImportOutcome { created, matched, skipped }
 
@@ -1530,6 +1619,7 @@ class ProfilePlan {
     this.observations = const [],
     this.cycleOverrides = const [],
     this.customTags = const [],
+    this.guardianNotes = const [],
     this.hasOtherGuardians = false,
     this.restoredFromTombstone = false,
   });
@@ -1574,6 +1664,10 @@ class ProfilePlan {
   /// Issue #824 (kAccountExportSchemaVersion v12): additive for both a
   /// created AND a matched profile — see [_planCustomTags]'s doc comment.
   final List<CustomTagPlan> customTags;
+
+  /// Issue #870 (kAccountExportSchemaVersion v13): additive for both a
+  /// created AND a matched profile — see [_planGuardianNotes]'s doc comment.
+  final List<GuardianNotePlan> guardianNotes;
 
   /// Whether this *matched* profile has an accepted guardian other than
   /// the importing session's own user (Issue #140 review, item 10) — false
@@ -1623,6 +1717,8 @@ class ImportPlanSummary {
     this.cycleOverridesSkipped = 0,
     this.customTagsAdded = 0,
     this.customTagsSkipped = 0,
+    this.guardianNotesAdded = 0,
+    this.guardianNotesSkipped = 0,
   });
 
   final int profilesCreated;
@@ -1643,6 +1739,11 @@ class ImportPlanSummary {
   final int customTagsAdded;
   final int customTagsSkipped;
 
+  /// Issue #870 (kAccountExportSchemaVersion v13): mirrors
+  /// [customTagsAdded]/[customTagsSkipped]'s shape for guardian notes.
+  final int guardianNotesAdded;
+  final int guardianNotesSkipped;
+
   /// Merged entries where a non-empty file note was dropped because the
   /// existing row already had one (Issue #140 review, item 9) — report
   /// honesty: [entriesMerged] alone doesn't say whether the file's own
@@ -1662,6 +1763,7 @@ class ImportPlanSummary {
     final observationCounts = _observationOutcomeCounts(profiles);
     final cycleOverrideCounts = _cycleOverrideOutcomeCounts(profiles);
     final customTagCounts = _customTagOutcomeCounts(profiles);
+    final guardianNoteCounts = _guardianNoteOutcomeCounts(profiles);
     return ImportPlanSummary(
       profilesCreated: counts.created,
       profilesMatched: counts.matched,
@@ -1675,6 +1777,8 @@ class ImportPlanSummary {
       cycleOverridesSkipped: cycleOverrideCounts.skipped,
       customTagsAdded: customTagCounts.added,
       customTagsSkipped: customTagCounts.skipped,
+      guardianNotesAdded: guardianNoteCounts.added,
+      guardianNotesSkipped: guardianNoteCounts.skipped,
       skippedProfiles: [
         for (final p in profiles)
           if (p.outcome == ProfileImportOutcome.skipped)
@@ -1764,6 +1868,23 @@ _CustomTagCounts _customTagOutcomeCounts(List<ProfilePlan> profiles) {
   for (final p in profiles) {
     for (final t in p.customTags) {
       if (t.outcome == CustomTagImportOutcome.add) {
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+  }
+  return (added: added, skipped: skipped);
+}
+
+typedef _GuardianNoteCounts = ({int added, int skipped});
+
+_GuardianNoteCounts _guardianNoteOutcomeCounts(List<ProfilePlan> profiles) {
+  var added = 0;
+  var skipped = 0;
+  for (final p in profiles) {
+    for (final n in p.guardianNotes) {
+      if (n.outcome == GuardianNoteImportOutcome.add) {
         added++;
       } else {
         skipped++;
@@ -1972,6 +2093,28 @@ List<CustomTagPlan> _planCustomTags(
   ];
 }
 
+/// Decides every imported guardian note's outcome for one profile (Issue
+/// #870, kAccountExportSchemaVersion v13): `add` when nothing live already
+/// occupies its `id`, `skip` otherwise. Deliberately additive for BOTH a
+/// created and a matched profile — the same "restore adds what's missing,
+/// never overwrites" policy applies to it.
+List<GuardianNotePlan> _planGuardianNotes(
+  List<ImportedGuardianNote> imported,
+  List<GuardianNote> existing,
+) {
+  final existingIds = {for (final n in existing) n.id};
+  final seen = <String>{...existingIds};
+  return [
+    for (final n in imported)
+      GuardianNotePlan(
+        outcome: seen.add(n.id)
+            ? GuardianNoteImportOutcome.add
+            : GuardianNoteImportOutcome.skip,
+        imported: n,
+      ),
+  ];
+}
+
 ProfilePlan _planProfile(
   ImportedProfile imported,
   Profile? existing,
@@ -1980,6 +2123,7 @@ ProfilePlan _planProfile(
   List<Observation> existingObservations,
   List<CycleOverride> existingCycleOverrides,
   List<CustomTag> existingCustomTags,
+  List<GuardianNote> existingGuardianNotes,
   String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians,
 ) {
@@ -2016,6 +2160,7 @@ ProfilePlan _planProfile(
       observations: _planObservations(imported.observations, const []),
       cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),
       customTags: _planCustomTags(imported.customTags, const []),
+      guardianNotes: _planGuardianNotes(imported.guardianNotes, const []),
     );
   }
   final blockReason = writeBlockReason(target);
@@ -2040,6 +2185,8 @@ ProfilePlan _planProfile(
     cycleOverrides:
         _planCycleOverrides(imported.cycleOverrides, existingCycleOverrides),
     customTags: _planCustomTags(imported.customTags, existingCustomTags),
+    guardianNotes:
+        _planGuardianNotes(imported.guardianNotes, existingGuardianNotes),
     hasOtherGuardians: hasOtherGuardians(target),
     restoredFromTombstone: existing == null,
   );
@@ -2085,6 +2232,8 @@ ImportPlan planImport({
   Map<String, List<CycleOverride>> existingCycleOverridesByProfileId = const {},
   // Issue #824 (kAccountExportSchemaVersion v12): same contract for custom tags.
   Map<String, List<CustomTag>> existingCustomTagsByProfileId = const {},
+  // Issue #870 (kAccountExportSchemaVersion v13): same contract for guardian notes.
+  Map<String, List<GuardianNote>> existingGuardianNotesByProfileId = const {},
   required String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians = _noOtherGuardians,
 }) {
@@ -2099,6 +2248,7 @@ ImportPlan planImport({
         existingObservationsByProfileId[imported.id] ?? const [],
         existingCycleOverridesByProfileId[imported.id] ?? const [],
         existingCustomTagsByProfileId[imported.id] ?? const [],
+        existingGuardianNotesByProfileId[imported.id] ?? const [],
         writeBlockReason,
         hasOtherGuardians,
       ),

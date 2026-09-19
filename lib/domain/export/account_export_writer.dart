@@ -11,6 +11,7 @@ import '../logging/day_entry_merge_event.dart';
 import '../models/care_note.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
+import '../models/guardian_note.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
 import '../models/visit_prep_item.dart';
@@ -37,6 +38,8 @@ abstract interface class AccountExportWriter {
     Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
     // Issue #824 (kAccountExportSchemaVersion v12).
     Map<String, List<CustomTag>> customTagsByProfile = const {},
+    // Issue #870 (kAccountExportSchemaVersion v13).
+    Map<String, List<GuardianNote>> guardianNotesByProfile = const {},
     required String appVersion,
   });
 }

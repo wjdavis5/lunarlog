@@ -86,6 +86,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
+import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
@@ -927,6 +928,7 @@ class _AccountSectionState extends State<AccountSection> {
     final cycleOverridesByProfile = <String, List<CycleOverride>>{};
     final mergeEventsByProfile = <String, List<DayEntryMergeEvent>>{};
     final customTagsByProfile = <String, List<CustomTag>>{};
+    final guardianNotesByProfile = <String, List<GuardianNote>>{};
     for (final profile in profiles) {
       final snapshot = await snapshotRepo.forProfile(profile.id);
       entriesByProfile[profile.id] = snapshot.entries;
@@ -935,6 +937,7 @@ class _AccountSectionState extends State<AccountSection> {
       cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
       mergeEventsByProfile[profile.id] = snapshot.mergeEvents;
       customTagsByProfile[profile.id] = snapshot.customTags;
+      guardianNotesByProfile[profile.id] = snapshot.guardianNotes;
       careNotesByProfile[profile.id] =
           await careContentRepo.listCareNotes(profile.id);
       visitPrepByProfile[profile.id] =
@@ -951,6 +954,7 @@ class _AccountSectionState extends State<AccountSection> {
       cycleOverridesByProfile: cycleOverridesByProfile,
       mergeEventsByProfile: mergeEventsByProfile,
       customTagsByProfile: customTagsByProfile,
+      guardianNotesByProfile: guardianNotesByProfile,
       appVersion: kAppVersionForExport,
     );
   }

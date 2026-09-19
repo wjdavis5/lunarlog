@@ -32,6 +32,7 @@ import '../../domain/logging/day_entry_merge_event.dart';
 import '../../domain/models/care_note.dart';
 import '../../domain/models/cycle_override.dart';
 import '../../domain/models/day_entry.dart';
+import '../../domain/models/guardian_note.dart';
 import '../../domain/models/observation.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
@@ -58,6 +59,7 @@ class PlatformAccountExportWriter implements AccountExportWriter {
     Map<String, List<CycleOverride>> cycleOverridesByProfile = const {},
     Map<String, List<DayEntryMergeEvent>> mergeEventsByProfile = const {},
     Map<String, List<CustomTag>> customTagsByProfile = const {},
+    Map<String, List<GuardianNote>> guardianNotesByProfile = const {},
     required String appVersion,
   }) async {
     final exportedAt = DateTime.now().toUtc();
@@ -71,6 +73,7 @@ class PlatformAccountExportWriter implements AccountExportWriter {
       cycleOverridesByProfile: cycleOverridesByProfile,
       mergeEventsByProfile: mergeEventsByProfile,
       customTagsByProfile: customTagsByProfile,
+      guardianNotesByProfile: guardianNotesByProfile,
       exportedAt: exportedAt,
       appVersion: appVersion,
       remoteSource: remoteSource,
