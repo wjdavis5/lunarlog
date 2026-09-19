@@ -55,6 +55,7 @@ import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
+import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -430,6 +431,7 @@ AppDependencies buildAppDependencies({
       () => SupabaseProfileErasureService(
         client: client!,
         profiles: profiles,
+        importedDataPurge: DriftImportedDataPurgeRepository(storage),
         syncEngine: syncEngine,
       ),
     ),

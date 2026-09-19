@@ -2120,6 +2120,48 @@ abstract class AppLocalizations {
   /// **'Failed to accept invitation. Please try again.'**
   String get sharingFailureOther;
 
+  /// ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart).
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t purge while offline. Check your connection and try again.'**
+  String get profileErasureFailureNetwork;
+
+  /// ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it.
+  ///
+  /// In en, this message translates to:
+  /// **'Only that profile\'s primary guardian can purge its data.'**
+  String get profileErasureFailureUnauthorized;
+
+  /// ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to your account to purge imported data.'**
+  String get profileErasureFailureNotSignedIn;
+
+  /// ProfileErasureFailure.invalidSource copy at the purge surface.
+  ///
+  /// In en, this message translates to:
+  /// **'That import source isn\'t supported. Nothing was purged.'**
+  String get profileErasureFailureInvalidSource;
+
+  /// ProfileErasureFailure.other copy at the purge surface.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to purge imported data. Check connection and try again.'**
+  String get profileErasureFailureOther;
+
+  /// Shown in the purge dialog when the selected profile has no imported rows for any source valid on this platform, instead of offering a no-op purge (issue #883).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has no imported data from a supported source.'**
+  String get purgeImportedDataNoRows;
+
+  /// The purge dialog's count preview (issue #883): how many local rows the selected profile+source purge would remove, e.g. '109 entries from File import'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 entry} other{{count} entries}} from {source}'**
+  String purgeImportedDataPreview(int count, String source);
+
   /// InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart).
   ///
   /// In en, this message translates to:

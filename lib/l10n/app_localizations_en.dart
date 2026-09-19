@@ -1198,6 +1198,41 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to accept invitation. Please try again.';
 
   @override
+  String get profileErasureFailureNetwork =>
+      'Can\'t purge while offline. Check your connection and try again.';
+
+  @override
+  String get profileErasureFailureUnauthorized =>
+      'Only that profile\'s primary guardian can purge its data.';
+
+  @override
+  String get profileErasureFailureNotSignedIn =>
+      'Sign in to your account to purge imported data.';
+
+  @override
+  String get profileErasureFailureInvalidSource =>
+      'That import source isn\'t supported. Nothing was purged.';
+
+  @override
+  String get profileErasureFailureOther =>
+      'Failed to purge imported data. Check connection and try again.';
+
+  @override
+  String get purgeImportedDataNoRows =>
+      'This profile has no imported data from a supported source.';
+
+  @override
+  String purgeImportedDataPreview(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count entries',
+      one: '1 entry',
+    );
+    return '$_temp0 from $source';
+  }
+
+  @override
   String get inviteCancellationRevoked => 'Invitation cancelled';
 
   @override

@@ -1484,6 +1484,39 @@
     "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."
   },
 
+  "profileErasureFailureNetwork": "Can't purge while offline. Check your connection and try again.",
+  "@profileErasureFailureNetwork": {
+    "description": "ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart)."
+  },
+  "profileErasureFailureUnauthorized": "Only that profile's primary guardian can purge its data.",
+  "@profileErasureFailureUnauthorized": {
+    "description": "ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it."
+  },
+  "profileErasureFailureNotSignedIn": "Sign in to your account to purge imported data.",
+  "@profileErasureFailureNotSignedIn": {
+    "description": "ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883)."
+  },
+  "profileErasureFailureInvalidSource": "That import source isn't supported. Nothing was purged.",
+  "@profileErasureFailureInvalidSource": {
+    "description": "ProfileErasureFailure.invalidSource copy at the purge surface."
+  },
+  "profileErasureFailureOther": "Failed to purge imported data. Check connection and try again.",
+  "@profileErasureFailureOther": {
+    "description": "ProfileErasureFailure.other copy at the purge surface."
+  },
+  "purgeImportedDataNoRows": "This profile has no imported data from a supported source.",
+  "@purgeImportedDataNoRows": {
+    "description": "Shown in the purge dialog when the selected profile has no imported rows for any source valid on this platform, instead of offering a no-op purge (issue #883)."
+  },
+  "purgeImportedDataPreview": "{count, plural, =1{1 entry} other{{count} entries}} from {source}",
+  "@purgeImportedDataPreview": {
+    "description": "The purge dialog's count preview (issue #883): how many local rows the selected profile+source purge would remove, e.g. '109 entries from File import'.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "source": { "type": "String" }
+    }
+  },
+
   "inviteCancellationRevoked": "Invitation cancelled",
   "@inviteCancellationRevoked": {
     "description": "InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart)."

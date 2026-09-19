@@ -245,6 +245,7 @@ Future<void> _pump(
   ExportAccountCollaborator? exportAccount,
   AuthController? auth,
   ProfileErasureService? profileErasureService,
+  TargetPlatform? platform,
 }) async {
   addTearDown(profiles.dispose);
   final resolvedDayEntries = dayEntries ?? FakeDayEntriesRepository();
@@ -280,6 +281,7 @@ Future<void> _pump(
             showExport: showExport,
             exportAccount: exportAccount,
             profileErasureService: profileErasureService,
+            platform: platform,
           ),
         ),
       ),
@@ -608,7 +610,8 @@ void main() {
       'exact selection and shows a confirmation',
       (tester) async {
         final profiles = FakeProfilesRepository([_profile('p1')]);
-        final service = _FakeProfileErasureService();
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.clueImport: 3};
         await _pump(
           tester,
           profiles: profiles,
@@ -619,12 +622,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Purge imported data'), findsWidgets);
 
-        // Default selections: the first profile, the first source.
+        // The default is now a source the profile actually has (clueImport),
+        // not blindly `values.first`.
         await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
         await tester.pumpAndSettle();
 
         expect(service.purgedProfileId, 'p1');
-        expect(service.purgedSource, PurgeableImportSource.values.first);
+        expect(service.purgedSource, PurgeableImportSource.clueImport);
         expect(
           find.textContaining('Purged'),
           findsOneWidget,
@@ -650,6 +654,7 @@ void main() {
     testWidgets('a failed purge surfaces honest error copy', (tester) async {
       final profiles = FakeProfilesRepository([_profile('p1')]);
       final service = _FakeProfileErasureService()
+        ..counts = {PurgeableImportSource.clueImport: 2}
         ..purgeError = const ProfileErasureFailure.unauthorized();
       await _pump(tester, profiles: profiles, profileErasureService: service);
 
@@ -666,6 +671,182 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'the count preview names exactly how many rows the selected '
+      'profile+source would remove (issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.fileImport: 109};
+        await _pump(tester, profiles: profiles, profileErasureService: service);
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('109 entries from File import'),
+          findsOneWidget,
+          reason: 'the preview must match the seeded row count',
+        );
+      },
+    );
+
+    testWidgets(
+      'the default source is one the profile actually has, never a no-op '
+      'Clue-import default (issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {
+            PurgeableImportSource.clueImport: 0,
+            PurgeableImportSource.fileImport: 5,
+          };
+        await _pump(tester, profiles: profiles, profileErasureService: service);
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+
+        expect(
+          tester
+              .widget<DropdownButton<PurgeableImportSource>>(
+                  key('purge-source-dropdown'))
+              .value,
+          PurgeableImportSource.fileImport,
+        );
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+        expect(service.purgedSource, PurgeableImportSource.fileImport);
+      },
+    );
+
+    testWidgets(
+      'a source that cannot exist on this platform is absent from the '
+      'dropdown (issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.healthkit: 1};
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+          platform: TargetPlatform.iOS,
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('purge-source-dropdown'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Health Connect (Android)'), findsNothing);
+        expect(find.text('Apple Health (iOS)'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'Android offers Health Connect but not the iOS-only Apple Health '
+      'sources',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.healthConnect: 1};
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+          platform: TargetPlatform.android,
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        await tester.tap(key('purge-source-dropdown'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Health Connect (Android)'), findsWidgets);
+        expect(find.text('Apple Health (iOS)'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a profile with no imported rows says so and offers no purge instead '
+      'of a silent no-op (issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService();
+        await _pump(tester, profiles: profiles, profileErasureService: service);
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+
+        expect(key('purge-no-rows'), findsOneWidget);
+        expect(key('purge-source-dropdown'), findsNothing);
+        final purgeButton = tester.widget<DestructiveButton>(
+          find.widgetWithText(DestructiveButton, 'Purge'),
+        );
+        expect(purgeButton.onPressed, isNull);
+      },
+    );
+
+    testWidgets(
+      'a signed-out caller who succeeds never sees the primary-guardian copy '
+      '(issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.fileImport: 1};
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+          auth: _signedOut(),
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+
+        expect(service.purgeCalls, 1);
+        expect(find.textContaining('Purged'), findsOneWidget);
+        expect(
+          find.text("Only that profile's primary guardian can purge its data."),
+          findsNothing,
+        );
+        expect(key('your-data-purge-error'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a signed-out caller whose service reports notSignedIn sees the '
+      '"sign in" copy, never the primary-guardian copy (issue #883)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.fileImport: 1}
+          ..purgeError = const ProfileErasureFailure.notSignedIn();
+        await _pump(
+          tester,
+          profiles: profiles,
+          profileErasureService: service,
+          auth: _signedOut(),
+        );
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Sign in to your account to purge imported data.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text("Only that profile's primary guardian can purge its data."),
+          findsNothing,
+        );
+      },
+    );
   });
 }
 
@@ -677,9 +858,24 @@ class _FakeProfileErasureService implements ProfileErasureService {
   int purgeCalls = 0;
   Object? purgeError;
 
+  /// Issue #883: canned per-source counts for the dialog's preview/default.
+  Map<PurgeableImportSource, int> counts = const {};
+  Object? countsError;
+
   @override
   Future<void> deleteProfile({required String profileId}) =>
       throw UnimplementedError('not exercised by this test file');
+
+  @override
+  Future<Map<PurgeableImportSource, int>> importedDataCounts(
+      String profileId) async {
+    final error = countsError;
+    if (error != null) throw error;
+    return {
+      for (final source in PurgeableImportSource.values)
+        source: counts[source] ?? 0,
+    };
+  }
 
   @override
   Future<void> purgeImportedData({
