@@ -343,5 +343,26 @@ void main() {
       expect(find.byType(InlineError), findsNothing,
           reason: 'a successful retry clears the error');
     });
+
+    testWidgets('dynamic type accessibility (#836): stacks estimate and chip at large text scale with no overflow',
+        (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.lightTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(3.1),
+          ),
+          child: child!,
+        ),
+        home: Scaffold(body: SingleChildScrollView(child: cardFor())),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Next period estimate: September 4, 2026'), findsOneWidget);
+      expect(find.byKey(const ValueKey('today-card-confidence-chip')), findsOneWidget);
+    });
   });
 }

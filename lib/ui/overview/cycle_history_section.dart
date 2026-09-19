@@ -223,18 +223,27 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: LLSpace.space2,
+              runSpacing: LLSpace.space1,
               children: [
-                Expanded(
-                  child: Text(
-                    'Cycle history',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                Text(
+                  'Cycle history',
+                  style: theme.textTheme.titleMedium,
                 ),
-                if (widget.onCompareSelected != null &&
-                    view.items.length >= kMinCyclesToCompare)
-                  _compareToggleButton(context),
-                if (view.confidence != null) _confidenceChip(context, view),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: LLSpace.space2,
+                  runSpacing: LLSpace.space1,
+                  children: [
+                    if (widget.onCompareSelected != null &&
+                        view.items.length >= kMinCyclesToCompare)
+                      _compareToggleButton(context),
+                    if (view.confidence != null) _confidenceChip(context, view),
+                  ],
+                ),
               ],
             ),
             if (widget.notEnough != null) ...[

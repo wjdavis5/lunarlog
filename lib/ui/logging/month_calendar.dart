@@ -1501,12 +1501,15 @@ class _MonthCalendarState extends State<MonthCalendar>
                   key: const ValueKey('month-year-label'),
                   onTap: _openMonthYearPicker,
                   child: Center(
-                    child: Text(
-                      l10n.calendarMonthYearLabel(
-                        dates.monthNames(locale: locale)[_displayedMonth - 1],
-                        _displayedYear,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        l10n.calendarMonthYearLabel(
+                          dates.monthNames(locale: locale)[_displayedMonth - 1],
+                          _displayedYear,
+                        ),
+                        style: theme.textTheme.titleMedium,
                       ),
-                      style: theme.textTheme.titleMedium,
                     ),
                   ),
                 ),
@@ -1550,7 +1553,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           // would otherwise squeeze the grid out entirely.
           ConstrainedBox(
             constraints: BoxConstraints(
-              maxHeight: outerConstraints.maxHeight * 0.6,
+              maxHeight: outerConstraints.maxHeight * 0.35,
             ),
             child: SingleChildScrollView(
               child: Column(

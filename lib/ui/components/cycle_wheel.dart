@@ -222,7 +222,12 @@ class CycleWheel extends StatelessWidget {
           ),
           child: Center(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: LLSpace.space5),
+              // Issue #836: symmetric horizontal-only padding allowed large
+              // text (e.g. Dynamic Type XXXL) to expand vertically until it
+              // overlapped the ring's stroke and today's dot marker. Padding on
+              // all sides ensures FittedBox constrains the content safely
+              // inside the inner circle.
+              padding: const EdgeInsets.all(LLSpace.space5),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: _centerContent(theme, l10n),
