@@ -55,15 +55,17 @@ import 'tags.dart';
 /// keyed by the day offset from estimated ovulation (negative = before
 /// ovulation, `0` = ovulation day), in chronological order.
 ///
-/// Values are the point estimates reported by Wilcox, Weinberg & Baird
-/// (NEJM 1995) for the probability of clinical pregnancy following a
-/// single act of intercourse on that day. They are population averages,
-/// not a measurement of any individual's fertility, and the day-after
-/// probability is carried at the study's reported value even though the
-/// egg is no longer viable — it is part of the published curve, and
-/// omitting it would silently restate the study. A named, cited table
-/// rather than inline literals so the evidence basis can never drift from
-/// the numbers.
+/// The curve ends at day `0`. Wilcox, Weinberg & Baird (NEJM 1995,
+/// doi:10.1056/NEJM199512073332301) report that conception occurred only
+/// during the six-day period ending on the estimated day of ovulation, so
+/// the study publishes no probability for the day after ovulation and none
+/// is invented here.
+///
+/// Values are the point estimates from that study for the probability of
+/// clinical pregnancy following a single act of intercourse on that day.
+/// They are population averages, not a measurement of any individual's
+/// fertility. A named, cited table rather than inline literals so the
+/// evidence basis can never drift from the numbers.
 const Map<int, double> kConceptionProbabilityByDayOffset = {
   -5: 0.10,
   -4: 0.16,
@@ -71,7 +73,6 @@ const Map<int, double> kConceptionProbabilityByDayOffset = {
   -2: 0.27,
   -1: 0.31,
   0: 0.33,
-  1: 0.10,
 };
 
 /// One day's estimated conception likelihood: [probability] is the
@@ -102,9 +103,9 @@ class ConceptionDayLikelihood {
 }
 
 /// A full cycle's per-day conception-likelihood curve: the estimated
-/// ovulation day, the seven likelihood days around it, the window bounds,
-/// and the peak day — all at the same [tier] as the period estimate the
-/// window was anchored on (never a second confidence vocabulary, the
+/// ovulation day, the six likelihood days in the study's window, the window
+/// bounds, and the peak day — all at the same [tier] as the period estimate
+/// the window was anchored on (never a second confidence vocabulary, the
 /// #213/#143 rule).
 class ConceptionEstimate {
   const ConceptionEstimate({
@@ -121,8 +122,8 @@ class ConceptionEstimate {
   /// assumed luteal-phase length.
   final LocalDate estimatedOvulation;
 
-  /// The per-day curve in chronological order (ovulation − 5 … ovulation
-  /// + 1) — the days this estimator calls the conception window.
+  /// The per-day curve in chronological order (ovulation − 5 … ovulation)
+  /// — the six-day conception window the study reports.
   final List<ConceptionDayLikelihood> days;
 
   /// First day of the conception window (inclusive).

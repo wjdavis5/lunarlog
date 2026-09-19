@@ -21,9 +21,10 @@ distinction is stated in-app, not only here.
 
 The estimator uses the day-by-day conception probabilities reported by
 Wilcox, Weinberg & Baird, *"Timing of sexual intercourse in relation to
-ovulation"*, **N Engl J Med** 1995;333(23):1517-1521. These are the
-population-average probabilities of a clinical pregnancy following a single
-act of intercourse on a given day relative to ovulation:
+ovulation"*, **N Engl J Med** 1995;333(23):1517-1521
+([doi:10.1056/NEJM199512073332301](https://doi.org/10.1056/NEJM199512073332301)).
+These are the population-average probabilities of a clinical pregnancy
+following a single act of intercourse on a given day relative to ovulation:
 
 | Day relative to ovulation | Probability |
 | ------------------------- | ----------- |
@@ -33,7 +34,11 @@ act of intercourse on a given day relative to ovulation:
 | −2                        | 0.27        |
 | −1                        | 0.31        |
 | 0 (ovulation)             | 0.33        |
-| +1                        | 0.10        |
+
+The study reports that conception occurred only during the six-day period
+ending on the estimated day of ovulation, so there is no published
+probability for the day after ovulation and the curve ends at day 0. (The
+0.10 point estimate belongs to day −5, not to any day after ovulation.)
 
 The table is a named constant (`kConceptionProbabilityByDayOffset`) in
 `lib/domain/conceive.dart`, not inline literals, so the numbers and this
@@ -46,7 +51,7 @@ The estimator is pure calendar arithmetic over the same period-start history
 from. Estimated ovulation is the predicted next period start minus
 `kDefaultLutealPhaseDays` (14 days — Clue's own published constant, shared
 with issue #143's fertile-window estimate so the two can never disagree about
-the luteal assumption). The cited days −5 … +1 then land on their civil
+the luteal assumption). The cited days −5 … 0 then land on their civil
 dates. The estimate carries the **same `CycleConfidence` tier** as the
 period estimate it is derived from — it never invents a second confidence
 vocabulary (the #213/#143 rule).

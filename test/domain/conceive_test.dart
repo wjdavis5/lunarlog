@@ -14,6 +14,8 @@ import 'package:lunarlog/domain/prediction/fertile_window.dart'
     show kDefaultLutealPhaseDays;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/ui/overview/estimate_copy.dart'
+    show kConceiveEvidenceBasis;
 
 LocalDate d(int y, int m, int day) => LocalDate(y, m, day);
 
@@ -70,10 +72,10 @@ void expectSameEstimate(ConceptionEstimate? a, ConceptionEstimate? b) {
 
 void main() {
   group('kConceptionProbabilityByDayOffset (the cited curve)', () {
-    test('peaks on the estimated ovulation day and covers ovulation -5 … +1',
+    test('peaks on the estimated ovulation day and covers ovulation -5 … 0',
         () {
       expect(kConceptionProbabilityByDayOffset.keys.toList(),
-          [-5, -4, -3, -2, -1, 0, 1]);
+          [-5, -4, -3, -2, -1, 0]);
       expect(kConceptionProbabilityByDayOffset[0], 0.33);
       expect(
         kConceptionProbabilityByDayOffset.values
@@ -83,9 +85,27 @@ void main() {
       );
     });
 
-    test('the window bounds are the same lead/trail span as #143', () {
+    test('has no positive offset — the study publishes no day-after value', () {
+      expect(
+        kConceptionProbabilityByDayOffset.keys.where((offset) => offset > 0),
+        isEmpty,
+        reason: 'the study window ends on the day of ovulation',
+      );
+      expect(kConceptionProbabilityByDayOffset.keys.last, 0);
+      expect(kConceptionProbabilityByDayOffset[1], isNull);
+    });
+
+    test('the window starts five days before ovulation', () {
       expect(kConceptionProbabilityByDayOffset.keys.first, -5);
-      expect(kConceptionProbabilityByDayOffset.keys.last, 1);
+    });
+  });
+
+  group('kConceiveEvidenceBasis (user-facing copy)', () {
+    test('does not claim a day-after value', () {
+      final copy = kConceiveEvidenceBasis.toLowerCase();
+      expect(copy, isNot(contains('day after')));
+      expect(copy, isNot(contains('after ovulation')));
+      expect(copy, isNot(contains('+1')));
     });
   });
 
@@ -101,11 +121,11 @@ void main() {
           d(2026, 5, 21).addDays(-kDefaultLutealPhaseDays));
       expect(estimate.estimatedOvulation, d(2026, 5, 7));
       expect(estimate.fertileWindowStart, d(2026, 5, 2));
-      expect(estimate.fertileWindowEnd, d(2026, 5, 8));
+      expect(estimate.fertileWindowEnd, d(2026, 5, 7));
       expect(estimate.peakDay, estimate.estimatedOvulation);
       expect(estimate.peakProbability, 0.33);
       expect(estimate.tier, CycleConfidence.high);
-      expect(estimate.days, hasLength(7));
+      expect(estimate.days, hasLength(6));
       expect(estimate.days.first.date, estimate.fertileWindowStart);
       expect(estimate.days.last.date, estimate.fertileWindowEnd);
       for (final day in estimate.days) {
@@ -113,6 +133,20 @@ void main() {
             kConceptionProbabilityByDayOffset[
                 day.date.difference(estimate.estimatedOvulation)]);
       }
+    });
+
+    test('exposes no per-day likelihood on the day after ovulation', () {
+      final estimate = conceptionEstimateFor(
+        nextPeriodStart: d(2026, 5, 21),
+        tier: CycleConfidence.high,
+      );
+      final dayAfter = estimate.estimatedOvulation.addDays(1);
+      expect(dayAfter.isAfter(estimate.fertileWindowEnd), isTrue,
+          reason: 'the window must close on the day of ovulation');
+      expect(estimate.days.map((day) => day.date), isNot(contains(dayAfter)));
+      expect(estimate.days.where((day) => day.date == dayAfter), isEmpty,
+          reason: 'no probability may be invented for a day the study does '
+              'not report');
     });
 
     test('carries the caller\'s tier through unchanged (never a second '
@@ -167,7 +201,7 @@ void main() {
       expect(estimate, isNotNull);
       expect(estimate!.estimatedOvulation, d(2026, 5, 7));
       expect(estimate.fertileWindowStart, d(2026, 5, 2));
-      expect(estimate.fertileWindowEnd, d(2026, 5, 8));
+      expect(estimate.fertileWindowEnd, d(2026, 5, 7));
     });
 
     test('a different bleed history produces a different curve', () {

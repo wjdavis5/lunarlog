@@ -110,7 +110,7 @@ class ConceiveCard extends StatelessWidget {
   }
 }
 
-/// The per-day curve as a row of seven visually distinct day tiles — each
+/// The per-day curve as a row of six visually distinct day tiles — each
 /// window day is filled with the same tertiary-hue `fertileBand`/`fertileBorder`
 /// token the calendar band uses (#143), and the peak day is additionally
 /// bold and outlined, so the distinction never rests on colour alone.
