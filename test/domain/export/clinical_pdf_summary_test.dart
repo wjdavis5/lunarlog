@@ -269,4 +269,152 @@ void main() {
   test('the not-a-diagnosis line is a stable domain constant', () {
     expect(kClinicalSummaryNotDiagnosisLine, contains('not a diagnosis'));
   });
+
+  group('Issue #797 — kMinCycleDays floor and irregular cycle handling', () {
+    test(
+        'cycles shorter than kMinCycleDays (15 days) are dropped from cycle '
+        'length statistics and grid, but kept in the table flagged isIrregular',
+        () {
+      // 7 starts producing 6 completed cycles:
+      // 2026-04-12 -> 2026-05-11 (29 days)
+      // 2026-05-11 -> 2026-06-08 (28 days)
+      // 2026-06-08 -> 2026-06-15 (7 days)   <- irregular (< 15 days)
+      // 2026-06-15 -> 2026-07-08 (23 days)
+      // 2026-07-08 -> 2026-08-05 (28 days)
+      // 2026-08-05 -> 2026-09-03 (29 days)
+      // 2026-09-03 -> open cycle
+      final exactStarts = [
+        LocalDate(2026, 4, 12),
+        LocalDate(2026, 5, 11),
+        LocalDate(2026, 6, 8),
+        LocalDate(2026, 6, 15),
+        LocalDate(2026, 7, 8),
+        LocalDate(2026, 8, 5),
+        LocalDate(2026, 9, 3),
+      ];
+      final exactEntries = [
+        for (var i = 0; i < exactStarts.length; i++) ...[
+          _bleed('e$i-a', exactStarts[i]),
+          _bleed('e$i-b', exactStarts[i].addDays(1)),
+        ],
+      ];
+
+      final summary = buildClinicalPdfSummary(
+        profile: _profile(),
+        dayEntries: exactEntries,
+        range: FhirExportRange.everything,
+        rangeLabel: 'Everything',
+        generatedAt: DateTime.utc(2026, 9, 18, 12),
+      );
+
+      // All 6 completed cycles are preserved in the history table.
+      expect(summary.cycles, hasLength(6));
+      expect(summary.cyclesInRange, 6);
+      expect(summary.excludedCycleCount, 0);
+
+      // Row 3 is the 7-day cycle: flagged irregular, not omitted by user.
+      final shortCycle = summary.cycles[2];
+      expect(shortCycle.cycleLengthDays, 7);
+      expect(shortCycle.isIrregular, isTrue);
+      expect(shortCycle.excludedFromAverages, isFalse);
+
+      // Other rows are normal: not irregular.
+      expect(summary.cycles[0].cycleLengthDays, 29);
+      expect(summary.cycles[0].isIrregular, isFalse);
+      expect(summary.cycles[1].cycleLengthDays, 28);
+      expect(summary.cycles[1].isIrregular, isFalse);
+      expect(summary.cycles[3].cycleLengthDays, 23);
+      expect(summary.cycles[3].isIrregular, isFalse);
+      expect(summary.cycles[4].cycleLengthDays, 28);
+      expect(summary.cycles[4].isIrregular, isFalse);
+      expect(summary.cycles[5].cycleLengthDays, 29);
+      expect(summary.cycles[5].isIrregular, isFalse);
+
+      // Cycle length statistics: 7-day cycle excluded, n=5, mean=27.4.
+      final cycleStat = summary.cycleLengthStat!;
+      expect(cycleStat.count, 5);
+      expect(cycleStat.mean, closeTo(27.4, 0.001));
+      expect(cycleStat.median, 28);
+      expect(cycleStat.min, 23);
+      expect(cycleStat.max, 29);
+
+      // Period length statistics: all 6 bleed periods included (n=6).
+      final periodStat = summary.periodLengthStat!;
+      expect(periodStat.count, 6);
+      expect(periodStat.mean, 2);
+
+      // Symptom grid: only valid cycles included (graphCycleCount = 5).
+      expect(summary.graphCycleCount, 5);
+    });
+
+    test('boundary values for isIrregular: 14 is irregular, 15 and 60 are normal, 61 is irregular', () {
+      final boundaryStarts = [
+        LocalDate(2025, 1, 1),
+        LocalDate(2025, 1, 15), // cycle 1: 14 days (< 15)
+        LocalDate(2025, 1, 30), // cycle 2: 15 days (== 15)
+        LocalDate(2025, 2, 27), // cycle 3: 28 days (normal)
+        LocalDate(2025, 4, 28), // cycle 4: 60 days (== 60)
+        LocalDate(2025, 6, 28), // cycle 5: 61 days (> 60)
+        LocalDate(2025, 7, 28), // open cycle
+      ];
+      final boundaryEntries = _entriesFor(boundaryStarts);
+
+      final summary = buildClinicalPdfSummary(
+        profile: _profile(),
+        dayEntries: boundaryEntries,
+        range: FhirExportRange.everything,
+        rangeLabel: 'Everything',
+        generatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      expect(summary.cycles[0].cycleLengthDays, 14);
+      expect(summary.cycles[0].isIrregular, isTrue);
+
+      expect(summary.cycles[1].cycleLengthDays, 15);
+      expect(summary.cycles[1].isIrregular, isFalse);
+
+      expect(summary.cycles[2].cycleLengthDays, 28);
+      expect(summary.cycles[2].isIrregular, isFalse);
+
+      expect(summary.cycles[3].cycleLengthDays, 60);
+      expect(summary.cycles[3].isIrregular, isFalse);
+
+      expect(summary.cycles[4].cycleLengthDays, 61);
+      expect(summary.cycles[4].isIrregular, isTrue);
+
+      // Cycle stat includes 15, 28, 60, 61, 30 -> 5 cycles.
+      // 14 is excluded (< 15).
+      expect(summary.cycleLengthStat!.count, 5);
+      expect(summary.cycleLengthStat!.min, 15);
+      expect(summary.cycleLengthStat!.max, 61);
+
+      // Graph cycles drops < 15 and > 60 -> 15, 28, 60, 30 -> 4 cycles.
+      expect(summary.graphCycleCount, 4);
+    });
+
+    test('all cycles shorter than kMinCycleDays yields null cycleLengthStat', () {
+      final shortStarts = [
+        LocalDate(2025, 1, 1),
+        LocalDate(2025, 1, 8),  // 7 days
+        LocalDate(2025, 1, 15), // 7 days
+        LocalDate(2025, 1, 22), // 7 days
+        LocalDate(2025, 1, 29), // open cycle
+      ];
+      final shortEntries = _entriesFor(shortStarts);
+
+      final summary = buildClinicalPdfSummary(
+        profile: _profile(),
+        dayEntries: shortEntries,
+        range: FhirExportRange.everything,
+        rangeLabel: 'Everything',
+        generatedAt: DateTime.utc(2026, 1, 1),
+      );
+
+      expect(summary.cycles, hasLength(4));
+      expect(summary.cycles.every((c) => c.isIrregular), isTrue);
+      expect(summary.cycleLengthStat, isNull);
+      expect(summary.periodLengthStat!.count, 4);
+      expect(summary.graphCycleCount, 0);
+    });
+  });
 }

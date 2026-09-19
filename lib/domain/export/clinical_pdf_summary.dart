@@ -19,6 +19,10 @@
 /// - Cycles omitted from averages ([omittedCycleStarts], the #132/#568
 ///   exclusion set) are dropped from both the statistics and the symptom
 ///   grid, exactly as the app's own averages drop them.
+/// - Cycles shorter than `kMinCycleDays` (15 days, Issue #797) are dropped
+///   from cycle length statistics and the symptom grid (matching
+///   `computePrediction` and Insights averages), but kept in the history
+///   table where they are flagged as irregular.
 /// - Cycles longer than `kMaxCycleDays` (60 days) are dropped from the
 ///   grid but *kept* in the statistics and the per-cycle history table,
 ///   matching Clue's own documented split (issue #154 body, A2-24).
@@ -48,7 +52,7 @@ import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
 import '../models/profile.dart';
-import '../prediction/prediction.dart' show kMaxCycleDays;
+import '../prediction/prediction.dart' show kMinCycleDays, kMaxCycleDays;
 import '../tags.dart' as tags;
 import 'fhir_export_range.dart';
 
@@ -68,7 +72,9 @@ class ClinicalCycleRow {
     required this.cycleLengthDays,
     required this.periodLengthDays,
     required this.excludedFromAverages,
-  });
+    bool? isIrregular,
+  }) : isIrregular = isIrregular ??
+            (cycleLengthDays < kMinCycleDays || cycleLengthDays > kMaxCycleDays);
 
   /// 1-based position within the report, oldest first.
   final int number;
@@ -81,6 +87,10 @@ class ClinicalCycleRow {
 
   /// Whether this cycle is omitted from the report's statistics/grid.
   final bool excludedFromAverages;
+
+  /// Whether cycle length falls outside the [kMinCycleDays]..[kMaxCycleDays]
+  /// valid window (Issue #797).
+  final bool isIrregular;
 }
 
 /// Mean/median/range for one measured quantity, over the included cycles.
@@ -198,18 +208,22 @@ ClinicalPdfSummary buildClinicalPdfSummary({
     for (final entry in windowCycles)
       if (!entry.excluded) entry.cycle,
   ];
+  final validCycleLengths = [
+    for (final cycle in included)
+      if (cycle.cycleLengthDays >= kMinCycleDays) cycle.cycleLengthDays,
+  ];
   final graphCycles = [
     for (final cycle in included)
-      if (cycle.cycleLengthDays <= kMaxCycleDays) cycle,
+      if (cycle.cycleLengthDays >= kMinCycleDays &&
+          cycle.cycleLengthDays <= kMaxCycleDays)
+        cycle,
   ];
 
   return ClinicalPdfSummary(
     profileDisplayName: profile.displayName,
     rangeLabel: rangeLabel,
     generatedAt: generatedAt,
-    cycleLengthStat: _rangeStat(
-      [for (final cycle in included) cycle.cycleLengthDays],
-    ),
+    cycleLengthStat: _rangeStat(validCycleLengths),
     periodLengthStat: _rangeStat(
       [for (final cycle in included) cycle.periodLengthDays],
     ),
@@ -250,6 +264,8 @@ ClinicalCycleRow _toRow(
   cycleLengthDays: entry.cycle.cycleLengthDays,
   periodLengthDays: entry.cycle.periodLengthDays,
   excludedFromAverages: entry.excluded,
+  isIrregular: entry.cycle.cycleLengthDays < kMinCycleDays ||
+      entry.cycle.cycleLengthDays > kMaxCycleDays,
 );
 
 /// Every completed cycle in [episodes] (ascending), derived from consecutive

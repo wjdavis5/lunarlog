@@ -73,6 +73,8 @@ void _addMethodNote(_PdfLayout layout, ClinicalPdfSummary summary) {
     );
   }
   notebook.write(
+    'Cycles shorter than 15 days are omitted from cycle length statistics '
+    'and the symptom grid, and flagged as irregular. '
     'Cycles longer than 60 days are omitted from the symptom grid but '
     'retained in the statistics and the cycle table. No fertility, '
     'ovulation, or conception estimate is included.',
@@ -119,7 +121,8 @@ void _addCycleTable(_PdfLayout layout, ClinicalPdfSummary summary) {
   }
   layout.line(
     '${_pad('#', 3)}${_pad('start', 12)}${_pad('end', 12)}'
-    '${_pad('cycle', 7)}${_pad('period', 8)}omitted',
+    '${_pad('cycle', 7)}${_pad('period', 8)}'
+    '${_pad('irregular', 11)}omitted',
     font: PdfFont.courier,
     size: 8,
     before: 4,
@@ -129,6 +132,7 @@ void _addCycleTable(_PdfLayout layout, ClinicalPdfSummary summary) {
       '${_pad('${row.number}', 3)}${_pad(row.startIso, 12)}'
       '${_pad(row.endIso, 12)}${_pad('${row.cycleLengthDays}', 7)}'
       '${_pad('${row.periodLengthDays}', 8)}'
+      '${_pad(row.isIrregular ? 'yes' : 'no', 11)}'
       '${row.excludedFromAverages ? 'yes' : 'no'}',
       font: PdfFont.courier,
       size: 8,
