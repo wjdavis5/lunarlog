@@ -286,15 +286,15 @@ void main() {
     expect(eligibleTile.subtitle, isNull);
     expect(eligibleTile.enabled, isTrue);
 
-    // The minor profile explains the transfer requirement.
-    expect(
-      find.textContaining('after ownership transfer'),
-      findsOneWidget,
-    );
+    // Issue #882: a minor profile owned by the signed-in account is
+    // eligible on the same terms as an adult, so it shows no deny reason
+    // and its tile is enabled.
     final minorTile = tester.widget<ListTile>(
       find.byKey(const ValueKey('health-sync-profile-minor')),
     );
-    expect(minorTile.enabled, isFalse);
+    expect(minorTile.subtitle, isNull);
+    expect(minorTile.enabled, isTrue);
+    expect(find.textContaining('after ownership transfer'), findsNothing);
 
     // The non-owner profile (a real, resolved different owner) explains
     // the ownership requirement plainly.
@@ -416,16 +416,20 @@ void main() {
     expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsNothing);
   });
 
-  testWidgets('tapping a minor profile does nothing (disabled tile has no '
-      'tap handler)', (tester) async {
+  testWidgets('tapping the minor profile opens the confirm dialog and '
+      'binds it on confirmation (Issue #882: minors bind on the same terms '
+      'as adults, so the tile is no longer disabled)', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await pumpScreen(tester, binding: binding);
 
     await tester.tap(find.byKey(const ValueKey('health-sync-profile-minor')));
     await tester.pumpAndSettle();
 
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(await binding.boundProfileId(), isNull);
+    expect(find.text('Sync Baby to this phone?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('health-sync-confirm-bind')));
+    await tester.pumpAndSettle();
+
+    expect(await binding.boundProfileId(), 'minor');
   });
 
   testWidgets('confirming a bind that the binding then denies surfaces the '

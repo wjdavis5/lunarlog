@@ -1478,10 +1478,10 @@ abstract class AppLocalizations {
   /// **'About the minor checkbox'**
   String get firstRunMinorExplainerTitle;
 
-  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; the health-sync binding is the one real gate).
+  /// The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults, so the checkbox is a label only).
   ///
   /// In en, this message translates to:
-  /// **'It\'s a label with one real effect today: the profile is kept out of this phone\'s Health app sync. It doesn\'t restrict anything else — wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
+  /// **'It\'s a label used across the app to describe the profile. It doesn\'t restrict anything: health app sync is off for every profile by default and, when you turn it on, works the same way for any profile you choose — minors included. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.'**
   String get firstRunMinorExplainerBody;
 
   /// The third onboarding card: today's data/sync notice, kept verbatim from the pre-#216 first run (the #334 repositioned copy).
@@ -1526,10 +1526,10 @@ abstract class AppLocalizations {
   /// **'This profile is for a minor'**
   String get firstRunMinorLabel;
 
-  /// One-line hint under the minor checkbox in the first-run form.
+  /// One-line hint under the minor checkbox in the first-run form (#882: the checkbox no longer excludes a profile from health sync).
   ///
   /// In en, this message translates to:
-  /// **'A label with one effect: this profile is kept out of this phone\'s Health app sync.'**
+  /// **'A label used across the app — health sync works the same for every profile.'**
   String get firstRunMinorHint;
 
   /// Checkbox label acknowledging the 13+ minimum-age statement on first-run profile creation.

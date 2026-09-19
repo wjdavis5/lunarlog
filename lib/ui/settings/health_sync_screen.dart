@@ -225,8 +225,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   String _denyReasonText(Profile profile, HealthSyncCheck check) =>
       switch (check) {
         HealthSyncCheck.minorRequiresOwnershipTransfer =>
-          "Minor profiles can sync only from the minor's own account "
-              'after ownership transfer.',
+          'Minor profiles sync on the same terms as any other profile. '
+              'This build has minor health sync turned off.',
         HealthSyncCheck.notOwner => widget.signedInUserId == null ||
                 _ownerUserIdByProfile[profile.id] == null
             ? 'Sign in and sync once so this device can confirm you own '

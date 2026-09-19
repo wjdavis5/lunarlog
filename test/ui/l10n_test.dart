@@ -359,16 +359,22 @@ void main() {
         'or help log it.',
       );
       expect(l10n.firstRunMinorExplainerTitle, 'About the minor checkbox');
+      // Issue #882: the checkbox no longer excludes a profile from health
+      // app sync — the copy must not claim it does.
       expect(
         l10n.firstRunMinorExplainerBody,
-        "It's a label with one real effect today: the profile is kept out "
-        "of this phone's Health app sync. It doesn't restrict anything "
-        'else — wording and reminders come from the care mode picked on '
-        'the next screen, not from this checkbox.',
+        "It's a label used across the app to describe the profile. It "
+        "doesn't restrict anything: health app sync is off for every "
+        'profile by default and, when you turn it on, works the same way '
+        'for any profile you choose — minors included. Wording and '
+        'reminders come from the care mode picked on the next screen, not '
+        'from this checkbox.',
       );
-      expect(l10n.firstRunMinorHint,
-          "A label with one effect: this profile is kept out of this "
-          "phone's Health app sync.");
+      expect(
+        l10n.firstRunMinorHint,
+        'A label used across the app — health sync works the same for '
+        'every profile.',
+      );
       expect(l10n.firstRunNext, 'Next');
       expect(l10n.firstRunSkip, 'Skip');
       expect(l10n.firstRunContinue, 'Continue');

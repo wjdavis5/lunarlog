@@ -1036,9 +1036,9 @@
   "@firstRunMinorExplainerTitle": {
     "description": "Heading of the minor-checkbox explanation inside the second onboarding card."
   },
-  "firstRunMinorExplainerBody": "It's a label with one real effect today: the profile is kept out of this phone's Health app sync. It doesn't restrict anything else — wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
+  "firstRunMinorExplainerBody": "It's a label used across the app to describe the profile. It doesn't restrict anything: health app sync is off for every profile by default and, when you turn it on, works the same way for any profile you choose — minors included. Wording and reminders come from the care mode picked on the next screen, not from this checkbox.",
   "@firstRunMinorExplainerBody": {
-    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; the health-sync binding is the one real gate)."
+    "description": "The truthful explanation of what 'This profile is for a minor' changes (#131 made mode chosen-not-derived; #882 made health-sync apply to minors on the same terms as adults, so the checkbox is a label only)."
   },
   "firstRunNoticeBody": "Signing in syncs this profile across your devices and lets you share it with other guardians. Until then, everything you log stays on this device.",
   "@firstRunNoticeBody": {
@@ -1068,9 +1068,9 @@
   "@firstRunMinorLabel": {
     "description": "The minor checkbox label in the first-run form (kept from the pre-#216 form)."
   },
-  "firstRunMinorHint": "A label with one effect: this profile is kept out of this phone's Health app sync.",
+  "firstRunMinorHint": "A label used across the app — health sync works the same for every profile.",
   "@firstRunMinorHint": {
-    "description": "One-line hint under the minor checkbox in the first-run form."
+    "description": "One-line hint under the minor checkbox in the first-run form (#882: the checkbox no longer excludes a profile from health sync)."
   },
   "firstRunAgeAcknowledgementLabel": "I am 13 or older, or a guardian managing a family profile",
   "@firstRunAgeAcknowledgementLabel": {

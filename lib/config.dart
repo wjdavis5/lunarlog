@@ -211,25 +211,38 @@ abstract final class AppConfig {
   /// build-time toggle, only a code change per epic issue.
   static const bool hasHealthSync = true;
 
-  /// Master switch (Issue #153 P0 review) for whether a minor profile may
-  /// ever be bound as this device's health-store profile, even after
-  /// ownership has transferred to the minor's own account (issue #4) and
-  /// the signed-in account is that owner —
-  /// `HealthSyncBinding.canBind`/`canWrite` deny every minor profile
-  /// outright while this is `false`, regardless of transfer state.
-  /// Deliberately a single hardcoded constant here, not a parameter either
-  /// of those methods accepts: `lib/domain/health/health_sync_policy.dart`
+  /// The minor-binding switch, now `true` (Issue #882 — the pre-#882
+  /// default was `false`, which refused every minor profile outright).
+  ///
+  /// **The rule it selects:** a minor profile binds on the same terms as
+  /// any adult profile. Binding is still explicit and opt-in — the
+  /// operator chooses exactly one profile per device in Settings, nothing
+  /// is bound automatically — and a profile is eligible whenever the
+  /// signed-in account resolves as its accepted `primary_guardian`, or
+  /// whenever the profile is device-only (no account signed in and no
+  /// resolved owner). No ownership transfer is required, and no special
+  /// minor path exists while this is `true`:
+  /// `HealthSyncBinding.canBind`/`canWrite` send a minor through the same
+  /// owner check they send an adult through.
+  ///
+  /// **What `false` still does (kept as the switch, still covered by
+  /// test):** a minor profile is denied outright with
+  /// `minorRequiresOwnershipTransfer`, even for its resolved owner, and
+  /// even after a completed ownership transfer named the signed-in
+  /// account. `false` is the pre-#882 behaviour, retained so the switch
+  /// remains meaningful and the old branch stays exercised.
+  ///
+  /// Deliberately a single hardcoded constant here, not a parameter
+  /// either entry point accepts: `lib/domain/health/health_sync_policy.dart`
   /// documents that its call sites must source this value from here and
-  /// nowhere else, so a future platform adapter cannot invent its own
-  /// per-call bypass the way the pre-review write guard let both of its
-  /// call sites neutralise the device-binding check by supplying their
-  /// own value. Still `false` under #193: the flow write path only ever
-  /// writes for profiles whose guard allows them already, so nothing
-  /// exercises the transferred-minor path; flip only alongside a write
-  /// flow that needs it, never before. The server-side half of this
-  /// consent (a `profiles` column gating writes at the database layer) is
-  /// deferred to issue #188 — this flag is client-side only.
-  static const bool healthSyncMinorBindingAllowed = false;
+  /// nowhere else, so a platform adapter cannot invent its own per-call
+  /// bypass. The native mirrors of the whole decision in
+  /// `ios/Runner/AppDelegate.swift` and Android's `HealthConnectAdapter.kt`
+  /// carry this switch too and must be kept in step — a drift there
+  /// re-closes the gate on a real device even though Dart allows it
+  /// (Issue #882). Client-side only; server-side consent remains its own
+  /// track.
+  static const bool healthSyncMinorBindingAllowed = true;
 
   /// True only when the build opted into the TOTP MFA client surface with
   /// `LUNARLOG_ENABLE_MFA=true` (issue #738).

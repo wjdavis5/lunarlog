@@ -675,7 +675,10 @@ class HealthConnectAdapter(context: Context) {
     // The native mirror of HealthSyncBinding._evaluate — same wire
     // strings the Dart codec decodes. `boundProfileId` comes from
     // SharedPreferences for write/authorization calls, and from the
-    // *proposed* id for `bind`.
+    // *proposed* id for `bind`. Issue #882 keeps this in lockstep with
+    // the Dart predicate and with the iOS half in AppDelegate.swift: a
+    // minor is no longer a special deny when `minorBindingAllowed` is
+    // true, and a device-only profile is treated as locally owned.
     private fun guardDecision(boundProfileId: String?, g: GuardArgs): String {
         val bound = boundProfileId ?: return "noBinding"
         if (g.profileId != bound) return "profileNotBound"
@@ -683,22 +686,44 @@ class HealthConnectAdapter(context: Context) {
         val isOwner = g.signedInUserId != null && g.ownerUserId != null &&
             g.signedInUserId == g.ownerUserId
 
-        if (isMinorNow(g.isMinor, g.birthYear)) {
-            // Issue #619, LLA-031: every leg of
-            // HealthSyncBinding._minorTransferExceptionHolds — a transfer
-            // happened, the caller is the resolved owner, AND it named
-            // exactly the signed-in account — not merely "some transfer
-            // happened and the caller happens to pass isOwner".
-            val transferredToOwnAccount = g.transferredAtMs != null && isOwner &&
-                g.transferredToUserId != null &&
-                g.transferredToUserId == g.signedInUserId
-            if (!g.minorBindingAllowed || !transferredToOwnAccount) {
-                return "minorRequiresOwnershipTransfer"
-            }
-            return "allowed"
+        // Issue #882: the switch's off position keeps the pre-#882
+        // categorical minor deny. With `minorBindingAllowed` true a minor
+        // is NOT special — it falls through to the same owner gate as an
+        // adult.
+        if (isMinorNow(g.isMinor, g.birthYear) && !g.minorBindingAllowed) {
+            return "minorRequiresOwnershipTransfer"
         }
-        return if (!isOwner) "notOwner" else "allowed"
+
+        // Issue #619, LLA-031: every leg of
+        // HealthSyncBinding._minorTransferExceptionHolds — the flag is on,
+        // a transfer happened, the caller is the resolved owner, AND it
+        // named exactly the signed-in account — not merely "some transfer
+        // happened and the caller happens to pass isOwner". Preserved by
+        // #882; the owner gate below would allow every case this holds for.
+        val minorTransferExceptionHolds = g.minorBindingAllowed &&
+            g.transferredAtMs != null && isOwner &&
+            g.transferredToUserId != null &&
+            g.transferredToUserId == g.signedInUserId
+        if (minorTransferExceptionHolds) return "allowed"
+
+        // Issue #882: a device-only profile (nobody signed in AND no owner
+        // resolved) is treated as locally owned.
+        return if (!ownerCheckAllows(g.signedInUserId, g.ownerUserId, isOwner)) {
+            "notOwner"
+        } else {
+            "allowed"
+        }
     }
+
+    // Native mirror of HealthSyncBinding._ownerCheckAllows (Issue #882):
+    // a resolved owner passes, and so does a device-only profile (nobody
+    // signed in AND no owner resolved). Everything else fails closed.
+    private fun ownerCheckAllows(
+        signedInUserId: String?,
+        ownerUserId: String?,
+        isOwner: Boolean,
+    ): Boolean =
+        isOwner || (signedInUserId == null && ownerUserId == null)
 
     // Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or
     // AT MOST 18 whole years since birthYear (issue #619, LLA-031: `<=`,

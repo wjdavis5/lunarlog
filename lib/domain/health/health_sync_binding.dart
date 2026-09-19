@@ -99,7 +99,8 @@ class HealthSyncBinding {
   /// Whether binding [profile] as this device's sole health-store profile
   /// would be allowed right now — evaluated against the *proposed*
   /// binding (`profile.id`), since nothing is stored yet at this point, so
-  /// only the minor and ownership checks can produce a deny. Used by the
+  /// only the ownership check (and, when `minorBindingAllowed` is off, the
+  /// minor check — Issue #882) can produce a deny. Used by the
   /// Settings picker to show why an ineligible profile is refused, and by
   /// [bind] itself before persisting anything. [minorBindingAllowed] must
   /// be `AppConfig.healthSyncMinorBindingAllowed` (`lib/config.dart`) —
@@ -150,10 +151,21 @@ class HealthSyncBinding {
   /// The pure decision [canBind] and [canWrite] share. Private to this
   /// file — see the class doc and `health_sync_policy.dart`'s library doc
   /// for why nothing else may call this or construct its inputs directly.
-  /// Total — never throws. (The two conjunct clusters below live in their
-  /// own helpers purely to keep this method's cyclomatic complexity — and
-  /// so its CRAP score, which the quality gate charges even at 100%
+  /// Total — never throws. (The conjunct clusters below live in their own
+  /// helpers purely to keep this method's cyclomatic complexity — and so
+  /// its CRAP score, which the quality gate charges even at 100%
   /// coverage — under the gate.)
+  ///
+  /// **Issue #882 changed the minor handling.** With
+  /// `minorBindingAllowed == true` (the production value —
+  /// `AppConfig.healthSyncMinorBindingAllowed`) a minor is no longer a
+  /// special deny: it flows through the same [_ownerCheckAllows] gate as
+  /// an adult. The transferred-minor exception is kept and still returns
+  /// [HealthSyncCheck.allowed] when it holds, which it only ever can for a
+  /// resolved owner anyway (so it agrees with the owner gate). With
+  /// `minorBindingAllowed == false` the pre-#882 rule is preserved exactly:
+  /// every minor is denied with [HealthSyncCheck.minorRequiresOwnershipTransfer]
+  /// regardless of ownership or transfer state.
   static HealthSyncCheck _evaluate({
     required Profile profile,
     required String? boundProfileId,
@@ -167,15 +179,21 @@ class HealthSyncBinding {
 
     final isOwner = _isResolvedOwner(signedInUserId, ownerUserId);
 
-    if (_isMinorNow(profile, now)) {
-      if (!_minorTransferExceptionHolds(
-          profile, signedInUserId, isOwner, minorBindingAllowed)) {
-        return HealthSyncCheck.minorRequiresOwnershipTransfer;
-      }
+    // The switch's off position: the pre-#882 categorical deny. Only the
+    // off position keeps minors special; `true` falls through to the same
+    // owner gate as an adult.
+    if (_isMinorNow(profile, now) && !minorBindingAllowed) {
+      return HealthSyncCheck.minorRequiresOwnershipTransfer;
+    }
+
+    if (_minorTransferExceptionHolds(
+        profile, signedInUserId, isOwner, minorBindingAllowed)) {
       return HealthSyncCheck.allowed;
     }
 
-    if (!isOwner) return HealthSyncCheck.notOwner;
+    if (!_ownerCheckAllows(signedInUserId, ownerUserId, isOwner)) {
+      return HealthSyncCheck.notOwner;
+    }
     return HealthSyncCheck.allowed;
   }
 
@@ -186,6 +204,22 @@ class HealthSyncBinding {
       ownerUserId != null &&
       signedInUserId == ownerUserId;
 
+  /// The account-ownership gate shared by adult and (since Issue #882)
+  /// minor profiles alike. A resolved owner passes. A **device-only**
+  /// profile — nobody signed in AND no `ownerUserId` resolved — also
+  /// passes: there is no other account it could belong to, so the local
+  /// operator is treated as its owner and the no-account path the rest of
+  /// the app supports stays usable (Issue #882). Everything else fails
+  /// closed: a signed-in account that does not match a non-null
+  /// `ownerUserId`, and an `ownerUserId` with nobody signed in, both deny
+  /// with [HealthSyncCheck.notOwner].
+  static bool _ownerCheckAllows(
+    String? signedInUserId,
+    String? ownerUserId,
+    bool isOwner,
+  ) =>
+      isOwner || (signedInUserId == null && ownerUserId == null);
+
   /// Every leg of the transferred-minor exception (Issue #153 condition 3,
   /// tightened by Issue #296): the feature flag is on, a transfer actually
   /// happened, the caller is the resolved owner, AND the server-stamped
@@ -194,7 +228,12 @@ class HealthSyncBinding {
   /// resolved owner". `transferredAt` and `transferredToUserId` are
   /// stamped together by `accept_ownership_transfer`, so a null target (a
   /// pre-#296 row, a row from a not-yet-migrated server, or any future
-  /// ownership path that forgets to stamp) fails closed.
+  /// ownership path that forgets to stamp) fails closed. Since #882 the
+  /// owner gate allows every case this helper allows, so it is a preserved
+  /// path rather than the sole route a minor has; the [#_ownerCheckAllows]
+  /// note above records why the two agree. The native mirrors in
+  /// `ios/Runner/AppDelegate.swift` and Android's `HealthConnectAdapter.kt`
+  /// replicate this in lockstep — keep them in step (Issue #882).
   static bool _minorTransferExceptionHolds(
     Profile profile,
     String? signedInUserId,

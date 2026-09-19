@@ -156,9 +156,10 @@ void main() {
       expectRefusedWithoutInvocation(result, HealthSyncCheck.notOwner);
     });
 
-    test('minor profile without ownership transfer '
+    test('minor profile with the minor switch off '
         '(minorRequiresOwnershipTransfer)', () async {
-      final result = await makePlatform().writeMenstrualFlow(
+      final result = await makePlatform(minorBindingAllowed: false)
+          .writeMenstrualFlow(
         HealthMenstrualFlowWrite(
           facts: _facts(profile: _profile(isMinor: true, birthYear: null)),
           date: LocalDate(2026, 8, 30),
@@ -173,6 +174,25 @@ void main() {
         result,
         HealthSyncCheck.minorRequiresOwnershipTransfer,
       );
+    });
+
+    // Issue #882: with the switch on (production) a minor owned by the
+    // signed-in account is allowed, so the write path reaches the channel.
+    test('minor profile owned by the signed-in account is allowed and the '
+        'write reaches the channel (Issue #882)', () async {
+      final result = await makePlatform().writeMenstrualFlow(
+        HealthMenstrualFlowWrite(
+          facts: _facts(profile: _profile(isMinor: true, birthYear: null)),
+          date: LocalDate(2026, 8, 30),
+          tzName: 'America/New_York',
+          flow: HealthFlowValue.light,
+          cycleStart: false,
+          recordId: flowWriteRecordId,
+          recordVersionMs: flowWriteRecordVersionMs,
+        ),
+      );
+      expect(result, isA<HealthPlatformAllowed>());
+      expect(calls, hasLength(1));
     });
 
     test('bindProfile, requestWriteAuthorization, '
