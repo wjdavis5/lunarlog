@@ -254,6 +254,30 @@ class MethodChannelHealthPlatform
       );
 
   @override
+  Future<HealthPlatformResult> writeSymptomSamples(
+    HealthSymptomSamplesWrite write,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.writeSymptomSamples,
+        write.facts,
+        dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        payloadArgs: () => {
+          // Issue #238: the type identifiers and severities are already
+          // resolved in Dart (`health_symptom_mapping.dart`); Swift only
+          // translates them into `HKCategorySample`s.
+          'samples': [
+            for (final sample in write.samples)
+              {
+                'typeIdentifier': sample.healthKitTypeIdentifier,
+                'severity': sample.severity.toWire(),
+                'recordId': sample.recordId,
+                'recordVersionMs': sample.recordVersionMs,
+              },
+          ],
+        },
+      );
+
+  @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,
@@ -348,6 +372,15 @@ class UnsupportedHealthPlatform
   Future<HealthPlatformResult> writeMenstrualPeriod(
     HealthMenstrualPeriodWrite write,
   ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> writeSymptomSamples(
+    HealthSymptomSamplesWrite write,
+  ) async =>
+      // Issue #238: no health store on this platform (web/desktop), and
+      // Health Connect has no symptom types at all — unavailable either
+      // way, never a crash.
       const HealthPlatformResult.unavailable();
 
   @override

@@ -558,7 +558,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
                 'itself.',
               ),
             ),
-          ] else
+          ] else ...[
             // Issue #458: Android wires only the import direction, so the
             // write-specific copy above is replaced rather than left to
             // promise writes that never happen.
@@ -567,6 +567,19 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(kHealthSyncImportOnly),
             ),
+            // Issue #238: Health Connect has no symptom category types, so
+            // symptom tags are never exported on Android. State the
+            // permanent platform limitation rather than let an Android user
+            // see a silent difference.
+            Padding(
+              key: const ValueKey('health-sync-symptoms-android-limitation'),
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                AppLocalizations.of(context)
+                    .settingsHealthSyncSymptomsAndroidLimitation,
+              ),
+            ),
+          ],
           // Issue #186 (AC9): the v1 scope decision, stated plainly.
           // Reads are limited to the last 30 days on both platforms;
           // full-history import (READ_HEALTH_DATA_HISTORY) and background

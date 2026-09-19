@@ -250,6 +250,9 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
+        // Issue #238: the screen reads copy (including the Android
+        // symptom-limitation line) through AppLocalizations, so the harness
+        // registers the delegates and locales the real app wires.
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: HealthSyncScreen(
@@ -368,6 +371,33 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('health-sync-revocation-copy')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('an import-only platform (Android) documents the permanent '
+      'symptom limitation (Issue #238)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding, writeEnabled: false);
+
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining("Symptoms (cramps, headaches, mood, and more) "
+          "can't be written to Health Connect"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a write-enabled platform (iOS) does not show the Android '
+      'symptom limitation (Issue #238)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding);
+
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
       findsNothing,
     );
   });

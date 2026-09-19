@@ -237,6 +237,60 @@ enum HealthKitChannelHandler {
     }
   }
 
+  /// HKCategoryValueSeverity's raw values (Issue #238): `mild` = 1,
+  /// `moderate` = 2, `severe` = 3, `unspecified` = 4. Identical values to
+  /// `kHealthSymptomSeverityAppleRawValue` in
+  /// lib/data/health/health_channel_codec.dart (the single source of
+  /// truth; Dart cannot assert these at test time). `notApplicable` = 0 is
+  /// deliberately absent — this enum's `unspecified` is the "no severity
+  /// recorded" case, exactly as `MenstrualFlowRawValue.unspecified` = 1 is
+  /// for flow.
+  enum SymptomSeverityRawValue: Int {
+    case mild = 1
+    case moderate = 2
+    case severe = 3
+    case unspecified = 4
+
+    init?(wire: String) {
+      switch wire {
+      case "mild": self = .mild
+      case "moderate": self = .moderate
+      case "severe": self = .severe
+      case "unspecified": self = .unspecified
+      default: return nil
+      }
+    }
+  }
+
+  /// The HealthKit symptom category types this app may write (Issue #238).
+  /// This adds no tag-mapping logic to Swift: the identifiers arrive from
+  /// Dart (`health_symptom_mapping.dart`) as
+  /// `HKCategoryTypeIdentifier` raw-case names and are resolved with
+  /// `HKCategoryTypeIdentifier(rawValue:)`. This set exists only so the
+  /// authorization sheet can request write access for them.
+  private static var symptomCategoryTypes: [HKSampleType] {
+    let identifiers: [HKCategoryTypeIdentifier] = [
+      .abdominalCramps,
+      .headache,
+      .lowerBackPain,
+      .breastPain,
+      .bloating,
+      .acne,
+      .nausea,
+      .fatigue,
+      .dizziness,
+      .moodChanges,
+      .sleepChanges,
+      .appetiteChanges,
+    ]
+    // Explicitly upcast each HKCategoryType to HKSampleType: Swift sets and
+    // `Set.union` require exact element-type equality, so the Set<HKSampleType>
+    // below cannot take a [HKCategoryType] directly.
+    return identifiers.compactMap {
+      HKObjectType.categoryType(forIdentifier: $0)
+    }.map { $0 as HKSampleType }
+  }
+
   /// The guard-args half of every guarded call (mirrors
   /// `encodeGuardArgs` in health_channel_codec.dart).
   struct GuardArgs {
@@ -406,10 +460,15 @@ enum HealthKitChannelHandler {
         result("unavailable")
         return
       }
-      let toShare: Set<HKSampleType> = [
+      // Issue #238: the symptom category types join the write set. Apple's
+      // permission sheet is per-type; an existing install is prompted for
+      // these on the next sync pass. The read set below is deliberately
+      // unchanged (issue #766 governs reads).
+      var toShare: Set<HKSampleType> = [
         menstrualFlowType,
         intermenstrualBleedingType,
       ]
+      toShare.formUnion(symptomCategoryTypes)
       // Issue #217: the read set is no longer empty. It carries only the
       // menstrual-flow type the user-initiated import reads; the four
       // Apple-computed cycle-deviation types are deliberately NOT requested
@@ -532,6 +591,77 @@ enum HealthKitChannelHandler {
         ]
       )
       save([sample], result: result)
+
+    case "writeSymptomSamples":
+      // Issue #238: one logged day's symptom samples. The tag table and
+      // every mapping/severity decision live in Dart
+      // (lib/data/health/health_symptom_mapping.dart); this case only
+      // resolves the already-decided wire values into HKCategorySamples.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "writeSymptomSamples requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let samples = args?["samples"] as? [[String: Any]],
+        !samples.isEmpty
+      else {
+        badArgs(result, "writeSymptomSamples requires startMs/endMs/samples")
+        return
+      }
+      let start = Date(timeIntervalSince1970: Double(startMs) / 1000.0)
+      let end = Date(timeIntervalSince1970: Double(endMs) / 1000.0)
+      var toSave: [HKSample] = []
+      for sample in samples {
+        guard
+          let typeWire = sample["typeIdentifier"] as? String,
+          let severityWire = sample["severity"] as? String,
+          let severity = SymptomSeverityRawValue(wire: severityWire),
+          let recordId = sample["recordId"] as? String,
+          let recordVersionMs = sample["recordVersionMs"] as? NSNumber
+        else {
+          badArgs(result, "writeSymptomSamples requires fully-resolved samples")
+          return
+        }
+        // HKCategoryTypeIdentifier is an NS_TYPED_ENUM, so rawValue
+        // construction is non-failable; the category type itself can be
+        // nil for a type the SDK does not know, which is a bad argument.
+        let typeIdentifier = HKCategoryTypeIdentifier(rawValue: typeWire)
+        guard
+          let categoryType = HKObjectType.categoryType(forIdentifier: typeIdentifier)
+        else {
+          badArgs(result, "unknown symptom type: \(typeWire)")
+          return
+        }
+        // #186 sync mechanics, as for writeMenstrualFlow:
+        // HKMetadataKeyExternalUUID/Identifier/Version make the write
+        // idempotent and addressable by record id. No cycle-start flag —
+        // that is a menstrual-flow concept.
+        toSave.append(
+          HKCategorySample(
+            type: categoryType,
+            value: severity.rawValue,
+            start: start,
+            end: end,
+            metadata: [
+              HKMetadataKeyExternalUUID: recordId,
+              HKMetadataKeySyncIdentifier: recordId,
+              HKMetadataKeySyncVersion: recordVersionMs,
+            ]
+          )
+        )
+      }
+      save(toSave, result: result)
 
     case "deleteRecords":
       // Issue #186 tombstone propagation: delete the samples whose

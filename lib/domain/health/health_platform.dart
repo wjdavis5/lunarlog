@@ -118,6 +118,45 @@ enum HealthFlowValue {
       };
 }
 
+/// The transport vocabulary for a HealthKit symptom sample's severity
+/// (Issue #238): the closed subset of `HKCategoryValueSeverity` this port
+/// can write. Health Connect has **no** symptom category types at all, so
+/// this vocabulary is only ever used by the iOS half — an asymmetry the
+/// Android adapter documents permanently rather than working around (see
+/// `HealthConnectAdapter.kt`).
+///
+/// `HKCategoryValue.notApplicable` (0) is deliberately absent, exactly as
+/// it is for [HealthFlowValue]: "no severity" is expressed by the
+/// dedicated [unspecified] value (raw 4 in Apple's SDK), never by the
+/// shared not-applicable zero.
+enum HealthSymptomSeverity {
+  unspecified,
+  mild,
+  moderate,
+  severe;
+
+  /// The wire string used on the `lunarlog/health` channel. Both the
+  /// native half and `health_channel_codec.dart` recognize exactly this
+  /// closed set.
+  String toWire() => switch (this) {
+        unspecified => 'unspecified',
+        mild => 'mild',
+        moderate => 'moderate',
+        severe => 'severe',
+      };
+
+  /// Parses the wire string; null when [raw] is not in the closed set (a
+  /// newer native side than this Dart side, or corruption) — callers
+  /// treat null as a protocol error, never a silent fallback.
+  static HealthSymptomSeverity? fromWire(String? raw) => switch (raw) {
+        'unspecified' => unspecified,
+        'mild' => mild,
+        'moderate' => moderate,
+        'severe' => severe,
+        _ => null,
+      };
+}
+
 /// The guard inputs every guarded port method carries: which [profile]'s
 /// data is about to be written to this device's OS health store, and the
 /// ownership facts `HealthSyncBinding.canWrite` evaluates (see
@@ -322,6 +361,58 @@ class HealthMenstrualPeriodWrite {
   final int recordVersionMs;
 }
 
+/// One resolved symptom sample inside a [HealthSymptomSamplesWrite]
+/// (Issue #238): the HealthKit `HKCategoryTypeIdentifier` symptom string
+/// and severity are already decided in Dart (see
+/// `lib/data/health/health_symptom_mapping.dart` — the mapping table and
+/// every decision live there, never in Swift), so the native half only
+/// translates the wire value into an `HKCategorySample`.
+///
+/// [healthKitTypeIdentifier] is the raw case name of an
+/// `HKCategoryTypeIdentifier` (e.g. `abdominalCramps`, `moodChanges`);
+/// Swift resolves it via `HKCategoryTypeIdentifier(rawValue:)` with no
+/// tag knowledge of its own. [recordId] is the stable lunarlog id for
+/// this (day entry, symptom type) pair — HealthKit's
+/// `HKMetadataKeyExternalUUID`/`HKMetadataKeySyncIdentifier`, the same
+/// idempotence/deletability contract [HealthMenstrualFlowWrite.recordId]
+/// documents.
+class HealthSymptomSample {
+  const HealthSymptomSample({
+    required this.healthKitTypeIdentifier,
+    required this.severity,
+    required this.recordId,
+    required this.recordVersionMs,
+  });
+
+  final String healthKitTypeIdentifier;
+  final HealthSymptomSeverity severity;
+  final String recordId;
+  final int recordVersionMs;
+}
+
+/// A `writeSymptomSamples` payload (Issue #238): every symptom sample
+/// resolved for one logged day, in one channel call. [date]/[tzName] are
+/// the source day entry's own civil date and IANA zone (never the
+/// device's current zone); the adapter converts them to the sample
+/// instants through `day_boundary.dart` — the #180 timezone contract, so
+/// no native side does zone math.
+class HealthSymptomSamplesWrite {
+  const HealthSymptomSamplesWrite({
+    required this.facts,
+    required this.date,
+    required this.tzName,
+    required this.samples,
+  });
+
+  final HealthGuardFacts facts;
+  final LocalDate date;
+  final String tzName;
+
+  /// At least one, always — the write service never sends an empty batch
+  /// (nothing to write means no channel call at all).
+  final List<HealthSymptomSample> samples;
+}
+
 /// The platform-neutral health-store port (see the library doc for the
 /// (a)-vs-(b) design decision). Implementations: `lib/data/health/`
 /// (`MethodChannelHealthPlatform` shared, `IOSHealthChannel` and
@@ -385,6 +476,17 @@ abstract interface class HealthPlatformStore {
   /// pass-blocking failure.
   Future<HealthPlatformResult> writeMenstrualPeriod(
     HealthMenstrualPeriodWrite write,
+  );
+
+  /// Writes one logged day's resolved symptom samples for the bound
+  /// profile (Issue #238). The [HealthSymptomSamplesWrite.samples] carry
+  /// already-resolved HealthKit type identifiers and severities — this
+  /// port never contains the tag table. A platform with no symptom
+  /// category types (Health Connect, permanently) answers `unavailable`,
+  /// which the caller treats as a graceful skip, never a pass-blocking
+  /// failure, exactly as it does for `writeMenstrualPeriod` on iOS.
+  Future<HealthPlatformResult> writeSymptomSamples(
+    HealthSymptomSamplesWrite write,
   );
 
   /// Deletes the health-store samples whose recorded external id (Health

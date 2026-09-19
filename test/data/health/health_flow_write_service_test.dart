@@ -166,6 +166,12 @@ class _FakePlatform implements HealthPlatformStore {
   }
 
   @override
+  Future<HealthPlatformResult> writeSymptomSamples(
+    HealthSymptomSamplesWrite write,
+  ) async =>
+      const HealthPlatformResult.allowed();
+
+  @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,

@@ -713,6 +713,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose which profile\'s data may sync to this phone\'s Health app';
 
   @override
+  String get settingsHealthSyncSymptomsAndroidLimitation =>
+      'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
+
+  @override
   String healthSyncImportUpdatedDays(int count, String source) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

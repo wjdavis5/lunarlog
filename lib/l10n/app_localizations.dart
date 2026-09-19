@@ -1250,6 +1250,12 @@ abstract class AppLocalizations {
   /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
   String get settingsHealthSyncSubtitle;
 
+  /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
+  String get settingsHealthSyncSymptomsAndroidLimitation;
+
   /// Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).
   ///
   /// In en, this message translates to:
