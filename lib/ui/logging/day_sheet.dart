@@ -1366,8 +1366,16 @@ class _DaySheetState extends State<DaySheet> {
       // with them here.
       await inFlight.catchError((_) {});
     }
+    // Issue #856: capture the full pre-delete state *before* the tombstone,
+    // read back from the repository so it reflects the latest autosaved
+    // write rather than the (possibly stale) entry the sheet opened with.
+    // The undo restores exactly this, through the same repository path.
+    final repository = widget.repository;
+    final priorEntry = await _captureDeletedEntry(repository);
+    final priorObservations = await _captureDeletedObservations(priorEntry);
+    final messenger = mounted ? ScaffoldMessenger.of(context) : null;
     try {
-      await widget.repository.delete(widget.profileId, widget.date);
+      await repository.delete(widget.profileId, widget.date);
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -1389,7 +1397,101 @@ class _DaySheetState extends State<DaySheet> {
       // A latched offline acknowledgement is about the *saved* entry — the
       // entry is now deleted, so it must not fire as the sheet leaves.
       _offlineAckMessenger = null;
+      if (priorEntry != null) {
+        _showDeleteUndoSnackbar(
+          messenger,
+          l10n,
+          repository,
+          priorEntry,
+          priorObservations,
+        );
+      }
       Navigator.of(context).pop();
+    }
+  }
+
+  /// Issue #856: the live day entry the delete is about to tombstone, read
+  /// back through [repository] immediately before the tombstone so the undo
+  /// snapshot carries the entry's current persisted payload (flow, tags,
+  /// note, PMS, provenance) — not the possibly-stale `widget.existing` the
+  /// sheet opened with. A read failure leaves the undo unable to restore the
+  /// row rather than aborting the delete; nothing here is on the delete's
+  /// critical path.
+  Future<DayEntry?> _captureDeletedEntry(DayEntriesRepository repository) async {
+    try {
+      return await repository.find(widget.profileId, widget.date);
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      return null;
+    }
+  }
+
+  /// Issue #856: every live observation row attached to [entry] — spotting,
+  /// graded pain intensities, BBT/weight measurements, and any imported or
+  /// health-authored row — captured with its full payload so the undo can
+  /// revive the same rows (never fresh ones). The tombstone cascade clears
+  /// these rows' payloads, so this must run before the delete.
+  Future<List<Observation>> _captureDeletedObservations(DayEntry? entry) async {
+    final observations = _observationsRepository;
+    if (entry == null || observations == null) return const [];
+    try {
+      return await observations.listForDayEntry(entry.id);
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      return const [];
+    }
+  }
+
+  /// Issue #856: shows the post-delete snackbar with an Undo action,
+  /// mirroring `overview_panel.dart`'s `today-card-logged-snackbar` shape
+  /// (same content-plus-action layout, `SnackBar`'s own default duration).
+  /// The restore runs only from the explicit action tap, so an ignored or
+  /// dismissed snackbar simply leaves the delete in place. [messenger] is
+  /// captured before the pop because this sheet's context is gone by the
+  /// time the action can be tapped.
+  void _showDeleteUndoSnackbar(
+    ScaffoldMessengerState? messenger,
+    AppLocalizations l10n,
+    DayEntriesRepository repository,
+    DayEntry entry,
+    List<Observation> observations,
+  ) {
+    messenger?.showSnackBar(
+      SnackBar(
+        key: const ValueKey('day-sheet-delete-snackbar'),
+        content: Text(l10n.daySheetDeletedSnackbar),
+        action: SnackBarAction(
+          label: l10n.daySheetUndo,
+          onPressed: () => unawaited(_undoDelete(
+            repository: repository,
+            entry: entry,
+            observations: observations,
+          )),
+        ),
+      ),
+    );
+  }
+
+  /// Issue #856: reverses the delete through the same repository path the
+  /// delete itself took — re-saving [entry] and [observations] by their
+  /// original ids revives the exact tombstoned rows (`_writeDayEntry`/
+  /// `_writeObservation` clear `deletedAt` and rewrite the captured
+  /// payload), rather than inserting a fresh day entry with a new id. The
+  /// entry carries its own `profileId`, so a profile switch since the delete
+  /// never redirects the restore; no `BuildContext` is touched here (the
+  /// sheet has long since been disposed when this runs).
+  Future<void> _undoDelete({
+    required DayEntriesRepository repository,
+    required DayEntry entry,
+    required List<Observation> observations,
+  }) async {
+    try {
+      await repository.saveDayEntryWithObservations(
+        entry: entry,
+        observationsToUpsert: observations,
+      );
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
     }
   }
 

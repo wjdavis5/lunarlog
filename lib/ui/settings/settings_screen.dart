@@ -92,7 +92,7 @@ String relockTimeoutLabel(AppLocalizations l10n, Duration value) {
 }
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, this.qaBuild});
+  const SettingsScreen({super.key, this.qaBuild, this.showAppBar = true});
 
   /// Issue #739: whether this is a QA build (`LUNARLOG_QA_BUILD=true`),
   /// resolved once through [AppConfig.qaBuild] — the `mfaEnabled`
@@ -101,6 +101,15 @@ class SettingsScreen extends StatefulWidget {
   /// renders disabled and off (relock is structurally off in
   /// [GateController] for such a build), with the QA note as its subtitle.
   final bool? qaBuild;
+
+  /// Issue #826: when Settings is embedded as the shell's More tab
+  /// (`AppShell`), the shell owns the one AppBar for every tab — the shared
+  /// sync-failure banner is the shell body's first child, so it must sit
+  /// below an AppBar the shell controls on More too. `false` suppresses
+  /// this screen's own AppBar so the More tab never doubles it; the
+  /// standalone push sites (`kRouteSettingsScreen`) keep the default
+  /// `true` and keep carrying their own.
+  final bool showAppBar;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -170,7 +179,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Provider.of<ReminderConfigService?>(context) != null ||
         Provider.of<NotificationPreferencesService?>(context) != null;
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.settingsTitle)),
+      // Issue #826: `showAppBar` is false only when the shell supplies the
+      // More tab's AppBar; see that field's doc.
+      appBar:
+          widget.showAppBar ? AppBar(title: Text(l10n.settingsTitle)) : null,
       body: ResponsiveBody(
         child: ListView(
         children: [

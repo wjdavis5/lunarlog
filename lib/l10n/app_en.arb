@@ -446,6 +446,14 @@
   "@daySheetDeleteTooltip": {
     "description": "Tooltip on the day sheet's delete affordance."
   },
+  "daySheetDeletedSnackbar": "Entry deleted.",
+  "@daySheetDeletedSnackbar": {
+    "description": "Snackbar confirming a day entry was deleted, shown with an Undo action (issue #856)."
+  },
+  "daySheetUndo": "Undo",
+  "@daySheetUndo": {
+    "description": "Snackbar action that restores a just-deleted day entry (issue #856), mirroring overviewUndo."
+  },
   "daySheetSave": "Save",
   "@daySheetSave": {
     "description": "The day sheet's save button label."

@@ -338,6 +338,86 @@ void main() {
     });
   });
 
+  group('issue #826: the sync-failure banner sits below the AppBar on every '
+      'tab', () {
+    /// The banner must never float above the AppBar it belongs under. On
+    /// Today the AppBar is the shell's; on More it used to be Settings'
+    /// own inner one, with the shell-level banner rendered above it.
+    Rect appBarRect(WidgetTester tester) =>
+        tester.getRect(find.byType(AppBar));
+    Rect bannerRect(WidgetTester tester) =>
+        tester.getRect(find.byKey(const ValueKey('sync-failure-banner')));
+
+    testWidgets('banner renders beneath the AppBar on Today and on More',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('sync-failure-banner')),
+          findsOneWidget);
+      expect(bannerRect(tester).top,
+          greaterThanOrEqualTo(appBarRect(tester).bottom),
+          reason: 'Today: the banner must sit under the shell AppBar');
+
+      await tester.tap(tabKey('more'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(find.byType(AppBar), findsOneWidget,
+          reason: 'More must have exactly one AppBar -- the shell now owns '
+              'it and Settings must not double it');
+      expect(find.byKey(const ValueKey('sync-failure-banner')),
+          findsOneWidget);
+      expect(bannerRect(tester).top,
+          greaterThanOrEqualTo(appBarRect(tester).bottom),
+          reason: 'More must obey the same one-AppBar rule as every other '
+              'tab, not render the banner above Settings\' own title');
+      await h.dispose();
+    });
+
+    testWidgets('no failure: no banner on Today or More', (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      expect(find.byKey(const ValueKey('sync-failure-banner')), findsNothing);
+
+      await tester.tap(tabKey('more'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.byKey(const ValueKey('sync-failure-banner')), findsNothing);
+      await h.dispose();
+    });
+
+    testWidgets('"Go to Settings" still works from Today and from More',
+        (tester) async {
+      final h = Harness(tester);
+      await h.pump();
+      h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
+      await tester.pump();
+      await tester.pump();
+
+      // From Today: the action switches the shell to More.
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(find.byType(NavigationBar), findsOneWidget,
+          reason: 'a tab switch, not a pushed route');
+
+      // From More: the action is inert but must not push a duplicate or
+      // throw. The banner is still the body's first child below the AppBar.
+      expect(find.byType(AppBar), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(bannerRect(tester).top,
+          greaterThanOrEqualTo(appBarRect(tester).bottom));
+      await h.dispose();
+    });
+  });
+
   testWidgets(
       'tapping the profile switcher opens the quick-switcher popup, whose '
       '"Manage profiles…" entry opens the full picker (issue #241)',
