@@ -48,7 +48,6 @@ class LockScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return MaterialApp(
       title: 'lunarlog',
       theme: AppTheme.lightTheme,
@@ -59,35 +58,48 @@ class LockScreen extends StatelessWidget {
       // the app content, so it must carry its own delegates.
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        key: const ValueKey('lock-screen'),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(Icons.lock_outline,
-                    size: 56, color: theme.colorScheme.primary),
-                const SizedBox(height: 16),
-                Text('lunarlog is locked',
-                    style: theme.textTheme.headlineSmall),
-                const SizedBox(height: 8),
-                // #271 D-6: once the PIN step is reached — after a granted
-                // device credential, or standing alone with none enrolled —
-                // it replaces the device-credential content entirely.
-                if (controller.pinRequired)
-                  PinUnlockSection(controller: controller)
-                else if (controller.denialReason ==
-                    GateDenialReason.noCredentialEnrolled)
-                  ..._noCredentialContent(theme)
-                else
-                  ..._normalContent(theme),
-              ],
+      // Issue #886: resolve the theme *inside* this nested MaterialApp, not
+      // from the enclosing context. `Theme.of(context)` in [build] reads the
+      // app that wrapped this screen (typically a light [ThemeData]), and
+      // `ThemeData`'s merged text theme carries an explicit colour — so the
+      // light `onSurface` ink was painted onto this app's dark `Scaffold`
+      // (~1.28:1). The [Builder] sits under this app's own `Theme`, so every
+      // text style and colour in the subtree comes from the theme actually
+      // painting the `Scaffold`.
+      home: Builder(
+        builder: (context) {
+          final theme = Theme.of(context);
+          return Scaffold(
+            key: const ValueKey('lock-screen'),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Icon(Icons.lock_outline,
+                        size: 56, color: theme.colorScheme.primary),
+                    const SizedBox(height: 16),
+                    Text('lunarlog is locked',
+                        style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 8),
+                    // #271 D-6: once the PIN step is reached — after a granted
+                    // device credential, or standing alone with none enrolled —
+                    // it replaces the device-credential content entirely.
+                    if (controller.pinRequired)
+                      PinUnlockSection(controller: controller)
+                    else if (controller.denialReason ==
+                        GateDenialReason.noCredentialEnrolled)
+                      ..._noCredentialContent(theme)
+                    else
+                      ..._normalContent(theme),
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

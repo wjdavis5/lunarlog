@@ -4,7 +4,7 @@
 ///
 /// This is *additive* to the ordinary period estimate below it — Conceive
 /// mode does not suppress prediction (`prediction_service.dart`'s
-/// `_suppressesPrediction` deliberately leaves `conceive` on the ordinary
+/// `suppressesPrediction` deliberately leaves `conceive` on the ordinary
 /// averaging path), it re-frames the Cycle View around fertility. Pure
 /// display: the curve itself lives in `lib/domain/conceive.dart`
 /// (`ConceptionEstimate`) and is unit-tested there; this widget only

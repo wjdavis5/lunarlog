@@ -1289,6 +1289,20 @@
   "@settingsPredictionsSubtitle": {
     "description": "Subtitle describing the predictions toggle in Settings (issue #225)."
   },
+  "settingsPredictionsSuppressedByModeSubtitle": "Turned off by {mode} mode — change the life-stage mode to resume.",
+  "@settingsPredictionsSuppressedByModeSubtitle": {
+    "description": "Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).",
+    "placeholders": {
+      "mode": {"type": "String"}
+    }
+  },
+  "settingsPredictionsSuppressedByMethodSubtitle": "Turned off by {method} — change or clear the birth-control method to resume.",
+  "@settingsPredictionsSuppressedByMethodSubtitle": {
+    "description": "Subtitle of the settings predictions toggle when an active continuous birth-control method ({method}) suppresses predictions; the toggle is disabled and the method name comes from the shared birth-control picker vocabulary (Issue #877).",
+    "placeholders": {
+      "method": {"type": "String"}
+    }
+  },
   "overviewIrregularSuggestionTitle": "Cycles vary a lot",
   "@overviewIrregularSuggestionTitle": {
     "description": "Title of the suggestion banner offered when cycle variation is irregular (issue #225)."

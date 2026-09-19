@@ -12,7 +12,7 @@
 ///
 /// **What the mode changes, and what it deliberately does not:**
 /// * Prediction is already suppressed for `perimenopause` by Issue #528
-///   (`prediction_service.dart`'s `_suppressesPrediction`), so the ordinary
+///   (`prediction_service.dart`'s `suppressesPrediction`), so the ordinary
 ///   days-late countdown never renders — this module does not re-implement
 ///   that suppression, it is the reason [PerimenopauseComparisonStarts]
 ///   exists at all (comparison is what replaces the countdown). Predicating
