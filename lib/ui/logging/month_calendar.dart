@@ -205,14 +205,6 @@ double forecastBorderOpacity(CycleConfidence tier) {
   return base < kPredictedBorderMinAlpha ? kPredictedBorderMinAlpha : base;
 }
 
-/// Per-layer dot colors, one per active layer (max
-/// [kMaxSymptomLayers]); brightness-aware so both themes keep the dots
-/// glanceable.
-List<Color> symptomLayerPalette(Brightness brightness) =>
-    brightness == Brightness.light
-    ? const [Color(0xFF7B1FA2), Color(0xFF00695C), Color(0xFFC2185B)]
-    : const [Color(0xFFE1BEE7), Color(0xFF80CBC4), Color(0xFFF8BBD0)];
-
 /// Plain future days stay dimmed like the old lock visual; a day with
 /// predicted content renders at full weight so the band carries the
 /// distinction instead (KTD3).
@@ -226,12 +218,28 @@ double futureCellOpacity(bool isFuture, bool hasForecastContent) =>
 /// lands under usable contrast. Applied to the day-number text only.
 const double kFutureDayTextAlpha = 0.38;
 
+/// Issue #879: the gutter each day circle must leave on either side of
+/// itself (`2 * this` between two adjacent circles), so neighbours can
+/// never touch at any text scale.
+const double kDayCellCircleGutter = 4.0;
+
+/// Issue #810: the single stroke weight every calendar ring shares — the
+/// today ring, the spotting ring, the predicted band's hatched border, and
+/// the fertile window's dashed border. Their *patterns* (solid / dashed /
+/// hatched) carry the distinction; the weights no longer disagree.
+const double kCalendarRingStrokeWidth = 2.0;
+
 /// [#138, B-23] The day-cell geometry for one grid width and text scale:
 /// the number circle grows from the scaled 20px baseline (never below its
 /// historic 34px), the markers row grows from a scaled 12px baseline
 /// (never below its historic 14px), and the cell's row height keeps at
 /// least a 48dp touch target. Pure — computed once per month page from the
 /// page's own [LayoutBuilder] constraints, directly unit-testable.
+///
+/// Issue #879: the circle is capped at the column width minus
+/// [kDayCellCircleGutter] on both sides. Before, a scaled numeral wider
+/// than the (full-width) circle spilled into the neighbouring cell and
+/// adjacent circles touched at accessibility text sizes.
 class DayCellMetrics {
   const DayCellMetrics({
     required this.circleSize,
@@ -258,7 +266,17 @@ class DayCellMetrics {
 /// pixel-identical to before this pass and only grows from there.
 DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
   final cellWidth = (gridWidth - 8) / 7;
-  final circleSize = math.min(math.max(34.0, textScaler.scale(20)), cellWidth);
+  // Issue #879: leave a gutter on each side so two adjacent circles can
+  // never touch, even when the scaled numeral would otherwise claim the
+  // whole column width.
+  final maxCircleSize = math.max(
+    0.0,
+    cellWidth - 2 * kDayCellCircleGutter,
+  );
+  final circleSize = math.min(
+    math.max(34.0, textScaler.scale(20)),
+    maxCircleSize,
+  );
   final markersHeight = math.max(14.0, textScaler.scale(12));
   final contentHeight = circleSize + 2 + markersHeight;
   final cellHeight = math.max(math.max(cellWidth, 48), contentHeight);
@@ -312,6 +330,13 @@ int _flowLevelMarkCount(FlowLevel level) => switch (level) {
   FlowLevel.superHeavy => 5,
 };
 
+/// Issue #879: bounds a day numeral to the circle it sits in, scaling it
+/// down rather than letting its glyphs spill into the neighbouring cell at
+/// accessibility text sizes — the same `BoxFit.scaleDown` technique PR
+/// #875 applied to the month/year title.
+Widget _fittedNumeral(Widget child) =>
+    FittedBox(fit: BoxFit.scaleDown, child: child);
+
 /// The spotting-day numeral drawn with a thin [haloColor] outline behind
 /// its fill (issue #312, contrast review of #191 B-2): `onSurface` [text]
 /// sits directly atop the flow-spotting centre dot in
@@ -343,14 +368,6 @@ Widget _haloedDayNumber(
     ],
   );
 }
-
-Color pmsBadgeColor(Brightness brightness) => brightness == Brightness.light
-    ? const Color(0xFF5E35B1)
-    : const Color(0xFFB39DDB);
-
-Color crampsBadgeColor(Brightness brightness) => brightness == Brightness.light
-    ? const Color(0xFF9A6A00)
-    : const Color(0xFFFFCC80);
 
 /// The semantic (screen-reader) label for one day cell (#133 seeded the
 /// predicted/logged distinction; #138 is the full pass — date with
@@ -687,13 +704,6 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// tags.
   bool _layersUserSet = false;
   Set<String> _activeLayers = const {};
-  bool _layersExpanded = false;
-
-  /// The legend strip's expand/collapse state (issue #312; #556 review:
-  /// no longer scale-dependent): `null` until the operator first touches
-  /// the toggle, meaning [_legendStrip] defaults to expanded; once
-  /// touched, the explicit choice always wins.
-  bool? _legendExpanded;
 
   /// Issue #550: memoises the `(byIso, cycles, forecastByIso, pmsBandActive,
   /// activeLayers)` compute path — [deriveForecast]/[forecastDayCells] walk
@@ -1320,7 +1330,11 @@ class _MonthCalendarState extends State<MonthCalendar>
     );
   }
 
-  void _toggleLayer(String code, Set<String> current) {
+  /// Applies one layer toggle to [current] and returns the effective
+  /// selection afterwards (issue #810: the chooser sheet keeps its own copy
+  /// so a rejected fourth layer leaves the chip visibly unselected, rather
+  /// than mirroring a stale set captured before the calendar rebuilt).
+  Set<String> _toggleLayer(String code, Set<String> current) {
     final selected = current.contains(code);
     if (!selected && current.length >= kMaxSymptomLayers) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1330,7 +1344,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           duration: const Duration(seconds: 2),
         ),
       );
-      return;
+      return _activeLayers;
     }
     setState(() {
       _layersUserSet = true;
@@ -1338,6 +1352,7 @@ class _MonthCalendarState extends State<MonthCalendar>
           ? ({...current}..remove(code))
           : {...current, code};
     });
+    return _activeLayers;
   }
 
   @override
@@ -1459,7 +1474,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     // Issue #550: byIso/cycles/forecastByIso/activeLayers/pmsBandActive are
     // memoised in `_computed*` fields, recomputed only when their inputs
     // change — see [_ensureComputed]'s doc comment. `pmsBandActive` is read
-    // into a local here and threaded into [_legendStrip] below rather than
+    // into a local here and threaded into the legend sheet below rather than
     // written to an instance field during build.
     _ensureComputed(
       entries: entries,
@@ -1471,23 +1486,21 @@ class _MonthCalendarState extends State<MonthCalendar>
     final cycles = _computedCycles;
     final forecastByIso = _computedForecastByIso;
     final activeLayers = _computedActiveLayers;
-    final pmsBandActive = _computedPmsBandActive;
     final estimateActive = prediction is ActivePrediction;
     final layerList = activeLayers.toList(growable: false);
-    final palette = symptomLayerPalette(theme.brightness);
+    final palette = colors.symptomLayerPalette;
     final maxPageIndex =
         _pageIndexFor(today.year, today.month) + kForwardMonthLimit;
     final l10n = AppLocalizations.of(context);
     final locale = dates.calendarLocale(context);
     final fullWeekdays = dates.fullWeekdayNames(locale: locale);
 
-    // #556: LayoutBuilder captures this widget's own total available height
-    // so the ConstrainedBox below can cap the legend/layers section as a
-    // *fraction* of it, rather than a fixed guess -- see that ConstrainedBox's
-    // own comment for why a fixed number is wrong (the layers panel alone
-    // can render 100+ FilterChips).
-    return LayoutBuilder(
-      builder: (context, outerConstraints) => Column(
+    // Issue #810: the legend no longer renders inline (it is reference
+    // material, reachable from the info action in the month-nav row), so the
+    // 35%-height ConstrainedBox + inner scroll cage #556/#875 added purely to
+    // contain it is gone -- the grid gets that vertical budget back, which is
+    // also what was hiding the legend at accessibility text sizes (#879).
+    return Column(
         children: [
           Row(
             children: [
@@ -1508,7 +1521,7 @@ class _MonthCalendarState extends State<MonthCalendar>
                           dates.monthNames(locale: locale)[_displayedMonth - 1],
                           _displayedYear,
                         ),
-                        style: theme.textTheme.titleMedium,
+                        style: theme.textTheme.titleLarge,
                       ),
                     ),
                   ),
@@ -1525,46 +1538,31 @@ class _MonthCalendarState extends State<MonthCalendar>
                 icon: const Icon(Icons.chevron_right),
                 onPressed: nextDisabled ? null : () => _shiftMonth(1),
               ),
+              // Issue #810: reference material (the legend, and the
+              // symptom-layer chooser when no layer is active) moves behind
+              // this one info action. It keeps the `legend-toggle` key and
+              // `calendarShowLegend` semantics label the old inline toggle
+              // carried, so the accessibility pass that asserts them is
+              // unchanged in intent.
+              Semantics(
+                button: true,
+                label: l10n.calendarShowLegend,
+                excludeSemantics: true,
+                onTap: _openCalendarInfoSheet,
+                child: IconButton(
+                  key: const ValueKey('legend-toggle'),
+                  tooltip: l10n.calendarShowLegend,
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: _openCalendarInfoSheet,
+                ),
+              ),
             ],
           ),
-          // #556: the legend and layers header/panel used to sit here as
-          // plain (non-flex) Column children, sized to their own natural
-          // height unconditionally -- fine as long as the legend could
-          // auto-collapse to keep that height in budget. Now that it always
-          // defaults expanded (see _legendStrip's own doc comment), a very
-          // narrow phone at a very large text scale can grow this stack
-          // past the screen's remaining height. And separately, the layers
-          // panel alone can render 100+ FilterChips (kTagTaxonomy) when
-          // expanded, easily taller than any single fixed pixel budget on
-          // a small screen while being a trivial fraction of a tall one.
-          //
-          // ConstrainedBox+SingleChildScrollView (not Flexible/Expanded --
-          // deliberately still a plain, non-flex Column child, computed the
-          // same single-pass way the `Expanded(child: PageView...)` below
-          // always was, so that Expanded keeps getting *all* space this
-          // section doesn't use rather than a fixed flex share reserved
-          // whether or not the header actually needs it) is what fixes
-          // that: the cap is a *fraction of this whole widget's own
-          // available height* (captured by the LayoutBuilder wrapping this
-          // Column), not a fixed guess -- generous enough that this
-          // section's natural size stays under it on any screen where the
-          // grid below still has reasonable room left over, and it only
-          // actually engages scrolling once the section's own content
-          // would otherwise squeeze the grid out entirely.
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: outerConstraints.maxHeight * 0.35,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _legendStrip(context, theme, colors, pmsBandActive),
-                  _layersHeader(layerList, theme),
-                  if (_layersExpanded) _layersPanel(activeLayers),
-                ],
-              ),
-            ),
-          ),
+          // Issue #810: the layers summary row only earns its place when at
+          // least one layer is active. With none, the empty-state entry
+          // point lives in the info sheet's "Symptom layers" action instead
+          // (see [_openCalendarInfoSheet]).
+          if (layerList.isNotEmpty) _layersHeader(layerList, theme),
           ResponsiveBody(
             maxWidth: kCalendarGridMaxWidth,
             child: Padding(
@@ -1699,90 +1697,89 @@ class _MonthCalendarState extends State<MonthCalendar>
             ),
           ),
         ],
+    );
+  }
+
+  /// Issue #810: the legend is reference material, so it lives in a bottom
+  /// sheet reached from the month-nav row's info action rather than in the
+  /// grid's own vertical budget — which also removes the 35%-height scroll
+  /// cage #556/#875 added purely to contain an always-expanded legend, and
+  /// un-hides the legend at accessibility text sizes (#879). The same sheet
+  /// exposes the symptom-layer chooser when no layer is active, since the
+  /// inline [_layersHeader] is hidden in that state.
+  Future<void> _openCalendarInfoSheet() async {
+    LLHaptics.selection();
+    final theme = Theme.of(context);
+    final colors =
+        theme.extension<LunarLogColors>() ??
+        LunarLogColors.forColorScheme(theme.colorScheme);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      routeSettings: const RouteSettings(name: kRouteCalendarLegendSheet),
+      builder: (_) => _calendarInfoSheet(theme, colors),
+    );
+  }
+
+  /// The info sheet's content: the legend swatch rows (keyed
+  /// `calendar-legend`, the key the old inline strip carried) plus the
+  /// "Symptom layers" action.
+  Widget _calendarInfoSheet(ThemeData theme, LunarLogColors colors) {
+    final l10n = AppLocalizations.of(context);
+    return SafeArea(
+      child: Padding(
+        key: const ValueKey('calendar-legend'),
+        padding: const EdgeInsets.fromLTRB(
+          LLSpace.space4,
+          0,
+          LLSpace.space4,
+          LLSpace.space4,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l10n.calendarLegend, style: theme.textTheme.titleMedium),
+              const SizedBox(height: LLSpace.space2),
+              _legendEntries(theme, colors, _computedPmsBandActive),
+              const SizedBox(height: LLSpace.space2),
+              ListTile(
+                key: const ValueKey('symptom-layers-open'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.tune),
+                title: Text(l10n.calendarSymptomLayers),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  unawaited(_openLayersSheet());
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  /// The legend strip under the month header (issue #191; B-2, B-11; issue
-  /// #312 review: now also keys the PMS/cramps badges and the
-  /// symptom-layer dot palette). Keys every mark the grid can show except
-  /// the cycle-day numeral (a plain count, not a colour/shape channel that
-  /// needs a key of its own).
-  ///
-  /// Issue #556: no longer auto-collapses at large text scale (#312's
-  /// original rationale — keeping the header stack's vertical budget under
-  /// the single `Expanded` `PageView` — made the legend hardest to reach
-  /// for exactly the users who need it most). It now always defaults
-  /// expanded and wraps its entries instead (`_legendEntries`'s `Wrap` and
-  /// `_legendChip`'s `Flexible` labels already handle that); the manual
-  /// toggle is unchanged and still collapses/re-expands on tap.
-  Widget _legendStrip(
-    BuildContext context,
-    ThemeData theme,
-    LunarLogColors colors,
-    bool pmsBandActive,
-  ) {
-    final expanded = _legendExpanded ?? true;
-    final l10n = AppLocalizations.of(context);
-    return Column(
-      key: const ValueKey('calendar-legend'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Semantics(
-            button: true,
-            label: expanded ? l10n.calendarHideLegend : l10n.calendarShowLegend,
-            excludeSemantics: true,
-            child: InkWell(
-              key: const ValueKey('legend-toggle'),
-              onTap: () => setState(() => _legendExpanded = !expanded),
-              // #556: the previous mainAxisSize.min Row (16dp icon,
-              // bodySmall text, no padding) hit ~20dp tall -- the control
-              // that explains every colour in the grid was the one
-              // failing hardest on tap-target size. SizedBox(height: 48)
-              // + Align keeps the compact visual row but gives it a full
-              // 48dp-tall (and full-width) tap area.
-              child: SizedBox(
-                height: 48,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 2),
-                      // Issue #460's RTL/pseudo-locale smoke found this
-                      // label overflowing the row the moment localized
-                      // copy runs longer than English "Legend" (58px over
-                      // at ~2x expansion): the row had no flex or
-                      // ellipsis, so any longer translation (or large
-                      // text scale) painted past the tap area's edge.
-                      Flexible(
-                        child: Text(
-                          l10n.calendarLegend,
-                          style: theme.textTheme.bodySmall,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        if (expanded) _legendEntries(theme, colors, pmsBandActive),
-      ],
+  /// Issue #810: the symptom-layer chooser for the no-active-layer case
+  /// (the inline header is hidden then). Its own sheet so the full
+  /// `kTagTaxonomy` chip set can scroll instead of stretching the calendar.
+  Future<void> _openLayersSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      routeSettings: const RouteSettings(name: kRouteCalendarLayersSheet),
+      builder: (_) => _LayersChooserSheet(
+        active: _computedActiveLayers,
+        onToggleLayer: _toggleLayer,
+      ),
     );
   }
 
-  /// The legend's swatch rows (issue #312, split out of [_legendStrip] to
-  /// keep that method's own branch count low): the four logged flow
+  /// The legend's swatch rows (issue #312, split out of the inline legend
+  /// to keep that method's own branch count low): the four logged flow
   /// levels, a symptom-only day, today's ring, #133's predicted band, and
   /// — new in this issue — the PMS/cramps badges and the symptom-layer dot
   /// palette.
@@ -1797,7 +1794,6 @@ class _MonthCalendarState extends State<MonthCalendar>
     LunarLogColors colors,
     bool pmsBandActive,
   ) {
-    final brightness = theme.brightness;
     final l10n = AppLocalizations.of(context);
     final entries = [
       // Issue #761: the observation-backed spotting ring comes first —
@@ -1845,27 +1841,30 @@ class _MonthCalendarState extends State<MonthCalendar>
       if (pmsBandActive)
         _LegendEntry(
           'pms',
-          pmsBadgeColor(brightness),
+          colors.pmsBadge,
           l10n.calendarLegendPms,
           style: _LegendSwatchStyle.icon,
           icon: Icons.spa,
         ),
       _LegendEntry(
         'cramps',
-        crampsBadgeColor(brightness),
+        colors.crampsBadge,
         l10n.calendarLegendCramps,
         style: _LegendSwatchStyle.icon,
         icon: Icons.bolt,
       ),
     ];
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      padding: const EdgeInsets.symmetric(
+        horizontal: LLSpace.space1,
+        vertical: 2,
+      ),
       child: Wrap(
         spacing: 10,
         runSpacing: 4,
         children: [
           for (final entry in entries) _legendChip(entry, theme),
-          _legendPaletteChip(symptomLayerPalette(brightness), theme),
+          _legendPaletteChip(colors.symptomLayerPalette, theme),
         ],
       ),
     );
@@ -1873,8 +1872,9 @@ class _MonthCalendarState extends State<MonthCalendar>
 
   /// The three symptom-layer palette dots, keyed as one legend entry
   /// (issue #312): unlike a logged day's own [_loggedMarkers] dot, this
-  /// keys the *colour channel* itself (the fixed [symptomLayerPalette]
-  /// order), not any specific tag — which tags occupy which colour is the
+  /// keys the *colour channel* itself (the fixed
+  /// [LunarLogColors.symptomLayerPalette] order), not any specific tag —
+  /// which tags occupy which colour is the
   /// operator's own layer selection.
   Widget _legendPaletteChip(List<Color> palette, ThemeData theme) {
     return Row(
@@ -1891,11 +1891,11 @@ class _MonthCalendarState extends State<MonthCalendar>
             ),
           ),
         const SizedBox(width: 2),
-        // "Symptom layer dots", not the bare "Symptom layers" the
-        // [_layersHeader] summary row already shows when no layer is
-        // selected (issue #312 review) — a shared label would collide
-        // with every `find.text` lookup in a widget test that opens with
-        // the default (unselected) layer set. #138: Flexible for the same
+        // "Symptom layer dots", not the bare "Symptom layers" the info
+        // sheet's chooser action uses (issue #312 review; issue #810 moved
+        // that action into the sheet) — a shared label would collide with
+        // every `find.text` lookup in a widget test that opens with the
+        // default (unselected) layer set. #138: Flexible for the same
         // wrap-don't-overflow reason as [_legendChip].
         Flexible(
           child: Text(
@@ -1937,7 +1937,10 @@ class _MonthCalendarState extends State<MonthCalendar>
         height: 10,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: entry.color, width: 1.5),
+          border: Border.all(
+            color: entry.color,
+            width: kCalendarRingStrokeWidth,
+          ),
         ),
       ),
       _LegendSwatchStyle.hatched => _HatchedCircle(
@@ -1977,26 +1980,28 @@ class _MonthCalendarState extends State<MonthCalendar>
     (entry) => entry.localDate.year == year && entry.localDate.month == month,
   );
 
-  /// The symptom-layers control (R2): a collapsed summary row (tap to
-  /// expand) over the collapsible chip panel.
+  /// The symptom-layers summary row (R2): names the active layers and
+  /// opens the chooser sheet. Issue #810: the chip panel is no longer
+  /// expanded inline (with 100+ `kTagTaxonomy` chips it could outgrow the
+  /// screen once the #556 scroll cage was removed), so this row is a
+  /// status + entry point rather than a disclosure — and it only renders
+  /// at all once a layer is active ([_calendar]'s `layerList.isNotEmpty`).
   Widget _layersHeader(List<String> layerList, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
-    final summary = layerList.isEmpty
-        ? l10n.calendarSymptomLayers
-        : l10n.calendarLayersSummary(layerList.map(_displayOf).join(', '));
+    final summary = l10n.calendarLayersSummary(
+      layerList.map(_displayOf).join(', '),
+    );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: LLSpace.space1),
       child: Row(
         children: [
           // #556: VisualDensity.compact shrank this to ~40dp; dropping it
           // returns to IconButton's default (48dp) tap target.
           IconButton(
             key: const ValueKey('symptom-layers-toggle'),
-            tooltip: _layersExpanded
-                ? l10n.calendarHideSymptomLayers
-                : l10n.calendarShowSymptomLayers,
-            icon: Icon(_layersExpanded ? Icons.expand_less : Icons.expand_more),
-            onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
+            tooltip: l10n.calendarShowSymptomLayers,
+            icon: const Icon(Icons.tune),
+            onPressed: _openLayersSheet,
           ),
           Expanded(
             child: Text(
@@ -2006,28 +2011,6 @@ class _MonthCalendarState extends State<MonthCalendar>
               style: theme.textTheme.bodySmall,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _layersPanel(Set<String> activeLayers) {
-    return Padding(
-      key: const ValueKey('symptom-layers-panel'),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 0,
-        children: [
-          // #556: VisualDensity.compact shrank these to ~40dp; dropping
-          // it returns to FilterChip's default (48dp) tap target.
-          for (final tag in kTagTaxonomy)
-            FilterChip(
-              key: ValueKey('layer-chip-${tag.code}'),
-              label: Text(tag.display),
-              selected: activeLayers.contains(tag.code),
-              onSelected: (_) => _toggleLayer(tag.code, activeLayers),
-            ),
         ],
       ),
     );
@@ -2043,7 +2026,10 @@ class _MonthCalendarState extends State<MonthCalendar>
     final message = AppLocalizations.of(context).calendarKeepLogging;
     return Padding(
       key: const ValueKey('keep-logging-strip'),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: LLSpace.space1,
+        vertical: LLSpace.space1,
+      ),
       child: Row(
         children: [
           Icon(Icons.edit_note, size: 16, color: theme.colorScheme.tertiary),
@@ -2260,7 +2246,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         SizedBox(
           height: metrics.markersHeight,
           child: isFuture
-              ? _futureMarkers(forecastCell, theme, date.iso)
+              ? _futureMarkers(forecastCell, theme, colors, date.iso)
               : _loggedMarkers(entry, layerList: layerList, palette: palette),
         ),
       ],
@@ -2319,15 +2305,17 @@ class _MonthCalendarState extends State<MonthCalendar>
         circleSize: metrics.circleSize,
       );
     }
-    final label = Text(
-      '${date.day}',
-      style: dimmed
-          ? TextStyle(
-              color: theme.colorScheme.onSurface.withValues(
-                alpha: kFutureDayTextAlpha,
-              ),
-            )
-          : null,
+    final label = _fittedNumeral(
+      Text(
+        '${date.day}',
+        style: dimmed
+            ? TextStyle(
+                color: theme.colorScheme.onSurface.withValues(
+                  alpha: kFutureDayTextAlpha,
+                ),
+              )
+            : null,
+      ),
     );
     final predictedBleed = forecastCell?.predictedBleed ?? false;
     if (predictedBleed) {
@@ -2358,12 +2346,19 @@ class _MonthCalendarState extends State<MonthCalendar>
       );
     }
     return Container(
+      // Issue #879: keyed so a widget test can read the painted circle's
+      // rect (the bleed/spotting/predicted/fertile branches already carry
+      // their own keys) and assert adjacent circles never intersect.
+      key: ValueKey('day-circle-$iso'),
       width: metrics.circleSize,
       height: metrics.circleSize,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: isToday
-            ? Border.all(color: theme.colorScheme.primary, width: 1.5)
+            ? Border.all(
+                color: theme.colorScheme.primary,
+                width: kCalendarRingStrokeWidth,
+              )
             : null,
       ),
       alignment: Alignment.center,
@@ -2412,17 +2407,19 @@ class _MonthCalendarState extends State<MonthCalendar>
     // `surfaceContainerLow`, not against `onSurface` text on top of it. A
     // thin `surface`-coloured halo behind the numeral keeps it legible
     // regardless of what colour happens to sit underneath.
-    final numeral = isSpotting
-        ? _haloedDayNumber(
-            '${date.day}',
-            theme.textTheme.bodyMedium,
-            textColor,
-            theme.colorScheme.surface,
-          )
-        : DefaultTextStyle.merge(
-            style: TextStyle(color: textColor),
-            child: Text('${date.day}'),
-          );
+    final numeral = _fittedNumeral(
+      isSpotting
+          ? _haloedDayNumber(
+              '${date.day}',
+              theme.textTheme.bodyMedium,
+              textColor,
+              theme.colorScheme.surface,
+            )
+          : DefaultTextStyle.merge(
+              style: TextStyle(color: textColor),
+              child: Text('${date.day}'),
+            ),
+    );
     // Issue #312 (BLOCKING — today-ring overflow): the ring must stay
     // within the same outer box the plain (no-bleed) today cell already
     // uses (`_dayCircle`) — the fill circle shrinks by 4px so the ring
@@ -2442,7 +2439,10 @@ class _MonthCalendarState extends State<MonthCalendar>
       decoration: isSpotting
           ? BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: tone.fill, width: 2),
+              border: Border.all(
+                color: tone.fill,
+                width: kCalendarRingStrokeWidth,
+              ),
             )
           : BoxDecoration(shape: BoxShape.circle, color: tone.fill),
       child: Stack(
@@ -2490,7 +2490,10 @@ class _MonthCalendarState extends State<MonthCalendar>
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: theme.colorScheme.primary, width: 1.5),
+        border: Border.all(
+          color: theme.colorScheme.primary,
+          width: kCalendarRingStrokeWidth,
+        ),
       ),
       child: circle,
     );
@@ -2499,9 +2502,13 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// Markers under a future day's number: the PMS and cramps badges
   /// (fixed offsets off the estimate, KTD7) and the cycle-day numeral
   /// (first predicted cycle only, KTD5).
-  Widget? _futureMarkers(ForecastDayCell? cell, ThemeData theme, String iso) {
+  Widget? _futureMarkers(
+    ForecastDayCell? cell,
+    ThemeData theme,
+    LunarLogColors colors,
+    String iso,
+  ) {
     if (cell == null) return null;
-    final brightness = theme.brightness;
     return Row(
       key: ValueKey('future-markers-$iso'),
       mainAxisAlignment: MainAxisAlignment.center,
@@ -2511,20 +2518,20 @@ class _MonthCalendarState extends State<MonthCalendar>
             Icons.spa,
             key: ValueKey('pms-badge-$iso'),
             size: 12,
-            color: pmsBadgeColor(brightness),
+            color: colors.pmsBadge,
           ),
         if (cell.crampsBadge)
           Icon(
             Icons.bolt,
             key: ValueKey('cramps-badge-$iso'),
             size: 12,
-            color: crampsBadgeColor(brightness),
+            color: colors.crampsBadge,
           ),
         if (cell.cycleDayNumber != null)
           Text(
             '${cell.cycleDayNumber}',
             key: ValueKey('cycle-day-numeral-$iso'),
-            style: theme.textTheme.labelSmall?.copyWith(fontSize: 9),
+            style: theme.textTheme.labelSmall,
           ),
       ],
     );
@@ -2650,7 +2657,7 @@ class _HatchPainter extends CustomPainter {
     final ring = Paint()
       ..color = color.withValues(alpha: borderOpacity)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = kCalendarRingStrokeWidth;
     final line = Paint()
       ..color = hatchTint
       ..strokeWidth = 1.5;
@@ -2757,7 +2764,7 @@ class _DashPainter extends CustomPainter {
     final dash = Paint()
       ..color = color.withValues(alpha: borderOpacity)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = kCalendarRingStrokeWidth;
     final segment = 2 * math.pi / _dashCount;
     final rect = Rect.fromCircle(center: center, radius: radius);
     for (var i = 0; i < _dashCount; i++) {
@@ -2771,6 +2778,88 @@ class _DashPainter extends CustomPainter {
       oldDelegate.bandColor != bandColor ||
       oldDelegate.opacity != opacity ||
       oldDelegate.borderOpacity != borderOpacity;
+}
+
+/// The symptom-layer chooser (issue #810): every `kTagTaxonomy` chip in a
+/// scrollable sheet, seeded from the calendar's active set. It keeps its
+/// own `_active` copy and asks the parent to apply each toggle, so the
+/// chips reflect the effective selection (a refused fourth layer stays
+/// unselected) rather than a set captured before the calendar rebuilt.
+class _LayersChooserSheet extends StatefulWidget {
+  const _LayersChooserSheet({
+    required this.active,
+    required this.onToggleLayer,
+  });
+
+  final Set<String> active;
+
+  /// Applies [code]'s toggle to [current] and returns the effective set
+  /// afterwards (the parent owns the `kMaxSymptomLayers` cap and the
+  /// SnackBar it triggers).
+  final Set<String> Function(String code, Set<String> current) onToggleLayer;
+
+  @override
+  State<_LayersChooserSheet> createState() => _LayersChooserSheetState();
+}
+
+class _LayersChooserSheetState extends State<_LayersChooserSheet> {
+  late Set<String> _active = {...widget.active};
+
+  void _toggle(String code) {
+    final next = widget.onToggleLayer(code, _active);
+    setState(() => _active = next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          LLSpace.space4,
+          0,
+          LLSpace.space4,
+          LLSpace.space4,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.calendarSymptomLayers,
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Padding(
+                  key: const ValueKey('symptom-layers-panel'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 0,
+                    children: [
+                      // #556: VisualDensity.compact shrank these to ~40dp;
+                      // dropping it returns to FilterChip's default (48dp)
+                      // tap target.
+                      for (final tag in kTagTaxonomy)
+                        FilterChip(
+                          key: ValueKey('layer-chip-${tag.code}'),
+                          label: Text(tag.display),
+                          selected: _active.contains(tag.code),
+                          onSelected: (_) => _toggle(tag.code),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// The read-only explainer for a tapped future cell (KTD8): what is

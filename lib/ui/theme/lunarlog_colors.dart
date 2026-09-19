@@ -38,10 +38,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     required this.flowHeavy,
     required this.onFlowHeavy,
     required this.symptomDot,
+    required this.symptomLayer1,
+    required this.symptomLayer2,
+    required this.symptomLayer3,
     required this.predictedBand,
     required this.predictedBorder,
     required this.fertileBand,
     required this.fertileBorder,
+    required this.pmsBadge,
+    required this.crampsBadge,
     required this.confidenceHigh,
     required this.confidenceLearning,
     required this.confidenceIrregular,
@@ -88,6 +93,27 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       toneLighterThanBackground: toneLighterThanSurface,
       minContrast: 3.0,
     );
+
+    // Issue #810: the symptom-layer dot palette and the PMS/cramps badge
+    // marks used to be hardcoded hex literals in `month_calendar.dart`
+    // (five colours across light/dark). They are now derived the same way
+    // the flow ramp is — solved for the floor contrast against the Card
+    // background they actually render onto (`surfaceContainerLow`), with
+    // the direction flipping for dark mode — so every one of them clears
+    // 3:1 in both themes instead of only the light ones happening to.
+    const markMinContrast = 3.0;
+    Color mark(double hue, double saturation) => _toneAtContrast(
+          hue: hue,
+          saturation: saturation,
+          backgroundLuminance: cardLuminance,
+          toneLighterThanBackground: toneLighterThanSurface,
+          minContrast: markMinContrast,
+        );
+    final symptomLayer1 = mark(285, 0.55); // violet
+    final symptomLayer2 = mark(174, 0.60); // teal
+    final symptomLayer3 = mark(333, 0.55); // pink
+    final pmsBadge = mark(260, 0.55); // deep purple
+    final crampsBadge = mark(41, 0.72); // amber
 
     final predictedBorder = _toneAtContrast(
       hue: primaryHue,
@@ -139,10 +165,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       flowHeavy: flowSteps[3].tone,
       onFlowHeavy: flowSteps[3].onTone,
       symptomDot: symptomDot,
+      symptomLayer1: symptomLayer1,
+      symptomLayer2: symptomLayer2,
+      symptomLayer3: symptomLayer3,
       predictedBand: predictedBand,
       predictedBorder: predictedBorder,
       fertileBand: fertileBand,
       fertileBorder: fertileBorder,
+      pmsBadge: pmsBadge,
+      crampsBadge: crampsBadge,
       // Fixed hues (not the primary/tertiary hue) so these badge families
       // stay visually distinct from the flow ramp and from each other.
       confidenceHigh: badge(142, 0.45), // green -- regular, well-established
@@ -172,6 +203,20 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   /// Tertiary-derived accent for a logged symptom, >=3:1 against `surface`.
   final Color symptomDot;
 
+  /// Issue #810: the three symptom-layer dot colours, in their fixed slot
+  /// order, each >=3:1 against `surfaceContainerLow` (the Card background
+  /// the calendar's day cells render onto).
+  final Color symptomLayer1;
+  final Color symptomLayer2;
+  final Color symptomLayer3;
+
+  /// The three symptom-layer dot colours in slot order.
+  List<Color> get symptomLayerPalette => [
+        symptomLayer1,
+        symptomLayer2,
+        symptomLayer3,
+      ];
+
   /// Low-chroma fill for a predicted-period calendar cell. Distinguishable
   /// without colour: pair with a dashed/hatched [predictedBorder], never
   /// colour alone.
@@ -186,6 +231,11 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
   /// too, mirroring [predictedBorder]'s own non-colour pairing.
   final Color fertileBand;
   final Color fertileBorder;
+
+  /// Issue #810: the forecast PMS/cramps badge colours (fixed offsets off
+  /// the active estimate), each >=3:1 against `surfaceContainerLow`.
+  final Color pmsBadge;
+  final Color crampsBadge;
 
   /// Prediction-confidence badge colours.
   final Color confidenceHigh;
@@ -218,10 +268,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
     Color? flowHeavy,
     Color? onFlowHeavy,
     Color? symptomDot,
+    Color? symptomLayer1,
+    Color? symptomLayer2,
+    Color? symptomLayer3,
     Color? predictedBand,
     Color? predictedBorder,
     Color? fertileBand,
     Color? fertileBorder,
+    Color? pmsBadge,
+    Color? crampsBadge,
     Color? confidenceHigh,
     Color? confidenceLearning,
     Color? confidenceIrregular,
@@ -237,10 +292,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       flowHeavy: _or(flowHeavy, this.flowHeavy),
       onFlowHeavy: _or(onFlowHeavy, this.onFlowHeavy),
       symptomDot: _or(symptomDot, this.symptomDot),
+      symptomLayer1: _or(symptomLayer1, this.symptomLayer1),
+      symptomLayer2: _or(symptomLayer2, this.symptomLayer2),
+      symptomLayer3: _or(symptomLayer3, this.symptomLayer3),
       predictedBand: _or(predictedBand, this.predictedBand),
       predictedBorder: _or(predictedBorder, this.predictedBorder),
       fertileBand: _or(fertileBand, this.fertileBand),
       fertileBorder: _or(fertileBorder, this.fertileBorder),
+      pmsBadge: _or(pmsBadge, this.pmsBadge),
+      crampsBadge: _or(crampsBadge, this.crampsBadge),
       confidenceHigh: _or(confidenceHigh, this.confidenceHigh),
       confidenceLearning: _or(confidenceLearning, this.confidenceLearning),
       confidenceIrregular: _or(confidenceIrregular, this.confidenceIrregular),
@@ -265,10 +325,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
       flowHeavy: Color.lerp(flowHeavy, other.flowHeavy, t)!,
       onFlowHeavy: Color.lerp(onFlowHeavy, other.onFlowHeavy, t)!,
       symptomDot: Color.lerp(symptomDot, other.symptomDot, t)!,
+      symptomLayer1: Color.lerp(symptomLayer1, other.symptomLayer1, t)!,
+      symptomLayer2: Color.lerp(symptomLayer2, other.symptomLayer2, t)!,
+      symptomLayer3: Color.lerp(symptomLayer3, other.symptomLayer3, t)!,
       predictedBand: Color.lerp(predictedBand, other.predictedBand, t)!,
       predictedBorder: Color.lerp(predictedBorder, other.predictedBorder, t)!,
       fertileBand: Color.lerp(fertileBand, other.fertileBand, t)!,
       fertileBorder: Color.lerp(fertileBorder, other.fertileBorder, t)!,
+      pmsBadge: Color.lerp(pmsBadge, other.pmsBadge, t)!,
+      crampsBadge: Color.lerp(crampsBadge, other.crampsBadge, t)!,
       confidenceHigh: Color.lerp(confidenceHigh, other.confidenceHigh, t)!,
       confidenceLearning:
           Color.lerp(confidenceLearning, other.confidenceLearning, t)!,
@@ -294,10 +359,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
 
   bool _sameAccentColors(LunarLogColors other) =>
       other.symptomDot == symptomDot &&
+      other.symptomLayer1 == symptomLayer1 &&
+      other.symptomLayer2 == symptomLayer2 &&
+      other.symptomLayer3 == symptomLayer3 &&
       other.predictedBand == predictedBand &&
       other.predictedBorder == predictedBorder &&
       other.fertileBand == fertileBand &&
-      other.fertileBorder == fertileBorder;
+      other.fertileBorder == fertileBorder &&
+      other.pmsBadge == pmsBadge &&
+      other.crampsBadge == crampsBadge;
 
   bool _sameConfidenceColors(LunarLogColors other) =>
       other.confidenceHigh == confidenceHigh &&
@@ -330,10 +400,15 @@ class LunarLogColors extends ThemeExtension<LunarLogColors> {
         flowHeavy,
         onFlowHeavy,
         symptomDot,
+        symptomLayer1,
+        symptomLayer2,
+        symptomLayer3,
         predictedBand,
         predictedBorder,
         fertileBand,
         fertileBorder,
+        pmsBadge,
+        crampsBadge,
         confidenceHigh,
         confidenceLearning,
         confidenceIrregular,

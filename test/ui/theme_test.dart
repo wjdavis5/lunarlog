@@ -92,10 +92,15 @@ void main() {
           'flowHeavy': c.flowHeavy,
           'onFlowHeavy': c.onFlowHeavy,
           'symptomDot': c.symptomDot,
+          'symptomLayer1': c.symptomLayer1,
+          'symptomLayer2': c.symptomLayer2,
+          'symptomLayer3': c.symptomLayer3,
           'predictedBand': c.predictedBand,
           'predictedBorder': c.predictedBorder,
           'fertileBand': c.fertileBand,
           'fertileBorder': c.fertileBorder,
+          'pmsBadge': c.pmsBadge,
+          'crampsBadge': c.crampsBadge,
           'confidenceHigh': c.confidenceHigh,
           'confidenceLearning': c.confidenceLearning,
           'confidenceIrregular': c.confidenceIrregular,
@@ -157,6 +162,38 @@ void main() {
             greaterThanOrEqualTo(3.0),
             reason:
                 '$name ${tone.key}/surfaceContainerLow contrast was $ratio',
+          );
+        }
+      });
+
+      // Issue #810: the symptom-layer dots and the PMS/cramps badges were
+      // hardcoded hex literals in `month_calendar.dart`; they are
+      // `LunarLogColors` roles now, solved at the flow ramp's 3:1 floor
+      // against the Card background they render onto. The dark-mode PMS
+      // badge (`0xFFB39DDB` on `surfaceContainerLow`) is the one that
+      // failed this bar before the derivation, so this test is the
+      // regression guard for exactly that colour.
+      test(
+          '$name theme: each symptom-layer dot and PMS/cramps badge clears '
+          '3:1 against surfaceContainerLow', () {
+        final colors = theme.extension<LunarLogColors>()!;
+        final marks = <String, Color>{
+          'symptomLayer1': colors.symptomLayer1,
+          'symptomLayer2': colors.symptomLayer2,
+          'symptomLayer3': colors.symptomLayer3,
+          'pmsBadge': colors.pmsBadge,
+          'crampsBadge': colors.crampsBadge,
+        };
+        for (final mark in marks.entries) {
+          final ratio = _contrast(
+            mark.value,
+            theme.colorScheme.surfaceContainerLow,
+          );
+          expect(
+            ratio,
+            greaterThanOrEqualTo(3.0),
+            reason:
+                '$name ${mark.key}/surfaceContainerLow contrast was $ratio',
           );
         }
       });

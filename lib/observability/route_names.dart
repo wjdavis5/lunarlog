@@ -89,6 +89,18 @@ const String kRouteFutureDayExplainerScreen = 'FutureDayExplainerScreen';
 /// 2b).
 const String kRouteMonthYearPickerDialog = 'MonthYearPickerDialog';
 
+/// `lib/ui/logging/month_calendar.dart` (issue #810) — the reference legend
+/// sheet opened from the month-nav row's info action. The inline legend it
+/// replaces is gone (and with it the 35%-height scroll cage #556/#875 added
+/// only to contain it).
+const String kRouteCalendarLegendSheet = 'CalendarLegendSheet';
+
+/// `lib/ui/logging/month_calendar.dart` (issue #810) — the symptom-layer
+/// chooser, opened from the legend sheet's "Symptom layers" action. It is
+/// reachable this way precisely when the inline layers header is hidden
+/// (no layer active yet).
+const String kRouteCalendarLayersSheet = 'CalendarLayersSheet';
+
 /// `lib/ui/feedback/attachment_field.dart` — explains what a screenshot may
 /// contain before the picker opens; worth distinguishing from a plain
 /// confirm (U2 Approach 2b).
@@ -272,6 +284,8 @@ const Set<String> kSentryRouteNames = {
   kRoutePostpartumExitExclusionDialog,
   kRouteFutureDayExplainerScreen,
   kRouteMonthYearPickerDialog,
+  kRouteCalendarLegendSheet,
+  kRouteCalendarLayersSheet,
   kRouteAttachmentConsentDialog,
   kRouteAccountMismatchDialog,
   kRouteHealthSyncScreen,
