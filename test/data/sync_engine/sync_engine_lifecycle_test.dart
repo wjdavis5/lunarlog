@@ -6,6 +6,7 @@ library;
 import 'dart:async';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 
@@ -84,6 +85,101 @@ void main() {
       expect(rig.seen.last, rig.engine.snapshot);
       expect(rig.engine.snapshot.lastSyncAt, t0);
       expect((await rig.state()).lastSyncAt?.toUtc(), t0);
+    });
+  });
+
+  group('lifecycle rate-limit and timer pause (issue #842)', () {
+    test(
+        'a resume within the threshold, with a clean store and Realtime '
+        'subscribed, makes no request', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.start();
+      final pulls = rig.transport.pullCount;
+      rig.engine.attachRealtimeSubscribedProbe(() => true);
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.paused);
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await rig.engine.flush();
+
+      expect(rig.transport.pullCount, pulls,
+          reason: 'clean, recent, Realtime-subscribed resume is redundant');
+    });
+
+    test('a resume within the threshold but with dirty rows does sync',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.start();
+      final pulls = rig.transport.pullCount;
+      rig.engine.attachRealtimeSubscribedProbe(() => true);
+      await rig.storage.upsertProfile(displayName: 'A', isMinor: false);
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await rig.engine.flush();
+
+      expect(rig.transport.pullCount, greaterThan(pulls),
+          reason: 'a dirty row must never be skipped');
+      expect(rig.transport.pushes, isNotEmpty);
+    });
+
+    test('a resume with Realtime down does sync even within the threshold',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.start();
+      final pulls = rig.transport.pullCount;
+      // No probe attached: the safe "not subscribed" default.
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await rig.engine.flush();
+
+      expect(rig.transport.pullCount, greaterThan(pulls),
+          reason: 'with Realtime down the pull is the only change signal');
+    });
+
+    test('a user-initiated requestSync is never skipped', () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.start();
+      final pulls = rig.transport.pullCount;
+      rig.engine.attachRealtimeSubscribedProbe(() => true);
+
+      // Clean store, within the threshold, Realtime subscribed — the exact
+      // shape a lifecycle trigger would skip. A user-initiated sync must
+      // still run.
+      rig.engine.requestSync();
+      await rig.engine.flush();
+
+      expect(rig.transport.pullCount, greaterThan(pulls));
+    });
+
+    test('the periodic timer pauses on paused/hidden and resumes on resumed',
+        () async {
+      final rig = Rig();
+      addTearDown(rig.dispose);
+      await rig.bind(uidA);
+      await rig.start();
+      expect(rig.timers.periodics.where((t) => t.active), hasLength(1));
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.paused);
+      expect(rig.timers.periodics.where((t) => t.active), isEmpty,
+          reason: 'backgrounding cancels the 15-minute timer');
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      expect(rig.timers.periodics.where((t) => t.active), hasLength(1),
+          reason: 'foregrounding restores it');
+      expect(rig.timers.periodics, hasLength(2),
+          reason: 'a fresh timer, not the cancelled one');
+
+      rig.engine.didChangeAppLifecycleState(AppLifecycleState.hidden);
+      expect(rig.timers.periodics.where((t) => t.active), isEmpty);
     });
   });
 }

@@ -84,6 +84,32 @@ class _StubDayEntriesRepository implements DayEntriesRepository {
       const [];
 }
 
+/// Issue #839: counts `watchForProfile` calls plus underlying listen/cancel
+/// events on the shared broadcast, so a test can prove the per-profile
+/// ref-counted sharing, teardown and rebuild. Reuses
+/// [_StubDayEntriesRepository]'s caller-driven `emit`/`close` and its
+/// throwing members for everything this group does not exercise.
+class _CountingDayEntriesRepository extends _StubDayEntriesRepository {
+  _CountingDayEntriesRepository() {
+    _controller.onListen = () => listens++;
+    _controller.onCancel = () => cancels++;
+  }
+
+  int watchCalls = 0;
+  int listens = 0;
+  int cancels = 0;
+
+  @override
+  Stream<List<DayEntry>> watchForProfile(
+    String profileId, {
+    LocalDate? from,
+    LocalDate? to,
+  }) {
+    watchCalls++;
+    return _controller.stream;
+  }
+}
+
 DayEntry _entry(String id, LocalDate date, DateTime updatedAt) => DayEntry(
       id: id,
       profileId: 'p',
@@ -551,8 +577,8 @@ void main() {
 
   group('memoised recomputation (issue #197)', () {
     test('two emissions carrying the same entries stamp compute the '
-        'prediction once — the second reuses the same object, it does '
-        'not just happen to equal it', () async {
+        'prediction once — the second is dropped by .distinct(identical) '
+        '(issue #839) rather than re-emitted unchanged', () async {
       final stub = _StubDayEntriesRepository();
       addTearDown(stub.close);
       final memoised = CyclePredictionService(stub);
@@ -573,11 +599,9 @@ void main() {
       stub.emit(List.of(entries));
       await pumpEventQueue();
 
-      expect(seen, hasLength(2),
-          reason: 'the stream itself still emits on both ticks');
-      expect(identical(seen[0], seen[1]), isTrue,
-          reason: 'an unchanged stamp must reuse the cached prediction '
-              'instead of recomputing');
+      expect(seen, hasLength(1),
+          reason: 'the memo hit returns the same instance, which '
+              '.distinct(identical) drops instead of propagating');
     });
 
     test('a genuinely changed stamp does recompute', () async {
@@ -626,12 +650,13 @@ void main() {
       ];
       stub.emit(entries);
       await pumpEventQueue();
-      // Same entries stamp, re-ticked — must reuse the cached prediction.
+      // Same entries stamp, re-ticked — the memo hit is dropped by
+      // .distinct(identical) (issue #839), so nothing further propagates.
       stub.emit(List.of(entries));
       await pumpEventQueue();
-      expect(identical(seen[0], seen[1]), isTrue,
-          reason: 'an unchanged (stamp, omissions) pair must reuse the '
-              'cached prediction');
+      expect(seen, hasLength(1),
+          reason: 'an unchanged (stamp, omissions) pair is a memo hit, '
+              'which distinct drops');
 
       // The entries stamp is unchanged, but the omission set now is —
       // this must recompute even though the entries list itself did not
@@ -639,7 +664,8 @@ void main() {
       await CycleExclusionList(omissionSettings)
           .omit('p', LocalDate(2026, 2, 1));
       await pumpEventQueue();
-      expect(identical(seen.last, seen[1]), isFalse,
+      expect(seen, hasLength(2));
+      expect(identical(seen[1], seen[0]), isFalse,
           reason: 'a changed omission set must recompute even when the '
               'entries stamp alone is unchanged');
     });
@@ -764,10 +790,10 @@ void main() {
     });
 
     test(
-        'a tick with today unchanged still re-emits (combineLatest fires on '
-        'every source event) but reuses the cached prediction instance -- '
-        'the #197 memo, not the ticker, is what keeps a same-day tick from '
-        'wasting a real recompute', () async {
+        'a tick with today unchanged re-runs the combine but the memo hit is '
+        'dropped by .distinct(identical) (issue #839) -- the #197 memo, plus '
+        'the distinct guard, is what keeps a same-day tick from propagating',
+        () async {
       final stub = _StubDayEntriesRepository();
       addTearDown(stub.close);
       final ticker = StreamController<void>();
@@ -789,9 +815,9 @@ void main() {
       ticker.add(null); // same today, no entries/settings change
       await pumpEventQueue();
 
-      expect(seen, hasLength(2));
-      expect(identical(seen[0], seen[1]), isTrue,
-          reason: 'nothing about the memo key actually changed');
+      expect(seen, hasLength(1),
+          reason: 'nothing about the memo key changed, so the identical '
+              'cached instance is not propagated');
     });
 
     test(
@@ -957,6 +983,200 @@ void main() {
 
       await pumpEventQueue();
       expect(tickCount, 1);
+    });
+  });
+
+  group('shared watch pipelines (issue #839)', () {
+    test(
+        'two subscribers to the same profile open one underlying query, '
+        'which is torn down when the last leaves and rebuilt for a later '
+        'subscriber', () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      final service = CyclePredictionService(repo);
+      LocalDate todayFn() => today;
+
+      final seenA = <CyclePrediction>[];
+      final seenB = <CyclePrediction>[];
+      final subA = service.watch('p', today: todayFn).listen(seenA.add);
+      final subB = service.watch('p', today: todayFn).listen(seenB.add);
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 1,
+          reason: 'both subscribers share one watchForProfile query');
+      expect(repo.listens, 1);
+
+      repo.emit([_entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1))]);
+      await pumpEventQueue();
+      expect(seenA, isNotEmpty);
+      expect(seenB, isNotEmpty);
+      expect(seenA.last, same(seenB.last),
+          reason: 'one shared instance fans out to every listener');
+
+      await subA.cancel();
+      await pumpEventQueue();
+      expect(repo.cancels, 0,
+          reason: 'one subscriber remains, so the query stays open');
+
+      await subB.cancel();
+      await pumpEventQueue();
+      expect(repo.cancels, 1,
+          reason: 'the last subscriber tears the shared query down');
+
+      // The ref-count regression that matters most: a later subscriber must
+      // rebuild rather than reuse the torn-down pipeline (or leak it).
+      final seenC = <CyclePrediction>[];
+      final subC = service.watch('p', today: todayFn).listen(seenC.add);
+      addTearDown(subC.cancel);
+      await pumpEventQueue();
+      expect(repo.watchCalls, 2, reason: 'rebuilt for the later subscriber');
+      expect(repo.listens, 2);
+
+      repo.emit([
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+        _entry('e2', LocalDate(2026, 5, 2), DateTime.utc(2026, 5, 2)),
+      ]);
+      await pumpEventQueue();
+      expect(seenC, isNotEmpty);
+    });
+
+    test('the default LocalDate.today provider shares with no-override '
+        'callers', () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      final service = CyclePredictionService(repo);
+
+      final subA = service.watch('p').listen((_) {});
+      final subB = service.watch('p', today: LocalDate.today).listen((_) {});
+      addTearDown(subA.cancel);
+      addTearDown(subB.cancel);
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 1,
+          reason: 'the default tear-off is normalised to the no-override '
+              'bucket');
+    });
+
+    test('two different profiles get independent shared pipelines', () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      final service = CyclePredictionService(repo);
+      LocalDate todayFn() => today;
+
+      final subA = service.watch('a', today: todayFn).listen((_) {});
+      final subB = service.watch('b', today: todayFn).listen((_) {});
+      addTearDown(subA.cancel);
+      addTearDown(subB.cancel);
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 2,
+          reason: 'a different profile is a different shared pipeline');
+    });
+
+    test('the same profile under different today providers does not share',
+        () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      final service = CyclePredictionService(repo);
+
+      final subA = service.watch('p', today: () => today).listen((_) {});
+      final subB = service
+          .watch('p', today: () => today.addDays(1))
+          .listen((_) {});
+      addTearDown(subA.cancel);
+      addTearDown(subB.cancel);
+      await pumpEventQueue();
+
+      expect(repo.watchCalls, 2,
+          reason: 'distinct today providers keep distinct per-subscription '
+              'semantics');
+    });
+
+    test('an unchanged memo result does not propagate past distinct', () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      final service = CyclePredictionService(repo);
+      LocalDate todayFn() => today;
+
+      final seen = <CyclePrediction>[];
+      final sub = service.watch('p', today: todayFn).listen(seen.add);
+      addTearDown(sub.cancel);
+
+      final entries = [
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+      ];
+      repo.emit(entries);
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+
+      // A distinct List instance carrying equal rows: the memo returns the
+      // identical cached prediction, which `.distinct(identical)` drops.
+      repo.emit(List.of(entries));
+      await pumpEventQueue();
+      expect(seen, hasLength(1),
+          reason: 'an unchanged memo result must not re-emit');
+    });
+
+    test('the shared pipeline completes its listeners when the underlying '
+        'query closes', () async {
+      final repo = _CountingDayEntriesRepository();
+      final service = CyclePredictionService(repo);
+      LocalDate todayFn() => today;
+
+      var done = false;
+      final sub = service
+          .watch('p', today: todayFn)
+          .listen((_) {}, onDone: () => done = true);
+      addTearDown(sub.cancel);
+      repo.emit([_entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1))]);
+      await pumpEventQueue();
+      expect(done, isFalse);
+
+      await repo.close();
+      await pumpEventQueue();
+      expect(done, isTrue,
+          reason: 'the shared upstream completed, so every listener does too');
+    });
+
+    test(
+        'setAppForeground(false) pauses the shared query and ticker while '
+        'keeping the listener; setAppForeground(true) restarts them',
+        () async {
+      final repo = _CountingDayEntriesRepository();
+      addTearDown(repo.close);
+      var tickerOpens = 0;
+      final service = CyclePredictionService(repo, dateTicker: () {
+        tickerOpens++;
+        return Stream<void>.value(null);
+      });
+      LocalDate todayFn() => today;
+
+      final seen = <CyclePrediction>[];
+      final sub = service.watch('p', today: todayFn).listen(seen.add);
+      addTearDown(sub.cancel);
+      repo.emit([_entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1))]);
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+      expect(tickerOpens, 1);
+      expect(repo.cancels, 0);
+
+      service.setAppForeground(false);
+      await pumpEventQueue();
+      expect(repo.cancels, 1, reason: 'pausing tears the shared query down');
+      expect(seen, hasLength(1), reason: 'the listener is kept');
+
+      service.setAppForeground(true);
+      await pumpEventQueue();
+      expect(tickerOpens, 2, reason: 'resume re-opens the shared ticker');
+      expect(repo.watchCalls, 2, reason: 'resume re-opens the shared query');
+
+      // The re-opened pipeline delivers again once data actually changes.
+      repo.emit([
+        _entry('e1', LocalDate(2026, 5, 1), DateTime.utc(2026, 5, 1)),
+        _entry('e2', LocalDate(2026, 5, 2), DateTime.utc(2026, 5, 2)),
+      ]);
+      await pumpEventQueue();
+      expect(seen, hasLength(2));
     });
   });
 }
