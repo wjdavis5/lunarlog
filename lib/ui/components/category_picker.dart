@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/tags.dart';
 import 'chip_semantics.dart';
+import 'tag_icons.dart';
 
 typedef CategoryLabelBuilder = String Function(TagCategory category);
 
@@ -323,8 +324,19 @@ class _CategoryPickerState extends State<CategoryPicker> {
     );
   }
 
+  /// Builds one taxonomy chip. Issue #818: an option's leading icon
+  /// ([tagOptionIcon]) rides the chip's own `avatar` slot — the Material
+  /// mechanism for a chip glyph — so the selected checkmark replaces it
+  /// (a second, non-colour selection cue) and the icon is excluded from
+  /// semantics by [groupedChipSemantics]' `excludeSemantics: true`, which
+  /// keeps the spoken label exactly `'<group>, <display>'` with no second
+  /// announced element. An option with no entry in the icon table gets a
+  /// null avatar and stays text-only — never a generic placeholder (the
+  /// documented fallback for #818). Custom tags are deliberately absent:
+  /// a user-authored label has no curated symbol.
   Widget _tagChip(TagCode tag, {required String group, required String keyPrefix}) {
     final isSelected = widget.selected.contains(tag.code);
+    final icon = tagOptionIcon(tag.code);
     return groupedChipSemantics(
       group: group,
       label: tag.display,
@@ -333,6 +345,7 @@ class _CategoryPickerState extends State<CategoryPicker> {
       child: FilterChip(
         key: ValueKey('$keyPrefix-${tag.code}'),
         materialTapTargetSize: MaterialTapTargetSize.padded,
+        avatar: icon == null ? null : Icon(icon, size: 18),
         label: Text(tag.display),
         selected: isSelected,
         onSelected: widget.enabled ? (_) => widget.onToggle(tag.code) : null,

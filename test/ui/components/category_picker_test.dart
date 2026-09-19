@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/ui/components/category_picker.dart';
+import 'package:lunarlog/ui/components/tag_icons.dart';
 
 String _label(TagCategory category) => switch (category) {
       TagCategory.pain => 'Pain',
@@ -292,5 +293,95 @@ void main() {
       ),
     );
     expect(find.text('pain-trailing-marker'), findsOneWidget);
+  });
+
+  group('option icons (Issue #818)', () {
+    test('tagOptionIcon maps a curated option and returns null for the '
+        'deliberately uniconed ones', () {
+      expect(tagOptionIcon('cramps'), Icons.bolt);
+      // Moods have no unambiguous symbol — never a placeholder.
+      expect(tagOptionIcon('happy'), isNull);
+      expect(tagOptionIcon('not-a-real-code'), isNull);
+    });
+
+    testWidgets('an option with an unambiguous symbol renders its icon',
+        (tester) async {
+      await tester.pumpWidget(_harness(onToggle: (_) {}));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('category-picker-tag-cramps')),
+          matching: find.byIcon(Icons.bolt),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an option without an unambiguous symbol renders text-only '
+        'with no placeholder glyph', (tester) async {
+      await tester.pumpWidget(
+        _harness(categories: const [TagCategory.feelings], onToggle: (_) {}),
+      );
+
+      final chip = find.byKey(const ValueKey('category-picker-tag-happy'));
+      expect(chip, findsOneWidget);
+      expect(
+        find.descendant(of: chip, matching: find.byType(Icon)),
+        findsNothing,
+        reason: 'no icon (and no label_outline stand-in) belongs on an '
+            'option whose symbol is not unambiguous',
+      );
+    });
+
+    testWidgets('the icon does not become a second announced element and '
+        'does not change the spoken label', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(_harness(onToggle: (_) {}));
+
+      expect(find.bySemanticsLabel('Pain, Cramps'), findsOneWidget);
+      expect(find.bySemanticsLabel('Pain, Headache'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('adding the icon does not shrink the chip tap target',
+        (tester) async {
+      await tester.pumpWidget(_harness(onToggle: (_) {}));
+
+      final size = tester.getSize(
+        find.byKey(const ValueKey('category-picker-tag-cramps')),
+      );
+      expect(size.height, greaterThanOrEqualTo(48),
+          reason: 'MaterialTapTargetSize.padded must survive the avatar');
+    });
+
+    testWidgets('a selected option still carries the non-colour checkmark '
+        'cue, so the icon never makes selection colour-only', (tester) async {
+      await tester.pumpWidget(
+        _harness(selected: const {'cramps'}, onToggle: (_) {}),
+      );
+
+      final chip = tester.widget<FilterChip>(
+        find.byKey(const ValueKey('category-picker-tag-cramps')),
+      );
+      expect(chip.selected, isTrue);
+      expect(chip.showCheckmark, isNot(false),
+          reason: 'the painted check (plus the fill/border) keeps selection '
+              'distinguishable without colour; an avatar must never suppress it');
+    });
+
+    testWidgets('a Recent-row shortcut carries the same option icon',
+        (tester) async {
+      await tester.pumpWidget(
+        _harness(recentCodes: const ['cramps'], onToggle: (_) {}),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('category-picker-recent-cramps')),
+          matching: find.byIcon(Icons.bolt),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }
