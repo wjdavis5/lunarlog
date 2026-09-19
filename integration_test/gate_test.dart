@@ -101,6 +101,17 @@ class FakeInactivityTimers {
   bool get anyActive => created.any((timer) => timer.active);
 }
 
+/// Issue #827: every test in this file carries its own bound. Before this,
+/// a hang parked the run until CI's 15-minute step timeout killed it
+/// anonymously (`The action 'Run integration tests on the simulator' has
+/// timed out`), with no test name and no stack — it has happened on at
+/// least five unrelated PRs, including a docs-only one, and a re-run always
+/// passed. With a per-test bound the next occurrence fails *naming the
+/// stuck test* in ~2 minutes instead. Two minutes is comfortably above the
+/// slowest honest test here (tens of seconds on a simulator, dominated by
+/// the drift-isolate drains) and far below the step's backstop.
+const Timeout _kTestTimeout = Timeout(Duration(minutes: 2));
+
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -140,14 +151,40 @@ Future<void> main() async {
     }
   }
 
+  /// Issue #827: pairs the forced frame with the one pump it feeds. The live
+  /// binding consumes exactly one engine frame per [WidgetTester.pump], and
+  /// [SchedulerBinding.scheduleFrame] is a no-op while frames are disabled
+  /// (#121) — so a force that is not immediately followed by its pump (or a
+  /// pump with no force of its own) is the shape that strands a pump waiting
+  /// on a frame nobody requested. Bundling the two makes that unrepresentable
+  /// at a call site. A no-op wherever frames are already enabled.
+  Future<void> pumpForced(WidgetTester tester, [Duration? duration]) async {
+    forceFrameIfBackgrounded(tester);
+    await tester.pump(duration);
+  }
+
+  /// Issue #827: [WidgetTester.pumpAndSettle] pumps in a loop and may only be
+  /// used while frames are enabled. With frames disabled its first internal
+  /// pump consumes the single forced frame, and if it then wants a second it
+  /// waits forever on the live binding — its own timeout check only runs
+  /// *between* pumps, so a hung pump is never reached (a true 15-minute hang,
+  /// not a `pumpAndSettle timed out`). When frames are disabled, drain the
+  /// same rebuilds with bounded forced pumps instead.
+  Future<void> settleOrDrainFrames(WidgetTester tester) async {
+    if (tester.binding.framesEnabled) {
+      await tester.pumpAndSettle();
+      return;
+    }
+    await pumpForced(tester, const Duration(milliseconds: 100));
+  }
+
   Future<void> disposeDb(WidgetTester tester, LunarLogDatabase db) async {
-    // Issue #121: callers may still be in a frames-disabled state here (the
-    // inactivity-timeout test ends on `hidden`), and on a live device
+    // Issue #121/#827: callers may still be in a frames-disabled state here
+    // (the inactivity-timeout test ends on `hidden`), and on a live device
     // binding each pump in that state needs its own forced frame.
     forceFrameIfBackgrounded(tester);
     await tester.pumpWidget(const SizedBox.shrink());
-    forceFrameIfBackgrounded(tester);
-    await tester.pump(const Duration(milliseconds: 100));
+    await pumpForced(tester, const Duration(milliseconds: 100));
     await db.close();
   }
 
@@ -170,11 +207,12 @@ Future<void> main() async {
       tester.binding.handleAppLifecycleStateChanged(path[from]);
       // Issue #121: every step landing in hidden/paused must force the
       // frame the following pump waits for, or a real-device run hangs.
-      forceFrameIfBackgrounded(tester);
-      await tester.pump();
+      await pumpForced(tester);
     }
-    forceFrameIfBackgrounded(tester);
-    await tester.pumpAndSettle();
+    // Issue #827: the terminal settle must not run while frames are
+    // disabled — pumpAndSettle can pump more than the one frame just
+    // forced, and every pump past it would hang the live binding forever.
+    await settleOrDrainFrames(tester);
   }
 
   /// The binding's lifecycle state persists across tests in a suite; every
@@ -191,8 +229,10 @@ Future<void> main() async {
   /// selectProfile → watch → rebuild) lands; give the loop turns to drain.
   Future<void> drainIsolateTraffic(WidgetTester tester) async {
     for (var i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.pumpAndSettle();
+      // Issue #827: forced pump + a guarded settle, so this helper stays
+      // safe even if a future call site reaches it with frames disabled.
+      await pumpForced(tester, const Duration(milliseconds: 50));
+      if (tester.binding.framesEnabled) await tester.pumpAndSettle();
     }
   }
 
@@ -214,20 +254,21 @@ Future<void> main() async {
     FakeInactivityTimers timers,
   ) async {
     timers.fireWithDelay(kSystemUiSettleTimeout);
-    await tester.pump();
-    await tester.pumpAndSettle();
+    await pumpForced(tester);
+    await settleOrDrainFrames(tester);
     await drainIsolateTraffic(tester);
   }
 
   Future<void> unlockViaButton(WidgetTester tester) async {
     await tester.tap(find.byKey(const ValueKey('unlock-button')));
-    await tester.pump();
-    await tester.pumpAndSettle();
+    await pumpForced(tester);
+    await settleOrDrainFrames(tester);
     await drainIsolateTraffic(tester);
   }
 
   testWidgets('cold start requires the gate; declined credential shows no '
       'data and never opens the database', (tester) async {
+    await ensureResumed(tester);
     final db = await seededDb();
     final gate = FakeGate()..grantNext = false;
     var dbOpenerCalls = 0;
@@ -248,10 +289,11 @@ Future<void> main() async {
     expect(find.text('Barb'), findsNothing);
     expect(dbOpenerCalls, 0, reason: 'AE4: declined never decrypts');
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 
   testWidgets('retry loop: repeated declines stay locked, one grant unlocks '
       'into the stored active profile', (tester) async {
+    await ensureResumed(tester);
     final db = await seededDb();
     final gate = FakeGate()..grantNext = false;
     var dbOpenerCalls = 0;
@@ -283,7 +325,7 @@ Future<void> main() async {
     expect(find.text('Alice'), findsOneWidget);
     expect(dbOpenerCalls, 1);
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 
   testWidgets('issue #65: the credential prompt reporting its own focus '
       'loss still unlocks into the data', (tester) async {
@@ -301,6 +343,7 @@ Future<void> main() async {
     // (and never has, since issue #65's own fix) -- the assertion only
     // looked correct on host-mode's own timing and was never actually
     // exercised against a real device until this suite ran on one.
+    await ensureResumed(tester);
     final db = await seededDb();
     final gate = FakeGate();
     gate.onPrompt = () => tester.binding
@@ -322,10 +365,11 @@ Future<void> main() async {
         reason: 'nothing was declined');
     expect(find.text('Alice'), findsOneWidget);
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 
   testWidgets('backgrounding re-locks; warm resume gates before data '
       'returns', (tester) async {
+    await ensureResumed(tester);
     final db = await seededDb();
     final gate = FakeGate();
     // Injected so expireSystemUiSettleTail can expire the cold-start
@@ -353,10 +397,11 @@ Future<void> main() async {
     await unlockViaButton(tester);
     expect(find.text('Alice'), findsOneWidget);
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 
   testWidgets('inactivity timeout re-locks by default; the persisted toggle '
       'disables it (background re-lock unaffected)', (tester) async {
+    await ensureResumed(tester);
     final timers = FakeInactivityTimers();
 
     // Default on: the armed timeout locks.
@@ -415,10 +460,11 @@ Future<void> main() async {
     // other test in this file.
     await ensureResumed(tester);
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 
   testWidgets('simulated launch payload routes through the gate, then opens '
       "the firing profile's overview", (tester) async {
+    await ensureResumed(tester);
     final db = await seededDb(activeOfTwo: 'a');
     final profiles = await DriftProfilesRepository(db.storage).list();
     final barbId = profiles
@@ -448,5 +494,5 @@ Future<void> main() async {
     expect(find.text('Alice'), findsNothing);
     expect(find.byType(OverviewPanel), findsOneWidget);
     await disposeDb(tester, db);
-  });
+  }, timeout: _kTestTimeout);
 }
