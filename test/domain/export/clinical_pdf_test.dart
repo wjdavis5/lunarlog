@@ -114,13 +114,36 @@ void main() {
     expect(text, contains('not medical advice'));
   });
 
-  test('lists the per-cycle dates and lengths', () {
+  test('lists the per-cycle dates and lengths with irregular and omitted columns', () {
     final starts = _starts(8);
     final text = latin1.decode(buildClinicalPdfDocument(_fixtureSummary()));
     expect(text, contains(starts[1].iso));
     expect(text, contains(starts[6].iso));
     expect(text, contains('28')); // cycle length
     expect(text, contains('period'));
+    expect(text, contains('irregular'));
+    expect(text, contains('omitted'));
+  });
+
+  test('flags irregular short cycle in rendered PDF cycle table and method note', () {
+    final shortStarts = [
+      LocalDate(2026, 6, 1),
+      LocalDate(2026, 6, 8),  // 7-day cycle -> irregular
+      LocalDate(2026, 7, 6),  // 28-day cycle
+      LocalDate(2026, 8, 3),  // open cycle
+    ];
+    final summary = buildClinicalPdfSummary(
+      profile: _profile(),
+      dayEntries: _entries(shortStarts),
+      range: FhirExportRange.everything,
+      rangeLabel: 'Everything',
+      generatedAt: DateTime.utc(2026, 8, 3),
+    );
+    final text = latin1.decode(buildClinicalPdfDocument(summary));
+    expect(text, contains('Cycles shorter than 15 days are omitted'));
+    expect(text, contains('irregular'));
+    // The 7-day cycle row has 'yes' under irregular.
+    expect(text, contains('yes'));
   });
 
   test('paginates when the symptom grid overflows a page', () {
