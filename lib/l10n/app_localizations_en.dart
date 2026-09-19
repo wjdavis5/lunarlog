@@ -344,6 +344,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetDeleteTooltip => 'Delete entry';
 
   @override
+  String get daySheetDeletedSnackbar => 'Entry deleted.';
+
+  @override
+  String get daySheetUndo => 'Undo';
+
+  @override
   String get daySheetSave => 'Save';
 
   @override

@@ -3,18 +3,25 @@
 /// existing [OverviewPanel], now topped by the #209 cycle wheel/Today card),
 /// Calendar (the
 /// existing [MonthCalendar]), Insights (the real Analysis tab, issue #223's
-/// [AnalysisTab]), and More (the existing [SettingsScreen], unmodified,
-/// including its own app bar). Today is the default/first tab (paired with
-/// #209).
+/// [AnalysisTab]), and More (the existing [SettingsScreen], embedded with
+/// `showAppBar: false` -- issue #826: the shell owns the one AppBar for
+/// every tab). Today is the default/first tab (paired with #209).
 ///
 /// Issue #209 item 4a: a [TodayLogFab] floats over Today and Calendar
 /// (not Insights/More, where logging today makes no sense), opening the
 /// day sheet for today's date directly; it hides itself for a
 /// `viewer`-role guardian.
 ///
-/// The app bar shared by Today/Calendar/Insights (not rebuilt per screen,
-/// and not shown at all on More -- [SettingsScreen] carries its own) holds
-/// the active profile name as a tappable quick switcher (issue #241: a
+/// Issue #826: the shell owns the [Scaffold] AppBar for every tab --
+/// `_shellAppBar` on Today/Calendar/Insights and a plain Settings-titled
+/// AppBar on More (where [SettingsScreen] is embedded with
+/// `showAppBar: false` so it never doubles it). One AppBar rule across all
+/// tabs is what keeps the shared sync-failure banner -- the shell body's
+/// first child -- below whatever AppBar is actually showing, instead of
+/// floating above the More tab's old inner AppBar.
+///
+/// The app bar shared by Today/Calendar/Insights (not rebuilt per screen)
+/// holds the active profile name as a tappable quick switcher (issue #241: a
 /// popup listing active profiles for in-place switching, with a "Manage
 /// profiles…" entry that opens the existing picker via
 /// [ProfileController.openPicker] -- the same mechanism
@@ -253,7 +260,9 @@ class _AppShellState extends State<AppShell> {
           guardiansRepository: guardiansRepository,
           bbtUnit: widget.profile.bbtUnit,
         ),
-      AppTab.more => const SettingsScreen(),
+      // Issue #826: the shell supplies this tab's AppBar (see [build]), so
+      // the screen must not render its own.
+      AppTab.more => const SettingsScreen(showAppBar: false),
     };
   }
 
@@ -305,8 +314,13 @@ class _AppShellState extends State<AppShell> {
         current: _tab,
         select: _selectTab,
         child: Scaffold(
+          // Issue #826: never `null` -- the shell owns the one AppBar for
+          // every tab, so the banner below always sits beneath it. More gets
+          // a Settings-titled AppBar rather than the shell's action bar (its
+          // actions belong to the other tabs); `SettingsScreen` is told not
+          // to carry a second one (`showAppBar: false`).
           appBar: _tab == AppTab.more
-              ? null
+              ? _settingsAppBar()
               : _shellAppBar(
                   hasSync,
                   guardiansRepository,
@@ -383,6 +397,15 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+
+  /// Issue #826: the More tab's AppBar. It is deliberately the *same
+  /// Settings title* [SettingsScreen] used to render for itself, so removing
+  /// that screen's own AppBar from inside the shell is visually a no-op --
+  /// the shell now owns the slot only so the shared sync-failure banner can
+  /// never render above it. No shell actions (profile switcher, activity,
+  /// care notes, sync glyph) belong here; they remain on the other tabs.
+  AppBar _settingsAppBar() =>
+      AppBar(title: Text(AppLocalizations.of(context).settingsTitle));
 
   /// The app bar shared by Today/Calendar/Insights (issue #182 AC2/AC3/AC5):
   /// the profile switcher, the Activity feed action (issue #313 -- #124's

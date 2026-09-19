@@ -658,6 +658,18 @@ abstract class AppLocalizations {
   /// **'Delete entry'**
   String get daySheetDeleteTooltip;
 
+  /// Snackbar confirming a day entry was deleted, shown with an Undo action (issue #856).
+  ///
+  /// In en, this message translates to:
+  /// **'Entry deleted.'**
+  String get daySheetDeletedSnackbar;
+
+  /// Snackbar action that restores a just-deleted day entry (issue #856), mirroring overviewUndo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get daySheetUndo;
+
   /// The day sheet's save button label.
   ///
   /// In en, this message translates to:
