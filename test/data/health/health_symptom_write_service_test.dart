@@ -387,4 +387,45 @@ void main() {
       );
     },
   );
+
+  test(
+    'symptom severity is calculated per day entry, not across the profile '
+    'lifetime (Issue #934)',
+    () async {
+      await seedGranted();
+      dayEntries.entries = [
+        _entry(
+          '2026-06-02',
+          tags: const ['cramps'],
+          updatedAt: grant.add(const Duration(hours: 1)),
+        ),
+        _entry(
+          '2026-06-03',
+          tags: const ['cramps'],
+          updatedAt: grant.add(const Duration(hours: 2)),
+        ),
+      ];
+      observations.observations = [
+        _pain('2026-06-02', 'cramps', 4),
+      ];
+
+      final report = await buildService().syncNow();
+
+      expect(report.symptomSamplesWritten, 2);
+      expect(platform.symptomWrites, hasLength(2));
+      final writesByDate = {
+        for (final write in platform.symptomWrites) write.date: write,
+      };
+      final day1Cramps = writesByDate[LocalDate.fromIso('2026-06-02')]!
+          .samples
+          .singleWhere((s) => s.healthKitTypeIdentifier == 'abdominalCramps');
+      final day2Cramps = writesByDate[LocalDate.fromIso('2026-06-03')]!
+          .samples
+          .singleWhere((s) => s.healthKitTypeIdentifier == 'abdominalCramps');
+
+      expect(day1Cramps.severity, HealthSymptomSeverity.severe);
+      expect(day2Cramps.severity, HealthSymptomSeverity.unspecified);
+    },
+  );
 }
+
