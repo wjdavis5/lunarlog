@@ -785,7 +785,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDateFormatTitle => 'Date format';
 
   @override
-  String get settingsDateFormatSystemOption => 'System default (5 Sep)';
+  String settingsDateFormatSystemOption(String example) {
+    return 'System default ($example)';
+  }
 
   @override
   String get settingsDateFormatDayMonthOption => 'Day first (5 Sep)';

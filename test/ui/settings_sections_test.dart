@@ -101,6 +101,7 @@ Future<void> pumpSettings(
   ReminderConfigService? reminderService,
   NotificationPreferencesService? notificationService,
   bool withSharing = false,
+  Locale? locale,
 }) async {
   settings ??= FakeSettingsStore();
   addTearDown(settings.close);
@@ -110,8 +111,11 @@ Future<void> pumpSettings(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
+      locale: locale,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
+      supportedLocales: locale == null
+          ? AppLocalizations.supportedLocales
+          : <Locale>[locale],
       home: MultiProvider(
         providers: [
           Provider<SettingsStore>.value(value: settings),
@@ -311,6 +315,30 @@ void main() {
 
     expect(await settings.get(SettingsKeys.dateFormat), 'month_day');
     expect(find.text('Month first (Sep 5)'), findsOneWidget);
+  });
+
+  testWidgets(
+      'issue #884: the "System default" sample resolves through the locale '
+      'instead of claiming a fixed order', (tester) async {
+    await pumpSettings(
+      tester,
+      profiles: [_profile('p1', 'Alice')],
+      locale: const Locale('en', 'US'),
+    );
+    expect(find.text('System default (Sep 5)'), findsOneWidget);
+    expect(find.text('System default (5 Sep)'), findsNothing);
+  });
+
+  testWidgets(
+      'issue #884: an en_GB locale shows the day-first "System default" '
+      'sample', (tester) async {
+    await pumpSettings(
+      tester,
+      profiles: [_profile('p1', 'Alice')],
+      locale: const Locale('en', 'GB'),
+    );
+    expect(find.text('System default (5 Sept)'), findsOneWidget);
+    expect(find.text('System default (Sep 5)'), findsNothing);
   });
 
   testWidgets(

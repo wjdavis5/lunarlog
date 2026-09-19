@@ -19,8 +19,8 @@ void main() {
     test('long and short formats match the shared copy', () {
       expect(formatMonthDayYear(DateTime(2026, 9, 5)), 'September 5, 2026');
       expect(formatMonthDay(DateTime(2026, 8, 30)), 'August 30');
-      expect(formatShortDayDate(DateTime(2026, 9, 8)), 'Tue 8 Sep');
-      expect(formatWeekdayDayDateYear(DateTime(2026, 9, 8)), 'Tue 8 Sep 2026');
+      expect(formatShortDayDate(DateTime(2026, 9, 8)), 'Tue Sep 8');
+      expect(formatWeekdayDayDateYear(DateTime(2026, 9, 8)), 'Tue Sep 8 2026');
     });
 
     test(
@@ -33,12 +33,12 @@ void main() {
     test('relativeDayLabel: today/yesterday/tomorrow, full form otherwise',
         () {
       final today = DateTime(2026, 9, 8);
-      expect(relativeDayLabel(today, today), 'Today · Tue 8 Sep');
+      expect(relativeDayLabel(today, today), 'Today · Tue Sep 8');
       expect(relativeDayLabel(DateTime(2026, 9, 7), today), 'Yesterday');
       expect(relativeDayLabel(DateTime(2026, 9, 9), today), 'Tomorrow');
       expect(
         relativeDayLabel(DateTime(2026, 9, 5), today),
-        'Sat 5 Sep 2026',
+        'Sat Sep 5 2026',
       );
     });
 
@@ -46,7 +46,7 @@ void main() {
       final today = DateTime(2026, 9, 8, 6, 30);
       expect(
         relativeDayLabel(DateTime(2026, 9, 8, 23, 59), today),
-        'Today · Tue 8 Sep',
+        'Today · Tue Sep 8',
       );
       expect(
         relativeDayLabel(DateTime(2026, 9, 7, 0, 1), today),
@@ -64,7 +64,7 @@ void main() {
           yesterdayLabel: 'Gestern',
           tomorrowLabel: 'Morgen',
         ),
-        'Heute · Tue 8 Sep',
+        'Heute · Tue Sep 8',
       );
       expect(
         relativeDayLabel(
@@ -85,10 +85,10 @@ void main() {
       );
       expect(formatLocalDateMonthDay(LocalDate(2026, 8, 30)), 'August 30');
       expect(formatLocalDateShortDate(LocalDate(2026, 9, 5)), '9/5/2026');
-      expect(formatLocalDateShortDayDate(LocalDate(2026, 9, 8)), 'Tue 8 Sep');
+      expect(formatLocalDateShortDayDate(LocalDate(2026, 9, 8)), 'Tue Sep 8');
       expect(
         formatLocalDateWeekdayDayDateYear(LocalDate(2026, 9, 8)),
-        'Tue 8 Sep 2026',
+        'Tue Sep 8 2026',
       );
     });
 
@@ -104,12 +104,12 @@ void main() {
       final march7 = DateTime(2026, 3, 7);
 
       // From reference of March 8:
-      expect(relativeDayLabel(march8, march8), 'Today · Sun 8 Mar');
+      expect(relativeDayLabel(march8, march8), 'Today · Sun Mar 8');
       expect(relativeDayLabel(march9, march8), 'Tomorrow');
       expect(relativeDayLabel(march7, march8), 'Yesterday');
 
       // From reference of March 9:
-      expect(relativeDayLabel(march9, march9), 'Today · Mon 9 Mar');
+      expect(relativeDayLabel(march9, march9), 'Today · Mon Mar 9');
       expect(relativeDayLabel(march8, march9), 'Yesterday');
 
       // Times of day across the boundary:
@@ -133,12 +133,12 @@ void main() {
       final oct31 = DateTime(2026, 10, 31);
 
       // From reference of Nov 1:
-      expect(relativeDayLabel(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(relativeDayLabel(nov1, nov1), 'Today · Sun Nov 1');
       expect(relativeDayLabel(nov2, nov1), 'Tomorrow');
       expect(relativeDayLabel(oct31, nov1), 'Yesterday');
 
       // From reference of Nov 2:
-      expect(relativeDayLabel(nov2, nov2), 'Today · Mon 2 Nov');
+      expect(relativeDayLabel(nov2, nov2), 'Today · Mon Nov 2');
       expect(relativeDayLabel(nov1, nov2), 'Yesterday');
     });
 
@@ -149,7 +149,7 @@ void main() {
       final march9 = LocalDate(2026, 3, 9);
       final march7 = LocalDate(2026, 3, 7);
 
-      expect(relativeDayLabelForLocalDate(march8, march8), 'Today · Sun 8 Mar');
+      expect(relativeDayLabelForLocalDate(march8, march8), 'Today · Sun Mar 8');
       expect(relativeDayLabelForLocalDate(march9, march8), 'Tomorrow');
       expect(relativeDayLabelForLocalDate(march7, march8), 'Yesterday');
       expect(relativeDayLabelForLocalDate(march8, march9), 'Yesterday');
@@ -158,7 +158,7 @@ void main() {
       final nov2 = LocalDate(2026, 11, 2);
       final oct31 = LocalDate(2026, 10, 31);
 
-      expect(relativeDayLabelForLocalDate(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(relativeDayLabelForLocalDate(nov1, nov1), 'Today · Sun Nov 1');
       expect(relativeDayLabelForLocalDate(nov2, nov1), 'Tomorrow');
       expect(relativeDayLabelForLocalDate(oct31, nov1), 'Yesterday');
       expect(relativeDayLabelForLocalDate(nov1, nov2), 'Yesterday');
@@ -266,22 +266,102 @@ void main() {
   });
 
   group('Issue #226 date-format preference', () {
-    test('each preference pins its month/day pattern', () {
+    test('each preference pins its month/day pattern for the generic en '
+        'fallback (month-first since issue #884)', () {
       expect(
-          shortDayDatePattern(DateFormatPreference.system), 'EEE d MMM');
+          shortDayDatePattern(DateFormatPreference.system), 'EEE MMM d');
       expect(
           shortDayDatePattern(DateFormatPreference.dayMonth), 'EEE d MMM');
       expect(
           shortDayDatePattern(DateFormatPreference.monthDay), 'EEE MMM d');
       expect(weekdayDayDateYearPattern(DateFormatPreference.system),
-          'EEE d MMM y');
+          'EEE MMM d y');
       expect(weekdayDayDateYearPattern(DateFormatPreference.monthDay),
           'EEE MMM d y');
     });
 
+    test('issue #884: system follows the locale while the explicit overrides '
+        'stay literal', () {
+      // en_US orders month before day; en_GB orders day before month.
+      expect(
+          shortDayDatePattern(DateFormatPreference.system, locale: 'en_US'),
+          'EEE MMM d');
+      expect(
+          shortDayDatePattern(DateFormatPreference.system, locale: 'en_GB'),
+          'EEE d MMM');
+      expect(
+          weekdayDayDateYearPattern(DateFormatPreference.system,
+              locale: 'en_US'),
+          'EEE MMM d y');
+      expect(
+          weekdayDayDateYearPattern(DateFormatPreference.system,
+              locale: 'en_GB'),
+          'EEE d MMM y');
+      // dayMonth/monthDay never consult the locale.
+      for (final locale in ['en_US', 'en_GB', 'de', 'ja']) {
+        expect(
+            shortDayDatePattern(DateFormatPreference.dayMonth, locale: locale),
+            'EEE d MMM');
+        expect(
+            shortDayDatePattern(DateFormatPreference.monthDay, locale: locale),
+            'EEE MMM d');
+      }
+    });
+
+    test('issue #884: system renders the locale order end to end', () {
+      final date = DateTime(2026, 9, 8);
+      expect(formatShortDayDate(date, locale: 'en_US'), 'Tue Sep 8');
+      // en_GB's own abbreviated month is "Sept".
+      expect(formatShortDayDate(date, locale: 'en_GB'), 'Tue 8 Sept');
+      expect(
+          formatWeekdayDayDateYear(date, locale: 'en_US'), 'Tue Sep 8 2026');
+      expect(
+          formatWeekdayDayDateYear(date, locale: 'en_GB'), 'Tue 8 Sept 2026');
+      // The explicit overrides are locale-independent.
+      expect(
+        formatShortDayDate(date,
+            locale: 'en_GB', preference: DateFormatPreference.monthDay),
+        'Tue Sept 8',
+      );
+      expect(
+        formatShortDayDate(date,
+            locale: 'en_US', preference: DateFormatPreference.dayMonth),
+        'Tue 8 Sep',
+      );
+    });
+
+    test('issue #884: the Settings sample matches the day sheet ordering', () {
+      // 5 Sep 2026 is the illustrative date both surfaces use.
+      expect(
+        formatShortMonthDayExample(DateFormatPreference.system,
+            locale: 'en_US'),
+        'Sep 5',
+      );
+      expect(
+        formatShortMonthDayExample(DateFormatPreference.system,
+            locale: 'en_GB'),
+        '5 Sept',
+      );
+      // The day sheet (formatShortDayDate) resolves the same order.
+      final date = DateTime(2026, 9, 5);
+      expect(formatShortDayDate(date, locale: 'en_US'), 'Sat Sep 5');
+      expect(formatShortDayDate(date, locale: 'en_GB'), 'Sat 5 Sept');
+      // Overrides stay literal regardless of locale.
+      expect(
+        formatShortMonthDayExample(DateFormatPreference.dayMonth,
+            locale: 'en_US'),
+        '5 Sep',
+      );
+      expect(
+        formatShortMonthDayExample(DateFormatPreference.monthDay,
+            locale: 'en_GB'),
+        'Sept 5',
+      );
+    });
+
     test('formatShortDayDate reorders per preference', () {
       final date = DateTime(2026, 9, 8);
-      expect(formatShortDayDate(date), 'Tue 8 Sep');
+      expect(formatShortDayDate(date), 'Tue Sep 8');
       expect(
         formatShortDayDate(date, preference: DateFormatPreference.dayMonth),
         'Tue 8 Sep',
@@ -294,7 +374,7 @@ void main() {
 
     test('formatWeekdayDayDateYear reorders per preference', () {
       final date = DateTime(2026, 9, 8);
-      expect(formatWeekdayDayDateYear(date), 'Tue 8 Sep 2026');
+      expect(formatWeekdayDayDateYear(date), 'Tue Sep 8 2026');
       expect(
         formatWeekdayDayDateYear(
           date,

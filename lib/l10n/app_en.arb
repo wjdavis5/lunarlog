@@ -966,9 +966,14 @@
   "@settingsDateFormatTitle": {
     "description": "Calendar-section tile (Issue #226) choosing the month/day order of compact dates."
   },
-  "settingsDateFormatSystemOption": "System default (5 Sep)",
+  "settingsDateFormatSystemOption": "System default ({example})",
   "@settingsDateFormatSystemOption": {
-    "description": "Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering."
+    "description": "Date-format option: follow the locale's own month/day order (Issue #226). The example is resolved live from the active locale (issue #884) so it never advertises an order the device will not render.",
+    "placeholders": {
+      "example": {
+        "type": "String"
+      }
+    }
   },
   "settingsDateFormatDayMonthOption": "Day first (5 Sep)",
   "@settingsDateFormatDayMonthOption": {

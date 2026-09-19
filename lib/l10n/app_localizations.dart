@@ -1388,11 +1388,11 @@ abstract class AppLocalizations {
   /// **'Date format'**
   String get settingsDateFormatTitle;
 
-  /// Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering.
+  /// Date-format option: follow the locale's own month/day order (Issue #226). The example is resolved live from the active locale (issue #884) so it never advertises an order the device will not render.
   ///
   /// In en, this message translates to:
-  /// **'System default (5 Sep)'**
-  String get settingsDateFormatSystemOption;
+  /// **'System default ({example})'**
+  String settingsDateFormatSystemOption(String example);
 
   /// Date-format option: day before month, e.g. '5 Sep'.
   ///
