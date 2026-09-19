@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
+import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -70,6 +71,7 @@ DayEntry _entry(
   FlowLevel flow,
   DateTime updatedAt, {
   DayEntrySource source = DayEntrySource.manual,
+  List<String> tags = const [],
 }) =>
     DayEntry(
       id: 'entry-$isoDay',
@@ -77,6 +79,7 @@ DayEntry _entry(
       localDate: LocalDate.fromIso(isoDay),
       tz: _tz,
       flow: flow,
+      tags: tags,
       updatedAt: updatedAt,
       source: source,
     );
@@ -96,6 +99,45 @@ Observation _spotting(
       code: 'spotting',
       updatedAt: updatedAt,
       source: source,
+    );
+
+/// A graded pain row (issue #238's severity input) for [isoDay]'s [code].
+Observation _pain(
+  String isoDay,
+  String code,
+  int intensity,
+  DateTime updatedAt,
+) =>
+    Observation(
+      id: 'pain-$isoDay-$code',
+      dayEntryId: 'entry-$isoDay',
+      profileId: _profileId,
+      localDate: LocalDate.fromIso(isoDay),
+      tz: _tz,
+      category: ObservationCategory.pain,
+      code: code,
+      intensity: intensity,
+      updatedAt: updatedAt,
+    );
+
+/// A manually tracked BBT row for [isoDay] (issue #228's numeric signal).
+Observation _bbt(
+  String isoDay,
+  double celsius,
+  DateTime updatedAt, {
+  bool excluded = false,
+}) =>
+    Observation(
+      id: 'obs-bbt-$isoDay',
+      dayEntryId: 'entry-$isoDay',
+      profileId: _profileId,
+      localDate: LocalDate.fromIso(isoDay),
+      tz: _tz,
+      category: ObservationCategory.bbt,
+      valueNum: celsius,
+      unit: 'celsius',
+      excluded: excluded,
+      updatedAt: updatedAt,
     );
 
 /// Records every port call; each guarded call's outcome is programmable.
@@ -1068,6 +1110,220 @@ void main() {
       expect(report.blocked, isA<HealthPlatformFailed>());
       expect(await settings.get(_cursorKey),
           '${grant.millisecondsSinceEpoch}');
+    });
+  });
+
+  group('issue #930: reconciling records an edit removed from a kept day',
+      () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+
+    test('unticking a symptom on a live day deletes exactly that symptom '
+        'record id and nothing else', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls, isEmpty);
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        [healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps')],
+      ], reason: 'only the removed symptom is addressed; the still-present '
+          'headache and the unchanged flow id are not');
+    });
+
+    test("changing a symptom's graded intensity rewrites the same record id "
+        'and deletes nothing', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      observations.observations = [
+        _pain('2026-06-02', 'cramps', 2, grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['cramps']),
+      ];
+      observations.observations = [
+        _pain('2026-06-02', 'cramps', 4, grant.add(const Duration(hours: 3))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, isEmpty,
+          reason: 'a severity change is an update of the SAME '
+              'symptom-<entry>-abdominalCramps id, never a removal');
+    });
+
+    test('clearing a BBT reading from a day that still exists deletes its '
+        'bbt record', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      observations.observations = [
+        _bbt('2026-06-02', 36.5, grant.add(const Duration(hours: 1))),
+      ];
+      final first = await service.syncNow();
+      expect(first.basalBodyTemperatureSamplesWritten, 1);
+      expect(platform.deleteCalls, isEmpty);
+
+      // The operator clears the field: the observation row is tombstoned
+      // (so the live list no longer carries it), while the day entry — and
+      // its flow sample — remain.
+      observations.observations = const [];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        [healthBbtRecordId('obs-bbt-2026-06-02')],
+      ]);
+    });
+
+    test('changing flow rewrites the same record id and deletes nothing',
+        () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.heavy,
+            grant.add(const Duration(hours: 3))),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, isEmpty,
+          reason: 'a flow change is an update of the same day-entry id');
+      expect(platform.flowWrites.last.flow, HealthFlowValue.heavy);
+    });
+
+    test('a denied binding blocks the removal delete with no new bypass',
+        () async {
+      await seedGranted(grant);
+      var signedInUserId = _ownerId;
+      final service = LocalHealthFlowWriteService(
+        platform: platform,
+        binding: HealthSyncBinding(settings),
+        minorBindingAllowed: false,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        observations: observations,
+        settings: settings,
+        guardiansForProfile: (_) async => [_ownerRow()],
+        signedInUserId: () => signedInUserId,
+        now: () => clock,
+      );
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await service.syncNow();
+
+      // The signed-in account no longer owns the bound profile: the pass is
+      // refused before any health-API touch, so the pending removal is not
+      // issued and the cursor does not advance.
+      signedInUserId = 'someone-else';
+      final exportedCursor = grant.add(const Duration(hours: 1));
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      final report = await service.syncNow();
+
+      expect(report.blocked, isA<HealthPlatformRefused>());
+      expect(platform.deleteCalls, isEmpty,
+          reason: 'the same guard that gates the write gates the delete');
+      expect(await settings.get(_cursorKey),
+          '${exportedCursor.millisecondsSinceEpoch}');
+    });
+
+    test('a refused removal delete blocks the pass and is retried by the '
+        'next change rather than acknowledged', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await service.syncNow();
+      final exportedCursor = await settings.get(_cursorKey);
+
+      platform.deleteResult = const HealthPlatformPermissionDenied();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      final blocked = await service.syncNow();
+      expect(blocked.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(platform.deleteCalls, hasLength(1));
+      expect(await settings.get(_cursorKey), exportedCursor,
+          reason: 'a failed removal must not advance the cursor');
+
+      platform.deleteResult = const HealthPlatformAllowed();
+      final retried = await service.syncNow();
+      expect(retried.blocked, isNull);
+      expect(platform.deleteCalls, hasLength(2),
+          reason: 'the same removal is retried, not silently acknowledged');
+    });
+
+    test('the remembered set advances with the write, so a repeated '
+        'cramp-free save deletes nothing a second time', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await service.syncNow();
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls, hasLength(1));
+
+      // The same cramp-free day is saved again: the remembered set moved to
+      // the post-removal state, so there is no difference to delete.
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 4)),
+            tags: const ['headache']),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls, hasLength(1),
+          reason: 'a repeated save of the same state must not re-delete');
     });
   });
 

@@ -247,6 +247,18 @@ class _Batch {
   final List<_PendingBbtWrite> pendingBbt = [];
   int withoutSample = 0;
 
+  /// Every record id each eligible day entry produces this pass (Issue
+  /// #930), keyed by day-entry id — the "now" side of the removed-record
+  /// diff. Built from [healthRecordIdsForEntry], never by parsing the
+  /// pending writes' ids.
+  final Map<String, Set<String>> entryRecordIds = {};
+
+  /// Every live, exportable BBT observation's record id this pass,
+  /// regardless of the forward-only cursor — the "still present" side of
+  /// the BBT diff. A remembered id absent from this set is a reading the
+  /// operator cleared (its row is tombstoned or no longer resolves).
+  final Set<String> liveBbtRecordIds = {};
+
   void add(LocalDate date, String tzName, DateTime updatedAt, String recordId,
       HealthFlowWritePlan plan, Episode? containing) {
     switch (plan) {
@@ -348,6 +360,24 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
   final DateTime Function() _now;
+
+  /// The record ids the previous pass recorded for each day entry (Issue
+  /// #930) — the "previously exported" side of the removed-record diff.
+  /// Keyed by day-entry id; populated from [healthRecordIdsForEntry], the
+  /// same derivation the tombstone coordinator remembers and the write path
+  /// writes, so a delete can never address an id a write did not use.
+  ///
+  /// Deliberately this service's own memory rather than the tombstone
+  /// coordinator's: only the write path knows which record was actually
+  /// exported (the coordinator's set is seeded by live stream emissions,
+  /// including rows the forward-only cursor never wrote). See
+  /// [_reconcileRemovedRecords].
+  final Map<String, Set<String>> _exportedEntryRecordIds = {};
+
+  /// The BBT record ids a previous export wrote (Issue #930), compared
+  /// against the live BBT set on every pass so a reading cleared from a day
+  /// that itself still exists is reconciled away.
+  final Set<String> _exportedBbtRecordIds = {};
 
   /// Runs one sync pass for the currently bound profile. Never throws —
   /// every expected failure mode is a [HealthFlowSyncReport.blocked];
@@ -515,6 +545,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       final cervical = fertility.cervicalMucus;
       if (cervical != null) batch.pendingCervicalMucus.add(cervical);
       batch.pendingOvulation.addAll(fertility.ovulation);
+      // Issue #930: the ids this entry asserts *now*, for the reconcile
+      // diff against what the previous export wrote for it.
+      batch.entryRecordIds[entry.id] = healthRecordIdsForEntry(entry);
     }
 
     _collectObservationWrites(
@@ -566,6 +599,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // separation (resolveBasalBodyTemperature returns null for a
     // platform/wearable-sourced or excluded row).
     for (final row in observationRows) {
+      // Issue #930: every *live* exportable BBT row counts as present even
+      // when the forward-only cursor excludes it from this pass's writes —
+      // so an unchanged reading is never mistaken for a cleared one.
+      if (resolveBasalBodyTemperature(row) != null) {
+        batch.liveBbtRecordIds.add(healthBbtRecordId(row.id));
+      }
       final bbt = _bbtWriteFor(row, cursor);
       if (bbt != null) batch.pendingBbt.add(bbt);
     }
@@ -709,6 +748,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final ovulation =
         await _writeOvulationTestRecords(batch.pendingOvulation, facts);
     final bbt = await _writeBbtRecords(batch.pendingBbt, facts);
+    // Issue #930: after this pass's writes, reconcile away any sample a
+    // PRIOR export wrote for the day/observation that no longer asserts it.
+    // Runs after the writes so the remembered sets move "now" -> "after the
+    // write"; a failure here blocks the pass (and leaves the cursor) so the
+    // removal is retried rather than silently skipped.
+    final removed = await _reconcileRemovedRecords(batch, facts);
     return _BatchOutcome(
       written: flow.written,
       reconciled: flow.reconciled,
@@ -722,12 +767,94 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
           symptoms.failure ??
           cervical.failure ??
           ovulation.failure ??
-          bbt.failure,
+          bbt.failure ??
+          removed,
       newest: _latest(
         _latest(_latest(flow.newest, periods.newest), symptoms.newest),
         _latest(_latest(cervical.newest, ovulation.newest), bbt.newest),
       ),
     );
+  }
+
+  /// Reconciles the records a *previous* export wrote against what this pass
+  /// found (Issue #930) — the fix for a symptom/BTT/fertility sample left
+  /// orphaned when a live day entry is edited rather than deleted.
+  ///
+  /// The remembered set is this service's own [_exportedEntryRecordIds] /
+  /// [_exportedBbtRecordIds], seeded only from this device's own exports
+  /// through [healthRecordIdsForEntry] and the BBT builder. A remembered id
+  /// that the current state no longer produces is deleted;
+  /// an id that is unchanged (a graded intensity or flow edit rewrites the
+  /// same id) is left alone. Deleting is a health-API touch, so it goes
+  /// through the same `_authorityDrift` recheck and guarded
+  /// [HealthPlatformStore.deleteRecords] as every write — no new bypass.
+  /// Returns the first removal failure, or null when every removal was
+  /// allowed.
+  Future<HealthPlatformResult?> _reconcileRemovedRecords(
+    _Batch batch,
+    HealthGuardFacts facts,
+  ) async {
+    final entryFailure = await _reconcileEntryRemovals(batch, facts);
+    final bbtFailure = await _reconcileBbtRemovals(batch, facts);
+    // Only once the BBT diff is computed: every BBT id this pass exported is
+    // remembered so a LATER clear can address it.
+    for (final item in batch.pendingBbt) {
+      _exportedBbtRecordIds.add(item.recordId);
+    }
+    return entryFailure ?? bbtFailure;
+  }
+
+  /// The day-entry half of [_reconcileRemovedRecords]: for every eligible
+  /// entry, delete the ids it produced on a previous export but no longer
+  /// produces, then remember the current set. A delete failure leaves the
+  /// old set in place so the removal is retried on the next pass (LLA-019's
+  /// discipline), rather than being silently acknowledged.
+  Future<HealthPlatformResult?> _reconcileEntryRemovals(
+    _Batch batch,
+    HealthGuardFacts facts,
+  ) async {
+    HealthPlatformResult? failure;
+    for (final entry in batch.entryRecordIds.entries) {
+      final current = entry.value;
+      final previous = _exportedEntryRecordIds[entry.key] ?? const <String>{};
+      final removed = previous.difference(current);
+      if (removed.isEmpty) {
+        _exportedEntryRecordIds[entry.key] = current;
+        continue;
+      }
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        continue;
+      }
+      final result = await _platform.deleteRecords(facts, removed.toList());
+      if (result is HealthPlatformAllowed) {
+        _exportedEntryRecordIds[entry.key] = current;
+      } else {
+        failure ??= result;
+      }
+    }
+    return failure;
+  }
+
+  /// The BBT half of [_reconcileRemovedRecords]: a remembered BBT record
+  /// whose observation is no longer live-and-resolved (the operator cleared
+  /// the reading, leaving the day itself in place) is deleted. The memory is
+  /// only cleared on success, so a refusal retries.
+  Future<HealthPlatformResult?> _reconcileBbtRemovals(
+    _Batch batch,
+    HealthGuardFacts facts,
+  ) async {
+    final removed = _exportedBbtRecordIds.difference(batch.liveBbtRecordIds);
+    if (removed.isEmpty) return null;
+    final drift = await _authorityDrift(facts);
+    if (drift != null) return drift;
+    final result = await _platform.deleteRecords(facts, removed.toList());
+    if (result is HealthPlatformAllowed) {
+      _exportedBbtRecordIds.removeAll(removed);
+      return null;
+    }
+    return result;
   }
 
   /// Re-validates ownership/profile authority against the CURRENT stored
@@ -1126,6 +1253,11 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   @override
   Future<void> onUnbound() async {
     await _settings.set(SettingsKeys.healthSyncWrittenThroughMs, '');
+    // Issue #930: the remembered export sets belong to one binding —
+    // forward-only consent belongs to one binding too, so re-binding must
+    // never diff (and delete) against the old profile's exports.
+    _exportedEntryRecordIds.clear();
+    _exportedBbtRecordIds.clear();
     await _platform.unbindProfile();
   }
 
