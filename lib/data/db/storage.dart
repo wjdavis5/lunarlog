@@ -70,8 +70,10 @@ import 'package:drift/drift.dart';
 import 'package:lunarlog/domain/activity/merge_events.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
+import 'package:lunarlog/domain/logging/day_entry_policy.dart';
 import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
 import 'package:lunarlog/domain/models/day_entry_history.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
 
 import '../sync/conflict_rules.dart';
@@ -151,16 +153,25 @@ class LunarLogStorage
         LunarLogStorageQueries,
         LunarLogStorageLocalWrites,
         LunarLogStorageRemoteApply {
-  LunarLogStorage(this.db, {DateTime Function()? clock, UlidGenerator? ulid})
-      : _clock = clock ?? (() => DateTime.now().toUtc()),
-        _generator = ulid ?? _ulid;
+  LunarLogStorage(
+    this.db, {
+    DateTime Function()? clock,
+    UlidGenerator? ulid,
+    LocalDate Function()? today,
+  })  : _clock = clock ?? (() => DateTime.now().toUtc()),
+        _generator = ulid ?? _ulid,
+        _todayProvider = today ?? LocalDate.today;
 
   @override
   final LunarLogDatabase db;
   final DateTime Function() _clock;
   @override
   final UlidGenerator _generator;
+  final LocalDate Function() _todayProvider;
   Duration _clockOffset = Duration.zero;
+
+  @override
+  LocalDate _today() => _todayProvider();
 
   /// `server_now - device_now`, added to the clock when stamping local
   /// writes (KTD4). Zero until the sync engine learns it.

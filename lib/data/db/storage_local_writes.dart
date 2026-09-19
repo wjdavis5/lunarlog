@@ -11,19 +11,56 @@ part of 'storage.dart';
 /// Default ULID generator for new records (per-isolate monotonic).
 final UlidGenerator _ulid = UlidGenerator();
 
-final RegExp _isoLocalDate = RegExp(r'^\d{4}-\d{2}-\d{2}$');
-
-void _validateLocalDate(String localDate) {
-  if (!_isoLocalDate.hasMatch(localDate)) {
+/// Parses a stored ISO `yyyy-MM-dd` civil date, once, into a [LocalDate]
+/// (Issue #848). [LocalDate]'s own constructor is the shape validation — a
+/// malformed string or an impossible calendar date cannot be represented —
+/// so callers construct the value here and then validate *range* on the
+/// resulting [LocalDate] via [DayEntryPolicy], rather than the old
+/// `_validateLocalDate(String)` re-parse that checked shape only.
+LocalDate _parseLocalDate(String localDate) {
+  try {
+    return LocalDate.fromIso(localDate);
+  } on ArgumentError {
     throw ArgumentError.value(
-        localDate, 'localDate', 'must be an ISO yyyy-MM-dd string');
+        localDate, 'localDate', 'must be an ISO yyyy-MM-dd calendar date');
   }
-  final parsed = DateTime.tryParse('${localDate}T00:00:00Z');
-  if (parsed == null ||
-      parsed.year.toString().padLeft(4, '0') != localDate.substring(0, 4) ||
-      parsed.month.toString().padLeft(2, '0') != localDate.substring(5, 7) ||
-      parsed.day.toString().padLeft(2, '0') != localDate.substring(8, 10)) {
-    throw ArgumentError.value(localDate, 'localDate', 'not a valid calendar date');
+}
+
+/// Issue #848: takes an already-parsed [LocalDate], not the raw string. The
+/// previous string signature re-parsed a value the caller already had as a
+/// `LocalDate` and checked shape only, which is exactly how an out-of-range
+/// date could pass every local write. Constructing the [LocalDate] (via
+/// [_parseLocalDate]) is the shape check; this named seam now documents
+/// that all stored civil dates flow through one parsed value, and the
+/// day-entry paths pair it with [DayEntryPolicy.validateDate] for the
+/// range rules.
+void _validateLocalDate(LocalDate localDate) {}
+
+/// Issue #848: throws [ArgumentError] when [date] violates
+/// [DayEntryPolicy] — a date more than one day in the future (the +1
+/// tolerance is for timezone travel), or one whose year precedes the
+/// profile's known [birthYear]. Mirrors the server's `sync_push` day-entry
+/// date bounds, so a row this layer accepts is not later rejected into
+/// `rejected` at push time.
+void _validateDayEntryDate(
+  LocalDate date, {
+  required LocalDate today,
+  int? birthYear,
+}) {
+  final violation = DayEntryPolicy.validateDate(
+    date,
+    today: today,
+    birthYear: birthYear,
+  ).violation;
+  switch (violation) {
+    case DayEntryDateViolation.futureDate:
+      throw ArgumentError.value(date.iso, 'localDate',
+          'must not be more than one day in the future');
+    case DayEntryDateViolation.beforeBirthYear:
+      throw ArgumentError.value(date.iso, 'localDate',
+          'must not be before the profile birth year');
+    case null:
+      break;
   }
 }
 
@@ -301,12 +338,16 @@ void _validateProfileModePayload({
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
 }) {
-  if (modeStartedOn != null) _validateLocalDate(modeStartedOn);
-  if (estimatedDueDate != null) _validateLocalDate(estimatedDueDate);
+  if (modeStartedOn != null) _validateLocalDate(_parseLocalDate(modeStartedOn));
+  if (estimatedDueDate != null) _validateLocalDate(_parseLocalDate(estimatedDueDate));
   _boundedOrThrow(
       birthControlMethod, kMaxBirthControlMethodLength, 'birthControlMethod');
-  if (birthControlStartedOn != null) _validateLocalDate(birthControlStartedOn);
-  if (birthControlStoppedOn != null) _validateLocalDate(birthControlStoppedOn);
+  if (birthControlStartedOn != null) {
+    _validateLocalDate(_parseLocalDate(birthControlStartedOn));
+  }
+  if (birthControlStoppedOn != null) {
+    _validateLocalDate(_parseLocalDate(birthControlStoppedOn));
+  }
 }
 
 /// Issue #188: mirrors `cycle_overrides`' CHECK constraints
@@ -394,6 +435,12 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   UlidGenerator get _generator;
   DateTime _now();
 
+  /// Issue #848: the device's local civil date, supplied by the concrete
+  /// store (defaulting to `LocalDate.today`), used only by the day-entry
+  /// date-bounds policy — never for sync timestamps, which stay on the
+  /// UTC [_now] clock.
+  LocalDate _today();
+
   // ---------------------------------------------------------------- profiles
 
   /// Creates or updates a profile keyed by [id] (a fresh ULID is generated
@@ -451,7 +498,9 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   }) async {
     // Async so validation failures surface as failed futures.
     _validateDisplayName(displayName);
-    if (lastPeriodStart != null) _validateLocalDate(lastPeriodStart);
+    if (lastPeriodStart != null) {
+      _validateLocalDate(_parseLocalDate(lastPeriodStart));
+    }
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       Profile? existing;
@@ -705,13 +754,24 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     List<UpsertObservationPayload> observationsToUpsert = const [],
     List<String> observationIdsToDelete = const [],
   }) async {
-    _validateLocalDate(localDate);
+    // Issue #848: construct the civil date once, then range-check it
+    // against today and the profile's birth year (when known) before any
+    // write. The profile read is the one extra lookup this adds; a missing
+    // profile (birthYear null) defers to the insert's FK backstop exactly
+    // as before.
+    final entryDate = _parseLocalDate(localDate);
+    _validateLocalDate(entryDate);
+    _validateDayEntryDate(
+      entryDate,
+      today: _today(),
+      birthYear: (await _profileOrNull(profileId))?.birthYear,
+    );
     _validateNote(note);
     _validateTags(tags);
     _validateDayEntryProvenance(sourceId: sourceId);
 
     for (final obs in observationsToUpsert) {
-      _validateLocalDate(obs.localDate);
+      _validateLocalDate(_parseLocalDate(obs.localDate));
       _validateObservation(
         category: obs.category,
         code: obs.code,
@@ -897,8 +957,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   }) async {
     // Async so validation failures surface as failed futures, not sync
     // throws, for callers awaiting the result.
+    // Issue #848: one profile read per distinct profile in the batch, so
+    // each day entry can be range-checked against its subject's birth year
+    // without an N-query fan-out on the import hot path.
+    final birthYears = <String, int?>{
+      for (final id in {for (final e in entries) e.profileId})
+        id: (await _profileOrNull(id))?.birthYear,
+    };
     for (final entry in entries) {
-      _validateBulkDayEntry(entry);
+      _validateBulkDayEntry(entry, birthYear: birthYears[entry.profileId]);
     }
     for (final observation in observations) {
       _validateBulkObservation(observation);
@@ -957,9 +1024,12 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   }
 
   /// Validates one bulk day-entry input with the same limits
-  /// [upsertDayEntry] enforces.
-  void _validateBulkDayEntry(DayEntry entry) {
-    _validateLocalDate(entry.localDate);
+  /// [upsertDayEntry] enforces, including the Issue #848 date bounds
+  /// ([birthYear] is the entry profile's stored birth year, when known).
+  void _validateBulkDayEntry(DayEntry entry, {int? birthYear}) {
+    final date = _parseLocalDate(entry.localDate);
+    _validateLocalDate(date);
+    _validateDayEntryDate(date, today: _today(), birthYear: birthYear);
     _validateNote(entry.note);
     _validateTags(entry.tags);
     _validateDayEntryProvenance(sourceId: entry.sourceId);
@@ -970,7 +1040,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// [_validateObservation] rejects (only a tombstone may carry a null
   /// category, and bulk writes live rows).
   void _validateBulkObservation(Observation observation) {
-    _validateLocalDate(observation.localDate);
+    _validateLocalDate(_parseLocalDate(observation.localDate));
     _validateObservation(
       category: observation.category ?? '',
       code: observation.code,
@@ -1111,7 +1181,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   }) async {
     // Async so validation failures surface as failed futures, not sync
     // throws, for callers awaiting the result.
-    _validateLocalDate(localDate);
+    _validateLocalDate(_parseLocalDate(localDate));
     _validateObservation(
       category: category,
       code: code,
@@ -1357,7 +1427,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     DateTime? updatedAt,
   }) async {
     // Async so validation failures surface as failed futures.
-    _validateLocalDate(cycleStartDate);
+    _validateLocalDate(_parseLocalDate(cycleStartDate));
     _validateCycleOverridePayload(noteId: noteId);
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
@@ -1519,7 +1589,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   }) async {
     // Async so validation failures surface as failed futures.
     _validateGuardianNoteBody(body);
-    _validateLocalDate(localDate);
+    _validateLocalDate(_parseLocalDate(localDate));
     return db.transaction(() async {
       final now = (updatedAt ?? _now()).toUtc();
       GuardianNoteData? existing;

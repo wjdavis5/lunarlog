@@ -1,7 +1,7 @@
 -- sync_push RPC proof (plan U2: AE3, LWW guard, resolver, tombstones,
 -- idempotency, payload user_id, opaque rejections, batch limits, anon).
 begin;
-select plan(165);
+select plan(175);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
@@ -480,11 +480,11 @@ select is(public.is_valid_tags_array(
 insert into r select 'long_tags', public.sync_push(
   '[]'::jsonb,
   jsonb_build_array(
-    jsonb_build_object('id', tests.ulid(130), 'profile_id', tests.ulid(1), 'local_date', '2026-09-26',
+    jsonb_build_object('id', tests.ulid(130), 'profile_id', tests.ulid(1), 'local_date', '2026-07-01',
       'tz', 'UTC', 'flow', 'none', 'tags', jsonb_build_array(repeat('x', 65)), 'updated_at', pg_temp.ts_txt('t1')),
-    jsonb_build_object('id', tests.ulid(131), 'profile_id', tests.ulid(1), 'local_date', '2026-09-27',
+    jsonb_build_object('id', tests.ulid(131), 'profile_id', tests.ulid(1), 'local_date', '2026-07-02',
       'tz', 'UTC', 'flow', 'none', 'tags', jsonb_build_array('ok', repeat('x', 65)), 'updated_at', pg_temp.ts_txt('t1')),
-    jsonb_build_object('id', tests.ulid(132), 'profile_id', tests.ulid(1), 'local_date', '2026-09-28',
+    jsonb_build_object('id', tests.ulid(132), 'profile_id', tests.ulid(1), 'local_date', '2026-07-03',
       'tz', 'UTC', 'flow', 'none', 'tags', '["valid", "tags"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))
   ));
 select is(jsonb_array_length(pg_temp.resp('long_tags') -> 'rejected'), 2,
@@ -518,12 +518,12 @@ select tests.authenticate_as('user_a');
 insert into r select 'tags_rpc_validation', public.sync_push(
   '[]'::jsonb,
   jsonb_build_array(
-    jsonb_build_object('id', tests.ulid(140), 'profile_id', tests.ulid(1), 'local_date', '2026-09-30',
+    jsonb_build_object('id', tests.ulid(140), 'profile_id', tests.ulid(1), 'local_date', '2026-07-04',
       'tz', 'UTC', 'flow', 'none', 'tags', '[3]'::jsonb, 'updated_at', pg_temp.ts_txt('t1')),
-    jsonb_build_object('id', tests.ulid(141), 'profile_id', tests.ulid(1), 'local_date', '2026-10-06',
+    jsonb_build_object('id', tests.ulid(141), 'profile_id', tests.ulid(1), 'local_date', '2026-07-05',
       'tz', 'UTC', 'flow', 'none',
       'tags', (select jsonb_agg(g::text) from generate_series(1, 33) g), 'updated_at', pg_temp.ts_txt('t1')),
-    jsonb_build_object('id', tests.ulid(142), 'profile_id', tests.ulid(1), 'local_date', '2026-10-07',
+    jsonb_build_object('id', tests.ulid(142), 'profile_id', tests.ulid(1), 'local_date', '2026-07-06',
       'tz', 'UTC', 'flow', 'none', 'tags', '["ok"]'::jsonb, 'updated_at', pg_temp.ts_txt('t1'))
   ));
 select is(jsonb_array_length(pg_temp.resp('tags_rpc_validation') -> 'rejected'), 2,
@@ -725,7 +725,7 @@ select is((select mode from public.profiles where id = tests.ulid(125)), 'irregu
 
 insert into r select 'mode_entry', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(129), 'profile_id', tests.ulid(125), 'local_date', '2026-09-30',
+    'id', tests.ulid(129), 'profile_id', tests.ulid(125), 'local_date', '2026-07-04',
     'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
 select is(pg_temp.resp('mode_entry') -> 'rejected', '[]'::jsonb,
   '#131: a caregiver still writes day entries on a profile with any mode');
@@ -808,7 +808,7 @@ values ('11111111-1111-1111-1111-111111111111'::uuid, tests.ulid(1), 'clue_impor
 -- verbatim.
 insert into r select 'provenance_insert', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-07-10',
     'tz', 'UTC', 'flow', 'none', 'source', 'clue_import', 'source_id', 'clue-abc',
     'import_id', '11111111-1111-1111-1111-111111111111',
     'updated_at', pg_temp.ts_txt('t1'))));
@@ -825,7 +825,7 @@ select is((select import_id::text from public.day_entries where id = tests.ulid(
 -- Default: an entry pushed without a source key at all defaults to manual.
 insert into r select 'provenance_default', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(301), 'profile_id', tests.ulid(1), 'local_date', '2026-10-02',
+    'id', tests.ulid(301), 'profile_id', tests.ulid(1), 'local_date', '2026-07-11',
     'tz', 'UTC', 'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
 select is((select source from public.day_entries where id = tests.ulid(301)), 'manual',
   '#159: an absent source key defaults to manual on insert');
@@ -836,7 +836,7 @@ select is((select source_id from public.day_entries where id = tests.ulid(301)),
 -- CHECK, caught as a per-row rejection, not a batch failure.
 insert into r select 'provenance_bad_source', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(302), 'profile_id', tests.ulid(1), 'local_date', '2026-10-03',
+    'id', tests.ulid(302), 'profile_id', tests.ulid(1), 'local_date', '2026-07-12',
     'tz', 'UTC', 'flow', 'none', 'source', 'not_a_real_source',
     'updated_at', pg_temp.ts_txt('t1'))));
 select is(jsonb_array_length(pg_temp.resp('provenance_bad_source') -> 'rejected'), 1,
@@ -847,7 +847,7 @@ select is((select count(*) from public.day_entries where id = tests.ulid(302)), 
 -- Rejection: a malformed import_id (not a UUID) is rejected the same way.
 insert into r select 'provenance_bad_import_id', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(303), 'profile_id', tests.ulid(1), 'local_date', '2026-10-04',
+    'id', tests.ulid(303), 'profile_id', tests.ulid(1), 'local_date', '2026-07-13',
     'tz', 'UTC', 'flow', 'none', 'import_id', 'not-a-uuid',
     'updated_at', pg_temp.ts_txt('t1'))));
 select is(jsonb_array_length(pg_temp.resp('provenance_bad_import_id') -> 'rejected'), 1,
@@ -856,7 +856,7 @@ select is(jsonb_array_length(pg_temp.resp('provenance_bad_import_id') -> 'reject
 -- source_id length bound (day_entries_source_id_length_check, 128 chars).
 insert into r select 'provenance_long_source_id', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(304), 'profile_id', tests.ulid(1), 'local_date', '2026-10-05',
+    'id', tests.ulid(304), 'profile_id', tests.ulid(1), 'local_date', '2026-07-14',
     'tz', 'UTC', 'flow', 'none', 'source_id', repeat('x', 129),
     'updated_at', pg_temp.ts_txt('t1'))));
 select is(jsonb_array_length(pg_temp.resp('provenance_long_source_id') -> 'rejected'), 1,
@@ -867,7 +867,7 @@ select is(jsonb_array_length(pg_temp.resp('provenance_long_source_id') -> 'rejec
 -- import_id entirely preserves the stored values.
 insert into r select 'provenance_old_client_update', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-07-10',
     'tz', 'UTC', 'flow', 'medium', 'updated_at', pg_temp.ts_txt('t2'))));
 select is((select flow from public.day_entries where id = tests.ulid(300)), 'medium',
   '#159: the old-client push still applies the field it did send');
@@ -885,7 +885,7 @@ select is((select import_id::text from public.day_entries where id = tests.ulid(
 -- birth_year/relationship).
 insert into r select 'provenance_explicit_clear', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-07-10',
     'tz', 'UTC', 'flow', 'medium', 'source_id', null, 'import_id', null,
     'updated_at', pg_temp.ts_txt('t3'))));
 select is((select source_id from public.day_entries where id = tests.ulid(300)), null,
@@ -900,7 +900,7 @@ select is((select source from public.day_entries where id = tests.ulid(300)), 'c
 -- row already carried.
 insert into r select 'provenance_tombstone', public.sync_push('[]'::jsonb,
   jsonb_build_array(jsonb_build_object(
-    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-10-01',
+    'id', tests.ulid(300), 'profile_id', tests.ulid(1), 'local_date', '2026-07-10',
     'tz', 'UTC', 'flow', 'none', 'source', 'clue_import', 'source_id', 'clue-abc-2',
     'updated_at', pg_temp.ts_txt('t4'), 'deleted_at', pg_temp.ts_txt('t4'))));
 select isnt((select deleted_at from public.day_entries where id = tests.ulid(300)), null,
@@ -909,6 +909,72 @@ select is((select source from public.day_entries where id = tests.ulid(300)), 'c
   '#159: source survives the tombstone');
 select is((select source_id from public.day_entries where id = tests.ulid(300)), 'clue-abc-2',
   '#159: source_id survives the tombstone (day_entries never clears provenance, unlike flow/tags/note)');
+
+-- ---------------------------------------------------------------------------
+-- Issue #848: day-entry date bounds (future date and pre-birth year)
+-- ---------------------------------------------------------------------------
+-- A live day entry may not be dated more than one day after the server's own
+-- calendar (the +1 tolerates a client whose local calendar is legitimately a
+-- day ahead), nor before its subject's birth year when the profile has one.
+-- Both failures reuse the per-row `rejected` mechanism. Dates here are
+-- computed from current_date so they stay meaningful whenever the suite runs.
+select tests.authenticate_as('user_a');
+
+insert into r select 'bounds_profile', public.sync_push(
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(500), 'display_name', 'Bounded', 'birth_year', 2015,
+    'updated_at', pg_temp.ts_txt('t1'))),
+  '[]'::jsonb);
+select is(pg_temp.resp('bounds_profile') -> 'rejected', '[]'::jsonb,
+  '#848: a profile carrying a birth_year is accepted');
+
+insert into r select 'bounds_future', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(501), 'profile_id', tests.ulid(500),
+    'local_date', to_char(current_date + 10, 'YYYY-MM-DD'), 'tz', 'UTC',
+    'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
+select is(jsonb_array_length(pg_temp.resp('bounds_future') -> 'rejected'), 1,
+  '#848: a day entry more than one day in the future is rejected');
+select is((select count(*) from public.day_entries where id = tests.ulid(501)), 0::bigint,
+  '#848: the future-dated row does not land');
+
+insert into r select 'bounds_tomorrow', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(502), 'profile_id', tests.ulid(500),
+    'local_date', to_char(current_date + 1, 'YYYY-MM-DD'), 'tz', 'UTC',
+    'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('bounds_tomorrow') -> 'rejected', '[]'::jsonb,
+  '#848: current_date + 1 is accepted (timezone tolerance)');
+select is((select count(*) from public.day_entries where id = tests.ulid(502)), 1::bigint,
+  '#848: the current_date + 1 row lands');
+
+insert into r select 'bounds_prebirth', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(503), 'profile_id', tests.ulid(500),
+    'local_date', '2010-06-01', 'tz', 'UTC', 'flow', 'none',
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(jsonb_array_length(pg_temp.resp('bounds_prebirth') -> 'rejected'), 1,
+  '#848: a day entry whose year precedes the profile birth_year is rejected');
+select is((select count(*) from public.day_entries where id = tests.ulid(503)), 0::bigint,
+  '#848: the pre-birth-year row does not land');
+
+insert into r select 'bounds_no_birth_year', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(504), 'profile_id', tests.ulid(1),
+    'local_date', '2010-06-02', 'tz', 'UTC', 'flow', 'none',
+    'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('bounds_no_birth_year') -> 'rejected', '[]'::jsonb,
+  '#848: a profile with no birth_year is unaffected by the year bound');
+select is((select count(*) from public.day_entries where id = tests.ulid(504)), 1::bigint,
+  '#848: the old-dated row lands for a profile with no birth_year');
+
+insert into r select 'bounds_ordinary', public.sync_push('[]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'id', tests.ulid(505), 'profile_id', tests.ulid(500),
+    'local_date', to_char(current_date - 5, 'YYYY-MM-DD'), 'tz', 'UTC',
+    'flow', 'none', 'updated_at', pg_temp.ts_txt('t1'))));
+select is(pg_temp.resp('bounds_ordinary') -> 'rejected', '[]'::jsonb,
+  '#848: an ordinary in-bounds day entry still pushes');
 
 select * from finish();
 rollback;

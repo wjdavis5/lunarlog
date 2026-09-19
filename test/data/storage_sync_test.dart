@@ -1270,9 +1270,12 @@ void main() {
         'actually changes pms clears pmsUnconfirmed, so pms pushes on '
         'that very edit', () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      // Issue #848: an in-bounds date (2026-09-18, not 2026-09-21) — the
+      // pms-unconfirmed behavior under test is date-agnostic, but the local
+      // write no longer accepts a date more than a day in the future.
       final e = await storage.upsertDayEntry(
         profileId: p.id,
-        localDate: '2026-09-21',
+        localDate: '2026-09-18',
         tz: 'UTC',
         flow: FlowLevel.medium,
         pms: true,
@@ -1283,7 +1286,7 @@ void main() {
       final edited = await storage.upsertDayEntry(
         id: e.id,
         profileId: p.id,
-        localDate: '2026-09-21',
+        localDate: '2026-09-18',
         tz: 'UTC',
         flow: FlowLevel.medium,
         pms: false,
