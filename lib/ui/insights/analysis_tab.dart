@@ -562,6 +562,17 @@ class _AnalysisTabState extends State<AnalysisTab>
     String label,
     String value,
   ) {
+    // Issue #813: the value is the content, so it carries the weight and a
+    // tabular-figure ramp (numbers line up column-wise); the label is a
+    // quiet caption. They used to share one `bodyMedium` style, giving a
+    // number and its caption equal visual weight.
+    final labelStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final valueStyle = theme.textTheme.titleMedium?.copyWith(
+      fontWeight: FontWeight.w600,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final textScaler = MediaQuery.textScalerOf(context);
@@ -574,18 +585,9 @@ class _AnalysisTabState extends State<AnalysisTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: theme.textTheme.bodyMedium,
-                ),
+                Text(label, style: labelStyle),
                 const SizedBox(height: LLSpace.space1),
-                Text(
-                  value,
-                  key: ValueKey(key),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(value, key: ValueKey(key), style: valueStyle),
               ],
             ),
           );
@@ -598,7 +600,7 @@ class _AnalysisTabState extends State<AnalysisTab>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
-                child: Text(label, style: theme.textTheme.bodyMedium),
+                child: Text(label, style: labelStyle),
               ),
               const SizedBox(width: LLSpace.space2),
               Expanded(
@@ -606,7 +608,7 @@ class _AnalysisTabState extends State<AnalysisTab>
                   value,
                   key: ValueKey(key),
                   textAlign: TextAlign.end,
-                  style: theme.textTheme.bodyMedium,
+                  style: valueStyle,
                 ),
               ),
             ],

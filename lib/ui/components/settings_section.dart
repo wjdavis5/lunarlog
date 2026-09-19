@@ -14,6 +14,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'list_section_header.dart';
+
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     super.key,
@@ -44,10 +46,7 @@ class SettingsSection extends StatelessWidget {
       key: ValueKey('settings-section-$id'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        ),
+        ListSectionHeader(title: title),
         ...children,
         if (trailingDivider) const Divider(),
       ],

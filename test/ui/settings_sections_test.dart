@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/components/list_section_header.dart';
 import 'package:lunarlog/ui/settings/about_section.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -213,6 +214,10 @@ void main() {
     ]) {
       expect(find.text(title), findsOneWidget, reason: '$title header');
     }
+    // Issue #813: every section head renders through the one shared
+    // component (one per section, nine sections here).
+    expect(find.byType(ListSectionHeader), findsNWidgets(9),
+        reason: 'each section is headed by the shared ListSectionHeader');
   });
 
   testWidgets(
