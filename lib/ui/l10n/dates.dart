@@ -96,15 +96,17 @@ String formatLocalDateShortDate(
 
 /// Short weekday-day-month form, e.g. "Tue 8 Sep": compact rows and the
 /// relative label below. [preference] (Issue #226) reorders the month/day
-/// pair — `monthDay` renders "Tue Sep 8" — while `system` and `dayMonth`
-/// keep this library's established day-first pattern for `en`.
+/// pair — `monthDay` renders "Tue Sep 8". `system` follows [locale]'s own
+/// order (issue #884): month-first ("Tue Sep 8") for `en_US`, day-first
+/// ("Tue 8 Sep") for `en_GB`.
 String formatShortDayDate(
   DateTime date, {
   String locale = kFallbackLocale,
   DateFormatPreference preference = DateFormatPreference.system,
 }) {
   _ensureDateSymbols();
-  return DateFormat(shortDayDatePattern(preference), locale).format(date);
+  return DateFormat(shortDayDatePattern(preference, locale: locale), locale)
+      .format(date);
 }
 
 /// Short weekday-day-month form for a [LocalDate], e.g. "Tue 8 Sep".
@@ -119,24 +121,70 @@ String formatLocalDateShortDayDate(
       preference: preference,
     );
 
+/// Whether [locale]'s own short numeric date orders the day before the
+/// month (issue #884): true for `en_GB` ("5 Sep"), false for `en_US`
+/// ("Sep 5"). The `system` [DateFormatPreference] resolves through this so
+/// "System default" follows the locale instead of a fixed order, rather
+/// than maintaining a hand-rolled country list.
+bool _localeIsDayFirst(String locale) {
+  _ensureDateSymbols();
+  final pattern = DateFormat.yMd(locale).pattern ?? '';
+  final day = pattern.indexOf('d');
+  final month = pattern.indexOf('M');
+  // Unknown patterns (neither marker present) fall back to month-first, the
+  // generic-`en` ordering this library already rendered for an ambiguous
+  // locale.
+  return day != -1 && month != -1 && day < month;
+}
+
 /// The intl pattern [formatShortDayDate] renders with for [preference]
-/// (Issue #226). Public and pure so a test can pin each preference's
-/// ordering without running a formatter.
-String shortDayDatePattern(DateFormatPreference preference) =>
+/// (Issue #226, locale-resolved since issue #884). Public and pure so a test
+/// can pin each preference's ordering without running a formatter. `system`
+/// derives its ordering from [locale]; `dayMonth`/`monthDay` are explicit
+/// user overrides and stay literal.
+String shortDayDatePattern(
+  DateFormatPreference preference, {
+  String locale = kFallbackLocale,
+}) =>
     switch (preference) {
-      DateFormatPreference.system => 'EEE d MMM',
+      DateFormatPreference.system =>
+        _localeIsDayFirst(locale) ? 'EEE d MMM' : 'EEE MMM d',
       DateFormatPreference.dayMonth => 'EEE d MMM',
       DateFormatPreference.monthDay => 'EEE MMM d',
     };
 
 /// The matching standalone-date pattern [formatWeekdayDayDateYear] renders
-/// with for [preference] (Issue #226): same ordering rule, plus the year.
-String weekdayDayDateYearPattern(DateFormatPreference preference) =>
+/// with for [preference] (Issue #226, locale-resolved since issue #884):
+/// same ordering rule, plus the year.
+String weekdayDayDateYearPattern(
+  DateFormatPreference preference, {
+  String locale = kFallbackLocale,
+}) =>
     switch (preference) {
-      DateFormatPreference.system => 'EEE d MMM y',
+      DateFormatPreference.system =>
+        _localeIsDayFirst(locale) ? 'EEE d MMM y' : 'EEE MMM d y',
       DateFormatPreference.dayMonth => 'EEE d MMM y',
       DateFormatPreference.monthDay => 'EEE MMM d y',
     };
+
+/// The rendered day/month example the Settings "Date format" picker shows
+/// (issue #884): one illustrative date ("5 Sep" or "Sep 5") under
+/// [preference]'s ordering. `system` resolves through [locale] — the very
+/// same decision [formatShortDayDate] uses — so the sample can never
+/// advertise an order the day sheet will not render.
+String formatShortMonthDayExample(
+  DateFormatPreference preference, {
+  String locale = kFallbackLocale,
+}) {
+  _ensureDateSymbols();
+  final pattern = switch (preference) {
+    DateFormatPreference.system =>
+      _localeIsDayFirst(locale) ? 'd MMM' : 'MMM d',
+    DateFormatPreference.dayMonth => 'd MMM',
+    DateFormatPreference.monthDay => 'MMM d',
+  };
+  return DateFormat(pattern, locale).format(DateTime(2026, 9, 5));
+}
 
 /// Unambiguous weekday-day-month-year form, e.g. "Tue 8 Sep 2026": the form
 /// used whenever a date stands alone (no surrounding "this week" context).
@@ -148,7 +196,7 @@ String formatWeekdayDayDateYear(
   DateFormatPreference preference = DateFormatPreference.system,
 }) {
   _ensureDateSymbols();
-  return DateFormat(weekdayDayDateYearPattern(preference), locale)
+  return DateFormat(weekdayDayDateYearPattern(preference, locale: locale), locale)
       .format(date);
 }
 

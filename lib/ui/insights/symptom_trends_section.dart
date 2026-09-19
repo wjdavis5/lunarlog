@@ -9,6 +9,7 @@ import '../../domain/insights/symptom_trends.dart';
 import '../../domain/models/local_date.dart';
 import '../content/cycle_literacy_library_screen.dart';
 import '../l10n/dates.dart' as dates;
+import '../theme/lunarlog_colors.dart';
 
 class SymptomTrendsSection extends StatelessWidget {
   const SymptomTrendsSection({
@@ -142,6 +143,12 @@ class _CrampPredictionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final locale = Localizations.localeOf(context).toString();
+    // Issue #876: a predicted-cramps window is routine, expected
+    // information, not an error — so the card wears the calendar's own
+    // cramps accent (LunarLogColors.crampsBadge, #895) on an ordinary
+    // surface card, matching how the calendar's bolt badge renders it.
+    final accent = theme.extension<LunarLogColors>()?.crampsBadge ??
+        colorScheme.primary;
 
     String formatDates(List<LocalDate> datesList) {
       if (datesList.isEmpty) return '';
@@ -157,13 +164,6 @@ class _CrampPredictionCard extends StatelessWidget {
 
     return Card(
       key: const ValueKey('cramp-prediction-card'),
-      color: colorScheme.errorContainer.withValues(alpha: 0.3),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: colorScheme.error.withValues(alpha: 0.3),
-        ),
-      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -171,14 +171,13 @@ class _CrampPredictionCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.bolt, color: colorScheme.error, size: 20),
+                Icon(Icons.bolt, color: accent, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Anticipated Cramp Window',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: colorScheme.onErrorContainer,
                     ),
                   ),
                 ),
