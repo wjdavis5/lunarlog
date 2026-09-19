@@ -18,6 +18,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -249,6 +250,8 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HealthSyncScreen(
           profilesRepository:
               profilesRepository ?? FakeProfilesRepository(profiles),
@@ -455,8 +458,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the unbind action clears the binding and hides itself',
-      (tester) async {
+  testWidgets('the unbind action (confirmed) clears the binding and hides '
+      'itself', (tester) async {
     final settings = FakeSettingsStore();
     final binding = HealthSyncBinding(settings);
     await binding.bind(
@@ -471,6 +474,62 @@ void main() {
     expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('health-sync-confirm-unbind')));
+    await tester.pumpAndSettle();
+
+    expect(await binding.boundProfileId(), isNull);
+    expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsNothing);
+  });
+
+  testWidgets('tapping the unbind tile opens a confirm dialog naming the '
+      'profile and does NOT unbind on cancel (Issue #893)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await binding.bind(
+      profile: profiles.firstWhere((p) => p.id == 'eligible'),
+      signedInUserId: 'u1',
+      ownerUserId: 'u1',
+      minorBindingAllowed: false,
+    );
+    await pumpScreen(tester, binding: binding);
+
+    await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Stop syncing Alice to this phone?'), findsOneWidget);
+    expect(
+      find.textContaining("Nothing already logged in lunarlog"),
+      findsOneWidget,
+    );
+    final dialogRoute = ModalRoute.of(
+      tester.element(find.text('Stop syncing Alice to this phone?')),
+    );
+    expect(dialogRoute?.settings.name, kRouteHealthSyncUnbindDialog);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(await binding.boundProfileId(), 'eligible');
+    expect(find.byKey(const ValueKey('health-sync-unbind-tile')), findsOneWidget);
+  });
+
+  testWidgets('confirming the unbind dialog unbinds the profile (Issue #893)',
+      (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await binding.bind(
+      profile: profiles.firstWhere((p) => p.id == 'eligible'),
+      signedInUserId: 'u1',
+      ownerUserId: 'u1',
+      minorBindingAllowed: false,
+    );
+    await pumpScreen(tester, binding: binding);
+
+    await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+    await tester.pumpAndSettle();
+    // The dialog must not have already torn the binding down on its own.
+    expect(await binding.boundProfileId(), 'eligible');
+
+    await tester.tap(find.byKey(const ValueKey('health-sync-confirm-unbind')));
     await tester.pumpAndSettle();
 
     expect(await binding.boundProfileId(), isNull);
@@ -501,6 +560,8 @@ void main() {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: HealthSyncScreen(
           profilesRepository:
               FakeProfilesRepository([_profile(id: 'unsynced', name: 'Eve')]),
@@ -592,6 +653,59 @@ void main() {
       expect(
         find.textContaining('Kept your own logged value on 1 day.'),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('a device-zone import is reported as placed, never skipped '
+        '(Issue #902)', (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 3,
+        daysWritten: 3,
+        samplesFromDeviceZone: 3,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          'Placed 3 samples using the time zone of this phone.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Skipped'), findsNothing);
+    });
+
+    testWidgets('a confirmed unbind clears the previous import summary from '
+        'the screen (Issue #893)', (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 2,
+        daysWritten: 2,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Updated 2 days from Apple Health.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('health-sync-confirm-unbind')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('health-sync-import-summary')),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('Updated 2 days from Apple Health.'),
+        findsNothing,
       );
     });
 

@@ -663,6 +663,12 @@ enum HealthKitChannelHandler {
   /// the device's current zone. `HKMetadataKeyExternalUUID` is passed through
   /// for diagnostics. A sample whose value is not a known flow intensity is
   /// skipped rather than guessed.
+  ///
+  /// Issue #902: a sample with no `HKMetadataKeyTimeZone` (which is every
+  /// menstruation sample logged by hand in Apple's own Health app) is not
+  /// dropped. The device's UTC offset at the sample's instant is sent as
+  /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
+  /// row and reports it honestly as inferred from this phone's zone.
   private static func readMenstrualFlowSamples(
     start: Date,
     end: Date
@@ -690,6 +696,21 @@ enum HealthKitChannelHandler {
       ]
       if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
         entry["tzName"] = tz
+      } else {
+        // Issue #902: a menstruation sample entered by hand in Apple's own
+        // Health app (Browse > Cycle Tracking > Menstruation > +) carries no
+        // HKMetadataKeyTimeZone. Without a zone the Dart importer used to
+        // drop every such sample, which made the feature useless for the
+        // exact data it exists to bring over. Fall back to this device's UTC
+        // offset at the sample's instant — the zone the phone was in at that
+        // moment is the best available proxy — and flag it so Dart reports
+        // the row as inferred (placed using this phone's time zone) rather
+        // than as the sample's own recorded zone. Menstrual flow is a
+        // whole-day category sample, so a wrong offset can only shift the
+        // civil date by at most one day.
+        entry["zoneOffsetSeconds"] =
+          TimeZone.current.secondsFromGMT(for: sample.startDate)
+        entry["zoneOffsetInferred"] = true
       }
       if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
         entry["externalUuid"] = external

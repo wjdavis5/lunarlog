@@ -1250,6 +1250,78 @@ abstract class AppLocalizations {
   /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
   String get settingsHealthSyncSubtitle;
 
+  /// Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {count, plural, =1{1 day} other{{count} days}} from {source}.'**
+  String healthSyncImportUpdatedDays(int count, String source);
+
+  /// Health import summary: days that gained an imported spotting observation (Issue #458).
+  ///
+  /// In en, this message translates to:
+  /// **'Added spotting to {count, plural, =1{1 day} other{{count} days}} from {source}.'**
+  String healthSyncImportAddedSpotting(int count, String source);
+
+  /// Health import summary: days already at the same imported value.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}} already matched.'**
+  String healthSyncImportAlreadyMatched(int count);
+
+  /// Health import summary: days whose hand-logged flow differed and was deliberately kept.
+  ///
+  /// In en, this message translates to:
+  /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
+  String healthSyncImportKeptManual(int count);
+
+  /// Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.
+  ///
+  /// In en, this message translates to:
+  /// **'Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.'**
+  String healthSyncImportPlacedDeviceZone(int count);
+
+  /// Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.'**
+  String healthSyncImportSkippedNoZone(int count);
+
+  /// Health import summary: samples whose flow value has no lunarlog equivalent.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
+  String healthSyncImportSkippedUnsupported(int count);
+
+  /// Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop syncing {name} to this phone?'**
+  String healthSyncUnbindDialogTitle(String name);
+
+  /// Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).
+  ///
+  /// In en, this message translates to:
+  /// **'This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.'**
+  String healthSyncUnbindDialogWriteBody(String name);
+
+  /// Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).
+  ///
+  /// In en, this message translates to:
+  /// **'This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.'**
+  String healthSyncUnbindDialogImportBody(String name);
+
+  /// Confirm action of the health-sync unbind dialog (Issue #893).
+  ///
+  /// In en, this message translates to:
+  /// **'Stop syncing'**
+  String get healthSyncUnbindConfirm;
+
+  /// Cancel action of the health-sync unbind dialog (Issue #893).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get healthSyncUnbindCancel;
+
   /// Settings tile opening the in-app privacy policy dialog.
   ///
   /// In en, this message translates to:

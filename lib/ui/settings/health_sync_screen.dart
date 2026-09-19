@@ -36,6 +36,7 @@ import '../../domain/models/profile.dart';
 import '../../domain/repositories/profile_guardians_repository.dart'
     show GuardiansForProfile;
 import '../../domain/repositories/profiles_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
 
 // [GuardiansForProfile] (issue #575: declared once, next to
@@ -304,9 +305,64 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     return confirmed ?? false;
   }
 
+  /// Confirms before tearing the binding down (Issue #893). Unbinding is the
+  /// reverse of a decision the app treats as consequential — binding is
+  /// guarded by this same confirm-plus-system-sheet shape — so it must not be
+  /// a single bare tap on a tile sitting directly under Import. Confirming
+  /// also drops the last import result, so no summary outlives the binding
+  /// that produced it.
   Future<void> _unbind() async {
+    final confirmed = await _confirmUnbind(_boundProfileName());
+    if (!confirmed || !mounted) return;
     await widget.binding.unbind();
+    if (!mounted) return;
+    setState(() {
+      _importSummary = null;
+      _importFailed = false;
+    });
     await _load();
+  }
+
+  /// The bound profile's display name, or a neutral stand-in when the bound
+  /// id no longer resolves in this screen's (non-archived) profile list.
+  String _boundProfileName() {
+    for (final profile in _profiles) {
+      if (profile.id == _boundProfileId) return profile.displayName;
+    }
+    return 'this profile';
+  }
+
+  /// The unbind confirmation (Issue #893), deliberately mirroring
+  /// [_confirmBind]'s shape, route name and voice: it names the profile and
+  /// states what stops happening, and nothing already logged is deleted.
+  Future<bool> _confirmUnbind(String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      routeSettings: const RouteSettings(name: kRouteHealthSyncUnbindDialog),
+      builder: (dialogContext) {
+        final l10n = AppLocalizations.of(dialogContext);
+        return AlertDialog(
+          title: Text(l10n.healthSyncUnbindDialogTitle(name)),
+          content: Text(
+            widget.writeEnabled
+                ? l10n.healthSyncUnbindDialogWriteBody(name)
+                : l10n.healthSyncUnbindDialogImportBody(name),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.healthSyncUnbindCancel),
+            ),
+            FilledButton(
+              key: const ValueKey('health-sync-confirm-unbind'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(l10n.healthSyncUnbindConfirm),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
   }
 
   /// Runs one user-initiated import (Issue #217). The runner owns the guard,
@@ -355,30 +411,32 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   }
 
   /// The positive result lines for a pass that read samples. Empty when
-  /// every sample was a no-op.
-  List<String> _importResultLines(HealthImportSummary summary) {
+  /// every sample was a no-op. Issue #902: rows placed from this phone's own
+  /// zone (the source recorded none) get their own line — never the "Skipped"
+  /// wording — and the skip line is reserved for samples that truly could not
+  /// be placed.
+  List<String> _importResultLines(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+  ) {
     final source = _sourceName(_importPlatform);
     return [
       if (summary.daysWritten > 0)
-        'Updated ${_days(summary.daysWritten)} from $source.',
+        l10n.healthSyncImportUpdatedDays(summary.daysWritten, source),
       if (summary.spottingDaysWritten > 0)
-        'Added spotting to ${_days(summary.spottingDaysWritten)} from $source.',
+        l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source),
       if (summary.daysUnchanged > 0)
-        '${_days(summary.daysUnchanged)} already matched.',
+        l10n.healthSyncImportAlreadyMatched(summary.daysUnchanged),
       if (summary.daysKeptManual > 0)
-        'Kept your own logged value on ${_days(summary.daysKeptManual)}.',
+        l10n.healthSyncImportKeptManual(summary.daysKeptManual),
+      if (summary.samplesFromDeviceZone > 0)
+        l10n.healthSyncImportPlacedDeviceZone(summary.samplesFromDeviceZone),
       if (summary.samplesWithoutZone > 0)
-        'Skipped ${_samples(summary.samplesWithoutZone)} with no recorded '
-            'time zone.',
+        l10n.healthSyncImportSkippedNoZone(summary.samplesWithoutZone),
       if (summary.samplesUnsupported > 0)
-        'Skipped ${_samples(summary.samplesUnsupported)} with no matching '
-            'flow level.',
+        l10n.healthSyncImportSkippedUnsupported(summary.samplesUnsupported),
     ];
   }
-
-  static String _days(int n) => n == 1 ? '1 day' : '$n days';
-
-  static String _samples(int n) => n == 1 ? '1 sample' : '$n samples';
 
   /// The result block: progress while running, then either the failure
   /// line, the blocked line, the neutral empty copy, or the positive lines.
@@ -397,7 +455,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       } else if (summary.isEmpty) {
         children.add(Text(healthImportEmptyCopy(_importPlatform)));
       } else {
-        for (final line in _importResultLines(summary)) {
+        for (final line in _importResultLines(
+          AppLocalizations.of(context),
+          summary,
+        )) {
           children.add(Text(line));
         }
       }
