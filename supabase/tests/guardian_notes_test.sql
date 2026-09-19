@@ -11,7 +11,7 @@
 -- Visibility (issue #800, decided): open and transparent. There is no
 -- per-note visibility column, and this test pins that too.
 begin;
-select plan(33);
+select plan(48);
 
 -- ---------------------------------------------------------------------------
 -- temp helpers
@@ -53,6 +53,9 @@ select is(
 select is(
   (select has_column_privilege('authenticated', 'public.guardian_notes', 'logged_by_user_id', 'UPDATE')),
   false, 'logged_by_user_id is not client-updatable (author-immutable)'); -- 9
+select is(
+  (select has_column_privilege('authenticated', 'public.guardian_notes', 'profile_id', 'UPDATE')),
+  false, 'profile_id is not client-updatable on guardian_notes (cannot move between profiles)'); -- 10
 select is(
   (select count(*)::integer from pg_indexes
     where schemaname = 'public' and tablename = 'guardian_notes'
@@ -241,7 +244,156 @@ insert into r select 'dad_delete', public.sync_push('[]'::jsonb, '[]'::jsonb, '[
     'body', '',
     'updated_at', '2026-09-15T10:00:00Z', 'deleted_at', '2026-09-15T10:00:00Z')));
 select is((select body from public.guardian_notes where id = tests.ulid(911)), '',
-  'AC3: a tombstone clears the body'); -- 33
+  'AC3: a tombstone clears the body'); -- 34
+
+-- ---------------------------------------------------------------------------
+-- Issue #868: Direct PostgREST writes (INSERT & UPDATE) author-predicate coverage
+-- ---------------------------------------------------------------------------
+-- 1. Direct INSERT without logged_by_user_id is rejected by RLS
+select tests.authenticate_as('mom');
+select throws_ok(
+  'insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at) values ('
+    || quote_literal(tests.ulid(920)) || ', ' || quote_literal(tests.ulid(901))
+    || ', ''2026-09-13'', ''America/New_York'', ''Direct insert without author'', ''2026-09-13T10:00:00Z'')',
+  '42501',
+  'new row violates row-level security policy for table "guardian_notes"',
+  'direct INSERT without logged_by_user_id is rejected by RLS'
+); -- 35
+
+-- 2. Direct INSERT with forged logged_by_user_id (caller is dad, logged_by is mom) is rejected
+select tests.authenticate_as('dad');
+select throws_ok(
+  'insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id) values ('
+    || quote_literal(tests.ulid(921)) || ', ' || quote_literal(tests.ulid(901))
+    || ', ''2026-09-13'', ''America/New_York'', ''Forged note'', ''2026-09-13T10:00:00Z'', '
+    || quote_literal(tests.get_supabase_uid('mom')) || ', '
+    || quote_literal(tests.get_supabase_uid('dad')) || ')',
+  '42501',
+  null,
+  'direct INSERT with forged logged_by_user_id is rejected'
+); -- 36
+
+-- 3. Direct INSERT with own logged_by_user_id succeeds
+select tests.authenticate_as('mom');
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(922), tests.ulid(901), '2026-09-13', 'America/New_York', 'Mom direct note',
+        '2026-09-13T10:00:00Z', tests.get_supabase_uid('mom'), tests.get_supabase_uid('mom'));
+select is((select body from public.guardian_notes where id = tests.ulid(922)),
+  'Mom direct note',
+  'direct INSERT with own logged_by_user_id succeeds'); -- 37
+
+-- 4. Direct UPDATE of another author's note by a co-guardian updates 0 rows
+select tests.authenticate_as('dad');
+update public.guardian_notes
+   set body = 'tampered by dad',
+       updated_at = '2026-09-14T10:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('dad')
+ where id = tests.ulid(922);
+select is((select body from public.guardian_notes where id = tests.ulid(922)),
+  'Mom direct note',
+  'direct UPDATE of another author''s note leaves content untouched'); -- 38
+
+-- 5. Direct UPDATE (tombstone attempt) of another author's note by co-guardian updates 0 rows
+update public.guardian_notes
+   set body = '',
+       deleted_at = '2026-09-14T10:00:00Z',
+       updated_at = '2026-09-14T10:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('dad')
+ where id = tests.ulid(922);
+select is((select deleted_at from public.guardian_notes where id = tests.ulid(922)),
+  null,
+  'direct tombstone attempt on another author''s note leaves deleted_at null'); -- 39
+
+-- 6. Direct UPDATE of own note by author succeeds
+select tests.authenticate_as('mom');
+update public.guardian_notes
+   set body = 'Mom updated note',
+       updated_at = '2026-09-14T11:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('mom')
+ where id = tests.ulid(922);
+select is((select body from public.guardian_notes where id = tests.ulid(922)),
+  'Mom updated note',
+  'author can directly UPDATE own note'); -- 40
+
+-- 7. Direct UPDATE (tombstone) of own note by author succeeds
+update public.guardian_notes
+   set body = '',
+       deleted_at = '2026-09-14T12:00:00Z',
+       updated_at = '2026-09-14T12:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('mom')
+ where id = tests.ulid(922);
+select is((select body from public.guardian_notes where id = tests.ulid(922)),
+  '',
+  'author can directly tombstone own note (body cleared)'); -- 41
+select isnt((select deleted_at from public.guardian_notes where id = tests.ulid(922)),
+  null,
+  'author direct tombstone sets deleted_at'); -- 42
+
+-- 8. Direct UPDATE attempting to move note across profiles fails with 42501
+select throws_ok(
+  'update public.guardian_notes set profile_id = ' || quote_literal(tests.ulid(951))
+    || ' where id = ' || quote_literal(tests.ulid(910)),
+  '42501',
+  'permission denied for table guardian_notes',
+  'authenticated cannot update profile_id on guardian_notes (cannot move profiles)'
+); -- 43
+
+-- 9. Orphaned note direct UPDATE handling
+select tests.create_supabase_user('sitter_dir');
+select tests.authenticate_as('mom');
+select public.create_guardian_invitation(tests.ulid(901), 'caregiver', 'SitterDir',
+  'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 48);
+select tests.authenticate_as('sitter_dir');
+select public.accept_guardian_invitation(
+  'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'SitterDir');
+
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(925), tests.ulid(901), '2026-09-13', 'America/New_York', 'Sitter direct note',
+        '2026-09-13T10:00:00Z', tests.get_supabase_uid('sitter_dir'), tests.get_supabase_uid('sitter_dir'));
+
+-- Sitter account deleted -> note orphaned
+select tests.clear_authentication();
+delete from auth.users where id = tests.get_supabase_uid('sitter_dir');
+
+select is((select logged_by_user_id from public.guardian_notes where id = tests.ulid(925)),
+  null,
+  'sitter note is now orphaned (logged_by_user_id is null)'); -- 44
+
+-- Co-parent (dad) attempts direct UPDATE (tombstone) on orphaned note -> 0 rows updated
+select tests.authenticate_as('dad');
+update public.guardian_notes
+   set body = '',
+       deleted_at = '2026-09-15T12:00:00Z',
+       updated_at = '2026-09-15T12:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('dad')
+ where id = tests.ulid(925);
+select is((select deleted_at from public.guardian_notes where id = tests.ulid(925)),
+  null,
+  'co-parent direct update on orphaned note updates 0 rows'); -- 45
+
+-- Primary guardian (mom) attempts direct non-tombstone edit on orphaned note -> rejected by WITH CHECK
+select tests.authenticate_as('mom');
+select throws_ok(
+  'update public.guardian_notes set body = ''tampered orphan'', updated_at = ''2026-09-15T13:00:00Z''::timestamptz, last_modified_by_user_id = tests.get_supabase_uid(''mom'') where id = '
+    || quote_literal(tests.ulid(925)),
+  '42501',
+  'new row violates row-level security policy for table "guardian_notes"',
+  'primary_guardian cannot edit orphaned note content directly'
+); -- 46
+
+-- Primary guardian (mom) direct tombstones the orphaned note -> succeeds
+update public.guardian_notes
+   set body = '',
+       deleted_at = '2026-09-15T14:00:00Z',
+       updated_at = '2026-09-15T14:00:00Z',
+       last_modified_by_user_id = tests.get_supabase_uid('mom')
+ where id = tests.ulid(925);
+select is((select body from public.guardian_notes where id = tests.ulid(925)),
+  '',
+  'primary_guardian direct tombstone of orphaned note clears body'); -- 47
+select isnt((select deleted_at from public.guardian_notes where id = tests.ulid(925)),
+  null,
+  'primary_guardian direct tombstone of orphaned note sets deleted_at'); -- 48
 
 select * from finish();
 rollback;

@@ -878,6 +878,110 @@
   "@settingsHealthSyncSymptomsAndroidLimitation": {
     "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it."
   },
+  "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
+  "@healthSyncImportUpdatedDays": {
+    "description": "Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncImportAddedSpotting": "Added spotting to {count, plural, =1{1 day} other{{count} days}} from {source}.",
+  "@healthSyncImportAddedSpotting": {
+    "description": "Health import summary: days that gained an imported spotting observation (Issue #458).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncImportAlreadyMatched": "{count, plural, =1{1 day} other{{count} days}} already matched.",
+  "@healthSyncImportAlreadyMatched": {
+    "description": "Health import summary: days already at the same imported value.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportKeptManual": "Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.",
+  "@healthSyncImportKeptManual": {
+    "description": "Health import summary: days whose hand-logged flow differed and was deliberately kept.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportPlacedDeviceZone": "Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.",
+  "@healthSyncImportPlacedDeviceZone": {
+    "description": "Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.",
+  "@healthSyncImportSkippedNoZone": {
+    "description": "Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.",
+  "@healthSyncImportSkippedUnsupported": {
+    "description": "Health import summary: samples whose flow value has no lunarlog equivalent.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncUnbindDialogTitle": "Stop syncing {name} to this phone?",
+  "@healthSyncUnbindDialogTitle": {
+    "description": "Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.",
+  "@healthSyncUnbindDialogWriteBody": {
+    "description": "Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.",
+  "@healthSyncUnbindDialogImportBody": {
+    "description": "Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindConfirm": "Stop syncing",
+  "@healthSyncUnbindConfirm": {
+    "description": "Confirm action of the health-sync unbind dialog (Issue #893)."
+  },
+  "healthSyncUnbindCancel": "Cancel",
+  "@healthSyncUnbindCancel": {
+    "description": "Cancel action of the health-sync unbind dialog (Issue #893)."
+  },
   "settingsPrivacyTitle": "Privacy policy",
   "@settingsPrivacyTitle": {
     "description": "Settings tile opening the in-app privacy policy dialog."
@@ -970,9 +1074,14 @@
   "@settingsDateFormatTitle": {
     "description": "Calendar-section tile (Issue #226) choosing the month/day order of compact dates."
   },
-  "settingsDateFormatSystemOption": "System default (5 Sep)",
+  "settingsDateFormatSystemOption": "System default ({example})",
   "@settingsDateFormatSystemOption": {
-    "description": "Date-format option: follow the locale's own month/day order; the example shows the English (day-first) rendering."
+    "description": "Date-format option: follow the locale's own month/day order (Issue #226). The example is resolved live from the active locale (issue #884) so it never advertises an order the device will not render.",
+    "placeholders": {
+      "example": {
+        "type": "String"
+      }
+    }
   },
   "settingsDateFormatDayMonthOption": "Day first (5 Sep)",
   "@settingsDateFormatDayMonthOption": {
@@ -1500,6 +1609,39 @@
   "sharingFailureOther": "Failed to accept invitation. Please try again.",
   "@sharingFailureOther": {
     "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."
+  },
+
+  "profileErasureFailureNetwork": "Can't purge while offline. Check your connection and try again.",
+  "@profileErasureFailureNetwork": {
+    "description": "ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart)."
+  },
+  "profileErasureFailureUnauthorized": "Only that profile's primary guardian can purge its data.",
+  "@profileErasureFailureUnauthorized": {
+    "description": "ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it."
+  },
+  "profileErasureFailureNotSignedIn": "Sign in to your account to purge imported data.",
+  "@profileErasureFailureNotSignedIn": {
+    "description": "ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883)."
+  },
+  "profileErasureFailureInvalidSource": "That import source isn't supported. Nothing was purged.",
+  "@profileErasureFailureInvalidSource": {
+    "description": "ProfileErasureFailure.invalidSource copy at the purge surface."
+  },
+  "profileErasureFailureOther": "Failed to purge imported data. Check connection and try again.",
+  "@profileErasureFailureOther": {
+    "description": "ProfileErasureFailure.other copy at the purge surface."
+  },
+  "purgeImportedDataNoRows": "This profile has no imported data from a supported source.",
+  "@purgeImportedDataNoRows": {
+    "description": "Shown in the purge dialog when the selected profile has no imported rows for any source valid on this platform, instead of offering a no-op purge (issue #883)."
+  },
+  "purgeImportedDataPreview": "{count, plural, =1{1 entry} other{{count} entries}} from {source}",
+  "@purgeImportedDataPreview": {
+    "description": "The purge dialog's count preview (issue #883): how many local rows the selected profile+source purge would remove, e.g. '109 entries from File import'.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "source": { "type": "String" }
+    }
   },
 
   "inviteCancellationRevoked": "Invitation cancelled",

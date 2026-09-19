@@ -7,15 +7,51 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/insights/symptom_trends_section.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 
-Future<void> _pump(WidgetTester tester, Widget child) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Widget child, {
+  ThemeData? theme,
+}) async {
   await tester.pumpWidget(MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
     supportedLocales: AppLocalizations.supportedLocales,
-    theme: AppTheme.lightTheme,
+    theme: theme ?? AppTheme.lightTheme,
     home: Scaffold(body: SingleChildScrollView(child: child)),
   ));
+  await tester.pumpAndSettle();
 }
+
+/// A report carrying a cramp prediction (and enough logged history to show
+/// it), for the issue #876 colour assertions.
+CycleInsightsReport _reportWithCramps() => CycleInsightsReport(
+      symptomPatterns: const [
+        SymptomPattern(
+          tag: 'cramps',
+          totalOccurrences: 6,
+          cycleCount: 3,
+          frequencyByCycleDay: {1: 3, 2: 3},
+          peakCycleDays: [1, 2],
+          trend: TrendDirection.stable,
+          meetsThreshold: true,
+        ),
+      ],
+      flowPattern: const FlowPattern(
+        flowByCycleDay: {1: {FlowLevel.heavy: 3}},
+        typicalPeakFlow: FlowLevel.heavy,
+        typicalPeakDay: 1,
+      ),
+      crampPrediction: CrampPrediction(
+        predictedCycleDays: const [1, 2],
+        predictedDates: [LocalDate(2026, 10, 1), LocalDate(2026, 10, 2)],
+        observedCycleCount: 3,
+        totalCyclesAnalyzed: 3,
+        disclaimer: CrampPrediction.kStandardDisclaimer,
+      ),
+      analyzedCycleCount: 3,
+      hasEnoughData: true,
+    );
 
 void main() {
   testWidgets('renders empty state when not enough data', (tester) async {
@@ -81,5 +117,47 @@ void main() {
 
     // Verify navigating to library screen
     expect(find.text('Cycle Literacy Library'), findsOneWidget);
+  });
+
+  testWidgets(
+      'issue #876: the cramp window card uses crampsBadge, never the error '
+      'colour, in both themes', (tester) async {
+    for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
+      await _pump(
+        tester,
+        SymptomTrendsSection(report: _reportWithCramps()),
+        theme: theme,
+      );
+
+      final cardFinder = find.byKey(const ValueKey('cramp-prediction-card'));
+      expect(cardFinder, findsOneWidget);
+      final colors = theme.extension<LunarLogColors>()!;
+
+      // The bolt accent is the calendar's cramps token.
+      final bolt = tester.widget<Icon>(
+        find.descendant(of: cardFinder, matching: find.byIcon(Icons.bolt)),
+      );
+      expect(bolt.color, colors.crampsBadge);
+
+      // No error-scheme colour survives anywhere in the card subtree.
+      final errorColors = <Color?>{
+        theme.colorScheme.error,
+        theme.colorScheme.errorContainer,
+        theme.colorScheme.onError,
+        theme.colorScheme.onErrorContainer,
+      };
+      final card = tester.widget<Card>(cardFinder);
+      expect(errorColors.contains(card.color), isFalse);
+      for (final icon in tester.widgetList<Icon>(
+        find.descendant(of: cardFinder, matching: find.byType(Icon)),
+      )) {
+        expect(errorColors.contains(icon.color), isFalse);
+      }
+      for (final text in tester.widgetList<Text>(
+        find.descendant(of: cardFinder, matching: find.byType(Text)),
+      )) {
+        expect(errorColors.contains(text.style?.color), isFalse);
+      }
+    }
   });
 }

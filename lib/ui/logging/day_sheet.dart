@@ -126,14 +126,21 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// date formatter can absorb this helper wholesale once it lands (same
 /// inputs, same shape); until then it is the sheet's own thin local helper.
 /// [preference] (Issue #226) reorders the month/day pair per the
-/// Calendar → "Date format" setting; it defaults to the system order, the
-/// exact pre-#226 rendering.
+/// Calendar → "Date format" setting; it defaults to the system order, which
+/// since issue #884 follows [locale]'s own day/month ordering (month-first
+/// for `en_US`, day-first for `en_GB`).
 String daySheetDateLabel(
   LocalDate date,
   LocalDate today, {
+  String locale = dates.kFallbackLocale,
   DateFormatPreference preference = DateFormatPreference.system,
 }) =>
-    dates.relativeDayLabelForLocalDate(date, today, preference: preference);
+    dates.relativeDayLabelForLocalDate(
+      date,
+      today,
+      locale: locale,
+      preference: preference,
+    );
 
 /// Issue #457: formats a BBT/weight value for display in a text field or an
 /// inline error — up to two decimal places, with trailing zeros trimmed
@@ -1309,6 +1316,7 @@ class _DaySheetState extends State<DaySheet> {
               daySheetDateLabel(
                 widget.date,
                 widget.today,
+                locale: dates.calendarLocale(context),
                 preference: _dateFormat,
               ),
             ),
@@ -1994,7 +2002,12 @@ class _DaySheetState extends State<DaySheet> {
             header: true,
             child: Text(
               key: const ValueKey('day-sheet-date-title'),
-              daySheetDateLabel(date, widget.today, preference: _dateFormat),
+              daySheetDateLabel(
+                date,
+                widget.today,
+                locale: dates.calendarLocale(context),
+                preference: _dateFormat,
+              ),
               style: theme.textTheme.titleLarge,
             ),
           ),

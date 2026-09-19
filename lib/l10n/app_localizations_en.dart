@@ -717,6 +717,104 @@ class AppLocalizationsEn extends AppLocalizations {
       'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
 
   @override
+  String healthSyncImportUpdatedDays(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Updated $_temp0 from $source.';
+  }
+
+  @override
+  String healthSyncImportAddedSpotting(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Added spotting to $_temp0 from $source.';
+  }
+
+  @override
+  String healthSyncImportAlreadyMatched(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0 already matched.';
+  }
+
+  @override
+  String healthSyncImportKeptManual(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Kept your own logged value on $_temp0.';
+  }
+
+  @override
+  String healthSyncImportPlacedDeviceZone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Placed $_temp0 using the time zone of this phone.';
+  }
+
+  @override
+  String healthSyncImportSkippedNoZone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Skipped $_temp0 with no recorded time zone.';
+  }
+
+  @override
+  String healthSyncImportSkippedUnsupported(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Skipped $_temp0 with no matching flow level.';
+  }
+
+  @override
+  String healthSyncUnbindDialogTitle(String name) {
+    return 'Stop syncing $name to this phone?';
+  }
+
+  @override
+  String healthSyncUnbindDialogWriteBody(String name) {
+    return 'This phone will stop writing data for $name to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.';
+  }
+
+  @override
+  String healthSyncUnbindDialogImportBody(String name) {
+    return 'This phone will stop importing data for $name from its Health app. Nothing already logged is deleted.';
+  }
+
+  @override
+  String get healthSyncUnbindConfirm => 'Stop syncing';
+
+  @override
+  String get healthSyncUnbindCancel => 'Cancel';
+
+  @override
   String get settingsPrivacyTitle => 'Privacy policy';
 
   @override
@@ -789,7 +887,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDateFormatTitle => 'Date format';
 
   @override
-  String get settingsDateFormatSystemOption => 'System default (5 Sep)';
+  String settingsDateFormatSystemOption(String example) {
+    return 'System default ($example)';
+  }
 
   @override
   String get settingsDateFormatDayMonthOption => 'Day first (5 Sep)';
@@ -1210,6 +1310,41 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sharingFailureOther =>
       'Failed to accept invitation. Please try again.';
+
+  @override
+  String get profileErasureFailureNetwork =>
+      'Can\'t purge while offline. Check your connection and try again.';
+
+  @override
+  String get profileErasureFailureUnauthorized =>
+      'Only that profile\'s primary guardian can purge its data.';
+
+  @override
+  String get profileErasureFailureNotSignedIn =>
+      'Sign in to your account to purge imported data.';
+
+  @override
+  String get profileErasureFailureInvalidSource =>
+      'That import source isn\'t supported. Nothing was purged.';
+
+  @override
+  String get profileErasureFailureOther =>
+      'Failed to purge imported data. Check connection and try again.';
+
+  @override
+  String get purgeImportedDataNoRows =>
+      'This profile has no imported data from a supported source.';
+
+  @override
+  String purgeImportedDataPreview(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count entries',
+      one: '1 entry',
+    );
+    return '$_temp0 from $source';
+  }
 
   @override
   String get inviteCancellationRevoked => 'Invitation cancelled';

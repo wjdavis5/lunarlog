@@ -1210,6 +1210,64 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   Future<void> applyLocalProfilePurge(String profileId) =>
       _tombstoneRevokedSharedProfile(profileId, _now());
 
+  /// Issue #883: tombstones [profileId]'s imported rows whose `source`
+  /// equals [source] — `day_entries` and `observations` only, payload
+  /// cleared and `deleted_at` stamped exactly like the profile-wide wipes
+  /// in [_tombstoneRevokedSharedProfile], but scoped so one profile's
+  /// other sources (and every other profile) survive untouched. This is
+  /// the local-first half of [ProfileErasureService.purgeImportedData]:
+  /// it runs even with no session and no network, which is the whole
+  /// point of the fix for a device-only profile.
+  ///
+  /// Deliberately marks nothing dirty, the same posture as
+  /// [applyLocalProfilePurge] (see that method's doc comment): when a
+  /// server is involved it is reached through its own RPC, so a local
+  /// tombstone must never be pushed back as a resurrection. `updated_at`
+  /// is left untouched for the same reason [_tombstoneRevokedSharedProfile]
+  /// leaves it — a later, legitimate write to the same row must win
+  /// normally. Idempotent: a second call matches zero live rows.
+  Future<void> applyLocalImportedDataPurge({
+    required String profileId,
+    required String source,
+  }) =>
+      db.transaction(() async {
+        final stamp = _now();
+        await (db.update(db.dayEntries)
+              ..where((t) =>
+                  t.profileId.equals(profileId) &
+                  t.source.equals(source) &
+                  t.deletedAt.isNull()))
+            .write(DayEntriesCompanion(
+              flow: const Value(FlowLevel.none),
+              note: const Value(null),
+              tags: const Value(<String>[]),
+              pms: const Value(false),
+              pmsUnconfirmed: const Value(false),
+              // Issue #159: source/sourceId/importId survive a tombstone — a
+              // deleted row must stay recognisable to a future re-import.
+              deletedAt: Value(stamp),
+              dirty: const Value(false),
+            ));
+        await (db.update(db.observations)
+              ..where((t) =>
+                  t.profileId.equals(profileId) &
+                  t.source.equals(source) &
+                  t.deletedAt.isNull()))
+            .write(ObservationsCompanion(
+              category: const Value(null),
+              observedAt: const Value(null),
+              code: const Value(null),
+              valueNum: const Value(null),
+              valueText: const Value(null),
+              unit: const Value(null),
+              intensity: const Value(null),
+              excluded: const Value(false),
+              raw: const Value(null),
+              deletedAt: Value(stamp),
+              dirty: const Value(false),
+            ));
+      });
+
   Future<bool> _applyDayEntry(
     RemoteDayEntryRow remote, {
     required bool onlyExisting,

@@ -24,7 +24,14 @@
 /// either an iOS-only `tzName` (the sample's IANA zone, #217) or an
 /// Android-only `zoneOffsetSeconds` (Health Connect's raw `zoneOffset`,
 /// #458) — the #180 "resolve the civil date from the sample's own zone"
-/// contract. An optional `kind` distinguishes a `MenstruationFlowRecord`
+/// contract. An optional iOS-only `zoneOffsetInferred` boolean (Issue #902)
+/// rides alongside a `zoneOffsetSeconds` the iOS read synthesised from the
+/// *device's* zone because the sample carried no `HKMetadataKeyTimeZone`
+/// (Apple's own Health app's hand-logged menstruation samples never do): it
+/// is true only for that fallback, so Dart places the sample yet reports it
+/// as inferred rather than as the sample's own recorded zone. Health Connect
+/// never sets it — its `zoneOffset` is the record's own. An optional `kind`
+/// distinguishes a `MenstruationFlowRecord`
 /// (`menstrualFlow`, the pre-#458 default when absent) from an
 /// `IntermenstrualBleedingRecord` (`intermenstrualBleeding`, which carries
 /// no `flow`). An optional `flow` intensity is present for menstrual-flow
@@ -228,11 +235,14 @@ HealthReadResult decodeHealthReadResult(Object? raw) {
 
 /// One sample map from `readMenstrualFlow`, or null when a required key is
 /// missing/typed wrong. Optional keys (`tzName`, `zoneOffsetSeconds`,
-/// `externalUuid`) are genuinely nullable. [start]/[end] cross as
-/// epoch-millisecond numbers and become UTC instants; the sample's own zone
-/// rides [HealthFlowSample.tzName] (iOS IANA) or [HealthFlowSample.offset]
-/// (Android raw offset) — the #180 import contract, the conversion to a
-/// civil date happens in Dart, never from the device's current zone.
+/// `zoneOffsetInferred`, `externalUuid`) are genuinely nullable. [start]/[end]
+/// cross as epoch-millisecond numbers and become UTC instants; the sample's
+/// own zone rides [HealthFlowSample.tzName] (iOS IANA) or
+/// [HealthFlowSample.offset] (Android raw offset) — the #180 import
+/// contract, the conversion to a civil date happens in Dart, never from the
+/// device's current zone. `zoneOffsetInferred` marks the one bounded
+/// exception (#902): when it is true the offset is this phone's zone, not
+/// the sample's.
 HealthFlowSample? _decodeFlowSample(Object? entry) {
   if (entry is! Map) return null;
   final recordId = entry['recordId'];
@@ -257,6 +267,7 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
     tzName: entry['tzName'] as String?,
     offset:
         offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
+    offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
     externalUuid: entry['externalUuid'] as String?,
   );
 }

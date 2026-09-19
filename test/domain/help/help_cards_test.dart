@@ -196,4 +196,52 @@ void main() {
           _copyOf(HelpCards.byId('ownership-transfer')!), contains('72 hours'));
     });
   });
+
+  group('plain-language source lines (issue #878)', () {
+    test('no source string leaks a code path, extension, or symbol', () {
+      // A `(`-wrapped path (with a slash or dot inside) reads as debug text
+      // next to plain-language copy, so it is banned too.
+      final wrappedPath = RegExp(r'\([^)]*[/\\.][^)]*\)');
+      for (final card in HelpCards.all) {
+        final source = card.source;
+        expect(source.contains('lib/'), isFalse, reason: card.id);
+        expect(source.contains('.dart'), isFalse, reason: card.id);
+        expect(wrappedPath.hasMatch(source), isFalse,
+            reason: '${card.id}: ${card.source}');
+      }
+    });
+
+    test('app-derived cards attribute the app in plain language', () {
+      expect(
+        HelpCards.byId('confidence-levels')!.source,
+        "lunarlog's own prediction model",
+      );
+      expect(
+        HelpCards.byId('guardian-roles')!.source,
+        "lunarlog's sharing model",
+      );
+    });
+
+    test('external-source cards keep their exact citation', () {
+      expect(
+        HelpCards.byId('cycle-day')!.source,
+        'American College of Obstetricians and Gynecologists (ACOG), '
+        'patient education on menstruation',
+      );
+    });
+
+    test('the app-source vs external-source card counts are unchanged', () {
+      var appSourced = 0;
+      var external = 0;
+      for (final card in HelpCards.all) {
+        if (card.source.startsWith('lunarlog')) {
+          appSourced++;
+        } else {
+          external++;
+        }
+      }
+      expect(appSourced, 23);
+      expect(external, 1);
+    });
+  });
 }

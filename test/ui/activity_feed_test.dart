@@ -394,7 +394,7 @@ void main() {
     // is the human-readable date now, not the raw ISO string).
     await tester.tap(find.byIcon(Icons.call_merge));
     await tester.pumpAndSettle();
-    expect(find.text('Wed 19 Aug 2026'), findsOneWidget);
+    expect(find.text('Wed Aug 19 2026'), findsOneWidget);
     await dismissSheet(tester);
     await disposeActivity(tester, h);
   });

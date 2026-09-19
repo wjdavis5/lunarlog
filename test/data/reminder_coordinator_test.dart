@@ -1348,7 +1348,7 @@ void main() {
       final store = FakeSettingsStore();
       final configService = ReminderConfigService(store);
       addTearDown(store.close);
-      final today = LocalDate(2026, 8, 30);
+      var today = LocalDate(2026, 8, 30);
 
       final coordinator = ReminderCoordinator(
         scheduler: scheduler,
@@ -1370,6 +1370,10 @@ void main() {
       p1.add(_late(today));
       await pumpEventQueue();
       final before = scheduler.rescheduleCalls.length;
+
+      // Advance today so the replan computes a fresh plan that differs from
+      // the cached _lastAppliedPlan (Issue #840).
+      today = today.addDays(1);
 
       // Two replan passes fired back-to-back with nothing awaited in
       // between — the same shape a fast profile edit racing a debounced
@@ -1537,6 +1541,313 @@ void main() {
         isFalse,
         reason: 'a stored config for a profile no longer in the active '
             'set must never plan a reminder',
+      );
+    });
+  });
+
+  group('skip rescheduleAll when plan is unchanged (Issue #840)', () {
+    test('skip rescheduleAll when the computed reminder plan is unchanged',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+
+      expect(scheduler.rescheduleCalls.length, 1);
+      final initialPlan = scheduler.rescheduleCalls.single;
+
+      // Trigger a direct replan without any input changes: plan is identical.
+      await coordinator.replan();
+      expect(
+        scheduler.rescheduleCalls.length,
+        1,
+        reason:
+            'rescheduleAll should be skipped when the computed plan is identical',
+      );
+
+      // A prediction update that changes the estimated date (and hence the plan)
+      // must trigger rescheduleAll.
+      p1.add(_upcoming(today, today.addDays(3)));
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.length,
+        2,
+        reason: 'rescheduleAll should be called when the plan actually changes',
+      );
+      expect(scheduler.rescheduleCalls.last, isNot(equals(initialPlan)));
+    });
+
+    test('identical prediction re-emission skips scheduling a replan',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      final pred = _late(today);
+      p1.add(pred);
+      await pumpEventQueue();
+
+      expect(scheduler.rescheduleCalls.length, 1);
+
+      // Re-emit the identical memo-cached prediction instance.
+      p1.add(pred);
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.length,
+        1,
+        reason:
+            'identical prediction emission should short-circuit before _scheduleReplan',
+      );
+    });
+
+    test('identical birth-control state re-emission skips scheduling a replan',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1Mode = StreamController<BirthControlState?>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          birthControlPill:
+              ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        ),
+      );
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (_) => const Stream.empty(),
+        localSettings: configService,
+        birthControlStateFor: (id) =>
+            id == 'p1' ? p1Mode.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1Mode.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
+      final initialCount = scheduler.rescheduleCalls.length;
+
+      const state = (method: 'pill', startedOn: null, stoppedOn: null);
+      p1Mode.add(state);
+      await pumpEventQueue();
+
+      expect(scheduler.rescheduleCalls.length, initialCount + 1);
+
+      // Re-emit identical state.
+      p1Mode.add(state);
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.length,
+        initialCount + 1,
+        reason:
+            'identical birth-control state emission should not schedule a replan',
+      );
+    });
+
+    test('plan changes from config edits trigger rescheduleAll', () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final store = FakeSettingsStore();
+      final configService = ReminderConfigService(store);
+      addTearDown(store.close);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (_) => const Stream.empty(),
+        localSettings: configService,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      await pumpEventQueue();
+
+      final initialReschedules = scheduler.rescheduleCalls.length;
+
+      // Enable log reminder in config.
+      await configService.save(
+        'p1',
+        ReminderConfig.standard.copyWith(
+          log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 21 * 60),
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.length,
+        initialReschedules + 1,
+        reason:
+            'config change updating the reminder plan should call rescheduleAll',
+      );
+    });
+
+    test('timezone change resets cached plan and forces rescheduleAll',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final today = LocalDate(2026, 8, 30);
+
+      final ny = tz.getLocation('America/New_York');
+      tz.setLocalLocation(ny);
+
+      var currentTz = 'America/New_York';
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        localTimeZoneProvider: () async => currentTz,
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+
+      expect(scheduler.rescheduleCalls.length, 1);
+
+      // Direct replan without timezone change: rescheduleAll is skipped.
+      await coordinator.replan();
+      expect(scheduler.rescheduleCalls.length, 1);
+
+      // Change timezone and resume: _lastAppliedPlan is cleared and rescheduleAll runs.
+      currentTz = 'Europe/London';
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+
+      expect(tz.local.name, 'Europe/London');
+      expect(
+        scheduler.rescheduleCalls.length,
+        2,
+        reason:
+            'timezone change must re-anchor reminders via rescheduleAll even if calendar dates match',
+      );
+    });
+
+    test('permission denial resets cached plan so re-granting reschedules',
+        () async {
+      final scheduler = FakeReminderScheduler();
+      final permissionState =
+          NotificationPermissionState(NotificationAvailability.available);
+      final profiles = StreamController<List<Profile>>(sync: true);
+      final p1 = StreamController<CyclePrediction>(sync: true);
+      final today = LocalDate(2026, 8, 30);
+
+      final coordinator = ReminderCoordinator(
+        scheduler: scheduler,
+        permissionState: permissionState,
+        activeProfiles: profiles.stream,
+        predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+        today: () => today,
+        replanDebounce: Duration.zero,
+      );
+      await coordinator.start();
+      addTearDown(() async {
+        await coordinator.dispose();
+        await profiles.close();
+        await p1.close();
+      });
+
+      profiles.add([_profile('p1')]);
+      p1.add(_late(today));
+      await pumpEventQueue();
+
+      expect(scheduler.rescheduleCalls.length, 1);
+
+      // Simulate permission denial on resume.
+      scheduler.currentAvailability = NotificationAvailability.denied;
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+
+      expect(scheduler.cancelCalls, 1);
+
+      // Permission granted again on resume.
+      scheduler.currentAvailability = NotificationAvailability.available;
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+
+      expect(
+        scheduler.rescheduleCalls.length,
+        2,
+        reason:
+            'permission grant after denial must reschedule even if the computed plan is identical',
       );
     });
   });

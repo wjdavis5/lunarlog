@@ -119,6 +119,12 @@ const String kRouteHealthSyncScreen = 'HealthSyncScreen';
 /// (U2 Approach 2b).
 const String kRouteHealthSyncBindDialog = 'HealthSyncBindDialog';
 
+/// `lib/ui/settings/health_sync_screen.dart` (Issue #893) — the confirm
+/// dialog in front of unbinding, mirroring [kRouteHealthSyncBindDialog]:
+/// naming the profile and what stops happening before the binding is torn
+/// down, rather than a bare tap.
+const String kRouteHealthSyncUnbindDialog = 'HealthSyncUnbindDialog';
+
 /// `lib/ui/sharing/accept_invite_sheet.dart` — pushed by `lib/app.dart` when
 /// an invite deep link (`lunarlog://invite?code=...`) resolves for a
 /// signed-in recipient (issue #182: previously an unnamed
@@ -290,6 +296,7 @@ const Set<String> kSentryRouteNames = {
   kRouteAccountMismatchDialog,
   kRouteHealthSyncScreen,
   kRouteHealthSyncBindDialog,
+  kRouteHealthSyncUnbindDialog,
   kRouteAcceptInviteSheet,
   kRouteClaimProfileSheet,
   kRouteTransferOwnershipScreen,

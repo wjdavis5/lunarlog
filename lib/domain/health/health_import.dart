@@ -28,7 +28,12 @@
 ///   samples carry an IANA zone (`HKMetadataKeyTimeZone`) and Health
 ///   Connect records carry their own `zoneOffset`; a sample with neither is
 ///   skipped, never guessed from the device's current zone (see
-///   [HealthFlowSample] and `day_boundary.dart`'s #180 contract).
+///   [HealthFlowSample] and `day_boundary.dart`'s #180 contract). **One
+///   bounded exception (Issue #902):** a sample entered by hand in Apple's
+///   own Health app carries no `HKMetadataKeyTimeZone`, and the iOS read
+///   forwards the *device's* offset at the sample's instant as a last
+///   resort, flagged via [HealthFlowSample.offsetInferred] so the summary
+///   can report those rows honestly as inferred rather than as skipped.
 /// * **Opaque read authorization.** HealthKit's
 ///   `authorizationStatus(for:)` never reveals a denied *read*, and a
 ///   denied read is indistinguishable from "no samples"; Health Connect
@@ -94,7 +99,11 @@ enum HealthSampleKind {
 /// `HKMetadataKeyTimeZone` IANA name) or [offset] (Health Connect's raw
 /// `zoneOffset`) — never the device's current zone. A sample with neither
 /// cannot be placed on a civil date without guessing, so the import service
-/// skips and counts it rather than falling back to the device zone.
+/// skips and counts it rather than falling back to the device zone. The one
+/// exception is [offsetInferred] (Issue #902): when the source recorded no
+/// zone at all, the iOS read forwards the device's offset at the sample's
+/// instant, flagged so the import summary counts that row as inferred from
+/// this phone's zone instead of as its own recorded zone.
 ///
 /// [recordId] is the sample's own store id (HealthKit's stable sample UUID,
 /// Health Connect's platform `metadata.id`), used as the imported day
@@ -115,6 +124,7 @@ class HealthFlowSample {
     this.flow,
     this.tzName,
     this.offset,
+    this.offsetInferred = false,
     this.externalUuid,
   }) : assert(
           kind == HealthSampleKind.intermenstrualBleeding || flow != null,
@@ -138,9 +148,21 @@ class HealthFlowSample {
   /// [offset] is present for a placeable sample.
   final String? tzName;
 
-  /// The record's own recorded UTC offset (Health Connect). Exactly one of
-  /// this or [tzName] is present for a placeable sample.
+  /// The record's own recorded UTC offset (Health Connect), or — when
+  /// [offsetInferred] is true — the device's offset at [start] used as a
+  /// last-resort proxy (Issue #902). Exactly one of this or [tzName] is
+  /// present for a placeable sample.
   final Duration? offset;
+
+  /// Whether [offset] is the iPhone's own zone at [start] rather than a zone
+  /// the source sample recorded (Issue #902). False for every Health Connect
+  /// record, whose `zoneOffset` is the record's own; true only for an iOS
+  /// sample the source recorded no `HKMetadataKeyTimeZone` for, where the
+  /// date is nonetheless placed from this device's offset. Menstrual flow is
+  /// a whole-day category sample, so an inferred offset can only shift the
+  /// resolved civil date by at most one day, and only when this phone is in
+  /// a different zone now than when the sample was logged.
+  final bool offsetInferred;
 
   final String? externalUuid;
 }
@@ -259,6 +281,8 @@ class HealthImportSummary {
     this.daysUnchanged = 0,
     this.daysKeptManual = 0,
     this.spottingDaysWritten = 0,
+    this.samplesFromRecordedZone = 0,
+    this.samplesFromDeviceZone = 0,
     this.samplesWithoutZone = 0,
     this.samplesUnsupported = 0,
   });
@@ -289,6 +313,17 @@ class HealthImportSummary {
   /// intermenstrual-bleeding record (Issue #458).
   final int spottingDaysWritten;
 
+  /// Samples placed on a civil date from the zone the source sample itself
+  /// recorded (HealthKit's IANA `tzName`, or a Health Connect record's own
+  /// `zoneOffset`) — the #180 contract's normal path.
+  final int samplesFromRecordedZone;
+
+  /// Samples placed on a civil date from this phone's own UTC offset at the
+  /// sample's instant, because the source sample recorded no zone at all
+  /// (Issue #902). Reported separately from [samplesFromRecordedZone] so the
+  /// summary never presents an inferred date as a recorded one.
+  final int samplesFromDeviceZone;
+
   /// Samples skipped because they carried no zone/offset to resolve a civil
   /// date from (never guessed from the device zone).
   final int samplesWithoutZone;
@@ -310,6 +345,8 @@ class HealthImportSummary {
       daysUnchanged == 0 &&
       daysKeptManual == 0 &&
       spottingDaysWritten == 0 &&
+      samplesFromRecordedZone == 0 &&
+      samplesFromDeviceZone == 0 &&
       samplesWithoutZone == 0 &&
       samplesUnsupported == 0;
 }

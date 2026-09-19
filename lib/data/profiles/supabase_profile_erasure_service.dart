@@ -1,5 +1,6 @@
 /// [ProfileErasureService] implementation over the `delete_profile_data`
-/// Supabase RPC (Issue #264/#472). Mirrors the error-mapping shape of
+/// Supabase RPC (Issue #264/#472) plus the local Drift half (Issue #883).
+/// Mirrors the error-mapping shape of
 /// [SupabaseAccountDeletionService][account_deletion_service_link] and
 /// [SupabasePredictionConnectionService][prediction_connection_service_link]
 /// so the seam family stays consistent.
@@ -14,6 +15,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../domain/profiles/profile_erasure_service.dart';
+import '../../domain/repositories/imported_data_purge_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
 import '../../domain/sync/sync_engine.dart';
 
@@ -21,6 +23,7 @@ class SupabaseProfileErasureService implements ProfileErasureService {
   SupabaseProfileErasureService({
     required this.client,
     required this.profiles,
+    required this.importedDataPurge,
     this.syncEngine,
   });
 
@@ -28,17 +31,23 @@ class SupabaseProfileErasureService implements ProfileErasureService {
 
   /// The local half of a full-purge delete (Issue #472): only ever called
   /// AFTER the server RPC below has already succeeded, and only for
-  /// [deleteProfile] — [purgeImportedData]'s per-row tombstones already
-  /// propagate through the ordinary incremental pull (the server RPC
-  /// bumps `server_version` on every row it touches), the same as any
-  /// other tombstone-producing RPC in this app (`revokeGuardian`,
-  /// `updateGuardianRole`), so no immediate local write is needed there.
+  /// [deleteProfile] — [purgeImportedData] reuses
+  /// [ImportedDataPurgeRepository.applyLocalPurge] instead, which also
+  /// runs with no session at all (Issue #883).
   final ProfilesRepository profiles;
+
+  /// Issue #883: the local, source-scoped tombstone behind
+  /// [purgeImportedData], and the live per-source counts behind
+  /// [importedDataCounts]. Storage-only and always available — this is
+  /// what lets a device-only profile (never near an account) purge.
+  /// When signed in, called only after the server RPC succeeds (Issue #905).
+  final ImportedDataPurgeRepository importedDataPurge;
 
   /// Nudges a pull right after a successful call, matching every sibling
   /// RPC-backed service (`SupabaseSharingService.revokeGuardian`, etc.) —
   /// belt-and-suspenders alongside [deleteProfile]'s immediate local wipe,
-  /// and the only propagation mechanism for [purgeImportedData]. Null on a
+  /// and, for the session-bearing [purgeImportedData] path, the
+  /// propagation mechanism for the server-side delete. Null on a
   /// build with no sync engine wired (the R26 null-gating posture); the
   /// RPC calls themselves still work without it.
   final SyncEngine? syncEngine;
@@ -66,6 +75,22 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     required String profileId,
     required PurgeableImportSource source,
   }) async {
+    // No session: the RPC could only be refused — skip it entirely and
+    // succeed on the strength of the local purge (Issue #883), instead of
+    // surfacing a false "not primary guardian" failure on a device-only
+    // profile.
+    if (client.auth.currentUser == null) {
+      await importedDataPurge.applyLocalPurge(
+        profileId: profileId,
+        source: source.wireValue,
+      );
+      return;
+    }
+
+    // Signed in: run the server RPC first (Issue #905). If the server
+    // refuses (e.g. caller is not primary guardian or offline), we fail
+    // without altering local state so rows are not tombstoned locally
+    // only to be resurrected by a subsequent sync reconcile.
     try {
       await client.rpc<dynamic>(
         'delete_profile_data',
@@ -77,7 +102,23 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     } catch (e) {
       throw _mapError(e);
     }
+
+    // Server RPC succeeded: apply the local Drift tombstone and request sync.
+    await importedDataPurge.applyLocalPurge(
+      profileId: profileId,
+      source: source.wireValue,
+    );
     syncEngine?.requestSync();
+  }
+
+  @override
+  Future<Map<PurgeableImportSource, int>> importedDataCounts(
+      String profileId) async {
+    final raw = await importedDataPurge.liveSourceCounts(profileId);
+    return {
+      for (final source in PurgeableImportSource.values)
+        source: raw[source.wireValue] ?? 0,
+    };
   }
 
   ProfileErasureFailure _mapError(Object error) {
@@ -95,6 +136,13 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     final code = error.code ?? '';
     final msg = error.message.toLowerCase();
     if (code == 'PGRST301' || code == '42501' || msg.contains('permission')) {
+      // Issue #883: mirror SupabaseSharingService's Issue #885 distinction —
+      // the server refuses no-session and under-privileged callers the same
+      // way, but only a session fixes the former, so the copy must say
+      // "sign in", never "not primary guardian".
+      if (client.auth.currentUser == null) {
+        return const ProfileErasureFailure.notSignedIn();
+      }
       return const ProfileErasureFailure.unauthorized();
     }
     if (code == '22023' || msg.contains('unknown source')) {

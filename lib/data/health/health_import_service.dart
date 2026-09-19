@@ -22,8 +22,13 @@
 /// 4. Resolves each sample's civil date from the **sample's own** zone —
 ///    HealthKit's IANA `tzName`, or Health Connect's raw `offset`
 ///    (`day_boundary.dart`'s #180 import contract) — never the device's
-///    current zone. Samples with no zone, no lunarlog equivalent, or a
-///    date outside the window are counted, never guessed.
+///    current zone. The one bounded exception (Issue #902): when Apple's
+///    Health app logs a menstruation sample by hand it carries no
+///    `HKMetadataKeyTimeZone`, so the iOS read forwards this phone's own
+///    offset at the sample's instant, flagged
+///    ([HealthFlowSample.offsetInferred]); those rows are placed and counted
+///    as device-zone rows, not skipped. Samples with no zone, no lunarlog
+///    equivalent, or a date outside the window are counted, never guessed.
 /// 5. Merges the highest-intensity flow per date into the bound profile's
 ///    day entries, using the additive rule the Clue importer established:
 ///    a value the user logged by hand is **never** overwritten, an unlogged
@@ -94,8 +99,9 @@ class _DesiredSample {
   final String recordId;
 
   /// The winning sample's own zone (IANA name, or the fixed-offset
-  /// designator a Health Connect record with no IANA name resolves to),
-  /// used as a new day entry's `tz`.
+  /// designator a record with no IANA name resolves to — an Android record
+  /// with only a raw offset, or an iOS sample placed from this phone's
+  /// offset, #902), used as a new day entry's `tz`.
   final String tzName;
 }
 
@@ -139,12 +145,24 @@ class _ResolvedSamples {
   const _ResolvedSamples({
     required this.byDate,
     required this.spottingByDate,
+    required this.recordedZone,
+    required this.deviceZone,
     required this.withoutZone,
     required this.unsupported,
   });
 
   final Map<LocalDate, _DesiredSample> byDate;
   final Map<LocalDate, _SpottingSample> spottingByDate;
+
+  /// In-window samples whose civil date came from the source's own recorded
+  /// zone (IANA name, or a Health Connect record's own offset).
+  final int recordedZone;
+
+  /// In-window samples placed from this phone's own offset because the
+  /// source recorded no zone (Issue #902) — reported separately so the
+  /// summary never presents an inferred date as a recorded one.
+  final int deviceZone;
+
   final int withoutZone;
   final int unsupported;
 }
@@ -351,6 +369,8 @@ class LocalHealthImportService implements HealthImportRunner {
       daysUnchanged: unchangedDays.length,
       daysKeptManual: keptManualDays.length,
       spottingDaysWritten: spottingDays.length,
+      samplesFromRecordedZone: resolved.recordedZone,
+      samplesFromDeviceZone: resolved.deviceZone,
       samplesWithoutZone: resolved.withoutZone,
       samplesUnsupported: resolved.unsupported,
     );
@@ -368,6 +388,21 @@ class LocalHealthImportService implements HealthImportRunner {
     final spottingByDate = <LocalDate, _SpottingSample>{};
     var withoutZone = 0;
     var unsupported = 0;
+    var recordedZone = 0;
+    var deviceZone = 0;
+    // Counts a usable in-window sample by how its date was resolved
+    // (#902): from a zone the source recorded, or from this phone's own
+    // offset. Only samples that actually yield a placed row (or a spotting
+    // observation) are counted — an unsupported flow is already counted by
+    // [unsupported] and is not also reported as placed.
+    void countZone(HealthFlowSample sample) {
+      if (_usedDeviceZone(sample)) {
+        deviceZone++;
+      } else {
+        recordedZone++;
+      }
+    }
+
     for (final sample in samples) {
       final date = _dateFor(sample);
       if (date == null) {
@@ -376,6 +411,7 @@ class LocalHealthImportService implements HealthImportRunner {
       }
       if (date.isBefore(window.from) || date.isAfter(window.to)) continue;
       if (sample.kind == HealthSampleKind.intermenstrualBleeding) {
+        countZone(sample);
         spottingByDate.putIfAbsent(
           date,
           () => _SpottingSample(
@@ -392,6 +428,7 @@ class LocalHealthImportService implements HealthImportRunner {
         unsupported++;
         continue;
       }
+      countZone(sample);
       final current = byDate[date];
       if (current == null ||
           healthFlowValueRank(value) > healthFlowValueRank(current.value)) {
@@ -407,13 +444,30 @@ class LocalHealthImportService implements HealthImportRunner {
     return _ResolvedSamples(
       byDate: byDate,
       spottingByDate: spottingByDate,
+      recordedZone: recordedZone,
+      deviceZone: deviceZone,
       withoutZone: withoutZone,
       unsupported: unsupported,
     );
   }
 
+  /// Whether [sample]'s civil date is resolved from this phone's own zone
+  /// (Issue #902) rather than from a zone the source recorded. Only the iOS
+  /// read ever sets [HealthFlowSample.offsetInferred]; a recorded IANA name
+  /// still wins over the flag (the #180 contract).
+  bool _usedDeviceZone(HealthFlowSample sample) =>
+      sample.offsetInferred &&
+      (sample.tzName == null || sample.tzName!.isEmpty);
+
   /// The sample's civil date in its own recorded zone, or null when it has
-  /// no zone (or one this build cannot resolve) — never the device's zone.
+  /// no zone (or one this build cannot resolve) — never the device's
+  /// current zone. A sample with no IANA name but a non-null [offset] is
+  /// placed from that offset: for Health Connect that is the record's own
+  /// zone, and for an iOS sample the read forwarded this phone's offset
+  /// (Issue #902, [HealthFlowSample.offsetInferred]). Menstrual flow is a
+  /// whole-day category sample, so if the phone's zone has since changed
+  /// the inferred date can be off by at most one day, and only near local
+  /// midnight — a deliberate, bounded tradeoff.
   LocalDate? _dateFor(HealthFlowSample sample) {
     final tzName = sample.tzName;
     if (tzName != null && tzName.isNotEmpty) {
@@ -430,7 +484,8 @@ class LocalHealthImportService implements HealthImportRunner {
 
   /// The zone string a written row carries: the sample's own IANA name when
   /// it has one (iOS), otherwise a fixed-offset designator derived from its
-  /// raw offset (Health Connect records rarely carry an IANA name). The
+  /// raw offset (Health Connect records, and an iOS sample whose date came
+  /// from this phone's offset — #902). The
   /// fixed-offset form is what keeps an imported `(local_date, tz)` pair
   /// internally consistent without inventing a device zone.
   String? _zoneNameFor(HealthFlowSample sample) {

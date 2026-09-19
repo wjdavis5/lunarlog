@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:provider/provider.dart';
 
 /// The week-start tile. The subtitle names the current start day, so the
@@ -152,10 +153,23 @@ class _DateFormatTileState extends State<DateFormatTile> {
     super.dispose();
   }
 
-  String _label(AppLocalizations l10n) => switch (_value) {
-        DateFormatPreference.system => l10n.settingsDateFormatSystemOption,
-        DateFormatPreference.dayMonth => l10n.settingsDateFormatDayMonthOption,
-        DateFormatPreference.monthDay => l10n.settingsDateFormatMonthDayOption,
+  /// Each option's label. The `system` option carries a live example
+  /// resolved through the active locale (issue #884), so a month-first
+  /// device sees "System default (Sep 5)" instead of a day-first claim its
+  /// day sheet will contradict.
+  String _optionLabel(
+    AppLocalizations l10n,
+    String locale,
+    DateFormatPreference option,
+  ) =>
+      switch (option) {
+        DateFormatPreference.system => l10n.settingsDateFormatSystemOption(
+              dates.formatShortMonthDayExample(option, locale: locale),
+            ),
+        DateFormatPreference.dayMonth =>
+          l10n.settingsDateFormatDayMonthOption,
+        DateFormatPreference.monthDay =>
+          l10n.settingsDateFormatMonthDayOption,
       };
 
   Future<void> _pick(DateFormatPreference value) async {
@@ -168,6 +182,7 @@ class _DateFormatTileState extends State<DateFormatTile> {
 
   Future<void> _openPicker() async {
     final l10n = AppLocalizations.of(context);
+    final locale = dates.calendarLocale(context);
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => SimpleDialog(
@@ -185,14 +200,7 @@ class _DateFormatTileState extends State<DateFormatTile> {
                   RadioListTile<DateFormatPreference>(
                     key: ValueKey('date-format-option-${option.name}'),
                     value: option,
-                    title: Text(switch (option) {
-                      DateFormatPreference.system =>
-                        l10n.settingsDateFormatSystemOption,
-                      DateFormatPreference.dayMonth =>
-                        l10n.settingsDateFormatDayMonthOption,
-                      DateFormatPreference.monthDay =>
-                        l10n.settingsDateFormatMonthDayOption,
-                    }),
+                    title: Text(_optionLabel(l10n, locale, option)),
                   ),
               ],
             ),
@@ -205,11 +213,12 @@ class _DateFormatTileState extends State<DateFormatTile> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final locale = dates.calendarLocale(context);
     return ListTile(
       key: const ValueKey('date-format-tile'),
       leading: const Icon(Icons.date_range_outlined),
       title: Text(l10n.settingsDateFormatTitle),
-      subtitle: Text(_label(l10n)),
+      subtitle: Text(_optionLabel(l10n, locale, _value)),
       trailing: const Icon(Icons.chevron_right),
       onTap: _openPicker,
     );

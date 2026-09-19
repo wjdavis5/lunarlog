@@ -1233,7 +1233,7 @@ void main() {
 
       expect(find.byType(DaySheet), findsOneWidget);
       expect(
-        find.text('Sun 1 Mar 2026'),
+        find.text('Sun Mar 1 2026'),
         findsOneWidget,
         reason: '#198: human-readable absolute date, not raw ISO',
       );
@@ -3879,12 +3879,12 @@ void main() {
   group('day sheet ergonomics (issue #198)', () {
     test('daySheetDateLabel renders Today/Yesterday/absolute (B-14)', () {
       final today = LocalDate(2026, 8, 30);
-      expect(daySheetDateLabel(today, today), 'Today · Sun 30 Aug');
+      expect(daySheetDateLabel(today, today), 'Today · Sun Aug 30');
       expect(daySheetDateLabel(today.addDays(-1), today), 'Yesterday');
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today), 'Thu 5 Mar 2026');
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today), 'Thu Mar 5 2026');
       expect(
         daySheetDateLabel(LocalDate(2024, 12, 31), today),
-        'Tue 31 Dec 2024',
+        'Tue Dec 31 2024',
       );
     });
 
@@ -3894,18 +3894,18 @@ void main() {
       // US DST spring-forward: 2026-03-08 to 2026-03-09
       final march8 = LocalDate(2026, 3, 8);
       final march9 = LocalDate(2026, 3, 9);
-      expect(daySheetDateLabel(march8, march8), 'Today · Sun 8 Mar');
+      expect(daySheetDateLabel(march8, march8), 'Today · Sun Mar 8');
       expect(daySheetDateLabel(march9, march8), 'Tomorrow');
       expect(daySheetDateLabel(march8, march9), 'Yesterday');
-      expect(daySheetDateLabel(march9, march9), 'Today · Mon 9 Mar');
+      expect(daySheetDateLabel(march9, march9), 'Today · Mon Mar 9');
 
       // US DST fall-back: 2026-11-01 to 2026-11-02
       final nov1 = LocalDate(2026, 11, 1);
       final nov2 = LocalDate(2026, 11, 2);
-      expect(daySheetDateLabel(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(daySheetDateLabel(nov1, nov1), 'Today · Sun Nov 1');
       expect(daySheetDateLabel(nov2, nov1), 'Tomorrow');
       expect(daySheetDateLabel(nov1, nov2), 'Yesterday');
-      expect(daySheetDateLabel(nov2, nov2), 'Today · Mon 2 Nov');
+      expect(daySheetDateLabel(nov2, nov2), 'Today · Mon Nov 2');
     });
 
     test(
@@ -3922,9 +3922,12 @@ void main() {
             preference: DateFormatPreference.monthDay),
         'Thu Mar 5 2026',
       );
-      // The default is the system order — the exact pre-#226 rendering.
+      // The default is the system order — locale-resolved since issue #884
+      // (month-first for the generic `en` fallback).
       expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
-          'Thu 5 Mar 2026');
+          'Thu Mar 5 2026');
+      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today,
+          locale: 'en_GB'), 'Thu 5 Mar 2026');
     });
 
     testWidgets('keyboard inset: the note field and the pinned autosave area '
@@ -4065,7 +4068,7 @@ void main() {
         find.byKey(const ValueKey('day-sheet-date-title')),
         findsOneWidget,
       );
-      expect(find.text('Today · Sun 30 Aug'), findsOneWidget);
+      expect(find.text('Today · Sun Aug 30'), findsOneWidget);
       expect(
         find.text('2026-08-30'),
         findsNothing,
@@ -4082,7 +4085,7 @@ void main() {
       await showMonth(tester, 2026, 3);
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-03-05')));
       await tester.pumpAndSettle();
-      expect(find.text('Thu 5 Mar 2026'), findsOneWidget);
+      expect(find.text('Thu Mar 5 2026'), findsOneWidget);
       expect(find.text('2026-03-05'), findsNothing);
       await dismissDaySheet(tester);
       await disposeLogging(tester, h);
@@ -4104,7 +4107,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Delete this entry?'), findsOneWidget);
       expect(
-        find.textContaining('The entry for Today · Sun 30 Aug'),
+        find.textContaining('The entry for Today · Sun Aug 30'),
         findsOneWidget,
         reason: 'the confirmation body uses the same human-readable date',
       );

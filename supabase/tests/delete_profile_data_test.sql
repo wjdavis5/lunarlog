@@ -321,9 +321,10 @@ values (tests.ulid(111), tests.ulid(1), 'Note from caregiver', '2026-09-01T00:00
 -- Issue #801: a dated, author-scoped guardian note on the profile about to
 -- be purged. Same caregiver author as the care note - both are health text
 -- that must not survive the wipe.
-insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at)
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
 values (tests.ulid(113), tests.ulid(1), '2026-09-12', 'UTC',
-        'Guardian note about the day', '2026-09-12T00:00:00Z');
+        'Guardian note about the day', '2026-09-12T00:00:00Z',
+        tests.get_supabase_uid('c'), tests.get_supabase_uid('c'));
 
 select tests.authenticate_as('a');
 insert into public.visit_prep_items (id, profile_id, body, updated_at)

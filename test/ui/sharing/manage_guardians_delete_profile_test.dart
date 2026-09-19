@@ -50,6 +50,11 @@ class _FakeProfileErasureService implements ProfileErasureService {
     required PurgeableImportSource source,
   }) =>
       throw UnimplementedError('not exercised by this test file');
+
+  @override
+  Future<Map<PurgeableImportSource, int>> importedDataCounts(
+          String profileId) =>
+      throw UnimplementedError('not exercised by this test file');
 }
 
 void main() {

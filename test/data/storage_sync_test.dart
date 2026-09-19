@@ -2877,6 +2877,213 @@ void main() {
     });
   });
 
+  group('applyLocalImportedDataPurge (issue #883)', () {
+    test('tombstones ONLY the selected profile and source — every other '
+        'profile and every other source survives', () async {
+      final p1 = await storage.upsertProfile(displayName: 'One', isMinor: false);
+      final p2 = await storage.upsertProfile(displayName: 'Two', isMinor: false);
+
+      // p1: a clue_import entry + observation, and a manual entry + obs.
+      final p1Clue = await storage.upsertDayEntry(
+        profileId: p1.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'clue_import',
+        sourceId: 'clue-1',
+      );
+      final p1ClueObs = await storage.upsertObservation(
+        dayEntryId: p1Clue.id,
+        profileId: p1.id,
+        localDate: p1Clue.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        source: 'clue_import',
+      );
+      final p1Manual = await storage.upsertDayEntry(
+        profileId: p1.id,
+        localDate: '2026-01-02',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+      await storage.upsertObservation(
+        dayEntryId: p1Manual.id,
+        profileId: p1.id,
+        localDate: p1Manual.localDate,
+        tz: 'UTC',
+        category: 'mood',
+      );
+
+      // p2: the SAME source on a different profile must survive untouched.
+      final p2Clue = await storage.upsertDayEntry(
+        profileId: p2.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        source: 'clue_import',
+      );
+      await storage.upsertObservation(
+        dayEntryId: p2Clue.id,
+        profileId: p2.id,
+        localDate: p2Clue.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        source: 'clue_import',
+      );
+
+      await storage.applyLocalImportedDataPurge(
+        profileId: p1.id,
+        source: 'clue_import',
+      );
+
+      // p1: the clue rows are tombstoned (payload cleared, not removed),
+      // the manual rows are untouched.
+      final p1Live = await storage.getDayEntries(profileId: p1.id);
+      expect(p1Live.map((e) => e.id), contains(p1Manual.id));
+      expect(p1Live.map((e) => e.id), isNot(contains(p1Clue.id)));
+      final p1Full = await storage.getDayEntries(
+        profileId: p1.id,
+        includeTombstones: true,
+      );
+      final purged = p1Full.singleWhere((e) => e.id == p1Clue.id);
+      expect(purged.deletedAt, isNotNull);
+      expect(purged.flow, FlowLevel.none,
+          reason: 'the tombstone clears the payload, never removes the row');
+
+      final p1LiveObs = await storage.getObservationsForProfile(p1.id);
+      expect(p1LiveObs.any((o) => o.source == 'clue_import'), isFalse);
+      expect(p1LiveObs.any((o) => o.source == 'manual'), isTrue);
+
+      // p2: everything survives, including the same source on p1's twin.
+      final p2Live = await storage.getDayEntries(profileId: p2.id);
+      expect(p2Live.single.id, p2Clue.id);
+      expect((await storage.getObservationsForProfile(p2.id)).length, 1);
+      expect(await storage.getProfile(p2.id), isNotNull);
+      expect(await storage.getProfile(p1.id), isNotNull,
+          reason: 'a scoped purge must never touch the profile row');
+
+      // The purged rows are NOT dirty: the local tombstone must never be
+      // pushed back as a resurrection (the applyLocalProfilePurge posture).
+      expect(purged.dirty, isFalse);
+      final purgedObs = await storage.getObservationById(p1ClueObs.id);
+      expect(purgedObs?.deletedAt, isNotNull);
+      expect(purgedObs?.dirty, isFalse);
+    });
+
+    test('is idempotent and a harmless no-op for an unknown source',
+        () async {
+      final p = await storage.upsertProfile(displayName: 'One', isMinor: false);
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'file_import',
+      );
+
+      await storage.applyLocalImportedDataPurge(
+          profileId: p.id, source: 'file_import');
+      await storage.applyLocalImportedDataPurge(
+          profileId: p.id, source: 'file_import');
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+
+      await storage.applyLocalImportedDataPurge(
+          profileId: p.id, source: 'clue_import');
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+    });
+
+    test(
+      'deliberately leaves updated_at untouched and dirty: false, so a '
+      'tied remote row wins if RPC was not run first (issue #905 doc)',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          source: 'clue_import',
+        );
+        // Purge locally.
+        await storage.applyLocalImportedDataPurge(
+          profileId: p.id,
+          source: 'clue_import',
+        );
+        expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+
+        // If a remote row with the same updated_at arrives (simulating a
+        // reconcile where the server never deleted the row), remote wins the
+        // tie. This pins why SupabaseProfileErasureService MUST run the server
+        // RPC first before calling applyLocalImportedDataPurge (#905).
+        final tiedRemote = remoteEntry(
+          entry.id,
+          profileId: p.id,
+          localDate: entry.localDate,
+          updatedAt: entry.updatedAt,
+          flow: FlowLevel.medium,
+        );
+        await storage.applyRemoteDayEntry(tiedRemote);
+        final revived = await storage.getDayEntries(profileId: p.id);
+        expect(revived, isNotEmpty,
+            reason: 'equal timestamp remote wins tie against local non-dirty tombstone');
+      },
+    );
+  });
+
+  group('liveImportedSourceCounts (issue #883)', () {
+    test('sums live day entries and observations per raw source, ignoring '
+        'tombstones and other profiles', () async {
+      final p = await storage.upsertProfile(displayName: 'One', isMinor: false);
+      final other =
+          await storage.upsertProfile(displayName: 'Two', isMinor: false);
+
+      final clue = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'clue_import',
+      );
+      await storage.upsertObservation(
+        dayEntryId: clue.id,
+        profileId: p.id,
+        localDate: clue.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        source: 'clue_import',
+      );
+      await storage.upsertObservation(
+        dayEntryId: clue.id,
+        profileId: p.id,
+        localDate: clue.localDate,
+        tz: 'UTC',
+        category: 'energy',
+        source: 'apple_health',
+      );
+      await storage.upsertDayEntry(
+        profileId: other.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        source: 'clue_import',
+      );
+
+      final counts = await storage.liveImportedSourceCounts(p.id);
+      expect(counts['clue_import'], 2,
+          reason: 'one day entry + one observation');
+      expect(counts['apple_health'], 1);
+      expect(counts.containsKey('file_import'), isFalse);
+
+      // Tombstoning the clue observation drops it from the count.
+      await storage.applyLocalImportedDataPurge(
+          profileId: p.id, source: 'clue_import');
+      final after = await storage.liveImportedSourceCounts(p.id);
+      expect(after.containsKey('clue_import'), isFalse);
+      expect(after['apple_health'], 1,
+          reason: 'the other source is untouched by the scoped purge');
+    });
+  });
+
   group('bumpLocalRevForRetry (issue #568)', () {
     test('bumps local_rev and re-marks dirty on every pushable table, '
         'content untouched, and is a harmless no-op on the two pull-only '
