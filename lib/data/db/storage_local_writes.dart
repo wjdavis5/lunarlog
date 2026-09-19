@@ -1819,6 +1819,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       final now = (updatedAt ?? _now()).toUtc();
       ProfileTagRegistryEntry? existing;
       if (id != null) existing = await _profileTagRegistryOrNull(id);
+      existing ??= await findProfileTagByCode(profileId, code);
       if (existing == null) {
         final rowId = id ?? _generator.next();
         await db.into(db.profileTagRegistry)
