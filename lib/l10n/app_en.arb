@@ -1228,19 +1228,20 @@
   "@daySheetIntensityClear": {
     "description": "The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'."
   },
-  "overviewPmsBandLabel": "Predicted PMS: {range}",
+  "overviewPmsBandLabel": "Predicted PMS: {range} — usually starts about {days} days before your period and lasts about {length} days.",
   "@overviewPmsBandLabel": {
-    "description": "Overview line naming the predicted PMS band (Issue #220); range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
+    "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
     "placeholders": {
-      "range": {"type": "String"}
-    }
-  },
-  "overviewPmsDaysBeforePeriod": "usually starts about {days} days before your period and lasts about {length} days",
-  "@overviewPmsDaysBeforePeriod": {
-    "description": "Overview copy under the predicted PMS band stating the 6-cycle averages behind it (Issue #220).",
-    "placeholders": {
+      "range": {"type": "String"},
       "days": {"type": "int"},
       "length": {"type": "int"}
+    }
+  },
+  "overviewPmsTierLabel": "PMS estimate: {tier}",
+  "@overviewPmsTierLabel": {
+    "description": "Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.",
+    "placeholders": {
+      "tier": {"type": "String"}
     }
   },
   "predictionsSuppressedTitle": "Predictions are suppressed",

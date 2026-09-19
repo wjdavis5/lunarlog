@@ -382,9 +382,9 @@ void main() {
       expect(view.confidence, CycleConfidence.high);
     });
 
-    test('a long open cycle (issue #221) reads irregular, not learning -- '
-        'computePrediction keeps producing an ActivePrediction with its tier '
-        'forced, it does not fall back to NotEnoughHistory', () {
+    test('a long open cycle (issue #221) keeps an ActivePrediction with the '
+        'honest spread-based tier, not irregular -- it does not fall back to '
+        'NotEnoughHistory (issue #858)', () {
       // Same steady starts/today as prediction_test.dart's "open cycle '
       // beyond 60 days" case: three 29-day cycles, then an open cycle of
       // 78 days (well past kMaxOpenCycleDays).
@@ -401,13 +401,17 @@ void main() {
       );
 
       expect(prediction, isA<ActivePrediction>());
-      expect((prediction as ActivePrediction).unusuallyLongCycle, isTrue);
-      expect(view.confidence, CycleConfidence.irregular,
-          reason: 'the stale comment this test pins against once claimed a '
-              'long open cycle falls back to learning ("paused"); it no '
-              'longer does -- it stays an ActivePrediction forced to '
-              'irregular');
-      expect(view.confidence, prediction.tier);
+      final active = prediction as ActivePrediction;
+      expect(active.unusuallyLongCycle, isTrue);
+      expect(view.confidence, CycleConfidence.learning,
+          reason: 'issue #858: a long open cycle no longer forces '
+              '`irregular`. This 29/29/29 history is perfectly steady, so '
+              'the honest spread-based tier is learning. (This test '
+              'previously pinned the bug -- it asserted the forced '
+              '`irregular`.)');
+      expect(view.confidence, active.tier,
+          reason: 'one confidence derivation: the history view reads the '
+              'same tier as the prediction');
     });
   });
 

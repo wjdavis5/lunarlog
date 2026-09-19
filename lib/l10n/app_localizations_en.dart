@@ -989,13 +989,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetIntensityClear => 'Clear';
 
   @override
-  String overviewPmsBandLabel(String range) {
-    return 'Predicted PMS: $range';
+  String overviewPmsBandLabel(String range, int days, int length) {
+    return 'Predicted PMS: $range — usually starts about $days days before your period and lasts about $length days.';
   }
 
   @override
-  String overviewPmsDaysBeforePeriod(int days, int length) {
-    return 'usually starts about $days days before your period and lasts about $length days';
+  String overviewPmsTierLabel(String tier) {
+    return 'PMS estimate: $tier';
   }
 
   @override

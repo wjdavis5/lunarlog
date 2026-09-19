@@ -793,8 +793,11 @@ class _OverviewPanelState extends State<OverviewPanel>
               const SizedBox(height: LLSpace.space2),
               aboutSection,
             ],
-            // Issue #225: auto-suggest turning off predictions when confidence is irregular.
-            if (prediction.tier == CycleConfidence.irregular &&
+            // Issue #225: auto-suggest turning off predictions when the
+            // recorded cycles actually vary (issue #858: keyed on the
+            // variability signal itself, not the `irregular` tier label,
+            // which a long open cycle can no longer force).
+            if (prediction.hasHighCycleVariability &&
                 !_irregularSuggestionDismissed) ...[
               _irregularSuggestionCard(context, theme),
               const SizedBox(height: LLSpace.space2),
@@ -862,16 +865,19 @@ class _OverviewPanelState extends State<OverviewPanel>
         if (_aboutEstimateExpanded) ...[
           const SizedBox(height: LLSpace.space1),
           if (hasTierCaption) ...[
+            // Issue #874: the summary alone. The tier chip directly above
+            // the toggle already shows the label, and the learning summary
+            // already opens with "Still learning", so prefixing the label
+            // read "Learning — Still learning — …".
             Text(
-              '${tierLabel(l10n, prediction.tier)}'
-              ' — ${tierSummary(l10n, prediction.tier)}',
+              tierSummary(l10n, prediction.tier),
               key: const ValueKey('overview-tier-caption'),
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: LLSpace.space1),
           ],
           if (hasPms) ...[
-            _pmsSection(context, prediction.pms!, theme),
+            _pmsSection(context, prediction, theme),
             const SizedBox(height: LLSpace.space2),
           ],
         ],
@@ -879,12 +885,25 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
-  /// Issue #220: the predicted PMS phase line — band range, the 6-cycle
-  /// averages behind it, the shared tier vocabulary (the period estimate's
-  /// own tier, so no second confidence system). Disclaimer rendered once per
-  /// screen at the bottom of the overview (issue #807). Rendered only when
-  /// `ActivePrediction.pms` is non-null.
-  Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
+  /// Issue #220: the predicted PMS phase line — band range and the 6-cycle
+  /// averages behind it in one sentence (issue #874: the averages used to
+  /// render as a subject-less fragment on their own line), plus the shared
+  /// tier vocabulary (the period estimate's own tier, so no second
+  /// confidence system). Disclaimer rendered once per screen at the bottom
+  /// of the overview (issue #807). Rendered only when
+  /// [ActivePrediction.pms] is non-null.
+  ///
+  /// Issue #874: the bare tier line is omitted when it equals the period
+  /// estimate's tier — the common case, since [PmsEstimate.tier] is always
+  /// carried through from [ActivePrediction.tier] — and given a subject
+  /// ("PMS estimate: …") only on the defensive path where a directly-built
+  /// [PmsEstimate] carries a different tier.
+  Widget _pmsSection(
+    BuildContext context,
+    ActivePrediction prediction,
+    ThemeData theme,
+  ) {
+    final pms = prediction.pms!;
     final l10n = AppLocalizations.of(context);
     String format(LocalDate date) => dates.formatLocalDateMonthDayYear(
       date,
@@ -896,24 +915,21 @@ class _OverviewPanelState extends State<OverviewPanel>
       children: [
         Text(
           key: const ValueKey('overview-pms-band'),
-          l10n.overviewPmsBandLabel(range),
-          style: theme.textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 2),
-        Text(
-          key: const ValueKey('overview-pms-averages'),
-          l10n.overviewPmsDaysBeforePeriod(
+          l10n.overviewPmsBandLabel(
+            range,
             pms.meanOnsetDaysBeforeNextPeriod.round(),
             pms.meanLengthDays.round(),
           ),
-          style: theme.textTheme.bodySmall,
+          style: theme.textTheme.bodyMedium,
         ),
-        const SizedBox(height: 2),
-        Text(
-          key: const ValueKey('overview-pms-tier'),
-          tierLabel(l10n, pms.tier),
-          style: theme.textTheme.bodySmall,
-        ),
+        if (pms.tier != prediction.tier) ...[
+          const SizedBox(height: 2),
+          Text(
+            key: const ValueKey('overview-pms-tier'),
+            l10n.overviewPmsTierLabel(tierLabel(l10n, pms.tier)),
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ],
     );
   }

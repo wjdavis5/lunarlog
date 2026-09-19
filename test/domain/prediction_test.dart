@@ -278,12 +278,15 @@ void main() {
       expect(p.lastEpisodeStart, d(2026, 3, 29));
       expect(p.daysSinceLastEpisodeStart, 78);
       expect(p.unusuallyLongCycle, isTrue);
-      expect(p.tier, CycleConfidence.irregular,
-          reason: 'issue #213 tier, forced once unusually long');
-      expect(p.forecast.first.tier, CycleConfidence.irregular,
+      expect(p.tier, CycleConfidence.learning,
+          reason: 'issue #858: 28/30/29 is a steady history (spread 0.8, '
+              'three usable cycles -> learning). A long open cycle lowers '
+              'the tier at most one rung and never manufactures `irregular`, '
+              'whose copy claims cycle-to-cycle variability this history '
+              'does not show.');
+      expect(p.forecast.first.tier, CycleConfidence.learning,
           reason: 'one confidence derivation (#299 invariant): the forecast '
-              'must be built from the same forced tier as ActivePrediction.tier, '
-              'not the un-forced spreadAndTier.tier');
+              'must be built from the same tier as ActivePrediction.tier');
       expect(p.originalEstimatedNextStart, d(2026, 4, 27));
       expect(p.daysLate, 49);
       expect(p.estimatedNextStart, d(2026, 6, 24),
@@ -306,6 +309,71 @@ void main() {
           computePrediction(episodes: episodesFromStarts(starts), today: d(2026, 5, 29));
       expect(result, isA<ActivePrediction>());
       expect((result as ActivePrediction).unusuallyLongCycle, isTrue);
+    });
+
+    test('issue #858: a perfectly regular 29/29/29 history with a long open '
+        'cycle does not read irregular', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 1, 1),
+          d(2026, 1, 30), // 29
+          d(2026, 2, 28), // 29
+          d(2026, 3, 29), // 29, open
+        ]),
+        today: d(2026, 6, 1), // 64 days open, past kMaxOpenCycleDays
+      );
+      expect(result, isA<ActivePrediction>());
+      final p = result as ActivePrediction;
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.spreadDays, closeTo(0, 0.0001));
+      expect(p.tier, CycleConfidence.learning,
+          reason: 'three usable cycles is under the average window, so the '
+              'honest spread-based tier is learning');
+      expect(p.tier, isNot(CycleConfidence.irregular),
+          reason: 'issue #858: a long open cycle must never assert the '
+              'cycle-to-cycle variability the irregular tier describes');
+      expect(p.forecast.first.tier, p.tier,
+          reason: '#299 invariant: the forecast is built from the same tier');
+      expect(p.hasHighCycleVariability, isFalse,
+          reason: 'the cycles themselves are perfectly steady');
+    });
+
+    test('issue #858: a full 6-cycle high-confidence history with a long '
+        'open cycle steps down exactly one rung, never into irregular', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 2, 6),
+          d(2026, 3, 8),
+          d(2026, 4, 7),
+          d(2026, 5, 7),
+          d(2026, 6, 6),
+          d(2026, 7, 6),
+          d(2026, 8, 5),
+        ]),
+        today: d(2026, 11, 1), // 88 days open
+      ) as ActivePrediction;
+      expect(result.unusuallyLongCycle, isTrue);
+      expect(result.tier, CycleConfidence.learning,
+          reason: 'high -> learning, not high -> irregular (#858)');
+      expect(result.forecast.first.tier, CycleConfidence.learning);
+      expect(result.hasHighCycleVariability, isFalse);
+    });
+
+    test('issue #858: a genuinely irregular spread still reads irregular '
+        'with the variability signal set', () {
+      final result = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 3, 1),
+          d(2026, 3, 16), // 15
+          d(2026, 5, 15), // 60
+          d(2026, 5, 30), // 15, open
+        ]),
+        today: d(2026, 6, 5),
+      ) as ActivePrediction;
+      expect(result.tier, CycleConfidence.irregular,
+          reason: 'a wide spread is the real variability signal and must '
+              'stay reachable (do not fix #858 by suppressing irregular)');
+      expect(result.hasHighCycleVariability, isTrue);
     });
 
     test('late when today is more than 2 days past the estimate: the '

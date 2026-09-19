@@ -85,6 +85,30 @@ final List<LocalDate> kShortOutlierStarts = [
   LocalDate(2026, 5, 23), // open cycle
 ];
 
+/// Issue #858: three perfectly regular 29-day cycles then a long open cycle
+/// (64 days, past kMaxOpenCycleDays). The old engine forced `irregular`
+/// here, which rendered "Irregular (±0 days)" — a self-contradiction. The
+/// honest tier (and so the variability row) is learning.
+final List<LocalDate> kRegularLongOpenStarts = [
+  LocalDate(2026, 1, 1),
+  LocalDate(2026, 1, 30), // 29
+  LocalDate(2026, 2, 28), // 29
+  LocalDate(2026, 3, 29), // 29, open
+];
+final LocalDate kRegularLongOpenToday = LocalDate(2026, 6, 1);
+
+/// Issue #858: three completed cycles of lengths 15, 60, 15 (population
+/// std-dev ≈21.21, the same fixture `overview_test.dart` uses): a genuinely
+/// irregular spread whose variability row must keep rendering
+/// "Irregular (±21 days)".
+final List<LocalDate> kIrregularSpreadStarts = [
+  LocalDate(2026, 3, 1),
+  LocalDate(2026, 3, 16), // 15
+  LocalDate(2026, 5, 15), // 60
+  LocalDate(2026, 5, 30), // 15, open
+];
+final LocalDate kIrregularSpreadToday = LocalDate(2026, 6, 5);
+
 Future<void> seedEpisodes(
   DriftDayEntriesRepository entries,
   String profileId,
@@ -294,6 +318,35 @@ void main() {
     // confidence" confidence chip — unrelated to this headline row, and
     // out of scope for this assertion.)
     expect(textAt(tester, 'analysis-variability'), '±0 days');
+
+    await h.dispose();
+  });
+
+  testWidgets('issue #858: a regular history with a long open cycle reads a '
+      'learning variability row, never "Irregular (±0 days)"', (tester) async {
+    final h = Harness(tester);
+    await h.pump(starts: kRegularLongOpenStarts, today: kRegularLongOpenToday);
+
+    expect(textAt(tester, 'analysis-variability'), 'Learning (±0 days)',
+        reason: 'issue #858: 29/29/29 is steady; a long open cycle lowers '
+            'the tier one rung from wherever the spread puts it, never to '
+            'the variability-claiming irregular tier');
+    expect(find.textContaining('Irregular (±0 days)'), findsNothing);
+    expect(find.textContaining('Cycles vary a lot'), findsNothing);
+
+    await h.dispose();
+  });
+
+  testWidgets('issue #858: a genuinely irregular spread still reads '
+      '"Irregular (±N days)"', (tester) async {
+    final h = Harness(tester);
+    await h.pump(starts: kIrregularSpreadStarts, today: kIrregularSpreadToday);
+
+    final variability = textAt(tester, 'analysis-variability');
+    expect(variability, isNotNull);
+    expect(variability, startsWith('Irregular (±'),
+        reason: 'the fix must not make the irregular path unreachable');
+    expect(variability, isNot('Irregular (±0 days)'));
 
     await h.dispose();
   });

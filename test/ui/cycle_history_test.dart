@@ -671,8 +671,8 @@ void main() {
     // one fixture against the real wall clock: kSteadyStarts' open cycle
     // (started Aug 5, 2026) reads `unusuallyLongCycle` only once "today"
     // is more than kMaxOpenCycleDays (60) days past that start, and
-    // `computePrediction` forces the tier to `irregular` in that case
-    // (`lib/domain/prediction/prediction.dart`). If CycleHistorySection
+    // `computePrediction` lowers the tier one rung in that case
+    // (`high` -> `learning`, issue #858; it used to force `irregular`). If CycleHistorySection
     // silently stopped forwarding `todayProvider` to
     // `CycleHistoryService.watch` (falling back to the real wall clock for
     // both pumps below), both would render the same confidence -- whatever
@@ -705,11 +705,12 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('history-confidence')),
-          matching: find.text('Irregular'),
+          matching: find.text('Learning'),
         ),
         findsOneWidget,
-        reason: '88 days open crosses the 60-day threshold -- this can '
-            'only differ from the pump above if todayProvider actually '
+        reason: '88 days open crosses the 60-day threshold and lowers the '
+            'steady history one rung (high -> learning, issue #858) -- this '
+            'can only differ from the pump above if todayProvider actually '
             'reached CycleHistoryService.watch',
       );
       await disposeHistory(tester, beyond);
