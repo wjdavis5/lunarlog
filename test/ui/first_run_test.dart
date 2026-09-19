@@ -1076,6 +1076,33 @@ void main() {
       await h.dispose();
     });
   });
+
+  group('issue #865: the first profile becomes active', () {
+    testWidgets('creating the first profile persists it as the active '
+        'pointer so a relaunch opens its Today', (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.pump();
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+
+      final profile = h.profiles.activeProfile;
+      expect(profile, isNotNull,
+          reason: 'the first profile is selected so the gate lands on its '
+              'Today instead of the one-row picker');
+      expect(profile!.displayName, 'Nova');
+      expect(
+        await h.settings.get(SettingsKeys.lastActiveProfile),
+        profile.id,
+        reason: 'the pointer is persisted, not just navigated past (#865)',
+      );
+      await h.dispose();
+    });
+  });
 }
 
 Finder key(String value) => find.byKey(ValueKey(value));

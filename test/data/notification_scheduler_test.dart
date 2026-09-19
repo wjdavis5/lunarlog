@@ -223,6 +223,42 @@ void main() {
     });
   });
 
+  group('Darwin init-time permission (issue #863)', () {
+    test('initialize() never asks for the iOS permission -- the system '
+        'prompt must not fire at first launch', () async {
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+
+      await scheduler.initialize();
+
+      final initCall = calls.singleWhere((c) => c.method == 'initialize');
+      expect(
+        (initCall.arguments as Map)['requestAlertPermission'],
+        isFalse,
+        reason: 'requestAlertPermission: true is exactly what spent '
+            'Darwin\'s one-shot dialog over the first-launch black screen',
+      );
+      expect(
+        calls.any((c) => c.method == 'requestPermissions'),
+        isFalse,
+        reason: 'the prompt belongs to the in-product "Turn on reminders" '
+            'moment, not database open',
+      );
+    });
+
+    test('initialize() reports the current (undetermined) Darwin state '
+        'without asking', () async {
+      permissionEnabled = false;
+      final scheduler = schedulerFor(TargetPlatform.iOS);
+
+      final availability = await scheduler.initialize();
+
+      expect(availability, NotificationAvailability.denied);
+      expect(calls.any((c) => c.method == 'checkPermissions'), isTrue);
+      expect(calls.any((c) => c.method == 'requestPermissions'), isFalse);
+    });
+  });
+
   group('Android POST_NOTIFICATIONS request (issue #168)', () {
     test('initialize() requests the Android runtime permission before the '
         'first availability check', () async {
@@ -353,13 +389,38 @@ void main() {
     });
 
     test(
-        'requestPermission() opens Darwin notification settings once '
-        'already denied, instead of re-requesting into silence', () async {
-      // #4: `checkPermissions` reports the current (already-denied) state
-      // before this call ever tries to ask again.
+        'requestPermission() asks at the in-product moment on the first '
+        'tap, then opens Darwin notification settings once already asked '
+        'and still denied', () async {
+      // Issue #863: with the init-time request removed, the first tap is
+      // what shows the system prompt. Darwin's dialog is one-shot, so a
+      // later still-denied tap must route to settings instead of silently
+      // re-asking into a no-op.
+      final store = FakeSettingsStore();
       permissionEnabled = false;
-      final scheduler = schedulerFor(TargetPlatform.iOS);
+      final scheduler = schedulerFor(TargetPlatform.iOS, settingsStore: store);
       await scheduler.initialize();
+      calls.clear();
+
+      await scheduler.requestPermission();
+
+      expect(
+        calls.any((c) => c.method == 'requestPermissions'),
+        isTrue,
+        reason: 'the in-product "Turn on reminders" tap is the prompt',
+      );
+      expect(
+        calls.any((c) => c.method == 'openAppNotificationSettings'),
+        isFalse,
+        reason: 'a never-asked permission must not jump straight to '
+            'Settings',
+      );
+      expect(
+        await store.get(SettingsKeys.darwinNotificationPermissionRequested),
+        'true',
+        reason: 'the ask is persisted so a later launch knows the dialog '
+            'is spent',
+      );
       calls.clear();
 
       await scheduler.requestPermission();
@@ -501,8 +562,14 @@ void main() {
 
     test('requestPermission() tolerates a throwing Darwin '
         'openAppNotificationSettings call', () async {
+      // Issue #863: the settings branch is reached only once a prior ask
+      // has been recorded -- seed that state so this exercises the
+      // openAppNotificationSettings throw, not the requestPermissions one.
+      final store = FakeSettingsStore({
+        SettingsKeys.darwinNotificationPermissionRequested: 'true',
+      });
       permissionEnabled = false;
-      final scheduler = schedulerFor(TargetPlatform.iOS);
+      final scheduler = schedulerFor(TargetPlatform.iOS, settingsStore: store);
       await scheduler.initialize();
 
       requestPermissionError = PlatformException(code: 'boom');
