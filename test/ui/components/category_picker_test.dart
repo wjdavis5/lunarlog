@@ -295,6 +295,77 @@ void main() {
     expect(find.text('pain-trailing-marker'), findsOneWidget);
   });
 
+  group('flat labels for heading-less contexts (issue #880)', () {
+    /// The label rendered inside one chip, located by its stable key.
+    String chipLabel(WidgetTester tester, String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Text),
+          ),
+        )
+        .data!;
+
+    testWidgets('no two Recent-row chips share a label', (tester) async {
+      await tester.pumpWidget(
+        _harness(
+          recentCodes: const ['great_digestion', 'great_stool'],
+          onToggle: (_) {},
+        ),
+      );
+
+      final labels = [
+        chipLabel(tester, 'category-picker-recent-great_digestion'),
+        chipLabel(tester, 'category-picker-recent-great_stool'),
+      ];
+      expect(
+        labels.toSet(),
+        hasLength(labels.length),
+        reason: 'the Recent row is a flat namespace — two colliding '
+            'displays must not both render "Great"',
+      );
+      expect(labels, containsAll(['Great (digestion)', 'Great (stool)']));
+    });
+
+    testWidgets('a chip under its category heading keeps the bare display',
+        (tester) async {
+      await tester.pumpWidget(
+        _harness(
+          categories: const [TagCategory.digestion, TagCategory.stool],
+          onToggle: (_) {},
+        ),
+      );
+
+      // Both "Great" chips render under their own headings, where the
+      // category-qualified form would just repeat the heading.
+      expect(find.text('Great'), findsNWidgets(2));
+      expect(find.text('Great (digestion)'), findsNothing);
+      expect(find.text('Great (stool)'), findsNothing);
+    });
+
+    testWidgets('no two search-result chips share a label', (tester) async {
+      await tester.pumpWidget(
+        _harness(
+          categories: const [TagCategory.digestion, TagCategory.stool],
+          onToggle: (_) {},
+        ),
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('category-picker-search')),
+        'great',
+      );
+      await tester.pumpAndSettle();
+
+      final labels = [
+        chipLabel(tester, 'category-picker-tag-great_digestion'),
+        chipLabel(tester, 'category-picker-tag-great_stool'),
+      ];
+      expect(labels.toSet(), hasLength(labels.length));
+      expect(labels, containsAll(['Great (digestion)', 'Great (stool)']));
+    });
+  });
+
   group('option icons (Issue #818)', () {
     test('tagOptionIcon maps a curated option and returns null for the '
         'deliberately uniconed ones', () {

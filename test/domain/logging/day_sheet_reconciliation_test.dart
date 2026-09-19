@@ -141,6 +141,33 @@ void main() {
         );
       }
     });
+
+    test('issue #889: an in-session raise (spotting toggled on over an '
+        'unlogged day, no spotting on load) is undone by the next '
+        'toggle-off, which is exactly how the widget drives it', () {
+      // Toggle on: the same reconciliation that decides the write/display
+      // value raises a spotting-only day to an explicit notBleeding.
+      final raised = resolveEffectiveFlow(
+        spotting: true,
+        flow: FlowLevel.none,
+        hadSpottingOnLoad: false,
+        flowExplicitlySet: false,
+      );
+      expect(raised, FlowLevel.notBleeding);
+
+      // Toggle off: `_toggleSpotting` passes hadSpottingOnLoad: true
+      // because the toggle itself raised the flow, so the raise is undone
+      // rather than left behind as if "Not bleeding" had been asserted.
+      expect(
+        resolveEffectiveFlow(
+          spotting: false,
+          flow: raised,
+          hadSpottingOnLoad: true,
+          flowExplicitlySet: false,
+        ),
+        FlowLevel.none,
+      );
+    });
   });
 
   group('computeSpottingMutations (issue #247)', () {

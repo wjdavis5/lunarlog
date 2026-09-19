@@ -230,7 +230,12 @@ class _CategoryPickerState extends State<CategoryPicker> {
             runSpacing: 4,
             children: [
               for (final tag in recentTags)
-                _tagChip(tag, group: widget.recentLabel, keyPrefix: 'category-picker-recent'),
+                _tagChip(
+                  tag,
+                  group: widget.recentLabel,
+                  keyPrefix: 'category-picker-recent',
+                  flat: true,
+                ),
             ],
           ),
         ],
@@ -271,7 +276,16 @@ class _CategoryPickerState extends State<CategoryPicker> {
             runSpacing: 4,
             children: [
               for (final tag in tags)
-                _tagChip(tag, group: label, keyPrefix: 'category-picker-tag'),
+                _tagChip(
+                  tag,
+                  group: label,
+                  keyPrefix: 'category-picker-tag',
+                  // Issue #880: search results are a flat, cross-category
+                  // result set, so they use the qualified label; a normally
+                  // rendered section (searching == false) is under its own
+                  // heading and keeps the bare display.
+                  flat: searching,
+                ),
             ],
           ),
           ...?widget.trailingBuilder?.call(category),
@@ -334,19 +348,32 @@ class _CategoryPickerState extends State<CategoryPicker> {
   /// null avatar and stays text-only — never a generic placeholder (the
   /// documented fallback for #818). Custom tags are deliberately absent:
   /// a user-authored label has no curated symbol.
-  Widget _tagChip(TagCode tag, {required String group, required String keyPrefix}) {
+  ///
+  /// Issue #880: [flat] selects the category-qualified label for chips in
+  /// a heading-less, flat namespace (the Recent row and search results),
+  /// where two taxonomy codes sharing a bare display ("Great" for
+  /// `great_digestion` and `great_stool`) would otherwise be
+  /// indistinguishable. Chips under a category heading keep the bare
+  /// [TagCode.display] — the heading already supplies the qualifier.
+  Widget _tagChip(
+    TagCode tag, {
+    required String group,
+    required String keyPrefix,
+    bool flat = false,
+  }) {
     final isSelected = widget.selected.contains(tag.code);
     final icon = tagOptionIcon(tag.code);
+    final label = flat ? flatDisplayForTag(tag) : tag.display;
     return groupedChipSemantics(
       group: group,
-      label: tag.display,
+      label: label,
       selected: isSelected,
       onTap: widget.enabled ? () => widget.onToggle(tag.code) : null,
       child: FilterChip(
         key: ValueKey('$keyPrefix-${tag.code}'),
         materialTapTargetSize: MaterialTapTargetSize.padded,
         avatar: icon == null ? null : Icon(icon, size: 18),
-        label: Text(tag.display),
+        label: Text(label),
         selected: isSelected,
         onSelected: widget.enabled ? (_) => widget.onToggle(tag.code) : null,
       ),
