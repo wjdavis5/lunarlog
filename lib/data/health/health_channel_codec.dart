@@ -150,24 +150,29 @@ const Map<HealthFlowValue, int> kHealthFlowValueAppleRawValue = {
 };
 
 /// The canonical Apple SDK raw integer for each [HealthSymptomSeverity],
-/// per `HKCategoryValueSeverity` (Issue #238): `mild` = 1, `moderate` = 2,
-/// `severe` = 3, `unspecified` = 4. `HKCategoryValue.notApplicable` = 0 is
-/// a *different* shared "not applicable" value and is deliberately never
-/// written — this enum's [HealthSymptomSeverity.unspecified] is the
-/// "no severity recorded" case, exactly as
-/// [kHealthFlowValueAppleRawValue]'s `unspecified` = 1 is for flow.
+/// per `HKCategoryValueSeverity` (Issue #238, corrected in #917):
+/// Apple defines (HKCategoryValues.h:209-215):
+///   HKCategoryValueSeverityUnspecified = 0
+///   HKCategoryValueSeverityNotPresent  = 1
+///   HKCategoryValueSeverityMild        = 2
+///   HKCategoryValueSeverityModerate    = 3
+///   HKCategoryValueSeveritySevere      = 4
+///
+/// lunarlog writes: `unspecified` = 0, `mild` = 2, `moderate` = 3, `severe` = 4.
+/// `HKCategoryValueSeverityNotPresent` = 1 is deliberately never written —
+/// lunarlog only writes symptoms when present.
 ///
 /// **This table is the single source of truth
-/// `AppDelegate.swift`'s symptom-severity enum must match — Dart cannot
+/// `AppDelegate.swift`'s symptom-severity mapping must match — Dart cannot
 /// assert Swift's actual raw values at test time** (see
 /// [kHealthFlowValueAppleRawValue]'s doc for the full no-Swift-XCTest
 /// rationale). `test/data/health/health_symptom_apple_raw_test.dart` pins
 /// these literals and their completeness.
 const Map<HealthSymptomSeverity, int> kHealthSymptomSeverityAppleRawValue = {
-  HealthSymptomSeverity.mild: 1,
-  HealthSymptomSeverity.moderate: 2,
-  HealthSymptomSeverity.severe: 3,
-  HealthSymptomSeverity.unspecified: 4,
+  HealthSymptomSeverity.unspecified: 0,
+  HealthSymptomSeverity.mild: 2,
+  HealthSymptomSeverity.moderate: 3,
+  HealthSymptomSeverity.severe: 4,
 };
 
 /// Parses a result string into the typed [HealthPlatformResult]. Total:

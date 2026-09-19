@@ -22,28 +22,28 @@ void main() {
 
   test('the canonical values match HKCategoryValueSeverity rather than being '
       'assumed from memory', () {
-    expect(kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.mild], 1);
+    expect(
+      kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.unspecified],
+      0,
+    );
+    expect(kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.mild], 2);
     expect(
       kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.moderate],
-      2,
-    );
-    expect(
-      kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.severe],
       3,
     );
     expect(
-      kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.unspecified],
+      kHealthSymptomSeverityAppleRawValue[HealthSymptomSeverity.severe],
       4,
     );
   });
 
   test(
-    'every raw value is unique and none is 0 — HKCategoryValue.notApplicable, '
-    'a different shared "no value" concept, is never written',
+    'every raw value is unique and none is 1 — HKCategoryValueSeverityNotPresent = 1 '
+    'is a different "not present" concept entirely and is never written',
     () {
       final values = kHealthSymptomSeverityAppleRawValue.values.toList();
       expect(values.toSet().length, values.length);
-      expect(values, isNot(contains(0)));
+      expect(values, isNot(contains(1)));
     },
   );
 

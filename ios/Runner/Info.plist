@@ -82,7 +82,7 @@
 	<key>NSHealthShareUsageDescription</key>
 	<string>lunarlog reads menstrual flow from Apple Health only when you choose to import it into the profile you have bound to this device, so you can bring in history you recorded elsewhere. Nothing is read automatically, and only menstrual-flow samples in the date range you import are read.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>lunarlog writes the bound profile's period and symptom data to Apple Health, only for the one profile you choose in Settings.</string>
+	<string>lunarlog writes the bound profile's period, symptom, and mood data to Apple Health, only for the one profile you choose in Settings.</string>
 	<!-- Issue #207: required by image_picker_ios the moment a gallery source
 	     is offered; without it the photo pick crashes the app on iOS 14+.
 	     Only the feedback sheet's screenshot attachment opens the picker. -->

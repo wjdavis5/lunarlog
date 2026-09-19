@@ -346,6 +346,15 @@ void main() {
           'intermenstrual bleeding'),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-copy')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+          'Symptoms you tag — cramps, headache, bloating, and mood'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an import-only platform (Android, Issue #458) shows the '
@@ -367,6 +376,10 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('health-sync-flow-collapse-copy')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-copy')),
       findsNothing,
     );
     expect(
@@ -588,20 +601,13 @@ void main() {
       'yet synced) is allowed — no one else claims it (Issue #882 review '
       'round 2)', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HealthSyncScreen(
-          profilesRepository:
-              FakeProfilesRepository([_profile(id: 'unsynced', name: 'Eve')]),
-          guardiansForProfile: (_) async => const [],
-          binding: binding,
-          signedInUserId: 'u1',
-        ),
-      ),
+    await pumpScreen(
+      tester,
+      binding: binding,
+      profilesRepository:
+          FakeProfilesRepository([_profile(id: 'unsynced', name: 'Eve')]),
+      signedInUserId: 'u1',
     );
-    await tester.pumpAndSettle();
 
     final tile = tester.widget<ListTile>(
       find.byKey(const ValueKey('health-sync-profile-unsynced')),

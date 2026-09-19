@@ -94,6 +94,12 @@ const String kHealthSyncWriteForwardOnly =
     'menstrual flow from the Health app; nothing is read unless you start '
     'that import yourself.';
 
+/// The symptom and mood write explanation (iOS, Issues #238/#918).
+const String kHealthSyncWriteSymptoms =
+    'Symptoms you tag — cramps, headache, bloating, and mood — are written to '
+    'the Health app as symptom entries. Mood tags are written as \'Mood Changes\' '
+    'without saying which mood.';
+
 /// The import-only explanation (Android, Issue #458).
 const String kHealthSyncImportOnly =
     'Only menstrual flow and spotting written by other apps appear here, and '
@@ -543,6 +549,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
                 'bleeding; spotting between periods is written as '
                 'intermenstrual bleeding.',
               ),
+            ),
+            // Issue #238 / #918: disclosure of symptom and mood writes.
+            const Padding(
+              key: ValueKey('health-sync-symptoms-copy'),
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(kHealthSyncWriteSymptoms),
             ),
             // Issue #186 (AC7): what happens on revocation/unmapping. Stopping
             // sync or revoking this phone's Health app permission never deletes
