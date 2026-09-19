@@ -1,11 +1,9 @@
-/// Issue #264/#472 coverage for [SupabaseProfileErasureService]: the RPC
-/// call shapes (`delete_profile_data`, with and without `p_source`), typed
-/// failure mapping (unauthorized, invalid source, network), the local
-/// wipe only runs for [ProfileErasureService.deleteProfile] and only AFTER
-/// the RPC has already succeeded (never on a failed or offline call), and
-/// [ProfileErasureService.purgeImportedData] never touches local storage
-/// at all (its tombstones propagate through the ordinary sync pull, like
-/// every other RPC-backed service in this app). Mirrors
+/// Issue #264/#472/#883/#905 coverage for [SupabaseProfileErasureService]:
+/// the RPC call shapes (`delete_profile_data`, with and without `p_source`),
+/// typed failure mapping (unauthorized, invalid source, network), the local
+/// wipe only runs AFTER the RPC has already succeeded when signed in (never
+/// on a failed or offline call, Issue #905), and device-only profiles purge
+/// locally without an RPC (Issue #883). Mirrors
 /// supabase_sharing_service_test.dart's MockClient + MockSyncEngine
 /// harness.
 library;
@@ -13,10 +11,17 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:lunarlog/data/db/db.dart' hide Profile;
+import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/db/tables.dart' show FlowLevel;
 import 'package:lunarlog/data/profiles/supabase_profile_erasure_service.dart';
+import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -386,8 +391,33 @@ void main() {
         ),
         throwsA(const ProfileErasureFailure.unauthorized()),
       );
-      // The local purge still ran first (#883: purge locally, always).
-      expect(purge.purges, [('profile-1', 'file_import')]);
+      // Issue #905: local purge must NOT run when the server refuses.
+      expect(purge.purges, isEmpty);
+      expect(syncEngine.syncRequestCount, 0);
+    });
+
+    test('a network/socket failure maps to network and leaves local state untouched (issue #905)',
+        () async {
+      final client = makeClient((req) async {
+        throw const SocketException('offline');
+      });
+      await signIn(client, 'u1');
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      await expectLater(
+        service.purgeImportedData(
+          profileId: 'profile-1',
+          source: PurgeableImportSource.fileImport,
+        ),
+        throwsA(const ProfileErasureFailure.network()),
+      );
+      expect(purge.purges, isEmpty);
+      expect(syncEngine.syncRequestCount, 0);
     });
 
     test('a no-session refusal never maps to unauthorized — it is '
@@ -442,6 +472,8 @@ void main() {
         ),
         throwsA(const ProfileErasureFailure.invalidSource()),
       );
+      expect(purge.purges, isEmpty);
+      expect(syncEngine.syncRequestCount, 0);
     });
 
     test('a numeric 5xx code maps to network (a transient server error, '
@@ -467,6 +499,8 @@ void main() {
         ),
         throwsA(const ProfileErasureFailure.network()),
       );
+      expect(purge.purges, isEmpty);
+      expect(syncEngine.syncRequestCount, 0);
     });
 
     test('an unrecognized, non-numeric code/message falls through to other',
@@ -492,6 +526,8 @@ void main() {
         ),
         throwsA(const ProfileErasureFailure.other()),
       );
+      expect(purge.purges, isEmpty);
+      expect(syncEngine.syncRequestCount, 0);
     });
   });
 
@@ -515,6 +551,133 @@ void main() {
       expect(counts[PurgeableImportSource.healthkit], 2);
       expect(counts[PurgeableImportSource.fileImport], 0);
       expect(counts.length, PurgeableImportSource.values.length);
+    });
+  });
+
+  group('SupabaseProfileErasureService with real storage (issue #905)', () {
+    late LunarLogDatabase db;
+    late LunarLogStorage storage;
+    late DriftImportedDataPurgeRepository purgeRepo;
+    late MockSyncEngine realSyncEngine;
+
+    setUp(() {
+      db = LunarLogDatabase(NativeDatabase.memory());
+      storage = LunarLogStorage(db);
+      purgeRepo = DriftImportedDataPurgeRepository(storage);
+      realSyncEngine = MockSyncEngine();
+    });
+
+    tearDown(() async {
+      await db.close();
+    });
+
+    test('when server RPC fails, local rows remain live and reconcile does not alter them', () async {
+      final p = await storage.upsertProfile(displayName: 'Test', isMinor: false);
+      final entry = await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'clue_import',
+      );
+      await storage.upsertObservation(
+        dayEntryId: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        category: 'pain',
+        source: 'clue_import',
+      );
+
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': 'profile not found or caller is not its accepted primary_guardian',
+            'code': '42501',
+          }),
+          400,
+        );
+      });
+      await signIn(client, 'not-primary');
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: FakeProfilesRepository(),
+        importedDataPurge: purgeRepo,
+        syncEngine: realSyncEngine,
+      );
+
+      await expectLater(
+        service.purgeImportedData(
+          profileId: p.id,
+          source: PurgeableImportSource.clueImport,
+        ),
+        throwsA(const ProfileErasureFailure.unauthorized()),
+      );
+
+      // Local rows were NOT tombstoned.
+      final liveEntries = await storage.getDayEntries(profileId: p.id);
+      expect(liveEntries.map((e) => e.id), contains(entry.id));
+      final counts = await service.importedDataCounts(p.id);
+      expect(counts[PurgeableImportSource.clueImport], 2);
+
+      // Subsequent reconcile / remote pull applies the server's existing row:
+      // it remains live as well.
+      final remote = RemoteDayEntryRow(
+        id: entry.id,
+        profileId: p.id,
+        localDate: entry.localDate,
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        tags: const [],
+        note: null,
+        updatedAt: entry.updatedAt,
+        deletedAt: null,
+        source: 'clue_import',
+      );
+      await storage.applyRemoteDayEntry(remote);
+
+      final afterReconcile = await storage.getDayEntries(profileId: p.id);
+      expect(afterReconcile.map((e) => e.id), contains(entry.id));
+      expect(afterReconcile.first.deletedAt, isNull);
+    });
+
+    test('when server RPC succeeds, local rows are tombstoned and reconcile keeps them tombstoned', () async {
+      final p = await storage.upsertProfile(displayName: 'Test', isMinor: false);
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'clue_import',
+      );
+
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'day_entries': 1, 'observations': 0, 'import_jobs': 0}),
+          200,
+        );
+      });
+      await signIn(client, 'primary');
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: FakeProfilesRepository(),
+        importedDataPurge: purgeRepo,
+        syncEngine: realSyncEngine,
+      );
+
+      await service.purgeImportedData(
+        profileId: p.id,
+        source: PurgeableImportSource.clueImport,
+      );
+
+      // Local rows are tombstoned.
+      final liveEntries = await storage.getDayEntries(profileId: p.id);
+      expect(liveEntries, isEmpty);
+      final counts = await service.importedDataCounts(p.id);
+      expect(counts[PurgeableImportSource.clueImport], 0);
+      expect(realSyncEngine.syncRequestCount, 1);
     });
   });
 }

@@ -40,6 +40,7 @@ class SupabaseProfileErasureService implements ProfileErasureService {
   /// [purgeImportedData], and the live per-source counts behind
   /// [importedDataCounts]. Storage-only and always available — this is
   /// what lets a device-only profile (never near an account) purge.
+  /// When signed in, called only after the server RPC succeeds (Issue #905).
   final ImportedDataPurgeRepository importedDataPurge;
 
   /// Nudges a pull right after a successful call, matching every sibling
@@ -74,18 +75,22 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     required String profileId,
     required PurgeableImportSource source,
   }) async {
-    // Issue #883: the local Drift tombstone always runs FIRST, so this
-    // works with no session and no network. Reuses the app's tombstone
-    // cascade rather than a raw delete, scoped to this one profile and
-    // this one source.
-    await importedDataPurge.applyLocalPurge(
-      profileId: profileId,
-      source: source.wireValue,
-    );
     // No session: the RPC could only be refused — skip it entirely and
-    // succeed on the strength of the local purge, instead of surfacing a
-    // false "not primary guardian" failure on a device-only profile.
-    if (client.auth.currentUser == null) return;
+    // succeed on the strength of the local purge (Issue #883), instead of
+    // surfacing a false "not primary guardian" failure on a device-only
+    // profile.
+    if (client.auth.currentUser == null) {
+      await importedDataPurge.applyLocalPurge(
+        profileId: profileId,
+        source: source.wireValue,
+      );
+      return;
+    }
+
+    // Signed in: run the server RPC first (Issue #905). If the server
+    // refuses (e.g. caller is not primary guardian or offline), we fail
+    // without altering local state so rows are not tombstoned locally
+    // only to be resurrected by a subsequent sync reconcile.
     try {
       await client.rpc<dynamic>(
         'delete_profile_data',
@@ -97,6 +102,12 @@ class SupabaseProfileErasureService implements ProfileErasureService {
     } catch (e) {
       throw _mapError(e);
     }
+
+    // Server RPC succeeded: apply the local Drift tombstone and request sync.
+    await importedDataPurge.applyLocalPurge(
+      profileId: profileId,
+      source: source.wireValue,
+    );
     syncEngine?.requestSync();
   }
 

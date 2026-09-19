@@ -2991,6 +2991,43 @@ void main() {
           profileId: p.id, source: 'clue_import');
       expect(await storage.getDayEntries(profileId: p.id), isEmpty);
     });
+
+    test(
+      'deliberately leaves updated_at untouched and dirty: false, so a '
+      'tied remote row wins if RPC was not run first (issue #905 doc)',
+      () async {
+        final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+        final entry = await storage.upsertDayEntry(
+          profileId: p.id,
+          localDate: '2026-01-01',
+          tz: 'UTC',
+          flow: FlowLevel.medium,
+          source: 'clue_import',
+        );
+        // Purge locally.
+        await storage.applyLocalImportedDataPurge(
+          profileId: p.id,
+          source: 'clue_import',
+        );
+        expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+
+        // If a remote row with the same updated_at arrives (simulating a
+        // reconcile where the server never deleted the row), remote wins the
+        // tie. This pins why SupabaseProfileErasureService MUST run the server
+        // RPC first before calling applyLocalImportedDataPurge (#905).
+        final tiedRemote = remoteEntry(
+          entry.id,
+          profileId: p.id,
+          localDate: entry.localDate,
+          updatedAt: entry.updatedAt,
+          flow: FlowLevel.medium,
+        );
+        await storage.applyRemoteDayEntry(tiedRemote);
+        final revived = await storage.getDayEntries(profileId: p.id);
+        expect(revived, isNotEmpty,
+            reason: 'equal timestamp remote wins tie against local non-dirty tombstone');
+      },
+    );
   });
 
   group('liveImportedSourceCounts (issue #883)', () {
