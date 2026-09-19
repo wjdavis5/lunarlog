@@ -92,28 +92,33 @@ class Harness {
     AuthController? auth,
     SyncStatusController? sync,
     Future<void> Function(BuildContext context)? onOpenImport,
+    MediaQueryData? mediaQueryData,
   }) async {
     await profiles.load();
+    Widget screen = MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ProfileController>.value(value: profiles),
+        Provider<SettingsStore>.value(value: settings),
+        Provider<OnboardingCycleAnswersRecorder>.value(value: recorder),
+        if (auth != null)
+          ChangeNotifierProvider<AuthController>.value(value: auth),
+        if (sync != null)
+          ChangeNotifierProvider<SyncStatusController>.value(value: sync),
+      ],
+      child: FirstRunScreen(
+        isWebBuild: isWebBuild,
+        todayProvider: () => kToday,
+        pickDate: pickDate ?? (_, _, _, _) async => null,
+        onOpenImport: onOpenImport,
+      ),
+    );
+    if (mediaQueryData != null) {
+      screen = MediaQuery(data: mediaQueryData, child: screen);
+    }
     await tester.pumpWidget(MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: MultiProvider(
-        providers: [
-          ChangeNotifierProvider<ProfileController>.value(value: profiles),
-          Provider<SettingsStore>.value(value: settings),
-          Provider<OnboardingCycleAnswersRecorder>.value(value: recorder),
-          if (auth != null)
-            ChangeNotifierProvider<AuthController>.value(value: auth),
-          if (sync != null)
-            ChangeNotifierProvider<SyncStatusController>.value(value: sync),
-        ],
-        child: FirstRunScreen(
-          isWebBuild: isWebBuild,
-          todayProvider: () => kToday,
-          pickDate: pickDate ?? (_, _, _, _) async => null,
-          onOpenImport: onOpenImport,
-        ),
-      ),
+      home: screen,
     ));
     await tester.pump();
   }
@@ -297,6 +302,44 @@ void main() {
           findsNothing);
       expect(find.byKey(const ValueKey('care-mode-dropdown')),
           findsOneWidget);
+      await h.dispose();
+    });
+
+    testWidgets(
+        'intro screen respects safe area (Dynamic Island / notch, issue #864)',
+        (tester) async {
+      final h = Harness(tester);
+      const safePadding = EdgeInsets.only(top: 59, bottom: 34);
+      await h.pump(
+        mediaQueryData: const MediaQueryData(
+          padding: safePadding,
+          viewPadding: safePadding,
+        ),
+      );
+
+      // Card 1: The brand mark (nights_stay icon) top must be >= 59 (safe area inset)
+      final iconFinder = find.byIcon(Icons.nights_stay);
+      expect(iconFinder, findsOneWidget);
+      final iconTop = tester.getTopLeft(iconFinder).dy;
+      expect(iconTop, greaterThanOrEqualTo(59.0));
+
+      // Advance to Card 2: heading must be >= 59 (not drawn through status bar / island)
+      await tester.tap(find.byKey(const ValueKey('first-run-next')));
+      await tester.pumpAndSettle();
+      final card2TitleFinder =
+          find.byKey(const ValueKey('first-run-card-guardians'));
+      expect(card2TitleFinder, findsOneWidget);
+      final card2Top = tester.getTopLeft(card2TitleFinder).dy;
+      expect(card2Top, greaterThanOrEqualTo(59.0));
+
+      // Advance to Card 3: notice card body must be >= 59
+      await tester.tap(find.byKey(const ValueKey('first-run-next')));
+      await tester.pumpAndSettle();
+      final card3Finder = find.byKey(const ValueKey('first-run-card-notice'));
+      expect(card3Finder, findsOneWidget);
+      final card3Top = tester.getTopLeft(card3Finder).dy;
+      expect(card3Top, greaterThanOrEqualTo(59.0));
+
       await h.dispose();
     });
   });

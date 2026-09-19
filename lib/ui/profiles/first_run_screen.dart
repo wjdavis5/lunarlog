@@ -467,8 +467,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   Widget _introScreen() {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      body: ResponsiveBody(
-        child: SingleChildScrollView(
+      body: SafeArea(
+        child: ResponsiveBody(
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(LLSpace.space5),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -505,7 +506,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// The card content for [_introIndex] — kept branchy-but-small so each
@@ -583,10 +585,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.firstRunCreateTitle)),
-      body: ResponsiveBody(
-        child: Padding(
-          padding: const EdgeInsets.all(LLSpace.space4),
-          child: Form(
+      body: SafeArea(
+        top: false,
+        child: ResponsiveBody(
+          child: Padding(
+            padding: const EdgeInsets.all(LLSpace.space4),
+            child: Form(
           key: _formKey,
           child: ListView(
             children: [
@@ -715,7 +719,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   /// The cycle questions (#216): five optional questions on one screen,
@@ -730,8 +735,10 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           onPressed: () => setState(() => _cycleQuestionsPending = false),
         ),
       ),
-      body: ResponsiveBody(
-        child: Form(
+      body: SafeArea(
+        top: false,
+        child: ResponsiveBody(
+          child: Form(
           key: _cycleFormKey,
           child: ListView(
           padding: const EdgeInsets.all(LLSpace.space4),
@@ -858,7 +865,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _lastPeriodField(AppLocalizations l10n) => Column(
