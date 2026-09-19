@@ -329,6 +329,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetNoteLabel => 'Note';
 
   @override
+  String get daySheetNoteHint => 'Anything worth remembering about today?';
+
+  @override
+  String get daySheetDoneLabel => 'Done';
+
+  @override
   String get daySheetSaveError => 'Couldn\'t save — try again';
 
   @override
