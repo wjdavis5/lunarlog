@@ -20,8 +20,6 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart' show FlowLevel;
 import 'package:lunarlog/data/profiles/supabase_profile_erasure_service.dart';
 import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
-import 'package:lunarlog/data/sync/remote_rows.dart';
-import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
