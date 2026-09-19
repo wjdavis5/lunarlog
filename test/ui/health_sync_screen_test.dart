@@ -18,6 +18,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -249,6 +250,10 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       MaterialApp(
+        // Issue #238: the screen now reads the Android symptom-limitation
+        // copy through AppLocalizations, so the harness must register the
+        // delegates the real app wires.
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
         home: HealthSyncScreen(
           profilesRepository:
               profilesRepository ?? FakeProfilesRepository(profiles),
@@ -365,6 +370,33 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('health-sync-revocation-copy')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('an import-only platform (Android) documents the permanent '
+      'symptom limitation (Issue #238)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding, writeEnabled: false);
+
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining("Symptoms (cramps, headaches, mood, and more) "
+          "can't be written to Health Connect"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a write-enabled platform (iOS) does not show the Android '
+      'symptom limitation (Issue #238)', (tester) async {
+    final binding = HealthSyncBinding(FakeSettingsStore());
+    await pumpScreen(tester, binding: binding);
+
+    expect(
+      find.byKey(const ValueKey('health-sync-symptoms-android-limitation')),
       findsNothing,
     );
   });

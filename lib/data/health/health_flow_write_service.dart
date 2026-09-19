@@ -57,6 +57,8 @@ import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
+import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart'
+    show gradedPainIntensitiesFrom;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -70,6 +72,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_flow_mapping.dart';
+import 'health_symptom_mapping.dart';
 
 /// One eligible day's resolved write, before it is sent to the port.
 class _PendingWrite {
@@ -146,6 +149,27 @@ class _PendingPeriodWrite {
   final DateTime updatedAt;
 
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
+}
+
+/// One day's resolved symptom writes (Issue #238): every HealthKit
+/// symptom sample the day entry's tags resolve to, in one channel call.
+class _PendingSymptomWrite {
+  const _PendingSymptomWrite({
+    required this.date,
+    required this.tzName,
+    required this.samples,
+    required this.updatedAt,
+  });
+
+  final LocalDate date;
+  final String tzName;
+
+  /// Already-resolved samples, each carrying its own stable `recordId`
+  /// (`symptom-<entryId>-<typeIdentifier>`) and the source entry's
+  /// `updatedAt` as `recordVersionMs`.
+  final List<HealthSymptomSample> samples;
+
+  final DateTime updatedAt;
 }
 
 /// Accumulates one pass's write plan: every day (whatever it maps to,
@@ -286,8 +310,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome =
-        await _writeBatch(batch.pending, batch.pendingPeriods, bound.facts);
+    final outcome = await _writeBatch(
+      batch.pending,
+      batch.pendingPeriods,
+      batch.pendingSymptoms,
+      bound.facts,
+    );
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -301,6 +329,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       blocked: outcome.failure,
       samplesWritten: outcome.written,
       periodRecordsWritten: outcome.periodRecordsWritten,
+      symptomSamplesWritten: outcome.symptomSamplesWritten,
       daysWithoutSample: batch.withoutSample,
       samplesReconciled: outcome.reconciled,
     );
@@ -355,16 +384,23 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       ({
         List<_PendingWrite> pending,
         List<_PendingPeriodWrite> pendingPeriods,
+        List<_PendingSymptomWrite> pendingSymptoms,
         int withoutSample,
       })> _collectBatch(String profileId, DateTime cursor) async {
     final entries = await _dayEntries.listForProfile(profileId);
+    final observationRows = await _observations.listForProfile(profileId);
     final spottingRows = [
-      for (final observation in await _observations.listForProfile(profileId))
+      for (final observation in observationRows)
         if (observation.category == kSpottingObservationCategory) observation,
     ];
+    // Issue #238: the day's graded pain intensity (if any) supplies the
+    // severity every one of its symptom samples carries — see
+    // `health_symptom_mapping.dart`'s fidelity note.
+    final gradedPain = gradedPainIntensitiesFrom(observationRows);
     final episodes = deriveEpisodes(bleedDatesOf(entries));
     final bleedDays = bleedDatesOf(entries);
     final batch = _Batch();
+    final pendingSymptoms = <_PendingSymptomWrite>[];
 
     // Eligible bleed days keyed by date, for period-record derivation.
     final eligibleBleed = <LocalDate, _EligibleBleed>{};
@@ -387,6 +423,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         ),
         containing,
       );
+      final symptomWrite = _symptomWriteFor(entry, gradedPain);
+      if (symptomWrite != null) pendingSymptoms.add(symptomWrite);
     }
 
     for (final row in spottingRows) {
@@ -414,7 +452,40 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     return (
       pending: batch.pending,
       pendingPeriods: batch.pendingPeriods,
+      pendingSymptoms: pendingSymptoms,
       withoutSample: batch.withoutSample,
+    );
+  }
+
+  /// Resolves one eligible day entry's [DayEntry.tags] into its symptom
+  /// write, or null when the day carries no mapped symptom. Never sends an
+  /// empty batch (the port documents that at least one sample is present).
+  _PendingSymptomWrite? _symptomWriteFor(
+    DayEntry entry,
+    Map<String, int> gradedPain,
+  ) {
+    final resolved = resolveHealthKitSymptoms(
+      tags: entry.tags,
+      gradedPainIntensities: gradedPain,
+    );
+    if (resolved.isEmpty) return null;
+    final versionMs = entry.updatedAt.millisecondsSinceEpoch;
+    return _PendingSymptomWrite(
+      date: entry.localDate,
+      tzName: entry.tz,
+      updatedAt: entry.updatedAt,
+      samples: [
+        for (final symptom in resolved)
+          HealthSymptomSample(
+            healthKitTypeIdentifier: symptom.typeIdentifier,
+            severity: symptom.severity,
+            // Stable per (day entry, symptom type): a re-write replaces the
+            // same sample (sync identifier/version), and a future
+            // reconciliation can address it by this exact id.
+            recordId: 'symptom-${entry.id}-${symptom.typeIdentifier}',
+            recordVersionMs: versionMs,
+          ),
+      ],
     );
   }
 
@@ -465,21 +536,25 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         int written,
         int reconciled,
         int periodRecordsWritten,
+        int symptomSamplesWritten,
         HealthPlatformResult? failure,
         DateTime? newest,
       })> _writeBatch(
     List<_PendingWrite> pending,
     List<_PendingPeriodWrite> pendingPeriods,
+    List<_PendingSymptomWrite> pendingSymptoms,
     HealthGuardFacts facts,
   ) async {
     final flow = await _writeFlowRecords(pending, facts);
     final periods = await _writePeriodRecords(pendingPeriods, facts);
+    final symptoms = await _writeSymptomRecords(pendingSymptoms, facts);
     return (
       written: flow.written,
       reconciled: flow.reconciled,
       periodRecordsWritten: periods.written,
-      failure: flow.failure ?? periods.failure,
-      newest: _latest(flow.newest, periods.newest),
+      symptomSamplesWritten: symptoms.written,
+      failure: flow.failure ?? periods.failure ?? symptoms.failure,
+      newest: _latest(_latest(flow.newest, periods.newest), symptoms.newest),
     );
   }
 
@@ -670,6 +745,57 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
       if (result is HealthPlatformAllowed) {
         written++;
+      } else if (result is HealthPlatformUnavailable) {
+        continue;
+      } else {
+        failure ??= result;
+      }
+    }
+    return (written: written, failure: failure, newest: newest);
+  }
+
+  /// Sends the per-day symptom writes (Issue #238). A platform that
+  /// answers `unavailable` — Health Connect has no symptom category types
+  /// at all, permanently — is a graceful skip, never a pass-blocking
+  /// failure, exactly like [HealthPlatformUnavailable] period records.
+  /// Every other failure blocks the pass and leaves the cursor for a
+  /// retry, matching [_writeFlowRecords]. Stops outright on the same
+  /// mid-pass authority drift [_writeFlowRecords] guards against.
+  ///
+  /// **Not done in this PR:** a symptom removed from a day entry is not
+  /// reconciled away in the health store (the native delete path still
+  /// queries only the flow types); see the PR's `## Not done`.
+  Future<
+      ({
+        int written,
+        HealthPlatformResult? failure,
+        DateTime? newest,
+      })> _writeSymptomRecords(
+    List<_PendingSymptomWrite> pendingSymptoms,
+    HealthGuardFacts facts,
+  ) async {
+    var written = 0;
+    HealthPlatformResult? failure;
+    DateTime? newest;
+    for (final symptom in pendingSymptoms) {
+      final drift = await _authorityDrift(facts);
+      if (drift != null) {
+        failure ??= drift;
+        break;
+      }
+      if (newest == null || symptom.updatedAt.isAfter(newest)) {
+        newest = symptom.updatedAt;
+      }
+      final result = await _platform.writeSymptomSamples(
+        HealthSymptomSamplesWrite(
+          facts: facts,
+          date: symptom.date,
+          tzName: symptom.tzName,
+          samples: symptom.samples,
+        ),
+      );
+      if (result is HealthPlatformAllowed) {
+        written += symptom.samples.length;
       } else if (result is HealthPlatformUnavailable) {
         continue;
       } else {

@@ -19,6 +19,7 @@ class HealthFlowSyncReport {
     this.blocked,
     this.samplesWritten = 0,
     this.periodRecordsWritten = 0,
+    this.symptomSamplesWritten = 0,
     this.daysWithoutSample = 0,
     this.samplesReconciled = 0,
   });
@@ -46,6 +47,12 @@ class HealthFlowSyncReport {
   /// #202) actually written this pass — distinct from [samplesWritten],
   /// which counts the per-day flow/intermenstrual writes.
   final int periodRecordsWritten;
+
+  /// HealthKit symptom samples written this pass (Issue #238) — one per
+  /// distinct HealthKit symptom type on an eligible day's tags. Always 0
+  /// on a platform with no symptom types (Health Connect), where the
+  /// write is a graceful `unavailable` skip.
+  final int symptomSamplesWritten;
 
   /// Eligible days that mapped to [HealthFlowNoWrite] (`none`/
   /// `notBleeding`), or to a skipped duplicate (spotting on a day whose

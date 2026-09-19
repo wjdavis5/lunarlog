@@ -385,6 +385,32 @@ class HealthConnectAdapter(context: Context) {
                 insert(client, listOf(record), result)
             }
 
+            "writeSymptomSamples" -> {
+                // Issue #238: a permanent platform limitation, not a gap.
+                // Health Connect has NO symptom category types — the exact
+                // asymmetry against HealthKit (which has first-class
+                // symptom types with severity) is documented in
+                // lib/data/health/health_symptom_mapping.dart and stated in
+                // the Settings health-sync copy. Symptoms are deliberately
+                // never smuggled into a record's notes/metadata as a
+                // workaround: that would be unreadable to other apps and
+                // would misrepresent the data. Answering "unavailable" lets
+                // the Dart write service skip symptom writes gracefully on
+                // this platform while flow writes proceed normally.
+                val g = GuardArgs.parse(args)
+                    ?: return result.error(
+                        "bad_args", "writeSymptomSamples requires guard args", null)
+                val decision = guardDecision(storedBoundProfileId, g)
+                if (decision != "allowed") {
+                    result.success(decision)
+                    return
+                }
+                check(SYMPTOM_TYPES_UNSUPPORTED.isNotEmpty()) {
+                    "the unsupported symptom-type registry must name the types"
+                }
+                result.success("unavailable")
+            }
+
             "deleteRecords" -> {
                 // Issue #186 tombstone propagation: delete the records whose
                 // clientRecordId is one of the supplied lunarlog record ids.
@@ -751,5 +777,29 @@ class HealthConnectAdapter(context: Context) {
 
     private companion object {
         const val BOUND_PROFILE_KEY = "lunarlog.health.boundProfileId"
+
+        // Issue #238: the permanent platform limitation, registered
+        // explicitly here (the adapter's type registry). Health Connect
+        // exposes no record class for any of HealthKit's symptom category
+        // types, so there is nothing to add to the write-permission set and
+        // nothing to insert. Naming them lets a future reader diff this
+        // adapter against the Dart mapping table
+        // (lib/data/health/health_symptom_mapping.dart) and see that the
+        // absence is a decision, never a silent omission. The
+        // writeSymptomSamples handler answers "unavailable" accordingly.
+        val SYMPTOM_TYPES_UNSUPPORTED = listOf(
+            "abdominalCramps",
+            "headache",
+            "lowerBackPain",
+            "breastPain",
+            "bloating",
+            "acne",
+            "nausea",
+            "fatigue",
+            "dizziness",
+            "moodChanges",
+            "sleepChanges",
+            "appetiteChanges",
+        )
     }
 }

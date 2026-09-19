@@ -16,6 +16,7 @@
 /// | `writeMenstrualFlow` | guard + day + `flow` + `cycleStart` + `recordId` + `recordVersionMs` | result string |
 /// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
 /// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
+/// | `writeSymptomSamples` | guard + day + `samples` (list of `{typeIdentifier, severity, recordId, recordVersionMs}`) | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
@@ -90,6 +91,7 @@ abstract final class HealthChannelMethods {
   static const writeMenstrualFlow = 'writeMenstrualFlow';
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
   static const writeMenstrualPeriod = 'writeMenstrualPeriod';
+  static const writeSymptomSamples = 'writeSymptomSamples';
   static const deleteRecords = 'deleteRecords';
 
   /// The read/import method (Issue #217). Its success result is a `List` of
@@ -129,6 +131,27 @@ const Map<HealthFlowValue, int> kHealthFlowValueAppleRawValue = {
   HealthFlowValue.light: 2,
   HealthFlowValue.medium: 3,
   HealthFlowValue.heavy: 4,
+};
+
+/// The canonical Apple SDK raw integer for each [HealthSymptomSeverity],
+/// per `HKCategoryValueSeverity` (Issue #238): `mild` = 1, `moderate` = 2,
+/// `severe` = 3, `unspecified` = 4. `HKCategoryValue.notApplicable` = 0 is
+/// a *different* shared "not applicable" value and is deliberately never
+/// written — this enum's [HealthSymptomSeverity.unspecified] is the
+/// "no severity recorded" case, exactly as
+/// [kHealthFlowValueAppleRawValue]'s `unspecified` = 1 is for flow.
+///
+/// **This table is the single source of truth
+/// `AppDelegate.swift`'s symptom-severity enum must match — Dart cannot
+/// assert Swift's actual raw values at test time** (see
+/// [kHealthFlowValueAppleRawValue]'s doc for the full no-Swift-XCTest
+/// rationale). `test/data/health/health_symptom_apple_raw_test.dart` pins
+/// these literals and their completeness.
+const Map<HealthSymptomSeverity, int> kHealthSymptomSeverityAppleRawValue = {
+  HealthSymptomSeverity.mild: 1,
+  HealthSymptomSeverity.moderate: 2,
+  HealthSymptomSeverity.severe: 3,
+  HealthSymptomSeverity.unspecified: 4,
 };
 
 /// Parses a result string into the typed [HealthPlatformResult]. Total:
