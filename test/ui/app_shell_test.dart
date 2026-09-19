@@ -220,6 +220,28 @@ void main() {
   });
 
   testWidgets(
+      'issue #809: the tab-switch fade is paint-only -- the IndexedStack '
+      'stays mounted through the transition', (tester) async {
+    final h = Harness(tester);
+    await h.pump();
+
+    expect(find.byType(IndexedStack), findsOneWidget,
+        reason: 'the retained tab host is a real IndexedStack, not a fade '
+            'wrapper that swaps it out');
+
+    await tester.tap(tabKey('calendar'));
+    // Mid-fade the IndexedStack (and so every tab's State under it) is still
+    // in the tree -- this is what keeps per-tab state across the switch.
+    await tester.pump();
+    expect(find.byType(IndexedStack, skipOffstage: false), findsOneWidget,
+        reason: 'the fade overlay must not replace the IndexedStack');
+
+    await tester.pumpAndSettle();
+    expect(find.byType(IndexedStack, skipOffstage: false), findsOneWidget);
+    await h.dispose();
+  });
+
+  testWidgets(
       'the sync glyph renders on Today, Calendar and Insights but not More',
       (tester) async {
     final h = Harness(tester);
@@ -284,8 +306,10 @@ void main() {
       final h = Harness(tester);
       await h.pump();
       h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
-      await tester.pump();
-      await tester.pump();
+      // Issue #809: the banner now grows in via AnimatedSize, so it must be
+      // settled before its action is hit-testable -- a bare pump leaves the
+      // banner clipped to (almost) zero height.
+      await tester.pumpAndSettle();
 
       expect(
         find.byKey(const ValueKey('sync-failure-banner')),
@@ -310,8 +334,8 @@ void main() {
         user: const AuthUser(id: 'u1', email: 'test@example.com'),
       );
       h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.network);
-      await tester.pump();
-      await tester.pump();
+      // Issue #809: settle the banner's AnimatedSize growth before tapping.
+      await tester.pumpAndSettle();
 
       expect(
         find.byKey(const ValueKey('sync-failure-banner')),
@@ -395,8 +419,8 @@ void main() {
       final h = Harness(tester);
       await h.pump();
       h.engine.emitPhase(SyncPhase.error, lastError: SyncErrorKind.auth);
-      await tester.pump();
-      await tester.pump();
+      // Issue #809: settle the banner's AnimatedSize growth before tapping.
+      await tester.pumpAndSettle();
 
       // From Today: the action switches the shell to More.
       await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));

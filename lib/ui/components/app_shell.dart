@@ -150,6 +150,17 @@ class _AppShellState extends State<AppShell> {
   /// every later switch, matching a standard lazy `IndexedStack`.
   final Set<AppTab> _everShown = {AppTab.today};
 
+  /// Issue #809: a monotonically increasing token keying the body's one
+  /// fade overlay. It increments on a tab switch and on a profile switch,
+  /// so the overlay's `AnimatedSwitcher` starts a fresh fade exactly when
+  /// the visible content changes -- while the [IndexedStack] itself stays
+  /// mounted underneath (the fade is paint-only, so per-tab state such as
+  /// the calendar's navigated month survives). [_bodyFadeDuration] carries
+  /// the duration that pairs with the change: [LLMotion.fast] for a tab,
+  /// [LLMotion.base] for a profile.
+  int _bodyFadeCounter = 0;
+  Duration _bodyFadeDuration = LLMotion.fast;
+
   /// Issue #204: the active profile's life-stage mode, watched once here so
   /// the Calendar tab's day sheet and the Today FAB's day sheet -- neither
   /// of which has its own `profile_modes` watch -- reorder their category
@@ -186,7 +197,16 @@ class _AppShellState extends State<AppShell> {
   @override
   void didUpdateWidget(AppShell oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profile.id != widget.profile.id) _watchLifecycleMode();
+    if (oldWidget.profile.id != widget.profile.id) {
+      _watchLifecycleMode();
+      // Issue #809: switching profile re-fades the body at the base
+      // duration -- for a parent flipping between two daughters, a jump cut
+      // is how an entry gets logged on the wrong child. The fade is
+      // paint-only (the IndexedStack stays mounted, so the calendar keeps
+      // its place for a profile that still has entries in the shown month).
+      _bodyFadeCounter++;
+      _bodyFadeDuration = LLMotion.base;
+    }
     // The widget is recreated in place whenever the home gate rebuilds (a
     // profile switch included), so this State survives -- same shape as
     // the pre-#182 ProfileDetailScreen seam this replaces. An ordinary
@@ -211,11 +231,20 @@ class _AppShellState extends State<AppShell> {
 
   void _openMoreTab() => _selectTab(AppTab.more);
 
-  void _selectTab(AppTab tab) =>
-      setState(() {
-        _tab = tab;
-        _everShown.add(tab);
-      });
+  void _selectTab(AppTab tab) {
+    // Issue #809: a genuine tab switch fades the body at the faster
+    // duration; a repeated selection of the current tab changes nothing and
+    // must not restart a fade. The counter bump is what tells the body
+    // overlay a new fade should start.
+    if (tab != _tab) {
+      _bodyFadeDuration = LLMotion.fast;
+      _bodyFadeCounter++;
+    }
+    setState(() {
+      _tab = tab;
+      _everShown.add(tab);
+    });
+  }
 
   /// The widget for one tab position, or a placeholder for a tab never
   /// selected yet (see [_everShown]'s doc comment). Extracted out of
@@ -335,11 +364,34 @@ class _AppShellState extends State<AppShell> {
               // rebuild on every snapshot.
               const _SyncFailureBanner(),
               Expanded(
-                child: IndexedStack(
-                  index: _tab.index,
+                // Issue #809: the fade is paint-only on purpose. The
+                // [IndexedStack] stays mounted as the state holder (a tab's
+                // navigated month, a half-typed note), and the overlay above
+                // it fades from the surface colour to transparent on a tab
+                // or profile switch. Swapping the IndexedStack itself inside
+                // an AnimatedSwitcher would recreate its entire subtree and
+                // discard that state -- the exact guarantee #182 added and
+                // the existing tab-switch test pins.
+                child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    for (final tab in AppTab.values)
-                      _tabContent(tab, guardiansRepository),
+                    IndexedStack(
+                      index: _tab.index,
+                      children: [
+                        for (final tab in AppTab.values)
+                          _tabContent(tab, guardiansRepository),
+                      ],
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: _BodyFadeOverlay(
+                          token: _bodyFadeCounter,
+                          duration:
+                              LLMotion.resolve(context, _bodyFadeDuration),
+                          color: Theme.of(context).colorScheme.surface,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -651,9 +703,29 @@ class _ProfileSwitcher extends StatelessWidget {
                 ),
                 const SizedBox(width: LLSpace.space2),
                 Flexible(
-                  child: Text(
-                    profile.displayName,
-                    overflow: TextOverflow.ellipsis,
+                  // Issue #809: the title cross-fades and slides up 4dp when
+                  // the profile changes, so the app bar's own name keeps
+                  // pace with the body fade instead of swapping in place.
+                  // The offset is in logical pixels (not [SlideTransition]'s
+                  // child-size fraction) so it stays exactly 4dp whatever
+                  // the text scale.
+                  child: AnimatedSwitcher(
+                    duration: LLMotion.resolve(context, LLMotion.base),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: Transform.translate(
+                        offset: Offset(
+                          0,
+                          LLSpace.space1 * (1 - animation.value),
+                        ),
+                        child: child,
+                      ),
+                    ),
+                    child: Text(
+                      profile.displayName,
+                      key: ValueKey('app-shell-profile-title-${profile.id}'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 if (repository != null)
@@ -707,6 +779,49 @@ class _SharedMark extends StatelessWidget {
   }
 }
 
+/// Issue #809: the paint-only fade laid over the shell's [IndexedStack] on a
+/// tab or profile switch.
+///
+/// It never wraps the [IndexedStack] -- it is a sibling inside the body's
+/// [Stack] -- so the stack (and every tab's State under it) stays mounted
+/// across a switch. Each increment of [token] swaps in a fresh opaque
+/// surface-coloured [ColoredBox] whose `AnimatedSwitcher` entry fades from
+/// fully opaque to transparent over [duration], hiding and then revealing
+/// the new tab instead of a hard cut. A zero [token] (first frame) renders
+/// nothing, so app launch never flashes; and because the fade runs through
+/// `LLMotion.resolve`, reduced motion collapses it to an immediate reveal.
+class _BodyFadeOverlay extends StatelessWidget {
+  const _BodyFadeOverlay({
+    required this.token,
+    required this.duration,
+    required this.color,
+  });
+
+  final int token;
+  final Duration duration;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    if (token == 0) return const SizedBox.shrink();
+    return AnimatedSwitcher(
+      duration: duration,
+      // Only the incoming entry is laid out: the outgoing one has already
+      // reached transparent, so dropping it is what makes this a one-way
+      // "fade the new paint in" rather than a cross-fade of two opaques.
+      layoutBuilder: (currentChild, previousChildren) =>
+          currentChild ?? const SizedBox.shrink(),
+      transitionBuilder: (child, animation) => FadeTransition(
+        // animation runs 0 -> 1 as the entry is brought in; seeded at 1 and
+        // driven to 0, the surface starts fully opaque and fades away.
+        opacity: Tween<double>(begin: 1, end: 0).animate(animation),
+        child: child,
+      ),
+      child: ColoredBox(key: ValueKey(token), color: color),
+    );
+  }
+}
+
 /// Issue #568: a persistent [MaterialBanner] above the shell body when the
 /// sync engine has a problem that won't resolve on its own (an expired
 /// session needs re-sign-in; a persistent error kind may need a retry or
@@ -722,6 +837,21 @@ class _SyncFailureBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Issue #809: the banner grows/shrinks instead of shoving the body down
+    // in one frame, and fades as it appears and disappears. Both durations
+    // resolve through LLMotion so reduced motion is instant.
+    return AnimatedSize(
+      duration: LLMotion.resolve(context, LLMotion.base),
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: LLMotion.resolve(context, LLMotion.base),
+        child: _banner(context),
+      ),
+    );
+  }
+
+  /// The banner itself, or an empty box when there is nothing to show.
+  Widget _banner(BuildContext context) {
     final sync = Provider.of<SyncStatusController?>(context);
     if (sync == null) return const SizedBox.shrink();
     final snapshot = sync.snapshot;

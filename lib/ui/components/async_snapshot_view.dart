@@ -15,6 +15,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../theme/tokens.dart';
 import 'inline_error.dart';
 
 class AsyncSnapshotView<T> extends StatelessWidget {
@@ -44,16 +45,37 @@ class AsyncSnapshotView<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Widget child;
     if (snapshot.hasError) {
-      return Center(
-        child: InlineError(message: errorMessage, onRetry: onRetry),
+      child = KeyedSubtree(
+        key: const ValueKey('async-snapshot-error'),
+        child: Center(
+          child: InlineError(message: errorMessage, onRetry: onRetry),
+        ),
       );
+    } else {
+      final data = snapshot.data;
+      if (data == null) {
+        child = KeyedSubtree(
+          key: const ValueKey('async-snapshot-loading'),
+          child: loadingBuilder?.call(context) ??
+              const Center(child: CircularProgressIndicator()),
+        );
+      } else {
+        child = KeyedSubtree(
+          key: const ValueKey('async-snapshot-data'),
+          child: builder(context, data),
+        );
+      }
     }
-    final data = snapshot.data;
-    if (data == null) {
-      return loadingBuilder?.call(context) ??
-          const Center(child: CircularProgressIndicator());
-    }
-    return builder(context, data);
+    // Issue #809: loading -> content (and error -> content) now fades at the
+    // base duration instead of snapping. This is the highest-leverage site
+    // in the change: every screen rendering this view inherits the fade, and
+    // the state keys above mean a data update that stays in the same state
+    // rebuilds without re-triggering the transition.
+    return AnimatedSwitcher(
+      duration: LLMotion.resolve(context, LLMotion.base),
+      child: child,
+    );
   }
 }

@@ -2383,6 +2383,7 @@ class _DaySheetState extends State<DaySheet> {
     final Widget content;
     if (_saveState is DaySheetSaving) {
       content = Row(
+        key: const ValueKey('autosave-saving'),
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
@@ -2411,13 +2412,23 @@ class _DaySheetState extends State<DaySheet> {
         ],
       );
     } else {
-      content = const SizedBox.shrink();
+      content = const SizedBox.shrink(key: ValueKey('autosave-idle'));
     }
+    // Issue #809: saving/saved/idle cross-fade in and out rather than
+    // popping. The "Saved" confirmation in particular fades away through
+    // the outgoing FadeTransition when its timer expires, instead of
+    // vanishing; the outer 'autosave-status' key stays put so the slot's
+    // widget-test lookup is unchanged.
     return Semantics(
       liveRegion: true,
       child: KeyedSubtree(
         key: const ValueKey('autosave-status'),
-        child: content,
+        child: AnimatedSwitcher(
+          duration: LLMotion.resolve(context, LLMotion.fast),
+          transitionBuilder: (child, animation) =>
+              FadeTransition(opacity: animation, child: child),
+          child: content,
+        ),
       ),
     );
   }

@@ -90,4 +90,67 @@ void main() {
       expect(predictedBandDashes(1.0, 0, 0.1), isEmpty);
     });
   });
+
+  group('Issue #809: quick-log motion reward', () {
+    Widget wheel(int day, {bool disableAnimations = false}) {
+      return MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: AppTheme.lightTheme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(disableAnimations: disableAnimations),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Center(
+            child: CycleWheel(
+              cycleDay: day,
+              duringEpisode: false,
+              cycleLengthDays: 30,
+              periodLengthDays: 4,
+              daysUntilNextPeriod: 30 - day,
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('the centre label cross-fades on a cycle-day change',
+        (tester) async {
+      await tester.pumpWidget(wheel(14));
+      await tester.pumpAndSettle();
+      expect(find.text('16'), findsOneWidget);
+
+      await tester.pumpWidget(wheel(15));
+      // One frame in: the outgoing and incoming labels coexist while the
+      // AnimatedSwitcher cross-fades them.
+      await tester.pump();
+      expect(find.text('days'), findsNWidgets(2),
+          reason: 'the centre label must cross-fade, not snap');
+      expect(find.text('16'), findsOneWidget);
+      expect(find.text('15'), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      expect(find.text('15'), findsOneWidget);
+      expect(find.text('16'), findsNothing);
+    });
+
+    testWidgets('reduced motion collapses the wheel animation to zero',
+        (tester) async {
+      await tester.pumpWidget(wheel(14, disableAnimations: true));
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(wheel(20, disableAnimations: true));
+      await tester.pump();
+
+      // cycleDay 20 of 30 shows 10 days until the next period.
+      expect(tester.hasRunningAnimations, isFalse,
+          reason: 'disableAnimations must resolve LLMotion to Duration.zero '
+              'so no wheel animation is scheduled');
+      expect(find.text('10'), findsOneWidget);
+      expect(find.text('16'), findsNothing,
+          reason: 'the label swap is immediate under reduced motion');
+    });
+  });
 }
