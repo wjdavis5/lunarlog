@@ -20,6 +20,9 @@ class HealthFlowSyncReport {
     this.samplesWritten = 0,
     this.periodRecordsWritten = 0,
     this.symptomSamplesWritten = 0,
+    this.cervicalMucusSamplesWritten = 0,
+    this.ovulationTestSamplesWritten = 0,
+    this.basalBodyTemperatureSamplesWritten = 0,
     this.daysWithoutSample = 0,
     this.samplesReconciled = 0,
   });
@@ -53,6 +56,19 @@ class HealthFlowSyncReport {
   /// on a platform with no symptom types (Health Connect), where the
   /// write is a graceful `unavailable` skip.
   final int symptomSamplesWritten;
+
+  /// Cervical-mucus samples written this pass (Issue #228) — at most one
+  /// per eligible day (discharge is single-select).
+  final int cervicalMucusSamplesWritten;
+
+  /// Ovulation-test samples written this pass (Issue #228) — one per
+  /// distinct platform result on an eligible day (positive and peak
+  /// collapse to one).
+  final int ovulationTestSamplesWritten;
+
+  /// Basal-body-temperature samples written this pass (Issue #228) — one per
+  /// eligible manually tracked/imported `bbt` observation.
+  final int basalBodyTemperatureSamplesWritten;
 
   /// Eligible days that mapped to [HealthFlowNoWrite] (`none`/
   /// `notBleeding`), or to a skipped duplicate (spotting on a day whose

@@ -33,10 +33,16 @@ void main() {
       expect(gradle, isNot(contains('minSdk = flutter.minSdkVersion')));
     });
 
+    // Issue #228 update (deliberate, not a weakened assertion): this guard
+    // originally pinned BBT (and the rest of the fertility family) as out of
+    // scope. #228 shipped those write types, so the previously-absent
+    // BASAL_BODY_TEMPERATURE permission is now required, and the three
+    // fertility/measurement WRITE permissions join the expected-present set.
+    // History, background, and sexual-activity remain deliberately absent
+    // (#186/#210).
     test(
-        'declares exactly the v1 menstruation-baseline WRITE+READ health '
-        'permissions -- not history/background/sexual-activity/BBT (those '
-        'are #186/#210/#228)', () {
+        'declares the menstruation baseline plus the #228 fertility/measurement '
+        'WRITE permissions -- not history/background/sexual-activity', () {
       for (final permission in [
         'android.permission.health.WRITE_MENSTRUATION',
         'android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING',
@@ -45,6 +51,11 @@ void main() {
         // and the user-initiated getChangesToken/getChanges call site.
         'android.permission.health.READ_MENSTRUATION',
         'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
+        // Issue #228: write-only (no read-back in scope), matching
+        // HealthConnectAdapter.kt's writePermissions set.
+        'android.permission.health.WRITE_CERVICAL_MUCUS',
+        'android.permission.health.WRITE_OVULATION_TEST',
+        'android.permission.health.WRITE_BASAL_BODY_TEMPERATURE',
       ]) {
         expect(manifest, contains('android:name="$permission"'),
             reason: permission);
@@ -53,7 +64,6 @@ void main() {
         'READ_HEALTH_DATA_HISTORY',
         'READ_HEALTH_DATA_IN_BACKGROUND',
         'SEXUAL_ACTIVITY',
-        'BASAL_BODY_TEMPERATURE',
       ]) {
         expect(manifest, isNot(contains(outOfScope)), reason: outOfScope);
       }

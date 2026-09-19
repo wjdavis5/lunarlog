@@ -29,13 +29,24 @@
          when the operator starts an import — full history and background
          reads remain undeclared. Extend this list (never widen it silently)
          as later HS issues add data types — adding one re-triggers Play's
-         Health apps declaration review; do NOT add history, background,
-         sexual-activity, or BBT permissions here; those belong to
-         #186/#210/#228. -->
+         Health apps declaration review; do NOT add history, background, or
+         sexual-activity permissions here; those belong to #186/#210. -->
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
+    <!-- Issue #228: the fertility/measurement family's WRITE permissions.
+         Cervical mucus, ovulation test, and basal body temperature are
+         distinct Health Connect permissions (unlike the menstruation
+         family's shared WRITE_MENSTRUATION, which also covers
+         MenstruationPeriodRecord). Write-only: issue #228's scope reads none
+         of these back, so no READ_* counterparts are declared. The mapping
+         tables live in lib/data/health/health_fertility_mapping.dart and the
+         port methods are gated by the same #153 device-owner guard as every
+         other write. -->
+    <uses-permission android:name="android.permission.health.WRITE_CERVICAL_MUCUS"/>
+    <uses-permission android:name="android.permission.health.WRITE_OVULATION_TEST"/>
+    <uses-permission android:name="android.permission.health.WRITE_BASAL_BODY_TEMPERATURE"/>
     <application
         android:label="lunarlog"
         android:name="${applicationName}"

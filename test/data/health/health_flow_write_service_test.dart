@@ -171,6 +171,27 @@ class _FakePlatform implements HealthPlatformStore {
   ) async =>
       const HealthPlatformResult.allowed();
 
+  // Issue #228: this fake predates the fertility/measurement port methods.
+  // The tests here exercise the flow path; the new types get their own
+  // service tests, so these simply succeed.
+  @override
+  Future<HealthPlatformResult> writeCervicalMucus(
+    HealthCervicalMucusWrite write,
+  ) async =>
+      const HealthPlatformResult.allowed();
+
+  @override
+  Future<HealthPlatformResult> writeOvulationTest(
+    HealthOvulationTestWrite write,
+  ) async =>
+      const HealthPlatformResult.allowed();
+
+  @override
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
+  ) async =>
+      const HealthPlatformResult.allowed();
+
   @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,

@@ -278,6 +278,61 @@ class MethodChannelHealthPlatform
       );
 
   @override
+  Future<HealthPlatformResult> writeCervicalMucus(
+    HealthCervicalMucusWrite write,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.writeCervicalMucus,
+        write.facts,
+        dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        payloadArgs: () => {
+          // Issue #228: both platform identifiers are resolved in Dart
+          // (`health_fertility_mapping.dart`); each native half reads only
+          // the one its platform uses. Health Connect's required
+          // `sensation` is written by Kotlin as SENSATION_UNKNOWN.
+          'healthKitValue': write.healthKitValue,
+          'healthConnectAppearance': write.healthConnectAppearance,
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
+        },
+      );
+
+  @override
+  Future<HealthPlatformResult> writeOvulationTest(
+    HealthOvulationTestWrite write,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.writeOvulationTest,
+        write.facts,
+        dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        payloadArgs: () => {
+          'healthKitResult': write.healthKitResult,
+          'healthConnectResult': write.healthConnectResult,
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
+        },
+      );
+
+  @override
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
+  ) =>
+      _invokeGuarded(
+        HealthChannelMethods.writeBasalBodyTemperature,
+        write.facts,
+        dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        payloadArgs: () => {
+          // Already in Celsius (Dart converts via #255's
+          // convertTemperature); neither native half does unit math.
+          'celsius': write.celsius,
+          'healthConnectMeasurementLocation':
+              write.healthConnectMeasurementLocation,
+          'recordId': write.recordId,
+          'recordVersionMs': write.recordVersionMs,
+        },
+      );
+
+  @override
   Future<HealthPlatformResult> deleteRecords(
     HealthGuardFacts facts,
     List<String> recordIds,
@@ -381,6 +436,24 @@ class UnsupportedHealthPlatform
       // Issue #238: no health store on this platform (web/desktop), and
       // Health Connect has no symptom types at all — unavailable either
       // way, never a crash.
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> writeCervicalMucus(
+    HealthCervicalMucusWrite write,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> writeOvulationTest(
+    HealthOvulationTestWrite write,
+  ) async =>
+      const HealthPlatformResult.unavailable();
+
+  @override
+  Future<HealthPlatformResult> writeBasalBodyTemperature(
+    HealthBasalBodyTemperatureWrite write,
+  ) async =>
       const HealthPlatformResult.unavailable();
 
   @override

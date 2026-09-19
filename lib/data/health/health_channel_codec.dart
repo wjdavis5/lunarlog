@@ -17,6 +17,9 @@
 /// | `writeIntermenstrualBleeding` | guard + day + `recordId` + `recordVersionMs` | result string |
 /// | `writeMenstrualPeriod` | guard + period + `recordId` + `recordVersionMs` | result string |
 /// | `writeSymptomSamples` | guard + day + `samples` (list of `{typeIdentifier, severity, recordId, recordVersionMs}`) | result string |
+/// | `writeCervicalMucus` | guard + day + `healthKitValue` + `healthConnectAppearance` + `recordId` + `recordVersionMs` | result string |
+/// | `writeOvulationTest` | guard + day + `healthKitResult` + `healthConnectResult` + `recordId` + `recordVersionMs` | result string |
+/// | `writeBasalBodyTemperature` | guard + day + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
@@ -99,6 +102,12 @@ abstract final class HealthChannelMethods {
   static const writeIntermenstrualBleeding = 'writeIntermenstrualBleeding';
   static const writeMenstrualPeriod = 'writeMenstrualPeriod';
   static const writeSymptomSamples = 'writeSymptomSamples';
+
+  /// Issue #228's three fertility/measurement writes.
+  static const writeCervicalMucus = 'writeCervicalMucus';
+  static const writeOvulationTest = 'writeOvulationTest';
+  static const writeBasalBodyTemperature = 'writeBasalBodyTemperature';
+
   static const deleteRecords = 'deleteRecords';
 
   /// The read/import method (Issue #217). Its success result is a `List` of
