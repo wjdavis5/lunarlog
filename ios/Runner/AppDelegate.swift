@@ -237,34 +237,64 @@ enum HealthKitChannelHandler {
     }
   }
 
-  /// HKCategoryValueSeverity's raw values (Issue #238): `mild` = 1,
-  /// `moderate` = 2, `severe` = 3, `unspecified` = 4. Identical values to
-  /// `kHealthSymptomSeverityAppleRawValue` in
+  /// HKCategoryValueSeverity's raw values (Issue #238, corrected in #917):
+  /// Apple defines (HKCategoryValues.h:209-215):
+  ///   HKCategoryValueSeverityUnspecified = 0
+  ///   HKCategoryValueSeverityNotPresent  = 1
+  ///   HKCategoryValueSeverityMild        = 2
+  ///   HKCategoryValueSeverityModerate    = 3
+  ///   HKCategoryValueSeveritySevere      = 4
+  ///
+  /// lunarlog writes: `unspecified` = 0, `mild` = 2, `moderate` = 3, `severe` = 4.
+  /// Identical values to `kHealthSymptomSeverityAppleRawValue` in
   /// lib/data/health/health_channel_codec.dart (the single source of
-  /// truth; Dart cannot assert these at test time). `notApplicable` = 0 is
-  /// deliberately absent — this enum's `unspecified` is the "no severity
-  /// recorded" case, exactly as `MenstrualFlowRawValue.unspecified` = 1 is
-  /// for flow.
-  enum SymptomSeverityRawValue: Int {
-    case mild = 1
-    case moderate = 2
-    case severe = 3
-    case unspecified = 4
-
-    init?(wire: String) {
-      switch wire {
-      case "mild": self = .mild
-      case "moderate": self = .moderate
-      case "severe": self = .severe
-      case "unspecified": self = .unspecified
-      default: return nil
-      }
+  /// truth). `notPresent` = 1 is deliberately never written — lunarlog only
+  /// writes symptoms when present.
+  static func severity(forWire wire: String) -> HKCategoryValueSeverity? {
+    switch wire {
+    case "unspecified": return .unspecified
+    case "mild": return .mild
+    case "moderate": return .moderate
+    case "severe": return .severe
+    default: return nil
     }
   }
 
+  /// Maps wire symptom type names (from `health_symptom_mapping.dart`) to
+  /// typed `HKCategoryTypeIdentifier` enum cases (Issue #238, corrected in #916).
+  /// Accepting both the Dart camelCase case name and the full SDK rawValue
+  /// guarantees no nil-lookups in `HKObjectType.categoryType(forIdentifier:)`.
+  static let symptomCategoryTypeIdentifiers: [String: HKCategoryTypeIdentifier] = [
+    "abdominalCramps": .abdominalCramps,
+    "headache": .headache,
+    "lowerBackPain": .lowerBackPain,
+    "breastPain": .breastPain,
+    "bloating": .bloating,
+    "acne": .acne,
+    "nausea": .nausea,
+    "fatigue": .fatigue,
+    "dizziness": .dizziness,
+    "moodChanges": .moodChanges,
+    "sleepChanges": .sleepChanges,
+    "appetiteChanges": .appetiteChanges,
+    // Also accept canonical HKCategoryTypeIdentifier.rawValue strings:
+    HKCategoryTypeIdentifier.abdominalCramps.rawValue: .abdominalCramps,
+    HKCategoryTypeIdentifier.headache.rawValue: .headache,
+    HKCategoryTypeIdentifier.lowerBackPain.rawValue: .lowerBackPain,
+    HKCategoryTypeIdentifier.breastPain.rawValue: .breastPain,
+    HKCategoryTypeIdentifier.bloating.rawValue: .bloating,
+    HKCategoryTypeIdentifier.acne.rawValue: .acne,
+    HKCategoryTypeIdentifier.nausea.rawValue: .nausea,
+    HKCategoryTypeIdentifier.fatigue.rawValue: .fatigue,
+    HKCategoryTypeIdentifier.dizziness.rawValue: .dizziness,
+    HKCategoryTypeIdentifier.moodChanges.rawValue: .moodChanges,
+    HKCategoryTypeIdentifier.sleepChanges.rawValue: .sleepChanges,
+    HKCategoryTypeIdentifier.appetiteChanges.rawValue: .appetiteChanges,
+  ]
+
   /// Every HealthKit **category** type this app's write path can produce,
   /// as the `HKCategoryTypeIdentifier` case names the `write*` handlers
-  /// resolve: #193's flow types, #238's symptom categories, and #228's
+  /// resolve: #193' flow types, #238's symptom categories, and #228's
   /// fertility types. This is the single list the authorization sheet and
   /// `deleteRecords` both consume, so a new write type cannot be added
   /// without also being requested AND deleted.
@@ -655,18 +685,15 @@ enum HealthKitChannelHandler {
         guard
           let typeWire = sample["typeIdentifier"] as? String,
           let severityWire = sample["severity"] as? String,
-          let severity = SymptomSeverityRawValue(wire: severityWire),
+          let severity = HealthKitChannelHandler.severity(forWire: severityWire),
           let recordId = sample["recordId"] as? String,
           let recordVersionMs = sample["recordVersionMs"] as? NSNumber
         else {
           badArgs(result, "writeSymptomSamples requires fully-resolved samples")
           return
         }
-        // HKCategoryTypeIdentifier is an NS_TYPED_ENUM, so rawValue
-        // construction is non-failable; the category type itself can be
-        // nil for a type the SDK does not know, which is a bad argument.
-        let typeIdentifier = HKCategoryTypeIdentifier(rawValue: typeWire)
         guard
+          let typeIdentifier = HealthKitChannelHandler.symptomCategoryTypeIdentifiers[typeWire],
           let categoryType = HKObjectType.categoryType(forIdentifier: typeIdentifier)
         else {
           badArgs(result, "unknown symptom type: \(typeWire)")
