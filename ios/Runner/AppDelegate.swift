@@ -159,6 +159,16 @@ import UserNotifications
 // Dart-side settings store and this UserDefaults copy name the written
 // profile.
 //
+// Issue #882: the shared rule was reworked and this mirror MUST match it
+// exactly (a drift here re-closes the gate on a real device even though
+// Dart allows it). A minor profile is no longer a special deny when
+// `minorBindingAllowed` is true (the production value): it passes the
+// same owner check as any adult, and the device-only case — nobody
+// signed in AND no owner resolved — is allowed. When
+// `minorBindingAllowed` is false the pre-#882 categorical
+// `minorRequiresOwnershipTransfer` deny is preserved. The Kotlin half in
+// HealthConnectAdapter.kt (Android) carries the same mirror.
+//
 // App Review guideline 5.1.3 (issue #254): this handler saves only
 // user-logged or imported data — a flow level, a spotting marker, and
 // the cycle-start metadata flag derived from that same logged bleed
@@ -271,11 +281,13 @@ enum HealthKitChannelHandler {
     result(FlutterError(code: "bad_args", message: what, details: nil))
   }
 
-  /// The native mirror of HealthSyncBinding._evaluate. Returns the same
-  /// wire strings the Dart codec decodes ("allowed" or a HealthSyncCheck
-  /// deny name). `boundProfileId` comes from UserDefaults for
-  /// write/authorization calls, and from the *proposed* id for `bind`
-  /// (mirroring canBind's proposed-binding semantics).
+  /// The native mirror of HealthSyncBinding._evaluate (Issue #882 keeps
+  /// this in lockstep with the Dart predicate; the Kotlin half is in
+  /// HealthConnectAdapter.kt). Returns the same wire strings the Dart
+  /// codec decodes ("allowed" or a HealthSyncCheck deny name).
+  /// `boundProfileId` comes from UserDefaults for write/authorization
+  /// calls, and from the *proposed* id for `bind` (mirroring canBind's
+  /// proposed-binding semantics).
   static func guardDecision(boundProfileId: String?, _ g: GuardArgs) -> String {
     guard let boundProfileId else { return "noBinding" }
     if g.profileId != boundProfileId { return "profileNotBound" }
@@ -284,23 +296,49 @@ enum HealthKitChannelHandler {
       g.signedInUserId != nil && g.ownerUserId != nil
       && g.signedInUserId == g.ownerUserId
 
-    if isMinorNow(isMinor: g.isMinor, birthYear: g.birthYear) {
-      // Issue #619, LLA-031: every leg of
-      // HealthSyncBinding._minorTransferExceptionHolds — a transfer
-      // happened, the caller is the resolved owner, AND it named exactly
-      // the signed-in account — not merely "some transfer happened and
-      // the caller happens to pass isOwner".
-      let transferredToOwnAccount =
-        g.transferredAtMs != nil && isOwner
-        && g.transferredToUserId != nil
-        && g.transferredToUserId == g.signedInUserId
-      if !g.minorBindingAllowed || !transferredToOwnAccount {
-        return "minorRequiresOwnershipTransfer"
-      }
+    // Issue #882: the switch's off position keeps the pre-#882
+    // categorical minor deny. With `minorBindingAllowed` true a minor is
+    // NOT special — it falls through to the same owner gate as an adult.
+    if isMinorNow(isMinor: g.isMinor, birthYear: g.birthYear)
+      && !g.minorBindingAllowed
+    {
+      return "minorRequiresOwnershipTransfer"
+    }
+
+    // Issue #619, LLA-031: every leg of
+    // HealthSyncBinding._minorTransferExceptionHolds — the flag is on, a
+    // transfer happened, the caller is the resolved owner, AND it named
+    // exactly the signed-in account — not merely "some transfer happened
+    // and the caller happens to pass isOwner". Preserved by #882; the
+    // owner gate below would allow every case this holds for.
+    let minorTransferExceptionHolds =
+      g.minorBindingAllowed && g.transferredAtMs != nil && isOwner
+      && g.transferredToUserId != nil
+      && g.transferredToUserId == g.signedInUserId
+    if minorTransferExceptionHolds {
       return "allowed"
     }
-    if !isOwner { return "notOwner" }
+
+    // Issue #882: no resolved owner at all means allowed — nobody else
+    // claims the profile, so the local operator is treated as its owner
+    // (this is the common case for a locally created, never-synced
+    // profile). notOwner is returned only when an owner actually exists
+    // and does not match the signed-in account.
+    if !ownerCheckAllows(ownerUserId: g.ownerUserId, isOwner: isOwner) {
+      return "notOwner"
+    }
     return "allowed"
+  }
+
+  /// Native mirror of HealthSyncBinding._ownerCheckAllows (Issue #882):
+  /// `ownerUserId == nil` (no accepted primary_guardian row resolved, even
+  /// while signed in) passes, and so does a resolved owner. It fails
+  /// closed only when an owner exists and is not the signed-in account.
+  static func ownerCheckAllows(
+    ownerUserId: String?,
+    isOwner: Bool
+  ) -> Bool {
+    return isOwner || ownerUserId == nil
   }
 
   /// Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or

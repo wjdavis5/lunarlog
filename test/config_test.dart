@@ -340,13 +340,11 @@ void main() {
       // menstrual-flow write path landed (iOS only via that path's own
       // platform gates).
       expect(AppConfig.hasHealthSync, isTrue);
-      // Issue #296: pinned here (like hasHealthSync above) so flipping
-      // the minor-binding flag is a deliberate, reviewed code change that
-      // must update this pin — the transferred-minor binding path stays
-      // categorically closed until #295 (what "minor" means) and #188
-      // (server-side consent) land and the guard's remaining gap is
-      // closed. Denies-by-default is the safe direction.
-      expect(AppConfig.healthSyncMinorBindingAllowed, isFalse);
+      // Issue #296 pinned this while the flag was false; Issue #882 flipped
+      // it to true so a minor profile binds on the same terms as an adult
+      // (the production configuration). Flipping the default in config.dart
+      // must update this pin consciously.
+      expect(AppConfig.healthSyncMinorBindingAllowed, isTrue);
       // Issue #738: this test run passes no dart-defines, so the MFA
       // client surface is off — the compile-time default every
       // CI/workflow build ships. Turning it on is a deliberate

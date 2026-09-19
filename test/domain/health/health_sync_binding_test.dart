@@ -85,18 +85,23 @@ void main() {
       expect(result, HealthSyncCheck.notOwner);
     });
 
-    test('unresolved owner (guardians not yet synced) -> notOwner, fails '
-        'closed rather than allowing', () {
+    // Issue #882 review round 2: ownerUserId is null whenever the profile
+    // has no accepted primary_guardian row — a locally created profile
+    // that was never shared or synced. With no owner resolved, nobody else
+    // claims the profile, so the signed-in operator is treated as its
+    // owner and it is allowed.
+    test('signed in with no resolved owner (ownerUserId null) -> allowed '
+        '(Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(id: 'p1'),
         signedInUserId: 'u1',
         ownerUserId: null,
         minorBindingAllowed: false,
       );
-      expect(result, HealthSyncCheck.notOwner);
+      expect(result, HealthSyncCheck.allowed);
     });
 
-    test('minor profile (isMinor flag), no transfer -> '
+    test('minor profile, minorBindingAllowed false, no transfer -> '
         'minorRequiresOwnershipTransfer, refused even for the owner', () {
       final result = binding.canBind(
         profile: _profile(id: 'p1', isMinor: true),
@@ -125,20 +130,37 @@ void main() {
       expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
     });
 
-    test('minor profile, minorBindingAllowed true, but never transferred '
-        '-> still refused', () {
+    // Issue #882: with the switch on (the production value) a minor is no
+    // longer a special deny. It passes on the same owner check an adult
+    // passes on, so the owner is allowed with no transfer required.
+    test('minor profile, minorBindingAllowed true, owned by the signed-in '
+        'account, never transferred -> allowed (minors bind on the same '
+        'terms as adults, Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(id: 'p1', isMinor: true),
         signedInUserId: 'u1',
         ownerUserId: 'u1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.allowed);
+      expect(result.isAllowed, isTrue);
     });
 
-    test('minor profile, minorBindingAllowed true, transferred to the '
-        "minor's account, but the signed-in account is not the resolved "
-        'owner -> still refused (transfer alone is not enough)', () {
+    test('minor profile, minorBindingAllowed true, signed in as a different '
+        'account than the resolved owner -> notOwner (Issue #882)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: 'caregiver-1',
+        ownerUserId: 'owner-1',
+        minorBindingAllowed: true,
+      );
+      expect(result, HealthSyncCheck.notOwner);
+      expect(result.isAllowed, isFalse);
+    });
+
+    test('minor profile, minorBindingAllowed true, transferred to another '
+        "account that is not the caller -> notOwner (Issue #882: the owner "
+        'gate now decides, not the transfer target)', () {
       final result = binding.canBind(
         profile: _profile(
           id: 'p1',
@@ -150,15 +172,16 @@ void main() {
         ownerUserId: 'the-minor-1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.notOwner);
     });
 
-    // Issue #296: a transfer with no recorded target cannot prove
-    // "transferred to the signed-in account" — a pre-#296 row, or a row
-    // from a server that has not applied the #296 migration — fails
-    // closed even for the resolved owner with the flag on.
+    // Issue #882: the pre-#296 transfer-target pin no longer changes the
+    // outcome for a resolved owner — the owner gate allows. The missing
+    // target still fails the *transfer exception*, which is why this is
+    // exactly the case the exception no longer needs to carry alone.
     test('minor profile, transferred, but no transfer target recorded '
-        '(a pre-#296 row) -> fails closed for the owner too', () {
+        '(a pre-#296 row), resolved owner -> allowed via the owner gate '
+        '(Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(
           id: 'p1',
@@ -169,17 +192,16 @@ void main() {
         ownerUserId: 'the-minor-1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.allowed);
     });
 
-    // Issue #296's core regression: the transfer must have targeted the
-    // signed-in account ITSELF. Here the profile's last transfer went to
-    // 'the-minor-1', but the guardians table resolves 'stale-owner-1' as
-    // the accepted primary (not-yet-synced rows, or any future ownership
-    // path that forgets to re-stamp the target) — that account must not
-    // inherit the minor exception merely by being the resolved owner.
+    // Issue #296's regression shape, re-evaluated under #882: the transfer
+    // target proves "transferred to the signed-in account", but once the
+    // flagged switch is on a minor binds on the same owner terms as an
+    // adult, so a resolved owner is allowed regardless of the target.
     test('minor profile whose last transfer targeted a different account '
-        'is denied even when the caller resolves as the owner', () {
+        'is allowed when the caller genuinely resolves as the owner '
+        '(Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(
           id: 'p1',
@@ -191,21 +213,16 @@ void main() {
         ownerUserId: 'stale-owner-1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.allowed);
     });
 
     // Issue #296's acceptance scenario: a parent→co-parent handover of a
     // MINOR's profile. The arming parent comes back demoted to co_parent
     // ("that co-parent signed in") — the transfer was addressed to
-    // 'co-parent-1', so it does not satisfy the minor exception for the
-    // former parent, and the former parent is not the resolved owner
-    // either. (What the transferred-to signal deliberately does NOT
-    // distinguish — recorded for #295 — is the *accepting* co-parent's
-    // own device: the identity-free token design makes that account
-    // structurally identical to the minor's own account. That residual
-    // is exactly why healthSyncMinorBindingAllowed stays false.)
-    test('a parent→co-parent transfer does not satisfy the minor '
-        'exception for the demoted parent', () {
+    // 'co-parent-1', and the former parent is not the resolved owner
+    // either. Under #882 the owner gate decides: notOwner.
+    test('a parent→co-parent transfer does not satisfy the owner gate for '
+        'the demoted parent (Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(
           id: 'p1',
@@ -217,7 +234,7 @@ void main() {
         ownerUserId: 'co-parent-1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.notOwner);
     });
 
     test('minor profile allowed only once every condition holds: '
@@ -238,8 +255,8 @@ void main() {
     });
 
     test('under-18-by-birth-year profile is treated as a minor even when '
-        'isMinor reads false (review fix — unticking "Minor" in the '
-        'profile dialog must not clear this deny)', () {
+        'isMinor reads false — and, with the switch on, still binds on the '
+        'owner terms (Issue #882)', () {
       final tenYearsOld = _kNow.year - 10;
       final result = binding.canBind(
         profile: _profile(id: 'p1', isMinor: false, birthYear: tenYearsOld),
@@ -247,7 +264,7 @@ void main() {
         ownerUserId: 'u1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.allowed);
     });
 
     test('a birth year 19+ years ago, with isMinor false, is not treated '
@@ -267,9 +284,11 @@ void main() {
     // by full date on the pinned clock (2026-09-08), but year-only
     // arithmetic computes 18 — the previous `< 18` check let them skip
     // the gate entirely. `<= 18` fails closed across the whole calendar
-    // year of their 18th birthday.
+    // year of their 18th birthday. With #882's switch on, "counts as a
+    // minor" no longer means "denied": the same owner gate applies.
     test('boundary: a 17-year-old by full date (born late in birthYear '
-        '+ 18) is denied as a minor', () {
+        '+ 18) is still classified a minor and binds on owner terms '
+        '(Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(
           id: 'p1',
@@ -280,7 +299,7 @@ void main() {
         ownerUserId: 'the-minor-1',
         minorBindingAllowed: true,
       );
-      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(result, HealthSyncCheck.allowed);
     });
 
     test('boundary: the fail-closed cost — an actual 18-year-old is also '
@@ -327,6 +346,96 @@ void main() {
         ),
         signedInUserId: 'u1',
         ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+    });
+
+    // Issue #882 device-only path: with nobody signed in AND no owner
+    // resolved there is no other account the profile could belong to, so
+    // the local operator is its owner. This is the no-account path the
+    // rest of the app supports and it must now work for health sync too.
+    test('adult profile, no account at all (no signedInUserId, no '
+        'ownerUserId) -> allowed, locally owned (Issue #882)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: null,
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    test('minor profile, no account at all -> allowed, locally owned '
+        '(Issue #882)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: null,
+        ownerUserId: null,
+        minorBindingAllowed: true,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    test('minor profile, signed in with no resolved owner (ownerUserId '
+        'null) -> allowed (Issue #882 review round 2)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: 'u1',
+        ownerUserId: null,
+        minorBindingAllowed: true,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    test('adult profile, signed in as a non-owner while an owner is '
+        'resolved -> notOwner (notOwner means a different account owns it)',
+        () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: 'someone-else',
+        ownerUserId: 'owner-1',
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.notOwner);
+    });
+
+    test('an ownerUserId set with nobody signed in -> notOwner (a real '
+        'owner exists and the caller is not that account)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: null,
+        ownerUserId: 'owner-1',
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.notOwner);
+    });
+
+    // The switch's off position preserves the whole pre-#882 rule,
+    // including the coarse birth-year classification and its fail-closed
+    // cost.
+    test('minorBindingAllowed false: an under-18-by-birth-year profile is '
+        'denied even when isMinor reads false (unticking "Minor" cannot '
+        'clear the deny)', () {
+      final result = binding.canBind(
+        profile: _profile(
+          id: 'p1',
+          isMinor: false,
+          birthYear: _kNow.year - 10,
+        ),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
+    });
+
+    test('minorBindingAllowed false: a minor with no account at all is '
+        'still denied (the switch overrides the device-only exception)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: null,
+        ownerUserId: null,
         minorBindingAllowed: false,
       );
       expect(result, HealthSyncCheck.minorRequiresOwnershipTransfer);
@@ -420,11 +529,12 @@ void main() {
       expect(result, HealthSyncCheck.notOwner);
     });
 
-    // Issue #296 through the real write guard: even with the feature flag
-    // on, a transferred minor profile is writable only from the account
-    // the last transfer actually targeted.
-    test('canWrite denies a transferred minor profile whose last transfer '
-        'targeted a different account, flag or no flag', () async {
+    // Issue #882 through the real write guard: a transferred minor whose
+    // caller genuinely resolves as the owner passes the owner gate, just
+    // like an adult; the transfer target no longer decides once the
+    // switch is on.
+    test('canWrite allows a transferred minor profile when the caller '
+        'resolves as the owner (Issue #882)', () async {
       await binding.bind(
         profile: _profile(
           id: 'p1',
@@ -436,7 +546,7 @@ void main() {
         ownerUserId: 'the-minor-1',
         minorBindingAllowed: true,
       );
-      final wrongAccount = await binding.canWrite(
+      final owner = await binding.canWrite(
         profile: _profile(
           id: 'p1',
           isMinor: true,
@@ -447,7 +557,62 @@ void main() {
         ownerUserId: 'stale-owner-1',
         minorBindingAllowed: true,
       );
-      expect(wrongAccount, HealthSyncCheck.minorRequiresOwnershipTransfer);
+      expect(owner, HealthSyncCheck.allowed);
+    });
+
+    test('canWrite refuses a minor profile for a signed-in non-owner '
+        '(Issue #882)', () async {
+      await binding.bind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: 'the-minor-1',
+        ownerUserId: 'the-minor-1',
+        minorBindingAllowed: true,
+      );
+      final nonOwner = await binding.canWrite(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: 'caregiver-1',
+        ownerUserId: 'the-minor-1',
+        minorBindingAllowed: true,
+      );
+      expect(nonOwner, HealthSyncCheck.notOwner);
+    });
+
+    // The P0 the issue reports: a device-only profile (no account at all)
+    // must be writable, not denied with notOwner.
+    test('canWrite allows a device-only profile bound with no account at '
+        'all (Issue #882)', () async {
+      await binding.bind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: null,
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      final result = await binding.canWrite(
+        profile: _profile(id: 'p1'),
+        signedInUserId: null,
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    // Issue #882 review round 2: ownerUserId is null for a locally created,
+    // never-shared profile — signed in or not, nobody else claims it.
+    test('canWrite allows a signed-in profile with no resolved owner '
+        '(ownerUserId null)', () async {
+      await binding.bind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: 'u1',
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      final result = await binding.canWrite(
+        profile: _profile(id: 'p1'),
+        signedInUserId: 'u1',
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.allowed);
     });
   });
 
@@ -503,6 +668,30 @@ void main() {
       signedInUserId: 'the-minor-1',
       ownerUserId: 'the-minor-1',
       minorBindingAllowed: true,
+    );
+    expect(result, HealthSyncCheck.allowed);
+    expect(await binding.boundProfileId(), 'p1');
+  });
+
+  test('bind allows a minor profile owned by the signed-in account with no '
+      'transfer required (Issue #882)', () async {
+    final result = await binding.bind(
+      profile: _profile(id: 'p1', isMinor: true),
+      signedInUserId: 'u1',
+      ownerUserId: 'u1',
+      minorBindingAllowed: true,
+    );
+    expect(result, HealthSyncCheck.allowed);
+    expect(await binding.boundProfileId(), 'p1');
+  });
+
+  test('bind allows a device-only profile with no account at all '
+      '(Issue #882)', () async {
+    final result = await binding.bind(
+      profile: _profile(id: 'p1'),
+      signedInUserId: null,
+      ownerUserId: null,
+      minorBindingAllowed: false,
     );
     expect(result, HealthSyncCheck.allowed);
     expect(await binding.boundProfileId(), 'p1');

@@ -44,37 +44,38 @@
 ///     never write that profile's data to its own health store, even if
 ///     the stored binding were somehow misconfigured to point at it —
 ///     that is exactly the case [HealthSyncCheck.notOwner] exists to
-///     catch.
-///  3. **Minor gate**: a profile counts as a minor when either
+///     catch. A **device-only** profile — nobody signed in AND no owner
+///     resolved — is the one exception (Issue #882): there is no other
+///     account it could belong to, so the local operator is treated as its
+///     owner and the no-account path the rest of the app supports stays
+///     usable.
+///  3. **Minor gate (Issue #882)**: a profile counts as a minor when either
 ///     [Profile.isMinor] is set, or it is not set but the profile is at
 ///     most 18 by coarse-year arithmetic against [Profile.birthYear]
 ///     (`<= 18`, the fail-closed direction — issue #296; someone born late
 ///     in year Y is still 17 for most of year Y+18 and a year-only check
 ///     cannot see the birthday) — unticking "Minor" in the profile dialog
-///     must never by itself clear this deny. A minor profile is refused
-///     unless the last ownership transfer targeted the signed-in account
-///     *itself* — [Profile.transferredAt] non-null *and*
-///     [Profile.transferredToUserId] (issue #296's server-stamped
-///     "transferred to whom" signal, written only by
-///     `accept_ownership_transfer`) equal to the signed-in user id *and*
-///     the signed-in account is the profile's resolved owner (never a
-///     device-local override) — *and*
-///     `AppConfig.healthSyncMinorBindingAllowed` (`lib/config.dart`) is
-///     `true`. A missing target (a pre-#296 row, or a row from a server
-///     that has not applied the #296 migration) fails closed. That flag is
-///     a single hardcoded constant, not a parameter
-///     either entry point accepts, precisely so no future call site can
-///     invent its own per-call bypass — the same mistake condition 1's
-///     fix above closes. It is `false` in every build today, so this path
-///     is categorically closed regardless of transfer state until a
-///     platform adapter exists to exercise it. One honest limit, recorded
-///     for #295: the transferred-to signal proves the last transfer was
-///     addressed to the signed-in account; the data model has no
-///     profile-subject-to-account link, so "the minor's own account"
-///     versus "another adult account the parent handed the link to" is
-///     still not distinguishable client-side — which is exactly why the
-///     flag above stays `false` until #295 (and #188's server-side
-///     consent) land.
+///     must never by itself clear this deny. Since #882 a minor is *not* a
+///     special deny: it passes condition 2 on exactly the same terms as an
+///     adult. No ownership transfer is required. The transferred-minor
+///     exception (transfer targeted the signed-in account itself, i.e.
+///     [Profile.transferredAt] non-null *and* [Profile.transferredToUserId]
+///     equal to the signed-in user id *and* the signed-in account is the
+///     resolved owner) is preserved and still returns allowed, but it only
+///     ever holds for a resolved owner, so it agrees with condition 2.
+///     `AppConfig.healthSyncMinorBindingAllowed` (`lib/config.dart`) is the
+///     switch that keeps the old behaviour recoverable: while it is
+///     `false`, a minor is denied outright with
+///     [HealthSyncCheck.minorRequiresOwnershipTransfer] regardless of
+///     ownership or transfer state, exactly as before #882. That flag is a
+///     single hardcoded constant, not a parameter either entry point
+///     accepts, precisely so no call site can invent its own per-call
+///     bypass.
+///
+/// The whole decision is mirrored natively — `ios/Runner/AppDelegate.swift`'s
+/// `guardDecision` and Android's `HealthConnectAdapter.kt` — and the two
+/// sides must agree (a drift re-closes the gate on a real device even
+/// though Dart allows it; Issue #882).
 ///
 /// Server-side enforcement of the same consent (a `profiles`-table column
 /// gating writes at the database layer, so a compromised or modified
@@ -103,23 +104,22 @@ enum HealthSyncCheck {
   /// A profile is bound to this device, but not the one being checked.
   profileNotBound,
 
-  /// The profile counts as a minor (flagged, or at most 18 by the coarse
-  /// birth-year check) and at least one of: ownership has never
-  /// transferred ([Profile.transferredAt] is null), the last transfer did
-  /// not target the signed-in account ([Profile.transferredToUserId] is
-  /// null or names another account — issue #296), the signed-in account is
-  /// not the profile's resolved owner, or
-  /// `AppConfig.healthSyncMinorBindingAllowed` is off. Binding a minor
-  /// requires all of them — issue #4's transfer flow addressed to this
-  /// account, then that account signed in and resolving as the owner, then
-  /// the feature itself enabled — never a device-local override.
+  /// A profile counts as a minor (flagged, or at most 18 by the coarse
+  /// birth-year check) **and** `AppConfig.healthSyncMinorBindingAllowed`
+  /// is off. This is the pre-#882 rule: while the flag is `false` a minor
+  /// is refused outright, regardless of ownership or transfer state.
+  /// Since #882 the flag is `true` and a minor binds on the same terms as
+  /// an adult, so this result is only reachable in the flag's off
+  /// position, which is kept (and tested) as the switch's other state.
   minorRequiresOwnershipTransfer,
 
   /// The signed-in account does not hold an accepted `primary_guardian`
   /// row for this profile — including the case where it holds a lesser
-  /// accepted role (co-parent, caregiver, viewer) instead, or where
-  /// ownership has not resolved at all yet (an unsynced guardians table,
-  /// or no signed-in session).
+  /// accepted role (co-parent, caregiver, viewer) instead, or where an
+  /// owner is known but nobody (or somebody else) is signed in. A
+  /// device-only profile — nobody signed in AND no owner resolved — is
+  /// **not** [notOwner] since Issue #882: there is no other account it
+  /// could belong to, so it is treated as locally owned.
   notOwner,
 
   /// Every check passed; the write (or binding) may proceed.
