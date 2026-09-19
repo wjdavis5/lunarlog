@@ -41,9 +41,10 @@
 /// sentinel). The rule, checked legacy-file-first:
 ///
 /// * No legacy file: there is nothing to migrate from, so a target that
-///   independently opens and passes `PRAGMA quick_check` is left
-///   untouched (and gets the sentinel written retroactively, so the next
-///   launch short-circuits immediately) — this covers both a fresh
+///   independently opens and passes `PRAGMA quick_check(1)` is left
+///   untouched (and gets the sentinel written retroactively if absent).
+///   The probe runs on every launch in a background isolate via [Isolate.run]
+///   to detect disk corruption between launches — this covers both a fresh
 ///   install and a device whose migration already fully completed. A
 ///   target that fails `quick_check` is the only remaining copy of
 ///   whatever data it holds (there is no legacy file to fall back to), so
@@ -79,7 +80,9 @@ library;
 
 import 'dart:async' show unawaited;
 import 'dart:io';
+import 'dart:isolate' show Isolate;
 
+import 'package:meta/meta.dart' show visibleForTesting;
 import 'package:sentry_flutter/sentry_flutter.dart' show Sentry;
 import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
@@ -358,24 +361,40 @@ Uri _immutableProbeUri(File dbFile) => Uri.file(dbFile.path)
 /// content (passes, `-wal`/`-shm` untouched), a healthy non-WAL database
 /// (passes), and a garbage main file with garbage sidecars (fails to
 /// open, every sidecar left byte-identical) — see the empirical probe
-/// script referenced in the PR.
-bool _passesQuickCheck(File dbFile) {
-  sqlite3.Database? db;
+/// Checks whether [dbFile] passes `PRAGMA quick_check(1)` by opening it
+/// in a background isolate through an immutable, read-only URI
+/// ([_immutableProbeUri]).
+///
+/// Running the probe in a background isolate via [Isolate.run] prevents
+/// blocking the UI isolate during startup, keeping unlock and loading
+/// animations smooth even on large, multi-year databases. The immutable probe
+/// is side-effect-free: it never touches sidecars or mutates the database on disk.
+Future<bool> _passesQuickCheck(File dbFile) async {
+  final uriString = _immutableProbeUri(dbFile).toString();
   try {
-    db = sqlite3.sqlite3.open(
-      _immutableProbeUri(dbFile).toString(),
-      uri: true,
-      mode: sqlite3.OpenMode.readOnly,
-    );
-    final quickCheck = db.select('PRAGMA quick_check');
-    return quickCheck.isNotEmpty && quickCheck.first.values.first == 'ok';
+    return await Isolate.run(() {
+      sqlite3.Database? db;
+      try {
+        db = sqlite3.sqlite3.open(
+          uriString,
+          uri: true,
+          mode: sqlite3.OpenMode.readOnly,
+        );
+        final quickCheck = db.select('PRAGMA quick_check(1)');
+        return quickCheck.isNotEmpty && quickCheck.first.values.first == 'ok';
+      } finally {
+        db?.close();
+      }
+    });
   } catch (e, s) {
     unawaited(Sentry.captureException(e, stackTrace: s));
     return false;
-  } finally {
-    db?.close();
   }
 }
+
+@visibleForTesting
+Future<bool> passesQuickCheck(File dbFile) => _passesQuickCheck(dbFile);
+
 
 /// One-time startup migration (issue #244): moves a pre-#244 install's
 /// [legacyFile] (`Documents/lunarlog.db`, plus whichever of its
@@ -472,7 +491,7 @@ Future<File> _handleNoLegacy({
 }) async {
   await _deleteStagingFiles(targetFile);
   if (await targetFile.exists()) {
-    if (_passesQuickCheck(targetFile)) {
+    if (await _passesQuickCheck(targetFile)) {
       await _markHealthy(targetFile: targetFile, sentinel: sentinel);
     } else {
       await _handleFailedQuickCheck(
@@ -486,11 +505,15 @@ Future<File> _handleNoLegacy({
   return targetFile;
 }
 
-/// Retroactively marks [targetFile] as a completed relocation so the next
-/// launch's [relocateLegacyDatabase] call short-circuits immediately
-/// instead of re-running [_passesQuickCheck] (or the confirmation probe
-/// below it) again. A no-op if the sentinel already exists — this must
-/// never rewrite an existing sentinel's timestamp.
+/// Marks [targetFile] healthy by writing [sentinel].
+///
+/// On the legacy-migration path (when a lingering legacy file exists), this
+/// marks the relocation complete so the next launch's [relocateLegacyDatabase]
+/// call short-circuits immediately via [_handleAlreadyMigrated]. On the
+/// no-legacy path, the per-launch probe still runs (in a background isolate via
+/// [Isolate.run]) to catch disk corruption between launches. A no-op if the
+/// sentinel already exists — this must never rewrite an existing sentinel's
+/// timestamp.
 Future<void> _markHealthy({
   required File targetFile,
   required File sentinel,

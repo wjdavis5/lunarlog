@@ -1078,4 +1078,30 @@ void main() {
       await expectLater(deleteDatabaseFiles(file), completes);
     });
   });
+
+  group('passesQuickCheck (issue #838)', () {
+    test('returns true for a healthy database', () async {
+      final dir = await _freshTempDir('passes_quick_check_healthy');
+      final dbFile = File('${dir.path}${Platform.pathSeparator}test.db');
+      _seedRealDatabase(dbFile, profileId: 'healthy-check');
+
+      expect(await passesQuickCheck(dbFile), isTrue);
+    });
+
+    test('returns false for corrupt bytes', () async {
+      final dir = await _freshTempDir('passes_quick_check_corrupt');
+      final dbFile = File('${dir.path}${Platform.pathSeparator}test.db');
+      dbFile.writeAsBytesSync(List<int>.generate(1024, (i) => (i * 31) % 255));
+
+      expect(await passesQuickCheck(dbFile), isFalse);
+    });
+
+    test('returns false for a missing file', () async {
+      final dir = await _freshTempDir('passes_quick_check_missing');
+      final dbFile = File('${dir.path}${Platform.pathSeparator}missing.db');
+
+      expect(await passesQuickCheck(dbFile), isFalse);
+    });
+  });
 }
+
