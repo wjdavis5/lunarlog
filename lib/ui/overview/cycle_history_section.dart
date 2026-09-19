@@ -53,8 +53,8 @@ import 'package:provider/provider.dart';
 /// replacing the `kMonthNames` list this file used to import from the
 /// month calendar.
 String _formatDate(LocalDate date, BuildContext context) =>
-    dates.formatMonthDayYear(
-      DateTime(date.year, date.month, date.day),
+    dates.formatLocalDateMonthDayYear(
+      date,
       locale: dates.calendarLocale(context),
     );
 

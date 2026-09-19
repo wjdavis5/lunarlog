@@ -323,8 +323,9 @@ class CycleComparisonView extends StatelessWidget {
         _ => colors.flowHeavy,
       };
 
-  String _formatDate(BuildContext context, LocalDate date) => dates.formatMonthDayYear(
-        DateTime(date.year, date.month, date.day),
+  String _formatDate(BuildContext context, LocalDate date) =>
+      dates.formatLocalDateMonthDayYear(
+        date,
         locale: dates.calendarLocale(context),
       );
 }

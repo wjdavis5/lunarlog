@@ -113,8 +113,8 @@ export 'package:lunarlog/ui/overview/estimate_copy.dart'
 /// Issue #160: month names are locale-derived via `lib/ui/l10n/dates.dart`,
 /// replacing the old `kMonthNames` list this file used to re-import.
 String _estimateDateText(ActivePrediction prediction, String locale) {
-  String format(LocalDate date) => dates.formatMonthDayYear(
-    DateTime(date.year, date.month, date.day),
+  String format(LocalDate date) => dates.formatLocalDateMonthDayYear(
+    date,
     locale: locale,
   );
   if (prediction.tier == CycleConfidence.high) {
@@ -645,8 +645,8 @@ class _OverviewPanelState extends State<OverviewPanel>
       week: due == null ? null : pregnancyWeekOf(dueDate: due, today: today),
       dueDateText: due == null
           ? null
-          : dates.formatMonthDayYear(
-              DateTime(due.year, due.month, due.day),
+          : dates.formatLocalDateMonthDayYear(
+              due,
               locale: dates.calendarLocale(context),
             ),
     );
@@ -682,8 +682,8 @@ class _OverviewPanelState extends State<OverviewPanel>
     if (estimate == null) return null;
     return ConceiveCard(
       estimate: estimate,
-      dateText: (date) => dates.formatMonthDayYear(
-        DateTime(date.year, date.month, date.day),
+      dateText: (date) => dates.formatLocalDateMonthDayYear(
+        date,
         locale: dates.calendarLocale(context),
       ),
     );
@@ -886,8 +886,8 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// `ActivePrediction.pms` is non-null.
   Widget _pmsSection(BuildContext context, PmsEstimate pms, ThemeData theme) {
     final l10n = AppLocalizations.of(context);
-    String format(LocalDate date) => dates.formatMonthDayYear(
-      DateTime(date.year, date.month, date.day),
+    String format(LocalDate date) => dates.formatLocalDateMonthDayYear(
+      date,
       locale: dates.calendarLocale(context),
     );
     final range = '${format(pms.predictedStart)} – ${format(pms.predictedEnd)}';

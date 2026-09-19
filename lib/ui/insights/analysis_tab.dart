@@ -541,7 +541,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   // Issue #160: locale-derived long date (the `en` fallback renders
   // "August 16, 2026", the same shape the old kMonthNames concatenation gave).
   String _formatDate(LocalDate date) =>
-      dates.formatMonthDayYear(DateTime(date.year, date.month, date.day));
+      dates.formatLocalDateMonthDayYear(date);
 
   // Issue #143 review: the fertile-window row's value ("High confidence
   // (August 16, 2026 – August 22, 2026)") is far longer than the other

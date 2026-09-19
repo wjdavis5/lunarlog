@@ -24,6 +24,7 @@ import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart' as date_symbols;
 import 'package:lunarlog/domain/calendar_preferences.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 
 /// Whether [date_symbols.initializeDateFormatting] has run in this isolate.
 /// It is synchronous (it only copies the compiled symbol maps into intl's
@@ -56,12 +57,26 @@ String formatMonthDayYear(DateTime date, {String locale = kFallbackLocale}) {
   return DateFormat('MMMM d, y', locale).format(date);
 }
 
+/// Long-form date for a [LocalDate], e.g. "September 5, 2026".
+String formatLocalDateMonthDayYear(
+  LocalDate date, {
+  String locale = kFallbackLocale,
+}) =>
+    formatMonthDayYear(date.toDateTime(), locale: locale);
+
 /// Month-and-day form, e.g. "September 5": dates inside a sentence that
 /// already carries the year (or where the year is implied by "this cycle").
 String formatMonthDay(DateTime date, {String locale = kFallbackLocale}) {
   _ensureDateSymbols();
   return DateFormat('MMMM d', locale).format(date);
 }
+
+/// Month-and-day form for a [LocalDate], e.g. "September 5".
+String formatLocalDateMonthDay(
+  LocalDate date, {
+  String locale = kFallbackLocale,
+}) =>
+    formatMonthDay(date.toDateTime(), locale: locale);
 
 /// Locale-aware short numeric date, e.g. "9/5/2026" for `en` (issue #554):
 /// for the handful of screens that used to assemble a hand-rolled, always
@@ -71,6 +86,13 @@ String formatShortDate(DateTime date, {String locale = kFallbackLocale}) {
   _ensureDateSymbols();
   return DateFormat.yMd(locale).format(date);
 }
+
+/// Locale-aware short numeric date for a [LocalDate], e.g. "9/5/2026".
+String formatLocalDateShortDate(
+  LocalDate date, {
+  String locale = kFallbackLocale,
+}) =>
+    formatShortDate(date.toDateTime(), locale: locale);
 
 /// Short weekday-day-month form, e.g. "Tue 8 Sep": compact rows and the
 /// relative label below. [preference] (Issue #226) reorders the month/day
@@ -84,6 +106,18 @@ String formatShortDayDate(
   _ensureDateSymbols();
   return DateFormat(shortDayDatePattern(preference), locale).format(date);
 }
+
+/// Short weekday-day-month form for a [LocalDate], e.g. "Tue 8 Sep".
+String formatLocalDateShortDayDate(
+  LocalDate date, {
+  String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) =>
+    formatShortDayDate(
+      date.toDateTime(),
+      locale: locale,
+      preference: preference,
+    );
 
 /// The intl pattern [formatShortDayDate] renders with for [preference]
 /// (Issue #226). Public and pure so a test can pin each preference's
@@ -118,9 +152,53 @@ String formatWeekdayDayDateYear(
       .format(date);
 }
 
+/// Unambiguous weekday-day-month-year form for a [LocalDate], e.g. "Tue 8 Sep 2026".
+String formatLocalDateWeekdayDayDateYear(
+  LocalDate date, {
+  String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) =>
+    formatWeekdayDayDateYear(
+      date.toDateTime(),
+      locale: locale,
+      preference: preference,
+    );
+
+/// Human-readable relative day header for a [LocalDate] civil date pair,
+/// e.g. "Today · Tue 8 Sep", "Yesterday", "Tomorrow", falling back to
+/// [formatLocalDateWeekdayDayDateYear] for anything further out.
+///
+/// Civil date math is pure integer difference (`date.difference(today)`),
+/// immune to DST transitions and local midnight hour lengths (issue #846).
+String relativeDayLabelForLocalDate(
+  LocalDate date,
+  LocalDate today, {
+  String locale = kFallbackLocale,
+  String? todayLabel,
+  String? yesterdayLabel,
+  String? tomorrowLabel,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) {
+  final difference = date.difference(today);
+  if (difference == 0) {
+    return '${todayLabel ?? 'Today'} · ${formatShortDayDate(date.toDateTime(), locale: locale, preference: preference)}';
+  }
+  if (difference == -1) return yesterdayLabel ?? 'Yesterday';
+  if (difference == 1) return tomorrowLabel ?? 'Tomorrow';
+  return formatWeekdayDayDateYear(
+    date.toDateTime(),
+    locale: locale,
+    preference: preference,
+  );
+}
+
 /// Human-readable relative day header, e.g. "Today · Tue 8 Sep",
 /// "Yesterday", "Tomorrow", falling back to [formatWeekdayDayDateYear] for
 /// anything further out. Comparison is by civil day (time-of-day ignored).
+///
+/// Both [date] and [today] are converted to [LocalDate] so that civil day
+/// difference is computed without instant/duration arithmetic across DST
+/// boundaries (issue #846).
 ///
 /// The relative words default to their English forms; callers that already
 /// hold localized copy may override them via [todayLabel],
@@ -135,17 +213,16 @@ String relativeDayLabel(
   String? yesterdayLabel,
   String? tomorrowLabel,
   DateFormatPreference preference = DateFormatPreference.system,
-}) {
-  final day = DateTime(date.year, date.month, date.day);
-  final reference = DateTime(today.year, today.month, today.day);
-  final difference = day.difference(reference).inDays;
-  if (difference == 0) {
-    return '${todayLabel ?? 'Today'} · ${formatShortDayDate(date, locale: locale, preference: preference)}';
-  }
-  if (difference == -1) return yesterdayLabel ?? 'Yesterday';
-  if (difference == 1) return tomorrowLabel ?? 'Tomorrow';
-  return formatWeekdayDayDateYear(date, locale: locale, preference: preference);
-}
+}) =>
+    relativeDayLabelForLocalDate(
+      LocalDate.fromDateTime(date),
+      LocalDate.fromDateTime(today),
+      locale: locale,
+      todayLabel: todayLabel,
+      yesterdayLabel: yesterdayLabel,
+      tomorrowLabel: tomorrowLabel,
+      preference: preference,
+    );
 
 /// Full month names ("January".."December"), locale-derived. Index 0 is
 /// January; callers with a 1-based calendar month use `names[month - 1]`.

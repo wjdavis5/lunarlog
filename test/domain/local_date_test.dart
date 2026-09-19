@@ -47,6 +47,18 @@ void main() {
       final dt = DateTime.utc(2026, 5, 9, 18, 30);
       expect(LocalDate.fromDateTime(dt), LocalDate(2026, 5, 9));
     });
+
+    test('toDateTime converts to local midnight DateTime', () {
+      final date = LocalDate(2026, 3, 8);
+      final dt = date.toDateTime();
+      expect(dt.year, 2026);
+      expect(dt.month, 3);
+      expect(dt.day, 8);
+      expect(dt.hour, 0);
+      expect(dt.minute, 0);
+      expect(dt.second, 0);
+      expect(dt.isUtc, isFalse);
+    });
   });
 
   group('civil date arithmetic', () {

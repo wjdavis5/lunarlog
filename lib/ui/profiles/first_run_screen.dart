@@ -336,23 +336,16 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   Future<void> _pickLastPeriodDate() async {
-    final today = _nowAsDateTime();
+    final today = widget.todayProvider();
     final picked = await widget.pickDate(
       context,
-      _lastPeriodStart == null
-          ? today
-          : _localDateToDateTime(_lastPeriodStart!),
-      today.subtract(const Duration(days: kLastPeriodLookbackDays)),
-      today,
+      _lastPeriodStart?.toDateTime() ?? today.toDateTime(),
+      today.addDays(-kLastPeriodLookbackDays).toDateTime(),
+      today.toDateTime(),
     );
     if (picked == null || !mounted) return;
     setState(() => _lastPeriodStart = LocalDate.fromDateTime(picked));
   }
-
-  DateTime _nowAsDateTime() => _localDateToDateTime(widget.todayProvider());
-
-  DateTime _localDateToDateTime(LocalDate date) =>
-      DateTime(date.year, date.month, date.day);
 
   /// "Create profile" on the cycle-questions step: the only step that
   /// actually creates. The recorder seam is resolved before the first
@@ -887,7 +880,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           children: [
             Expanded(
               child: Text(
-                formatMonthDayYear(_localDateToDateTime(_lastPeriodStart!)),
+                formatLocalDateMonthDayYear(_lastPeriodStart!),
                 key: const ValueKey('cycle-last-period-value'),
               ),
             ),

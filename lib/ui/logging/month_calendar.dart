@@ -393,7 +393,7 @@ String dayCellSemanticLabel({
   final weekdays = weekdayNames ?? dates.fullWeekdayNames();
   // `DateTime.weekday` is Monday=1..Sunday=7; the name lists are
   // Sunday-first (see [dates.fullWeekdayNames]), so `% 7` indexes them.
-  final weekdayIndex = DateTime(date.year, date.month, date.day).weekday % 7;
+  final weekdayIndex = date.toDateTime().weekday % 7;
   final parts = <String>[
     l10n.calendarCellDateLabel(
       weekdays[weekdayIndex],
@@ -2803,8 +2803,8 @@ class _FutureDayExplainer extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              dates.formatMonthDayYear(
-                DateTime(date.year, date.month, date.day),
+              dates.formatLocalDateMonthDayYear(
+                date,
                 locale: dates.calendarLocale(context),
               ),
               key: const ValueKey('future-explainer-date'),

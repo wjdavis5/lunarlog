@@ -79,6 +79,9 @@ class LocalDate implements Comparable<LocalDate> {
       '${month.toString().padLeft(2, '0')}-'
       '${day.toString().padLeft(2, '0')}';
 
+  /// Converts this [LocalDate] to a local-midnight [DateTime].
+  DateTime toDateTime() => DateTime(year, month, day);
+
   /// Days since 1970-01-01 in the proleptic Gregorian calendar
   /// (Howard Hinnant's days-from-civil / civil-from-days algorithms).
   int get _dayNumber {

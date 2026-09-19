@@ -191,15 +191,9 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
     BuildContext context, {
     required bool isStart,
   }) async {
-    final today = DateTime(
-      widget.today.year,
-      widget.today.month,
-      widget.today.day,
-    );
+    final today = widget.today.toDateTime();
     final currentPick = isStart ? _customStart : _customEnd;
-    final initial = currentPick == null
-        ? today
-        : DateTime(currentPick.year, currentPick.month, currentPick.day);
+    final initial = currentPick?.toDateTime() ?? today;
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -207,7 +201,7 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
       lastDate: today,
     );
     if (picked == null || !mounted) return;
-    final date = LocalDate(picked.year, picked.month, picked.day);
+    final date = LocalDate.fromDateTime(picked);
     setState(() {
       if (isStart) {
         _customStart = date;
