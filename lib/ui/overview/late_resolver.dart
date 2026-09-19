@@ -31,8 +31,8 @@ import 'package:lunarlog/ui/theme/tokens.dart';
 /// replacing the `kMonthNames` list this file used to import from the
 /// month calendar.
 String _formatDate(LocalDate date, BuildContext context) =>
-    dates.formatMonthDay(
-      DateTime(date.year, date.month, date.day),
+    dates.formatLocalDateMonthDay(
+      date,
       locale: dates.calendarLocale(context),
     );
 

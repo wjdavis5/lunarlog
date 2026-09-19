@@ -146,8 +146,8 @@ class _CrampPredictionCard extends StatelessWidget {
     String formatDates(List<LocalDate> datesList) {
       if (datesList.isEmpty) return '';
       return datesList
-          .map((d) => dates.formatMonthDay(
-                DateTime(d.year, d.month, d.day),
+          .map((d) => dates.formatLocalDateMonthDay(
+                d,
                 locale: locale,
               ))
           .join(', ');

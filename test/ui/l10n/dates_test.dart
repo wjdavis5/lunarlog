@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/calendar_preferences.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart'
     show kFirstDayOfWeek, leadingBlanksFor, weekdayHeaderLabels;
@@ -75,6 +76,92 @@ void main() {
         ),
         'Gestern',
       );
+    });
+
+    test('LocalDate overloads match DateTime formats', () {
+      expect(
+        formatLocalDateMonthDayYear(LocalDate(2026, 9, 5)),
+        'September 5, 2026',
+      );
+      expect(formatLocalDateMonthDay(LocalDate(2026, 8, 30)), 'August 30');
+      expect(formatLocalDateShortDate(LocalDate(2026, 9, 5)), '9/5/2026');
+      expect(formatLocalDateShortDayDate(LocalDate(2026, 9, 8)), 'Tue 8 Sep');
+      expect(
+        formatLocalDateWeekdayDayDateYear(LocalDate(2026, 9, 8)),
+        'Tue 8 Sep 2026',
+      );
+    });
+
+    test(
+        'relativeDayLabel handles DST spring-forward transitions without mislabeling (issue #846)',
+        () {
+      // US DST spring-forward: Sunday 2026-03-08 to Monday 2026-03-09.
+      // In local timezones observing DST, March 8 is 23 hours long.
+      // Instant-based difference inDays yields 0 (23 ~/ 24 = 0),
+      // erroneously mislabeling tomorrow as "Today".
+      final march8 = DateTime(2026, 3, 8);
+      final march9 = DateTime(2026, 3, 9);
+      final march7 = DateTime(2026, 3, 7);
+
+      // From reference of March 8:
+      expect(relativeDayLabel(march8, march8), 'Today · Sun 8 Mar');
+      expect(relativeDayLabel(march9, march8), 'Tomorrow');
+      expect(relativeDayLabel(march7, march8), 'Yesterday');
+
+      // From reference of March 9:
+      expect(relativeDayLabel(march9, march9), 'Today · Mon 9 Mar');
+      expect(relativeDayLabel(march8, march9), 'Yesterday');
+
+      // Times of day across the boundary:
+      expect(
+        relativeDayLabel(DateTime(2026, 3, 9, 0, 1), DateTime(2026, 3, 8, 23, 59)),
+        'Tomorrow',
+      );
+      expect(
+        relativeDayLabel(DateTime(2026, 3, 8, 23, 59), DateTime(2026, 3, 9, 0, 1)),
+        'Yesterday',
+      );
+    });
+
+    test(
+        'relativeDayLabel handles DST fall-back transitions without mislabeling (issue #846)',
+        () {
+      // US DST fall-back: Sunday 2026-11-01 to Monday 2026-11-02.
+      // In local timezones observing DST, Nov 1 is 25 hours long.
+      final nov1 = DateTime(2026, 11, 1);
+      final nov2 = DateTime(2026, 11, 2);
+      final oct31 = DateTime(2026, 10, 31);
+
+      // From reference of Nov 1:
+      expect(relativeDayLabel(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(relativeDayLabel(nov2, nov1), 'Tomorrow');
+      expect(relativeDayLabel(oct31, nov1), 'Yesterday');
+
+      // From reference of Nov 2:
+      expect(relativeDayLabel(nov2, nov2), 'Today · Mon 2 Nov');
+      expect(relativeDayLabel(nov1, nov2), 'Yesterday');
+    });
+
+    test(
+        'relativeDayLabelForLocalDate computes pure civil day labels across DST boundaries (issue #846)',
+        () {
+      final march8 = LocalDate(2026, 3, 8);
+      final march9 = LocalDate(2026, 3, 9);
+      final march7 = LocalDate(2026, 3, 7);
+
+      expect(relativeDayLabelForLocalDate(march8, march8), 'Today · Sun 8 Mar');
+      expect(relativeDayLabelForLocalDate(march9, march8), 'Tomorrow');
+      expect(relativeDayLabelForLocalDate(march7, march8), 'Yesterday');
+      expect(relativeDayLabelForLocalDate(march8, march9), 'Yesterday');
+
+      final nov1 = LocalDate(2026, 11, 1);
+      final nov2 = LocalDate(2026, 11, 2);
+      final oct31 = LocalDate(2026, 10, 31);
+
+      expect(relativeDayLabelForLocalDate(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(relativeDayLabelForLocalDate(nov2, nov1), 'Tomorrow');
+      expect(relativeDayLabelForLocalDate(oct31, nov1), 'Yesterday');
+      expect(relativeDayLabelForLocalDate(nov1, nov2), 'Yesterday');
     });
   });
 
@@ -227,6 +314,31 @@ void main() {
       );
       expect(
         relativeDayLabel(DateTime(2026, 9, 5), today,
+            preference: DateFormatPreference.monthDay),
+        'Sat Sep 5 2026',
+      );
+    });
+
+    test('LocalDate helpers forward the preference', () {
+      final date = LocalDate(2026, 9, 8);
+      final today = LocalDate(2026, 9, 8);
+      expect(
+        formatLocalDateShortDayDate(date,
+            preference: DateFormatPreference.monthDay),
+        'Tue Sep 8',
+      );
+      expect(
+        formatLocalDateWeekdayDayDateYear(date,
+            preference: DateFormatPreference.monthDay),
+        'Tue Sep 8 2026',
+      );
+      expect(
+        relativeDayLabelForLocalDate(today, today,
+            preference: DateFormatPreference.monthDay),
+        'Today · Tue Sep 8',
+      );
+      expect(
+        relativeDayLabelForLocalDate(LocalDate(2026, 9, 5), today,
             preference: DateFormatPreference.monthDay),
         'Sat Sep 5 2026',
       );

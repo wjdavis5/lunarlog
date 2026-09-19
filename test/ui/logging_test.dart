@@ -3779,6 +3779,26 @@ void main() {
     });
 
     test(
+        'daySheetDateLabel computes pure civil difference across DST boundaries (issue #846)',
+        () {
+      // US DST spring-forward: 2026-03-08 to 2026-03-09
+      final march8 = LocalDate(2026, 3, 8);
+      final march9 = LocalDate(2026, 3, 9);
+      expect(daySheetDateLabel(march8, march8), 'Today · Sun 8 Mar');
+      expect(daySheetDateLabel(march9, march8), 'Tomorrow');
+      expect(daySheetDateLabel(march8, march9), 'Yesterday');
+      expect(daySheetDateLabel(march9, march9), 'Today · Mon 9 Mar');
+
+      // US DST fall-back: 2026-11-01 to 2026-11-02
+      final nov1 = LocalDate(2026, 11, 1);
+      final nov2 = LocalDate(2026, 11, 2);
+      expect(daySheetDateLabel(nov1, nov1), 'Today · Sun 1 Nov');
+      expect(daySheetDateLabel(nov2, nov1), 'Tomorrow');
+      expect(daySheetDateLabel(nov1, nov2), 'Yesterday');
+      expect(daySheetDateLabel(nov2, nov2), 'Today · Mon 2 Nov');
+    });
+
+    test(
         'daySheetDateLabel forwards the Issue #226 date-format preference '
         '(the sheet resolves it from SettingsKeys.dateFormat)', () {
       final today = LocalDate(2026, 8, 30);

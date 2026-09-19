@@ -255,9 +255,9 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     final picked = await showDatePicker(
       context: context,
       initialDate:
-          initial ?? DateTime(today.year, today.month, today.day).add(const Duration(days: 280 - 40)),
-      firstDate: DateTime(today.year - 1, today.month, today.day),
-      lastDate: DateTime(today.year + 2, today.month, today.day),
+          initial ?? today.addDays(280 - 40).toDateTime(),
+      firstDate: today.addMonths(-12).toDateTime(),
+      lastDate: today.addMonths(24).toDateTime(),
       helpText: AppLocalizations.of(context).pregnancyDueDateLabel,
     );
     if (picked == null || !mounted) return;
@@ -309,8 +309,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     final LocalDate? due = dueIso == null ? null : _tryParseIso(dueIso);
     final valueText = due == null
         ? (_derivingDueDate ? '…' : '—')
-        : dates.formatMonthDayYear(
-            DateTime(due.year, due.month, due.day),
+        : dates.formatLocalDateMonthDayYear(
+            due,
             locale: dates.calendarLocale(context),
           );
     final hint = _dueDateDerived

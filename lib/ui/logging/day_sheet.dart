@@ -132,11 +132,8 @@ String daySheetDateLabel(
   LocalDate date,
   LocalDate today, {
   DateFormatPreference preference = DateFormatPreference.system,
-}) {
-  // Thin bridge onto #160's shared helper: LocalDate -> civil DateTime.
-  DateTime civil(LocalDate d) => DateTime(d.year, d.month, d.day);
-  return dates.relativeDayLabel(civil(date), civil(today), preference: preference);
-}
+}) =>
+    dates.relativeDayLabelForLocalDate(date, today, preference: preference);
 
 /// Issue #457: formats a BBT/weight value for display in a text field or an
 /// inline error — up to two decimal places, with trailing zeros trimmed
