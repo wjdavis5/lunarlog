@@ -500,12 +500,26 @@ void main() {
       expect(cellWidth / metrics.aspectRatio, greaterThanOrEqualTo(48));
     });
 
-    test('dayCellMetricsFor caps the circle at the column width at extreme '
-        'scales', () {
+    // Issue #879: this used to assert `circleSize == cellWidth` -- i.e. the
+    // bug: at accessibility scales the circle claimed the whole column, so
+    // adjacent circles touched and a too-wide numeral spilled into the
+    // neighbouring cell. It is capped `kDayCellCircleGutter` short of the
+    // column on each side now.
+    test('dayCellMetricsFor leaves a gutter so circles never touch at '
+        'extreme scales', () {
       const scaler = TextScaler.linear(3.0);
       final cellWidth = (390 - 8) / 7;
       final metrics = dayCellMetricsFor(390, scaler);
-      expect(metrics.circleSize, closeTo(cellWidth, 1e-9));
+      expect(
+        metrics.circleSize,
+        closeTo(cellWidth - 2 * kDayCellCircleGutter, 1e-9),
+      );
+      expect(
+        cellWidth - metrics.circleSize,
+        greaterThanOrEqualTo(2 * kDayCellCircleGutter),
+        reason: 'the gap between two adjacent circles is the cell width '
+            'minus one circle',
+      );
     });
 
     testWidgets('day cells meet the 48dp minimum at 1.0x on a phone-class '
@@ -550,14 +564,79 @@ void main() {
     });
 
     testWidgets(
-        'issue #556: the legend stays expanded by default at a large text '
-        'scale instead of auto-collapsing', (tester) async {
+        'issue #810: the legend is collapsed by default and lives in the '
+        'info sheet, reachable from the month-nav row at a large text scale',
+        (tester) async {
+      final handle = tester.ensureSemantics();
       final db = await pumpCalendar(tester, textScale: 2.0);
 
+      // The old inline strip is gone; the trigger carries the same
+      // `calendarShowLegend` semantics label the inline toggle did.
       expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
+      expect(find.byKey(const ValueKey('calendar-legend')), findsNothing);
+      expect(find.bySemanticsLabel('Show legend'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('calendar-legend')), findsOneWidget);
       expect(find.text('Light flow'), findsOneWidget,
           reason: 'the legend must not hide itself from the very users a '
               'large text scale suggests need it most');
+
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+      await db.close();
+    });
+
+    // Issue #879: at accessibility scales the day circles used to claim the
+    // full column width, so neighbours touched and their scaled numerals
+    // spilled into each other. The circle now leaves
+    // `kDayCellCircleGutter` on each side; assert it structurally by
+    // comparing the actual painted circle rects on screen, not just the
+    // metric.
+    testWidgets('no two day circles intersect at 3.1x text scale', (
+      tester,
+    ) async {
+      final db = await pumpCalendar(tester, textScale: 3.1);
+
+      // Each day's circle is reachable through whichever marker branch it
+      // rendered: the flow/spotting/predicted/fertile branches carry their
+      // own keys, and the plain branch carries `day-circle-<iso>`.
+      Rect circleRectFor(String iso) {
+        for (final prefix in [
+          'today-ring',
+          'bleed',
+          'spotting',
+          'predicted',
+          'fertile',
+          'day-circle',
+        ]) {
+          final finder = find.byKey(ValueKey('$prefix-$iso'));
+          if (finder.evaluate().isNotEmpty) return tester.getRect(finder);
+        }
+        throw StateError('no circle marker rendered for $iso');
+      }
+
+      final rects = <Rect>[];
+      for (var day = 1; day <= 31; day++) {
+        final iso = '2026-08-${day.toString().padLeft(2, '0')}';
+        if (find.byKey(ValueKey('day-cell-$iso')).evaluate().isEmpty) continue;
+        rects.add(circleRectFor(iso));
+      }
+      expect(rects.length, greaterThanOrEqualTo(7));
+
+      for (var i = 0; i < rects.length; i++) {
+        for (var j = i + 1; j < rects.length; j++) {
+          expect(
+            rects[i].overlaps(rects[j]),
+            isFalse,
+            reason: 'two day circles overlap at 3.1x: '
+                '${rects[i]} and ${rects[j]}',
+          );
+        }
+      }
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));

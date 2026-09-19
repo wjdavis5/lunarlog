@@ -345,6 +345,11 @@ void main() {
         'badges, and the symptom-layer palette (issue #312)', (tester) async {
       final h = await pumpCalendar(tester);
 
+      // Issue #810: the legend is reference material in the info sheet now,
+      // opened from the month-nav row's info action.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+
       expect(find.byKey(const ValueKey('calendar-legend')), findsOneWidget);
       for (final label in [
         // Issue #761: the observation-backed spotting ring is keyed again.
@@ -378,6 +383,10 @@ void main() {
         'not a fill (it never counts as a bleed day)', (tester) async {
       final h = await pumpCalendar(tester);
 
+      // Issue #810: open the info sheet to reach the legend entries.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+
       final entry = find.byKey(const ValueKey('legend-spotting'));
       expect(entry, findsOneWidget);
 
@@ -395,40 +404,29 @@ void main() {
     });
 
     testWidgets(
-      'issue #556: stays expanded by default at every text scale -- no '
-      'longer auto-collapses at a large one -- and the manual toggle '
-      'still collapses/re-expands it on tap',
+      'issue #810: the legend is collapsed by default at every text scale '
+      'and reachable from the month-nav info action, which also works at a '
+      'large text scale',
       (tester) async {
         for (final textScale in [1.0, 1.5, 1.6, 2.0, 3.0]) {
           final h = await pumpCalendar(tester, textScale: textScale);
           expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
           expect(
             find.text('Light flow'),
+            findsNothing,
+            reason: 'the legend is collapsed by default at $textScale x',
+          );
+          await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+          await tester.pumpAndSettle();
+          expect(
+            find.text('Light flow'),
             findsOneWidget,
             reason:
-                'the legend defaults expanded at $textScale x, not '
-                'just below some collapse threshold',
+                'the info action must reach every legend entry at '
+                '$textScale x',
           );
           await disposeCalendar(tester, h);
         }
-
-        final h = await pumpCalendar(tester, textScale: 2.0);
-        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
-        await tester.pumpAndSettle();
-        expect(
-          find.text('Light flow'),
-          findsNothing,
-          reason: 'the operator can still manually collapse it',
-        );
-
-        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
-        await tester.pumpAndSettle();
-        expect(
-          find.text('Light flow'),
-          findsOneWidget,
-          reason: 'and re-expand it again, even at a large text scale',
-        );
-        await disposeCalendar(tester, h);
       },
     );
   });
@@ -970,12 +968,12 @@ void main() {
     );
   });
 
-  group('large text budget (issue #312, #556)', () {
+  group('large text budget (issue #312, #556, #810)', () {
     testWidgets('at textScaleFactor 2.0 on a phone-class viewport the calendar '
-        'renders without an overflow, with the legend expanded (#556: no '
-        'longer auto-collapsed) (issue #312 review: an 800x1400 '
-        'desktop-sized canvas made this test vacuous — the legend '
-        'width budget only actually matters on a real phone width)', (
+        'renders without an overflow, and the legend is reachable from the '
+        'info action without stealing the grid vertical budget (issue #312 '
+        'review: an 800x1400 desktop-sized canvas made this test vacuous — '
+        'the width budget only actually matters on a real phone width)', (
       tester,
     ) async {
       final h = await pumpCalendar(
@@ -989,13 +987,13 @@ void main() {
       expect(find.byKey(const ValueKey('legend-toggle')), findsOneWidget);
       expect(
         find.text('Light flow'),
-        findsOneWidget,
-        reason:
-            '#556: expanded by default even at this scale -- the '
-            'header stack wraps/scrolls internally instead of forcing '
-            'the legend to collapse to keep the grid area from '
-            'overflowing',
+        findsNothing,
+        reason: '#810: the legend no longer occupies grid vertical budget',
       );
+
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('Light flow'), findsOneWidget);
 
       await disposeCalendar(tester, h);
     });
@@ -1398,19 +1396,19 @@ void main() {
               'that never ran',
         );
 
-        // Toggling the legend twice (collapse, then re-expand) is two
-        // ordinary `setState` calls whose inputs — entries, prediction,
-        // history, today, and the layer selection — are all unchanged.
+        // Opening and dismissing the legend's info sheet (issue #810) is
+        // not a forecast input change, so the memoised compute must not
+        // re-run.
         await tester.tap(find.byKey(const ValueKey('legend-toggle')));
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.tapAt(const Offset(5, 5));
         await tester.pumpAndSettle();
 
         expect(
           debugForecastComputeCount,
           computesAfterInitialLoad,
           reason:
-              'toggling the legend re-ran the forecast compute path; '
+              'opening the legend sheet re-ran the forecast compute path; '
               'it should have reused the memoised byIso/cycles/'
               'forecastByIso/activeLayers fields instead',
         );
@@ -1439,7 +1437,12 @@ void main() {
 
         final computesAfterInitialLoad = debugForecastComputeCount;
 
-        await tester.tap(find.byKey(const ValueKey('symptom-layers-toggle')));
+        // This seed carries no tags, so no layer is active and the inline
+        // header is hidden (issue #810); the chooser is reached through the
+        // info sheet's "Symptom layers" action.
+        await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('symptom-layers-open')));
         await tester.pumpAndSettle();
         final chip = find.byType(FilterChip).first;
         await tester.tap(chip);

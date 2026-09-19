@@ -32,6 +32,8 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
+import 'package:lunarlog/ui/theme/lunarlog_colors.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -384,7 +386,12 @@ void main() {
       // Issue #220: with the band live, the legend keys it; below the
       // hard minimum it would be absent (see
       // calendar_navigation_test.dart's legend test for the bare case).
+      // Issue #810: the legend is in the info sheet now.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('PMS window'), findsOneWidget);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
 
       await showMonthForward(tester, 2026, 9);
       // Estimate Sep 4: PMS window Aug 28..Sep 3 (future half: Aug 31..Sep
@@ -807,8 +814,14 @@ void main() {
     });
 
     test('the layer palette is brightness-aware', () {
-      final light = symptomLayerPalette(Brightness.light);
-      final dark = symptomLayerPalette(Brightness.dark);
+      // Issue #810: the palette moved from a hardcoded `Brightness` function
+      // to `LunarLogColors.symptomLayer1/2/3`; the assertion is unchanged.
+      final light = AppTheme.lightTheme
+          .extension<LunarLogColors>()!
+          .symptomLayerPalette;
+      final dark = AppTheme.darkTheme
+          .extension<LunarLogColors>()!
+          .symptomLayerPalette;
       expect(light, hasLength(3));
       expect(dark, hasLength(3));
       expect(light, isNot(equals(dark)));
@@ -1081,6 +1094,9 @@ void main() {
         today: kToday,
         bleedStarts: kSteadyStarts,
       );
+      // Issue #810: the legend lives in the info sheet now.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Estimated fertile days'), findsOneWidget);
       expect(find.byKey(const ValueKey('legend-fertile')), findsOneWidget);
       await disposeForecast(tester, h);
@@ -1096,8 +1112,16 @@ void main() {
         bleedStarts: kSteadyStarts,
         mode: ProfileMode.irregular,
       );
+      // Issue #810: open the info sheet so the absence of the entry is a
+      // real assertion about the legend, not just about the sheet being
+      // closed.
+      await tester.tap(find.byKey(const ValueKey('legend-toggle')));
+      await tester.pumpAndSettle();
       expect(find.text('Estimated fertile days'), findsNothing);
       expect(find.byKey(const ValueKey('legend-fertile')), findsNothing);
+      // Dismiss the sheet before navigating the grid behind it.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
 
       await showMonthForward(tester, 2026, 10);
       expect(find.byKey(const ValueKey('fertile-2026-10-15')), findsNothing);
