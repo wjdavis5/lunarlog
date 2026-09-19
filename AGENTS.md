@@ -106,6 +106,17 @@ Credentials and environment variables live in:
 
 ## Development & Build Workflow
 
+- **Issue triage — the `needs-agent-review` label:** an issue carrying
+  `needs-agent-review` is waiting on an *agent* to do the analysis, not on the
+  owner to make a call. Sweep for them at the start of a work session
+  (`gh issue list --label needs-agent-review --state open`) and handle them
+  before picking up ordinary backlog work: read the issue, verify its claims
+  against the code rather than taking them on trust, and answer in a comment
+  with a recommendation concrete enough to act on. Remove the label once the
+  analysis is posted; add `needs-human-review` instead if what remains is a
+  decision only the owner can make, and say plainly which decision that is.
+  `needs-human-review` means the opposite — it is already with the owner, so
+  do not re-analyse it unprompted.
 - **Worktree Isolation (Strict Requirement):** All new work, feature branches, PR reviews, and code changes MUST be performed in isolated git worktrees under `.worktrees/` (e.g. `.worktrees/pr-<n>` or `.worktrees/<branch-name>`). Never check out PR branches or make scratch changes in the primary checkout directory to avoid clobbering in-flight work.
   - **Autonomous coordinators** (multiple run this repo concurrently) use `.worktrees/<coordinator-id>/<n>-<slug>` — each coordinator's own subtree, never a shared one. See [`docs/coordinator/README.md`](docs/coordinator/README.md) for the full ownership model (per-coordinator branch prefix, worktree root, and state directory; the three GitHub-label/branch-prefix markers that keep coordinators from touching each other's issues, PRs, and worktrees).
 - **Flutter SDK:** Flutter 3.47.2 stable / Dart 3.13.2. CI pins the same version via the `FLUTTER_VERSION` env var in `.github/workflows/ci.yml`, `ios-release.yml`, and `play-store-release.yml` (each `subosito/flutter-action@v2` step reads it as `flutter-version:`; issue #208). **SDK-bump procedure:** bump this version in one change everywhere it is pinned — this bullet, the lab root `CLAUDE.md`'s Williams-Mini row (`C:\git\CLAUDE.md`, outside this repo), all three workflows' `FLUTTER_VERSION`, and the build Mac (Homebrew `flutter upgrade`, then `flutter --version` to confirm) — so local, CI, and shipped builds can never drift onto different engines.
