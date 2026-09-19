@@ -48,14 +48,9 @@ import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 
-import 'health_fertility_mapping.dart'
-    show
-        kBbtObservationCategory,
-        resolveCervicalMucus,
-        resolveOvulationTests;
+import 'health_fertility_mapping.dart' show kBbtObservationCategory;
 import 'health_flow_mapping.dart' show kSpottingObservationCategory;
 import 'health_record_ids.dart';
-import 'health_symptom_mapping.dart' show resolveHealthKitSymptoms;
 
 // The same named-required-parameter pattern the write coordinator uses.
 // ignore_for_file: prefer_initializing_formals
@@ -141,7 +136,7 @@ class HealthSyncTombstoneCoordinator {
     _entriesSub = _source.watchDayEntries(profileId).listen((entries) {
       for (final entry in entries) {
         if (entry.deletedAt == null) {
-          _knownEntryRecordIds[entry.id] = _recordIdsForEntry(entry);
+          _knownEntryRecordIds[entry.id] = healthRecordIdsForEntry(entry);
         }
       }
       _latestEntries = entries;
@@ -159,30 +154,6 @@ class HealthSyncTombstoneCoordinator {
       _latestObservations = observations;
       _scheduleDeletion();
     });
-  }
-
-  /// Every health-store record id a live [entry] can have produced (Issue
-  /// #924): its flow/marker id itself, plus the symptom, cervical-mucus, and
-  /// ovulation ids the write path derives from the entry's tags. Uses the
-  /// same builders (`health_record_ids.dart`) and resolvers as
-  /// `health_flow_write_service.dart`, so deletion cannot address an id the
-  /// write path never wrote. Severity is irrelevant to the id, so the graded
-  /// pain map is deliberately empty.
-  Set<String> _recordIdsForEntry(DayEntry entry) {
-    final ids = <String>{healthFlowRecordId(entry.id)};
-    for (final symptom in resolveHealthKitSymptoms(
-      tags: entry.tags,
-      gradedPainIntensities: const <String, int>{},
-    )) {
-      ids.add(healthSymptomRecordId(entry.id, symptom.typeIdentifier));
-    }
-    if (resolveCervicalMucus(entry.tags) != null) {
-      ids.add(healthCervicalMucusRecordId(entry.id));
-    }
-    for (final ovulation in resolveOvulationTests(entry.tags)) {
-      ids.add(healthOvulationRecordId(entry.id, ovulation.healthKitResult));
-    }
-    return ids;
   }
 
   /// The record id a live [observation] maps to, or null for a category the
