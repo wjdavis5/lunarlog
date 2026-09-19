@@ -28,6 +28,9 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart' show FlowLevel;
 import 'package:lunarlog/data/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/data/health/health_sync_tombstone_coordinator.dart';
+import 'package:lunarlog/data/health/health_fertility_mapping.dart'
+    show kBbtObservationCategory;
+import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -158,12 +161,18 @@ class _FakeDeletion implements HealthSyncDeletionService {
   }
 }
 
-DayEntry _entry(String id, {DateTime? deletedAt}) => DayEntry(
+DayEntry _entry(
+  String id, {
+  DateTime? deletedAt,
+  List<String> tags = const [],
+}) =>
+    DayEntry(
       id: id,
       profileId: _profileId,
       localDate: LocalDate(2026, 9, 1),
       tz: 'UTC',
       flow: domain.FlowLevel.medium,
+      tags: tags,
       updatedAt: DateTime.utc(2026, 9, 1),
       deletedAt: deletedAt,
     );
@@ -424,6 +433,141 @@ void main() {
       expect(deletion.calls, [
         [observationId]
       ]);
+    });
+
+    test(
+        'issue #924: a tombstoned day entry deletes the symptom record ids '
+        'derived from its live tags', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      // Seen live with symptoms (the write path exports these), then
+      // tombstoned. A tombstone clears the entry's tags, so only the
+      // remembered live emission can reproduce the derived record ids.
+      await source.emitEntries([
+        _entry(_entryId, tags: const ['cramps', 'headache']),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(deletion.calls, isEmpty);
+
+      await source
+          .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls.expand((call) => call).toSet(), {
+        _entryId,
+        healthSymptomRecordId(_entryId, 'abdominalCramps'),
+        healthSymptomRecordId(_entryId, 'headache'),
+      });
+    });
+
+    test(
+        'issue #924: a tombstoned day entry deletes its derived '
+        'cervical-mucus and ovulation record ids', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      await source.emitEntries([
+        _entry(_entryId, tags: const ['egg_white', 'ovulation_positive']),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(deletion.calls, isEmpty);
+
+      await source
+          .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls.expand((call) => call).toSet(), {
+        _entryId,
+        healthCervicalMucusRecordId(_entryId),
+        healthOvulationRecordId(_entryId, 'luteinizingHormoneSurge'),
+      });
+    });
+
+    test(
+        'issue #924: a BBT observation tombstoned after being seen live is '
+        'deleted by its bbt- record id', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      const observationId = '01ARZ3NDEKTSV4RRFFQ69G5FBB';
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      await source.emitObservations([
+        _observation(observationId, category: kBbtObservationCategory),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(deletion.calls, isEmpty);
+
+      await source.emitObservations([
+        _observation(observationId, deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls, [
+        [healthBbtRecordId(observationId)]
+      ]);
+    });
+
+    test(
+        'issue #924: a bbt observation never seen live is never requested '
+        '(the write path may never have written it)', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      const observationId = '01ARZ3NDEKTSV4RRFFQ69G5FCC';
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      await source.emitObservations([
+        _observation(observationId, deletedAt: DateTime.utc(2026, 9, 2)),
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls, isEmpty);
     });
   });
 

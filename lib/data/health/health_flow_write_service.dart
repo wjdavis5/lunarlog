@@ -74,6 +74,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 
 import 'health_fertility_mapping.dart';
 import 'health_flow_mapping.dart';
+import 'health_record_ids.dart';
 import 'health_symptom_mapping.dart';
 
 /// One eligible day's resolved write, before it is sent to the port.
@@ -501,7 +502,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         entry.localDate,
         entry.tz,
         entry.updatedAt,
-        entry.id,
+        healthFlowRecordId(entry.id),
         mapFlowToHealthWrite(
           entry.flow,
           inPeriodEpisode: containing != null,
@@ -555,7 +556,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         row.localDate,
         row.tz,
         row.updatedAt,
-        row.id,
+        healthSpottingRecordId(row.id),
         mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
         containing,
       );
@@ -586,7 +587,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               date: entry.localDate,
               tzName: entry.tz,
               resolved: cervical,
-              recordId: 'cervical-mucus-${entry.id}',
+              recordId: healthCervicalMucusRecordId(entry.id),
               updatedAt: entry.updatedAt,
             ),
       ovulation: [
@@ -595,7 +596,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
             date: entry.localDate,
             tzName: entry.tz,
             resolved: result,
-            recordId: 'ovulation-${entry.id}-${result.healthKitResult}',
+            recordId:
+                healthOvulationRecordId(entry.id, result.healthKitResult),
             updatedAt: entry.updatedAt,
           ),
       ],
@@ -616,7 +618,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       date: row.localDate,
       tzName: row.tz,
       resolved: resolved,
-      recordId: 'bbt-${row.id}',
+      recordId: healthBbtRecordId(row.id),
       updatedAt: row.updatedAt,
     );
   }
@@ -646,7 +648,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
             // Stable per (day entry, symptom type): a re-write replaces the
             // same sample (sync identifier/version), and a future
             // reconciliation can address it by this exact id.
-            recordId: 'symptom-${entry.id}-${symptom.typeIdentifier}',
+            recordId: healthSymptomRecordId(entry.id, symptom.typeIdentifier),
             recordVersionMs: versionMs,
           ),
       ],
@@ -683,7 +685,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         start: episode.start,
         end: episode.end,
         tzName: newest.tzName,
-        recordId: 'period-$profileId-${episode.start.iso}',
+        recordId: healthPeriodRecordId(profileId, episode.start),
         updatedAt: newest.updatedAt,
       ));
     }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Calendar
+import kotlin.reflect.KClass
 
 // Issue #173: the Android half of the "lunarlog/health" channel — a
 // first-party adapter over HealthConnectClient, chosen over the pub.dev
@@ -105,20 +106,32 @@ class HealthConnectAdapter(context: Context) {
     // strings (HealthPermission.getWritePermission(KClass)), and the
     // request contract takes Set<String> — the old alpha-era
     // createWritePermission(KClass)-returns-Permission API is gone.
-    private val writePermissions = setOf(
-        HealthPermission.getWritePermission(MenstruationFlowRecord::class),
+    //
+    // Issue #924: this is the single list of record types the adapter can
+    // write. Both the permission request (below) and deleteRecords consume
+    // it, so a new write type cannot be added without also being requested
+    // and deleted. Before #924, deleteRecords removed only the two flow
+    // types, leaving every #228 fertility/measurement record orphaned. Keep
+    // in sync with kHealthConnectWrittenRecordTypes in
+    // lib/data/health/health_written_types.dart; the guard test
+    // test/release/health_deletion_types_test.dart parses this list.
+    private val writtenRecordTypes: List<KClass<out Record>> = listOf(
+        MenstruationFlowRecord::class,
         // #202: the interval MenstruationPeriodRecord is governed by the
         // same WRITE_MENSTRUATION permission as the flow record — declared
         // explicitly so the prompt covers the type; setOf dedupes the
         // underlying permission string.
-        HealthPermission.getWritePermission(MenstruationPeriodRecord::class),
-        HealthPermission.getWritePermission(IntermenstrualBleedingRecord::class),
+        MenstruationPeriodRecord::class,
+        IntermenstrualBleedingRecord::class,
         // Issue #228: the fertility/measurement write types. Each has its
         // own Health Connect permission, unlike the menstruation family.
-        HealthPermission.getWritePermission(CervicalMucusRecord::class),
-        HealthPermission.getWritePermission(OvulationTestRecord::class),
-        HealthPermission.getWritePermission(BasalBodyTemperatureRecord::class),
+        CervicalMucusRecord::class,
+        OvulationTestRecord::class,
+        BasalBodyTemperatureRecord::class,
     )
+
+    private val writePermissions =
+        writtenRecordTypes.map { HealthPermission.getWritePermission(it) }.toSet()
 
     // Issue #458 (the owner's #781 read decision, already applied to iOS in
     // #217): the read/import half. Only the two user-recorded menstrual
@@ -642,27 +655,23 @@ class HealthConnectAdapter(context: Context) {
                         // automatically scoped to the calling app's own
                         // records). We delete purely by our lunarlog
                         // clientRecordIds, so the record-id list is empty.
-                        client.deleteRecords(
-                            MenstruationFlowRecord::class,
-                            recordIdsList = emptyList(),
-                            clientRecordIdsList = ids)
-                        client.deleteRecords(
-                            IntermenstrualBleedingRecord::class,
-                            recordIdsList = emptyList(),
-                            clientRecordIdsList = ids)
-                        // Issue #619, LLA-030: MenstruationPeriodRecord (#202's
-                        // interval record) is a third type this adapter writes
-                        // under its own clientRecordId
-                        // ("period-<profile>-<start>", a distinct id scheme from
-                        // day-entry/observation ids — see
-                        // health_flow_write_service.dart's _periodWritesFor) and
-                        // was missing here entirely: a caller deleting a period
-                        // record's own id got a false "allowed" with nothing
-                        // actually removed.
-                        client.deleteRecords(
-                            MenstruationPeriodRecord::class,
-                            recordIdsList = emptyList(),
-                            clientRecordIdsList = ids)
+                        //
+                        // Issue #924: loop over EVERY record type this adapter
+                        // writes — the two flow types (#186), the period
+                        // interval (#619, LLA-030, which used to be missing
+                        // here entirely), and #228's fertility/measurement
+                        // records, whose samples were previously left
+                        // orphaned. writtenRecordTypes is the same list the
+                        // write-permission request uses, so a future type
+                        // cannot be added to one without the other.
+                        for (recordType in writtenRecordTypes) {
+                            @Suppress("UNCHECKED_CAST")
+                            val concreteType = recordType as KClass<Record>
+                            client.deleteRecords(
+                                concreteType,
+                                recordIdsList = emptyList(),
+                                clientRecordIdsList = ids)
+                        }
                         result.success("allowed")
                     } catch (e: SecurityException) {
                         result.success("permissionDenied")

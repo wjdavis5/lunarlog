@@ -262,33 +262,64 @@ enum HealthKitChannelHandler {
     }
   }
 
-  /// The HealthKit symptom category types this app may write (Issue #238).
-  /// This adds no tag-mapping logic to Swift: the identifiers arrive from
-  /// Dart (`health_symptom_mapping.dart`) as
-  /// `HKCategoryTypeIdentifier` raw-case names and are resolved with
-  /// `HKCategoryTypeIdentifier(rawValue:)`. This set exists only so the
-  /// authorization sheet can request write access for them.
-  private static var symptomCategoryTypes: [HKSampleType] {
-    let identifiers: [HKCategoryTypeIdentifier] = [
-      .abdominalCramps,
-      .headache,
-      .lowerBackPain,
-      .breastPain,
-      .bloating,
-      .acne,
-      .nausea,
-      .fatigue,
-      .dizziness,
-      .moodChanges,
-      .sleepChanges,
-      .appetiteChanges,
-    ]
-    // Explicitly upcast each HKCategoryType to HKSampleType: Swift sets and
-    // `Set.union` require exact element-type equality, so the Set<HKSampleType>
-    // below cannot take a [HKCategoryType] directly.
-    return identifiers.compactMap {
+  /// Every HealthKit **category** type this app's write path can produce,
+  /// as the `HKCategoryTypeIdentifier` case names the `write*` handlers
+  /// resolve: #193's flow types, #238's symptom categories, and #228's
+  /// fertility types. This is the single list the authorization sheet and
+  /// `deleteRecords` both consume, so a new write type cannot be added
+  /// without also being requested AND deleted.
+  ///
+  /// Issue #924: before this list existed, `deleteRecords` queried only the
+  /// two flow types #186 knew about, so every sample #238/#228 added was
+  /// written but never removed — a privacy gap, not just a feature gap.
+  /// Keep in sync with `kHealthKitWrittenCategoryTypeCaseNames` in
+  /// `lib/data/health/health_written_types.dart`; the guard test
+  /// `test/release/health_deletion_types_test.dart` parses THIS array and
+  /// fails if it drifts.
+  private static let writtenCategoryTypeIdentifiers: [HKCategoryTypeIdentifier] = [
+    // #193: menstrual flow and the spotting-outside-an-episode marker.
+    .menstrualFlow,
+    .intermenstrualBleeding,
+    // #238: the symptom categories the tag table maps to.
+    .abdominalCramps,
+    .headache,
+    .lowerBackPain,
+    .breastPain,
+    .bloating,
+    .acne,
+    .nausea,
+    .fatigue,
+    .dizziness,
+    .moodChanges,
+    .sleepChanges,
+    .appetiteChanges,
+    // #228: the fertility types.
+    .cervicalMucusQuality,
+    .ovulationTestResult,
+  ]
+
+  /// The HealthKit **quantity** types this app writes — a different
+  /// `HKSampleType` path from every category type above (BBT is resolved
+  /// with `HKObjectType.quantityType(forIdentifier:)`, not
+  /// `categoryType`). Issue #228; today exactly one. Keep in sync with
+  /// `kHealthKitWrittenQuantityTypeCaseNames` and the same guard test.
+  private static let writtenQuantityTypeIdentifiers: [HKQuantityTypeIdentifier] = [
+    .basalBodyTemperature,
+  ]
+
+  /// [writtenCategoryTypeIdentifiers] and [writtenQuantityTypeIdentifiers]
+  /// resolved into one `HKSampleType` list — category and quantity types
+  /// are both `HKSampleType`, so a single loop drives both the
+  /// authorization request and the delete query. Deliberately derived from
+  /// the two identifier lists rather than hand-written a second time.
+  private static var writtenSampleTypes: [HKSampleType] {
+    var types: [HKSampleType] = writtenCategoryTypeIdentifiers.compactMap {
       HKObjectType.categoryType(forIdentifier: $0)
     }.map { $0 as HKSampleType }
+    types.append(contentsOf: writtenQuantityTypeIdentifiers.compactMap {
+      HKObjectType.quantityType(forIdentifier: $0)
+    }.map { $0 as HKSampleType })
+    return types
   }
 
   /// The guard-args half of every guarded call (mirrors
@@ -460,21 +491,13 @@ enum HealthKitChannelHandler {
         result("unavailable")
         return
       }
-      // Issue #238: the symptom category types join the write set. Apple's
-      // permission sheet is per-type; an existing install is prompted for
-      // these on the next sync pass. The read set below is deliberately
-      // unchanged (issue #766 governs reads).
-      var toShare: Set<HKSampleType> = [
-        menstrualFlowType,
-        intermenstrualBleedingType,
-      ]
-      toShare.formUnion(symptomCategoryTypes)
-      // Issue #228: the fertility/measurement write types join the write
-      // set. basalBodyTemperature is a *quantity* type — explicitly upcast
-      // to HKSampleType for the set (see symptomCategoryTypes' note).
-      toShare.insert(cervicalMucusType as HKSampleType)
-      toShare.insert(ovulationTestType as HKSampleType)
-      toShare.insert(basalBodyTemperatureType as HKSampleType)
+      // Issue #924: the single written-type list drives the permission
+      // sheet, so authorization, the writes, and deleteRecords can never
+      // drift apart. Apple's permission sheet is per-type; an existing
+      // install is prompted for a newly added type on the next sync pass.
+      // The read set below is deliberately unchanged (issue #766 governs
+      // reads).
+      let toShare = Set(writtenSampleTypes)
       // Issue #217: the read set is no longer empty. It carries only the
       // menstrual-flow type the user-initiated import reads; the four
       // Apple-computed cycle-deviation types are deliberately NOT requested
@@ -822,10 +845,18 @@ enum HealthKitChannelHandler {
       // Issue #186 tombstone propagation: delete the samples whose
       // HKMetadataKeyExternalUUID is one of the supplied lunarlog record
       // ids. HealthKit can only delete samples the app itself saved, so we
-      // first query the two types this app writes by their external-UUID
+      // first query every type this app writes by their external-UUID
       // metadata, then delete exactly those — a record we never wrote (or a
       // per-type mismatch) is simply absent from the query result. Behind
       // the same guard as every write (a deletion is a health-API touch).
+      //
+      // Issue #924: "every type this app writes" is
+      // `writtenSampleTypes`, the SAME list the authorization sheet uses —
+      // not the two flow types this case queried before, which left every
+      // #238/#228 sample (symptoms, cervical mucus, ovulation, BBT)
+      // orphaned forever. A record the app never wrote is never requested
+      // and matches nothing if it is. BBT rides the same loop: it is a
+      // quantity `HKSampleType`, resolved in `writtenSampleTypes`.
       guard let g = args.flatMap(GuardArgs.init) else {
         badArgs(result, "deleteRecords requires guard args")
         return
@@ -848,23 +879,21 @@ enum HealthKitChannelHandler {
           let predicate = HKQuery.predicateForObjects(
             withMetadataKey: HKMetadataKeyExternalUUID,
             allowedValues: recordIds)
-          // Query both types this app writes by their external-UUID
-          // metadata, then delete exactly those samples. HealthKit's
-          // delete(_:) can only remove samples the app itself saved, so a
-          // record we never wrote is simply absent from the query result.
-          // `HKHealthStore` has no `samples(ofType:predicate:limit:)` method
-          // and no async `delete` overload, so both calls below go through
-          // the standard callback-based APIs wrapped in continuations
-          // (`HKSampleQuery` + `store.execute(_:)`, and
-          // `store.delete(_:withCompletion:)`).
-          let samples = try await querySamples(
-            ofType: menstrualFlowType,
-            predicate: predicate)
-          let intermenstrual = try await querySamples(
-            ofType: intermenstrualBleedingType,
-            predicate: predicate)
-          var toDelete = samples
-          toDelete.append(contentsOf: intermenstrual)
+          // Query EVERY written type by its external-UUID metadata, then
+          // delete exactly those samples. HealthKit's delete(_:) can only
+          // remove samples the app itself saved, so a record we never wrote
+          // is simply absent from the query result. `HKHealthStore` has no
+          // `samples(ofType:predicate:limit:)` method and no async `delete`
+          // overload, so both calls below go through the standard
+          // callback-based APIs wrapped in continuations (`HKSampleQuery` +
+          // `store.execute(_:)`, and `store.delete(_:withCompletion:)`).
+          var toDelete: [HKSample] = []
+          for sampleType in writtenSampleTypes {
+            toDelete.append(
+              contentsOf: try await querySamples(
+                ofType: sampleType,
+                predicate: predicate))
+          }
           if !toDelete.isEmpty {
             try await delete(toDelete)
           }
