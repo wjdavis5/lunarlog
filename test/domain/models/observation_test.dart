@@ -6,6 +6,7 @@ library;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 
 Observation _observation({
   String id = 'o1',
@@ -14,7 +15,7 @@ Observation _observation({
   LocalDate? localDate,
   DateTime? observedAt,
   String tz = 'America/New_York',
-  String category = 'pain',
+  ObservationCategory category = ObservationCategory.pain,
   String? code = 'migraine',
   double? valueNum,
   String? valueText,
@@ -108,8 +109,9 @@ void main() {
 
     test('overrides only the given fields', () {
       final observation = _observation();
-      final recategorized = observation.copyWith(category: 'mood');
-      expect(recategorized.category, 'mood');
+      final recategorized =
+          observation.copyWith(category: ObservationCategory.custom('mood'));
+      expect(recategorized.category, ObservationCategory.custom('mood'));
       expect(recategorized.id, observation.id);
       expect(recategorized.code, observation.code);
     });
@@ -140,7 +142,8 @@ void main() {
 
     test('differing content fields are unequal', () {
       final base = _observation();
-      expect(base, isNot(_observation(category: 'mood')));
+      expect(
+          base, isNot(_observation(category: ObservationCategory.custom('mood'))));
       expect(base, isNot(_observation(code: 'other_code')));
       expect(base, isNot(_observation(valueNum: 1.5)));
       expect(base, isNot(_observation(intensity: 5)));
@@ -161,7 +164,8 @@ void main() {
 
   group('Observation.toString', () {
     test('with a code: includes the code marker (never the code itself)', () {
-      final observation = _observation(category: 'pain', code: 'migraine');
+      final observation =
+          _observation(category: ObservationCategory.pain, code: 'migraine');
       final s = observation.toString();
       expect(s, contains('p1'));
       expect(s, contains('pain'));
@@ -171,7 +175,8 @@ void main() {
     });
 
     test('a null code omits the code marker', () {
-      final observation = _observation(category: 'bbt', code: null);
+      final observation =
+          _observation(category: ObservationCategory.bbt, code: null);
       final s = observation.toString();
       expect(s, contains('bbt'));
       expect(s, isNot(contains(' code')));

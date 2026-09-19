@@ -10,6 +10,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
 
@@ -53,7 +54,7 @@ Observation _observation(
   String dayEntryId,
   String profileId,
   String isoDate, {
-  String category = 'pain',
+  ObservationCategory category = ObservationCategory.pain,
   String? code = 'headache',
   int? intensity,
   double? valueNum,
@@ -184,9 +185,9 @@ void main() {
   ];
   final observations = [
     _observation('obs-01', 'day-01', profile.id, '2026-04-01',
-        category: 'pain', code: 'headache'),
+        category: ObservationCategory.pain, code: 'headache'),
     _observation('obs-02', 'day-01', profile.id, '2026-04-01',
-        category: 'bbt', code: 'reading', loggedByUserId: 'user-secret-999'),
+        category: ObservationCategory.bbt, code: 'reading', loggedByUserId: 'user-secret-999'),
   ];
   final exportedAt = DateTime.utc(2026, 4, 5, 12, 30);
 
@@ -392,7 +393,7 @@ void main() {
     test('a taxonomy tag code is dual-coded via dualCodingFor', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'pain', code: 'headache'),
+            category: ObservationCategory.pain, code: 'headache'),
       ]);
       final entries = (bundle['entry'] as List).cast<Map>();
       final obs = entries
@@ -413,7 +414,7 @@ void main() {
         '(no guessed clinical code)', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'bbt', code: 'reading'),
+            category: ObservationCategory.bbt, code: 'reading'),
       ]);
       final entries = (bundle['entry'] as List).cast<Map>();
       final obs = entries
@@ -434,7 +435,7 @@ void main() {
         '(#157 review fix)', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'pain', code: 'cramps', intensity: 4),
+            category: ObservationCategory.pain, code: 'cramps', intensity: 4),
       ]);
       final entries = (bundle['entry'] as List).cast<Map>();
       final obs = entries
@@ -449,7 +450,7 @@ void main() {
         'known), never valueText (#157 review fix)', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             code: 'reading',
             valueNum: 37.2,
             unit: 'celsius',
@@ -478,7 +479,7 @@ void main() {
         'level — intensity is never dropped, it moves into a component', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'pain',
+            category: ObservationCategory.pain,
             code: 'cramps',
             intensity: 4,
             valueNum: 37.2,
@@ -527,13 +528,13 @@ void main() {
         ],
         obs: [
           _observation('o1', 'day-01', profile.id, '2026-04-01',
-              category: 'pain',
+              category: ObservationCategory.pain,
               code: 'cramps',
               intensity: 4,
               valueNum: 37.2,
               unit: 'celsius'),
           _observation('o2', 'day-02', profile.id, '2026-04-02',
-              category: 'bbt', code: 'reading', valueNum: 36.5, unit: 'celsius'),
+              category: ObservationCategory.bbt, code: 'reading', valueNum: 36.5, unit: 'celsius'),
         ],
       );
       const valueXKeys = [
@@ -566,7 +567,8 @@ void main() {
         'code', () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'other', code: 'wearable_metric', valueNum: 12, unit: 'bpm'),
+            category: ObservationCategory.custom('other'),
+            code: 'wearable_metric', valueNum: 12, unit: 'bpm'),
       ]);
       final entries = (bundle['entry'] as List).cast<Map>();
       final obs = entries
@@ -582,7 +584,7 @@ void main() {
         () {
       final bundle = build(obs: [
         _observation('o1', 'day-01', profile.id, '2026-04-01',
-            category: 'bbt', code: 'reading', excluded: true),
+            category: ObservationCategory.bbt, code: 'reading', excluded: true),
       ]);
       final strings = _allStrings(bundle);
       expect(strings.any((s) => s.contains('o1')), isFalse);
@@ -653,7 +655,7 @@ void main() {
         ],
         obs: [
           _observation('o1', 'day-01', profile.id, '2026-04-01',
-              category: 'pain', code: 'cramps'),
+              category: ObservationCategory.pain, code: 'cramps'),
         ],
       );
       final entries = (bundle['entry'] as List).cast<Map>();
@@ -677,7 +679,7 @@ void main() {
         ],
         obs: [
           _observation('o1', 'day-01', profile.id, '2026-04-01',
-              category: 'pain', code: 'cramps', excluded: true),
+              category: ObservationCategory.pain, code: 'cramps', excluded: true),
         ],
       );
       final entries = (bundle['entry'] as List).cast<Map>();
@@ -765,7 +767,7 @@ void main() {
         entries: history,
         obs: [
           _observation('o1', 'e0', profile.id, '2026-01-01',
-              category: 'pain', code: 'cramps'),
+              category: ObservationCategory.pain, code: 'cramps'),
         ],
         prediction: prediction,
       );

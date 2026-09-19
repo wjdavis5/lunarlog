@@ -104,6 +104,7 @@ library;
 
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 
 /// The `observations.category` value a basal-body-temperature row is logged
 /// under (the #240/#255 generic observations child table; the day sheet's
@@ -459,7 +460,7 @@ class ResolvedBasalBodyTemperature {
 ResolvedBasalBodyTemperature? resolveBasalBodyTemperature(
   Observation observation,
 ) {
-  if (observation.category != kBbtObservationCategory) return null;
+  if (observation.category != ObservationCategory.bbt) return null;
   if (!isManuallyTrackedBbtSource(observation.source)) return null;
   if (observation.excluded) return null;
   final value = observation.valueNum;

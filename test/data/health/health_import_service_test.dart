@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -692,7 +693,7 @@ void main() {
       expect(summary.spottingDaysWritten, 1);
       expect(observations.saved, hasLength(1));
       final observation = observations.saved.single;
-      expect(observation.category, 'spotting');
+      expect(observation.category, ObservationCategory.spotting);
       expect(observation.code, 'spotting');
       expect(observation.source, ObservationSource.healthConnect);
       expect(observation.sourceId, 'hc-spot');
@@ -723,7 +724,7 @@ void main() {
           profileId: _profileId,
           localDate: LocalDate(2026, 9, 10),
           tz: _tz,
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           source: ObservationSource.manual,
           updatedAt: DateTime.utc(2026, 9, 10),

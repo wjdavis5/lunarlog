@@ -588,8 +588,9 @@ List<Map<String, Object?>> _symptomCodings(Observation observation) {
 
 ClinicalCode _localObservationCoding(Observation observation) => ClinicalCode(
       system: kSystemLunarlogLocal,
-      code: '${observation.category}:${observation.code ?? observation.category}',
-      display: observation.code ?? observation.category,
+      code:
+          '${observation.category.wireCode}:${observation.code ?? observation.category.wireCode}',
+      display: observation.code ?? observation.category.wireCode,
       provenanceUrl: kFhirExportLocalCodeDocPath,
     );
 

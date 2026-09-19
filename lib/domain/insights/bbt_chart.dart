@@ -18,6 +18,7 @@ import '../episodes/episodes.dart';
 import '../models/local_date.dart';
 import '../models/measurement_unit.dart';
 import '../models/observation.dart';
+import '../models/observation_category.dart';
 
 /// One logged BBT reading, already resolved to a cycle day within its own
 /// cycle and converted to Celsius (the canonical unit this file always
@@ -116,7 +117,7 @@ BbtChartData deriveBbtChartData({
     ..sort((a, b) => a.updatedAt.compareTo(b.updatedAt));
   final celsiusByDate = <String, double>{};
   for (final o in sortedRows) {
-    if (o.category != 'bbt' ||
+    if (o.category != ObservationCategory.bbt ||
         o.deletedAt != null ||
         o.excluded ||
         o.valueNum == null) {

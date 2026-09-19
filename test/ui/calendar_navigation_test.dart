@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -80,7 +81,7 @@ Future<DayEntry> _seedSpotting(
       profileId: profileId,
       localDate: date,
       tz: 'America/Chicago',
-      category: 'spotting',
+            category: ObservationCategory.spotting,
       code: 'spotting',
       updatedAt: DateTime.utc(2026, 1, 1),
     ),
@@ -175,7 +176,7 @@ class FakeSpottingObservationsRepository implements ObservationsRepository {
             profileId: profileId,
             localDate: LocalDate.fromIso(iso),
             tz: 'America/Chicago',
-            category: 'spotting',
+      category: ObservationCategory.spotting,
             code: 'spotting',
             updatedAt: DateTime.utc(2026, 1, 1),
           ),

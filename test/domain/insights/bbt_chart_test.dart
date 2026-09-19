@@ -8,6 +8,7 @@ import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/insights/bbt_chart.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 
 Observation _bbt(
   String id,
@@ -15,7 +16,7 @@ Observation _bbt(
   double celsius, {
   bool excluded = false,
   DateTime? updatedAt,
-  String category = 'bbt',
+  ObservationCategory category = ObservationCategory.bbt,
   ObservationSource source = ObservationSource.manual,
   String unit = 'celsius',
 }) =>
@@ -127,7 +128,8 @@ void main() {
       final data = deriveBbtChartData(
         episodes: episodes,
         observations: [
-          _bbt('o1', LocalDate(2026, 1, 2), 61.0, category: 'weight'),
+          _bbt('o1', LocalDate(2026, 1, 2), 61.0,
+              category: ObservationCategory.weight),
         ],
       );
       expect(data.isEmpty, isTrue);

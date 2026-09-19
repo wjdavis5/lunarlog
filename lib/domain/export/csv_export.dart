@@ -8,6 +8,7 @@ import '../models/flow_level.dart';
 import '../models/local_date.dart';
 import '../models/measurement_unit.dart';
 import '../models/observation.dart';
+import '../models/observation_category.dart';
 import '../prediction/prediction.dart' show kMinCycleDays, kMaxCycleDays;
 
 /// Field-content prefixes (Issue #563; OWASP CSV/formula injection) that a
@@ -168,13 +169,13 @@ Map<LocalDate, List<Observation>> _mapLiveObservations(
 
 bool _hasSpotting(DayEntry? entry, List<Observation> observations) {
   if (entry != null && entry.flow == FlowLevel.spotting) return true;
-  return observations.any((o) => o.category == 'spotting');
+  return observations.any((o) => o.category == ObservationCategory.spotting);
 }
 
 String _formatPainIntensity(List<Observation> observations) {
   final painRows = [
     for (final o in observations)
-      if (o.category == 'pain' && o.intensity != null) o,
+      if (o.category == ObservationCategory.pain && o.intensity != null) o,
   ];
   if (painRows.isEmpty) return '';
   return painRows
@@ -206,7 +207,7 @@ const _Measurement _kEmptyMeasurement = (value: '', unit: '');
 /// (the defect this issue reports).
 _Measurement _formatMeasurement<U>(
   List<Observation> observations,
-  String category,
+  ObservationCategory category,
   Set<String> knownUnits,
   U Function(String) parseUnit,
   double Function(double value, U from) convertToDisplay,
@@ -227,7 +228,7 @@ _Measurement _formatMeasurement<U>(
 _Measurement _formatBbt(List<Observation> observations, BbtUnit displayUnit) =>
     _formatMeasurement<BbtUnit>(
       observations,
-      'bbt',
+      ObservationCategory.bbt,
       const {'celsius', 'fahrenheit'},
       BbtUnit.fromDb,
       (value, from) => convertTemperature(value, from: from, to: displayUnit),
@@ -237,7 +238,7 @@ _Measurement _formatBbt(List<Observation> observations, BbtUnit displayUnit) =>
 _Measurement _formatWeight(List<Observation> observations, WeightUnit displayUnit) =>
     _formatMeasurement<WeightUnit>(
       observations,
-      'weight',
+      ObservationCategory.weight,
       const {'kg', 'lb'},
       WeightUnit.fromDb,
       (value, from) => convertWeight(value, from: from, to: displayUnit),

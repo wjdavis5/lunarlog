@@ -12,6 +12,7 @@ import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 
 final _date = LocalDate(2026, 8, 30);
 final _now = DateTime.utc(2026, 8, 30, 12);
@@ -22,7 +23,7 @@ Observation _spottingObs(String id) => Observation(
       profileId: 'p1',
       localDate: _date,
       tz: 'UTC',
-      category: 'spotting',
+      category: ObservationCategory.spotting,
       code: 'spotting',
       updatedAt: _now,
     );
@@ -33,7 +34,7 @@ Observation _painObs(String id, String code, {int? intensity}) => Observation(
       profileId: 'p1',
       localDate: _date,
       tz: 'UTC',
-      category: 'pain',
+      category: ObservationCategory.pain,
       code: code,
       intensity: intensity,
       updatedAt: _now,
@@ -41,7 +42,7 @@ Observation _painObs(String id, String code, {int? intensity}) => Observation(
 
 Observation _measurementObs(
   String id,
-  String category, {
+  ObservationCategory category, {
   double? valueNum,
   String? unit,
   bool excluded = false,
@@ -182,7 +183,7 @@ void main() {
         updatedAt: _now,
       );
       expect(mutations.toUpsert, hasLength(1));
-      expect(mutations.toUpsert.single.category, 'spotting');
+      expect(mutations.toUpsert.single.category, ObservationCategory.spotting);
       expect(mutations.toUpsert.single.dayEntryId, 'e1');
       expect(mutations.toDelete, isEmpty);
     });
@@ -286,7 +287,7 @@ void main() {
       );
       expect(mutations.toUpsert, hasLength(1));
       final row = mutations.toUpsert.single;
-      expect(row.category, 'pain');
+      expect(row.category, ObservationCategory.pain);
       expect(row.code, 'cramps');
       expect(row.intensity, 4);
       expect(mutations.toDelete, isEmpty);
@@ -393,7 +394,7 @@ void main() {
     test('a value with no existing row: upserts a new one', () {
       final mutations = computeMeasurementMutations(
         existingObservations: const [],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.7,
         unit: 'celsius',
         excluded: false,
@@ -405,7 +406,7 @@ void main() {
       );
       expect(mutations.toUpsert, hasLength(1));
       final row = mutations.toUpsert.single;
-      expect(row.category, 'bbt');
+      expect(row.category, ObservationCategory.bbt);
       expect(row.valueNum, 36.7);
       expect(row.unit, 'celsius');
       expect(row.excluded, isFalse);
@@ -416,7 +417,7 @@ void main() {
     test('a null value with no existing row: no-op', () {
       final mutations = computeMeasurementMutations(
         existingObservations: const [],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: null,
         unit: 'celsius',
         excluded: false,
@@ -433,9 +434,9 @@ void main() {
     test('a null value with an existing manual row: deletes it (clear)', () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'bbt', valueNum: 36.5, unit: 'celsius'),
+          _measurementObs('o1', ObservationCategory.bbt, valueNum: 36.5, unit: 'celsius'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: null,
         unit: 'celsius',
         excluded: false,
@@ -453,9 +454,9 @@ void main() {
         () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'bbt', valueNum: 36.5, unit: 'celsius'),
+          _measurementObs('o1', ObservationCategory.bbt, valueNum: 36.5, unit: 'celsius'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.5,
         unit: 'celsius',
         excluded: false,
@@ -473,9 +474,9 @@ void main() {
         () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'bbt', valueNum: 36.5, unit: 'celsius'),
+          _measurementObs('o1', ObservationCategory.bbt, valueNum: 36.5, unit: 'celsius'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.9,
         unit: 'celsius',
         excluded: false,
@@ -494,9 +495,9 @@ void main() {
         'upserts even with the same numeric value', () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'bbt', valueNum: 36.5, unit: 'celsius'),
+          _measurementObs('o1', ObservationCategory.bbt, valueNum: 36.5, unit: 'celsius'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.5,
         unit: 'fahrenheit',
         excluded: false,
@@ -513,9 +514,9 @@ void main() {
     test('a changed excluded flag alone upserts', () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'bbt', valueNum: 36.5, unit: 'celsius'),
+          _measurementObs('o1', ObservationCategory.bbt, valueNum: 36.5, unit: 'celsius'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.5,
         unit: 'celsius',
         excluded: true,
@@ -536,13 +537,13 @@ void main() {
         existingObservations: [
           _measurementObs(
             'wearable-1',
-            'bbt',
+            ObservationCategory.bbt,
             valueNum: 36.5,
             unit: 'celsius',
             source: ObservationSource.wearable,
           ),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.8,
         unit: 'celsius',
         excluded: false,
@@ -562,9 +563,9 @@ void main() {
         'ignored entirely', () {
       final mutations = computeMeasurementMutations(
         existingObservations: [
-          _measurementObs('o1', 'weight', valueNum: 61.0, unit: 'kg'),
+          _measurementObs('o1', ObservationCategory.weight, valueNum: 61.0, unit: 'kg'),
         ],
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         value: 36.5,
         unit: 'celsius',
         excluded: false,
@@ -575,7 +576,7 @@ void main() {
         updatedAt: _now,
       );
       expect(mutations.toUpsert, hasLength(1));
-      expect(mutations.toUpsert.single.category, 'bbt');
+      expect(mutations.toUpsert.single.category, ObservationCategory.bbt);
     });
   });
 
@@ -594,7 +595,7 @@ void main() {
       expect(mutations.toUpsert, hasLength(2));
       expect(
         mutations.toUpsert.map((o) => o.category),
-        containsAll(['spotting', 'pain']),
+        containsAll([ObservationCategory.spotting, ObservationCategory.pain]),
       );
     });
 
@@ -632,7 +633,12 @@ void main() {
       expect(mutations.toUpsert, hasLength(4));
       expect(
         mutations.toUpsert.map((o) => o.category),
-        containsAll(['spotting', 'pain', 'bbt', 'weight']),
+        containsAll([
+          ObservationCategory.spotting,
+          ObservationCategory.pain,
+          ObservationCategory.bbt,
+          ObservationCategory.weight,
+        ]),
       );
     });
 
@@ -675,7 +681,7 @@ void main() {
         profileId: 'p1',
         localDate: _date,
         tz: 'UTC',
-        category: 'energy',
+        category: ObservationCategory.custom('energy'),
         code: 'cramps',
         intensity: 3,
         updatedAt: _now,
@@ -690,7 +696,7 @@ void main() {
         profileId: 'p1',
         localDate: _date,
         tz: 'UTC',
-        category: 'pain',
+        category: ObservationCategory.pain,
         intensity: 3,
         updatedAt: _now,
       );

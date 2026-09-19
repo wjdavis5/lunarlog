@@ -8,6 +8,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 
 DayEntry _entry({
   required String id,
@@ -34,7 +35,7 @@ DayEntry _entry({
 Observation _observation({
   required String id,
   required LocalDate date,
-  required String category,
+  required ObservationCategory category,
   String? code,
   double? valueNum,
   String? unit,
@@ -247,7 +248,7 @@ void main() {
         _observation(
           id: 'o1',
           date: LocalDate(2026, 4, 1),
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           deletedAt: DateTime.utc(2026, 4, 2),
         ),
       ];
@@ -257,6 +258,31 @@ void main() {
         csv,
         'date,flow,pms,tags,pain_intensity,spotting,notes,bbt,bbt_unit,weight,weight_unit\r\n',
       );
+    });
+
+    test('issue #847: an unrecognised category drives no spotting/pain/'
+        'measurement branch', () {
+      final entries = [
+        _entry(id: 'e1', date: LocalDate(2026, 4, 1)),
+      ];
+      final obs = [
+        _observation(
+          id: 'o1',
+          date: LocalDate(2026, 4, 1),
+          category: ObservationCategory.custom('mood'),
+          code: 'anxious',
+          intensity: 5,
+        ),
+      ];
+
+      final csv = buildDailyLogCsv(entries: entries, observations: obs);
+      final row = csv.split('\r\n')[1].split(',');
+
+      // date,flow,pms,tags,pain_intensity,spotting,...
+      expect(row[4], isEmpty, reason: 'not a pain row');
+      expect(row[5], 'false', reason: 'not a spotting row');
+      expect(row[7], isEmpty, reason: 'not a bbt row');
+      expect(row[9], isEmpty, reason: 'not a weight row');
     });
 
     test('serializes complete daily log with tags, pain intensity, spotting, '
@@ -284,21 +310,21 @@ void main() {
         _observation(
           id: 'o1',
           date: LocalDate(2026, 4, 1),
-          category: 'pain',
+          category: ObservationCategory.pain,
           code: 'pelvic',
           intensity: 4,
         ),
         _observation(
           id: 'o2',
           date: LocalDate(2026, 4, 1),
-          category: 'bbt',
+          category: ObservationCategory.bbt,
           valueNum: 36.5,
           unit: 'celsius',
         ),
         _observation(
           id: 'o3',
           date: LocalDate(2026, 4, 1),
-          category: 'weight',
+          category: ObservationCategory.weight,
           valueNum: 61.5,
           unit: 'kg',
         ),
@@ -306,7 +332,7 @@ void main() {
         _observation(
           id: 'o4',
           date: LocalDate(2026, 4, 3),
-          category: 'spotting',
+          category: ObservationCategory.spotting,
         ),
       ];
 
@@ -331,7 +357,7 @@ void main() {
           _observation(
             id: 'o1',
             date: LocalDate(2026, 4, 1),
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             valueNum: 98.6, // 37.0°C
             unit: 'fahrenheit',
           ),
@@ -351,14 +377,14 @@ void main() {
           _observation(
             id: 'o1',
             date: LocalDate(2026, 4, 1),
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             valueNum: 36.5,
             unit: 'celsius',
           ),
           _observation(
             id: 'o2',
             date: LocalDate(2026, 4, 2),
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             valueNum: 98.6, // also 36.5-ish °C once converted
             unit: 'fahrenheit',
           ),
@@ -383,7 +409,7 @@ void main() {
           _observation(
             id: 'o1',
             date: LocalDate(2026, 4, 1),
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             valueNum: 37.0,
             unit: 'celsius',
           ),
@@ -405,7 +431,7 @@ void main() {
           _observation(
             id: 'o1',
             date: LocalDate(2026, 4, 1),
-            category: 'weight',
+            category: ObservationCategory.weight,
             valueNum: 135.5,
             unit: 'lb',
           ),
@@ -426,14 +452,14 @@ void main() {
           _observation(
             id: 'o1',
             date: LocalDate(2026, 4, 1),
-            category: 'bbt',
+            category: ObservationCategory.bbt,
             valueNum: 97.8,
             unit: null,
           ),
           _observation(
             id: 'o2',
             date: LocalDate(2026, 4, 2),
-            category: 'weight',
+            category: ObservationCategory.weight,
             valueNum: 12.3,
             unit: 'stone', // not one of the closed set
           ),

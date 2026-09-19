@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -91,7 +92,7 @@ Observation _spotting(
       profileId: _profileId,
       localDate: LocalDate.fromIso(isoDay),
       tz: _tz,
-      category: 'spotting',
+      category: ObservationCategory.spotting,
       code: 'spotting',
       updatedAt: updatedAt,
       source: source,

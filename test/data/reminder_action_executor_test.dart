@@ -12,6 +12,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -165,7 +166,8 @@ void main() {
     expect(entry!.flow, FlowLevel.notBleeding,
         reason: 'the Issue #247 model: spotting is never a flow level');
     expect(observations.forEntry(entry.id), hasLength(1));
-    expect(observations.forEntry(entry.id).single.category, 'spotting');
+    expect(observations.forEntry(entry.id).single.category,
+        ObservationCategory.spotting);
     expect(observations.forEntry(entry.id).single.code, 'spotting');
 
     // The double tap.

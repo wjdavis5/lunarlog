@@ -12,6 +12,7 @@
 library;
 
 import 'local_date.dart';
+import 'observation_category.dart';
 
 /// `manual` / `apple_health` / `health_connect` / `wearable` / `clue_import`.
 enum ObservationSource {
@@ -97,8 +98,11 @@ class Observation {
   /// IANA time zone name the entry was logged in.
   final String tz;
 
-  /// e.g. `pain`, `energy`, `bbt`. Free text, never a closed set.
-  final String category;
+  /// e.g. [ObservationCategory.pain], [ObservationCategory.bbt]. The typed
+  /// projection of the free-text stored value: an unrecognised stored code
+  /// arrives as [UnknownObservationCategory] and round-trips verbatim
+  /// (Issue #847).
+  final ObservationCategory category;
 
   /// The selected option within [category] (e.g. `migraine`); null only
   /// for a purely-numeric category. Free text, never a closed set.
@@ -152,7 +156,7 @@ class Observation {
     LocalDate? localDate,
     Object? observedAt = _unset,
     String? tz,
-    String? category,
+    ObservationCategory? category,
     Object? code = _unset,
     Object? valueNum = _unset,
     Object? valueText = _unset,

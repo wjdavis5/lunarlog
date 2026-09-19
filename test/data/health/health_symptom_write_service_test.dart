@@ -16,6 +16,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -71,7 +72,7 @@ Observation _pain(String day, String code, int intensity) => Observation(
   profileId: _profileId,
   localDate: LocalDate.fromIso(day),
   tz: _tz,
-  category: 'pain',
+  category: ObservationCategory.pain,
   code: code,
   intensity: intensity,
   updatedAt: DateTime.utc(2026, 6, 2),

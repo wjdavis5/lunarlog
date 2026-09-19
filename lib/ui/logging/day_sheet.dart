@@ -82,6 +82,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/measurement_validation.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/perimenopause.dart'
     show isPerimenopauseMode, perimenopauseCategoryOrder;
@@ -1033,7 +1034,7 @@ class _DaySheetState extends State<DaySheet> {
       ).listForDayEntryWithLegacyAlias(dayEntryId);
       if (!mounted) return;
       setState(() {
-        if (observations.any((o) => o.category == 'spotting')) {
+        if (observations.any((o) => o.category == ObservationCategory.spotting)) {
           _spotting = true;
           _hadSpottingOnLoad = true;
         }
@@ -1102,7 +1103,7 @@ class _DaySheetState extends State<DaySheet> {
       listen: false,
     ).listForDayEntry(dayEntryId);
     if (!mounted) return;
-    Observation? manualRowOf(String category) {
+    Observation? manualRowOf(ObservationCategory category) {
       for (final o in observations) {
         if (o.category == category &&
             o.source == ObservationSource.manual &&
@@ -1113,8 +1114,8 @@ class _DaySheetState extends State<DaySheet> {
       return null;
     }
 
-    final bbtRow = manualRowOf('bbt');
-    final weightRow = manualRowOf('weight');
+    final bbtRow = manualRowOf(ObservationCategory.bbt);
+    final weightRow = manualRowOf(ObservationCategory.weight);
     if (bbtRow == null && weightRow == null) return;
     setState(() {
       _seedingMeasurements = true;

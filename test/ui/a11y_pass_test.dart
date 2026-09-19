@@ -39,6 +39,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
@@ -824,7 +825,7 @@ void main() {
           profileId: profileId,
           localDate: saved.localDate,
           tz: saved.tz,
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
@@ -836,7 +837,7 @@ void main() {
           profileId: profileId,
           localDate: saved.localDate,
           tz: saved.tz,
-          category: 'pain',
+          category: ObservationCategory.pain,
           code: 'cramps',
           intensity: 4,
           updatedAt: DateTime.utc(2026, 1, 1),
@@ -917,7 +918,7 @@ void main() {
               profileId: profileId,
               localDate: saved.localDate,
               tz: saved.tz,
-              category: 'bbt',
+              category: ObservationCategory.bbt,
               valueNum: 36.7,
               unit: 'celsius',
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -930,7 +931,7 @@ void main() {
               profileId: profileId,
               localDate: saved.localDate,
               tz: saved.tz,
-              category: 'weight',
+              category: ObservationCategory.weight,
               valueNum: 61.2,
               unit: 'kg',
               updatedAt: DateTime.utc(2026, 1, 1),

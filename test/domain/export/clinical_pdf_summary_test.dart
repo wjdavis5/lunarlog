@@ -9,6 +9,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 
 Profile _profile({String displayName = 'Riley'}) => Profile(
@@ -37,7 +38,7 @@ DayEntry _bleed(
 Observation _observation(
   String id,
   LocalDate date, {
-  required String category,
+  required ObservationCategory category,
   String? code,
   bool excluded = false,
 }) => Observation(
@@ -208,15 +209,15 @@ void main() {
   test('observations contribute symptom labels, but excluded and measurement '
       'rows do not', () {
     final observations = [
-      _observation('o1', starts[1], category: 'pain', code: 'migraine'),
+      _observation('o1', starts[1], category: ObservationCategory.pain, code: 'migraine'),
       _observation(
         'o2',
         starts[2],
-        category: 'pain',
+        category: ObservationCategory.pain,
         code: 'migraine',
         excluded: true,
       ),
-      _observation('o3', starts[3], category: 'bbt'),
+      _observation('o3', starts[3], category: ObservationCategory.bbt),
     ];
     final summary = _summary(entries, observations: observations);
     final migraine = summary.symptomGrid.singleWhere(
@@ -307,7 +308,7 @@ void main() {
         ),
     ];
     final obsCramps = [
-      _observation('oc1', starts[1], category: 'pain', code: 'cramps'),
+      _observation('oc1', starts[1], category: ObservationCategory.pain, code: 'cramps'),
     ];
     final summary = _summary(withCrampsTag, observations: obsCramps);
     final cramps = summary.symptomGrid.where((row) => row.label == 'Cramps');
@@ -318,8 +319,8 @@ void main() {
 
   test('Issue #794: spotting observations render as Spotting', () {
     final obsSpotting = [
-      _observation('s1', starts[1], category: 'spotting', code: 'spotting'),
-      _observation('s2', starts[2], category: 'spotting', code: 'light'),
+      _observation('s1', starts[1], category: ObservationCategory.spotting, code: 'spotting'),
+      _observation('s2', starts[2], category: ObservationCategory.spotting, code: 'light'),
     ];
     final summary = _summary(entries, observations: obsSpotting);
     final spotting = summary.symptomGrid.singleWhere(

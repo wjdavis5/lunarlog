@@ -23,6 +23,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
@@ -144,7 +145,7 @@ class Harness {
         profileId: profileId,
         localDate: date,
         tz: 'UTC',
-        category: 'bbt',
+        category: ObservationCategory.bbt,
         valueNum: celsius,
         unit: 'celsius',
         excluded: excluded,

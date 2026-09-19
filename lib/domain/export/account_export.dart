@@ -498,7 +498,7 @@ Map<String, Object?> _exportObservation(Observation o) => {
       'localDate': o.localDate.iso,
       'observedAt': o.observedAt?.toUtc().toIso8601String(),
       'tz': o.tz,
-      'category': o.category,
+      'category': o.category.wireCode,
       'code': o.code,
       'valueNum': o.valueNum,
       'valueText': o.valueText,

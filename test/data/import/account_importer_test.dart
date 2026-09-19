@@ -30,6 +30,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart'
     show GuardiansForProfile;
 
@@ -927,13 +928,13 @@ void main() {
               'overwrite of the existing one');
 
       final untouched = all.singleWhere((o) => o.id == _o1);
-      expect(untouched.category, 'mood');
+      expect(untouched.category, ObservationCategory.custom('mood'));
       expect(untouched.code, 'happy',
           reason: 'the existing observation X is never silently '
               'overwritten despite the file row sharing its raw id');
 
       final added = all.singleWhere((o) => o.id != _o1);
-      expect(added.category, 'mood');
+      expect(added.category, ObservationCategory.custom('mood'));
       expect(added.code, 'sad');
       expect(added.id, isNot(_o1),
           reason: 'the colliding file id is never reused — a fresh id is '
@@ -977,7 +978,7 @@ void main() {
 
       final profileAObs = await observations.listForProfile(profileA.id);
       expect(profileAObs.single.id, _o1);
-      expect(profileAObs.single.category, 'mood',
+      expect(profileAObs.single.category, ObservationCategory.custom('mood'),
           reason: 'profile A\'s own observation is untouched by profile '
               'B\'s import');
 
@@ -1309,7 +1310,8 @@ void main() {
       final restoredObservations =
           await targetObservations.listForProfile(restoredProfile.id);
       expect(restoredObservations, hasLength(1));
-      expect(restoredObservations.single.category, 'pain');
+      expect(
+          restoredObservations.single.category, ObservationCategory.pain);
       expect(restoredObservations.single.code, 'cramps');
       expect(restoredObservations.single.intensity, 3);
 

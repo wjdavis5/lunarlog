@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
@@ -350,7 +351,7 @@ void main() {
               profileId: 'p1',
               localDate: LocalDate(2026, 9, 1),
               tz: 'UTC',
-              category: 'pain',
+              category: ObservationCategory.pain,
               updatedAt: DateTime.utc(2026, 9, 1),
             ),
           ],
