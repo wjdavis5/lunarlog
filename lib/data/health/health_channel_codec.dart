@@ -19,7 +19,7 @@
 /// | `writeSymptomSamples` | guard + day + `samples` (list of `{typeIdentifier, severity, recordId, recordVersionMs}`) | result string |
 /// | `writeCervicalMucus` | guard + day + `healthKitValue` + `healthConnectAppearance` + `recordId` + `recordVersionMs` | result string |
 /// | `writeOvulationTest` | guard + day + `healthKitResult` + `healthConnectResult` + `recordId` + `recordVersionMs` | result string |
-/// | `writeBasalBodyTemperature` | guard + day + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
+/// | `writeBasalBodyTemperature` | guard + BBT instant args + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
@@ -58,6 +58,11 @@
 /// `zoneOffsetMs`, `endZoneOffsetMs` — all UTC epoch milliseconds /
 /// offset milliseconds computed here via `day_boundary.dart` (#180's
 /// timezone contract), so the native sides never do zone math.
+///
+/// *BBT args* (Issue #920): `startMs` / `endMs` / `instantMs` (all set to
+/// the same instant — a point/waking sample, either `observedAt` or 07:00
+/// morning local time in the entry's `tzName`, never 23:59:59) and
+/// `zoneOffsetMs` (the UTC offset in effect at that instant).
 ///
 /// *Period args* (the `writeMenstrualPeriod` interval record, #202):
 /// `startMs` (local midnight of the episode's first day) +
@@ -350,5 +355,29 @@ Map<String, Object?> encodePeriodDayArgs(
     'startZoneOffsetMs': zoneOffsetFor(start, tzName).inMilliseconds,
     'endMs': localDayEndExclusive(end, tzName).millisecondsSinceEpoch,
     'endZoneOffsetMs': endZoneOffsetFor(end, tzName).inMilliseconds,
+  };
+}
+
+/// The BBT-args half for one `writeBasalBodyTemperature` (Issue #920):
+/// a point/waking measurement (start == end == instant), resolving
+/// [observedAt] when present or 07:00 morning local time in [tzName].
+/// All from the entry's own [tzName] via `day_boundary.dart` (#180's
+/// timezone contract — never the device's current zone).
+Map<String, Object?> encodeBbtArgs(
+  LocalDate date,
+  String tzName, {
+  DateTime? observedAt,
+}) {
+  final bbt = basalBodyTemperatureInstant(
+    date: date,
+    tzName: tzName,
+    observedAt: observedAt,
+  );
+  final instantMs = bbt.instant.millisecondsSinceEpoch;
+  return {
+    'startMs': instantMs,
+    'endMs': instantMs,
+    'instantMs': instantMs,
+    'zoneOffsetMs': bbt.offset.inMilliseconds,
   };
 }

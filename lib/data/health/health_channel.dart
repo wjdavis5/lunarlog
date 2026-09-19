@@ -320,7 +320,11 @@ class MethodChannelHealthPlatform
       _invokeGuarded(
         HealthChannelMethods.writeBasalBodyTemperature,
         write.facts,
-        dayArgs: () => encodeDayArgs(write.date, write.tzName),
+        dayArgs: () => encodeBbtArgs(
+          write.date,
+          write.tzName,
+          observedAt: write.observedAt,
+        ),
         payloadArgs: () => {
           // Already in Celsius (Dart converts via #255's
           // convertTemperature); neither native half does unit math.

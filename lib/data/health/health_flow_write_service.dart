@@ -222,6 +222,7 @@ class _PendingBbtWrite {
     required this.resolved,
     required this.recordId,
     required this.updatedAt,
+    this.observedAt,
   });
 
   final LocalDate date;
@@ -229,6 +230,7 @@ class _PendingBbtWrite {
   final ResolvedBasalBodyTemperature resolved;
   final String recordId;
   final DateTime updatedAt;
+  final DateTime? observedAt;
 
   int get recordVersionMs => updatedAt.millisecondsSinceEpoch;
 }
@@ -659,6 +661,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       resolved: resolved,
       recordId: healthBbtRecordId(row.id),
       updatedAt: row.updatedAt,
+      observedAt: row.observedAt,
     );
   }
 
@@ -1231,6 +1234,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
               item.resolved.healthConnectMeasurementLocation,
           recordId: item.recordId,
           recordVersionMs: item.recordVersionMs,
+          observedAt: item.observedAt,
         ),
       );
       if (result is HealthPlatformAllowed) {

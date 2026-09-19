@@ -52,4 +52,24 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(HealthKitChannelHandler.severity(forWire: "notPresent"))
     XCTAssertNil(HealthKitChannelHandler.severity(forWire: "unknown"))
   }
+
+  /// Issue #920: Verifies that BBT samples are built as instant samples (startDate == endDate)
+  /// rather than whole-day intervals ending at 23:59:59.
+  func testBasalBodyTemperatureSampleIsInstant() {
+    let instantMs: Int64 = 1780401600000 // 2026-06-02 11:00:00 UTC (07:00 EDT)
+    let sample = HealthKitChannelHandler.buildBasalBodyTemperatureSample(
+      celsius: 36.7,
+      startMs: instantMs,
+      endMs: instantMs,
+      recordId: "bbt-record-1",
+      recordVersionMs: 123456
+    )
+
+    XCTAssertEqual(sample.startDate, sample.endDate, "BBT sample must be an instant (startDate == endDate)")
+    XCTAssertEqual(sample.startDate, Date(timeIntervalSince1970: Double(instantMs) / 1000.0))
+    XCTAssertEqual(sample.quantity.doubleValue(for: .degreeCelsius()), 36.7, accuracy: 0.0001)
+    XCTAssertEqual(sample.metadata?[HKMetadataKeyExternalUUID] as? String, "bbt-record-1")
+    XCTAssertEqual(sample.metadata?[HKMetadataKeySyncIdentifier] as? String, "bbt-record-1")
+    XCTAssertEqual(sample.metadata?[HKMetadataKeySyncVersion] as? NSNumber, 123456)
+  }
 }
