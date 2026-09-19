@@ -233,6 +233,25 @@ HealthFlowSample _offsetSample({
   );
 }
 
+/// One iOS import sample with no recorded IANA zone, carrying the
+/// device-zone offset the iOS read synthesises (Issue #902).
+HealthFlowSample _deviceZoneSample({
+  required String id,
+  required HealthFlowValue flow,
+  required String startIso,
+  Duration offset = const Duration(hours: -4),
+}) {
+  final start = DateTime.parse(startIso);
+  return HealthFlowSample(
+    recordId: id,
+    flow: flow,
+    start: start,
+    end: start,
+    offset: offset,
+    offsetInferred: true,
+  );
+}
+
 void main() {
   late FakeSettingsStore settings;
   late _FakePlatform platform;
@@ -761,6 +780,98 @@ void main() {
       ).importNow();
       expect(summary.samplesWithoutZone, 1);
       expect(observations.saved, isEmpty);
+    });
+  });
+
+  group('Issue #902 device-zone fallback', () {
+    test('an iOS sample with no recorded zone but a device-zone offset is '
+        'placed, not skipped', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _deviceZoneSample(
+          id: 'hk-device-zone',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+      ]);
+      final summary = await build().importNow();
+
+      expect(summary.samplesWithoutZone, 0);
+      expect(summary.samplesFromDeviceZone, 1);
+      expect(summary.samplesFromRecordedZone, 0);
+      expect(summary.daysWritten, 1);
+      final row = dayEntries.saved.single;
+      expect(row.localDate, LocalDate(2026, 9, 10));
+      expect(row.flow, FlowLevel.medium);
+      // No IANA name exists for an inferred fallback; the row carries the
+      // fixed-offset designator derived from the forwarded offset.
+      expect(row.tz, 'UTC-04:00');
+    });
+
+    test('a device-zone row lands on the expected LocalDate, resolved from '
+        'the forwarded offset', () async {
+      await bind();
+      // 02:00Z on the 15th is still the 14th at -04:00.
+      source.result = HealthReadResult.samples([
+        _deviceZoneSample(
+          id: 'hk-device-midnight',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-15T02:00:00Z',
+        ),
+      ]);
+      await build().importNow();
+      expect(dayEntries.saved.single.localDate, LocalDate(2026, 9, 14));
+    });
+
+    test('a sample with a recorded tzName still uses that zone, even when a '
+        'device offset also rides along (the #180 contract is unchanged)',
+        () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        HealthFlowSample(
+          recordId: 'hk-tz-wins',
+          flow: HealthFlowValue.light,
+          start: DateTime.parse('2026-09-15T02:00:00Z'),
+          end: DateTime.parse('2026-09-15T02:00:00Z'),
+          tzName: 'America/New_York',
+          offset: const Duration(hours: 9),
+          offsetInferred: true,
+        ),
+      ]);
+      final summary = await build().importNow();
+
+      expect(summary.samplesFromRecordedZone, 1);
+      expect(summary.samplesFromDeviceZone, 0);
+      expect(dayEntries.saved.single.localDate, LocalDate(2026, 9, 14));
+      expect(dayEntries.saved.single.tz, 'America/New_York');
+    });
+
+    test('the summary counts recorded-zone, device-zone and unplaceable rows '
+        'separately', () async {
+      await bind();
+      source.result = HealthReadResult.samples([
+        _sample(
+          id: 'hk-recorded',
+          flow: HealthFlowValue.light,
+          startIso: '2026-09-10T04:00:00Z',
+        ),
+        _deviceZoneSample(
+          id: 'hk-device',
+          flow: HealthFlowValue.medium,
+          startIso: '2026-09-11T04:00:00Z',
+        ),
+        _sample(
+          id: 'hk-unplaceable',
+          flow: HealthFlowValue.heavy,
+          startIso: '2026-09-12T04:00:00Z',
+          tzName: null,
+        ),
+      ]);
+      final summary = await build().importNow();
+
+      expect(summary.samplesFromRecordedZone, 1);
+      expect(summary.samplesFromDeviceZone, 1);
+      expect(summary.samplesWithoutZone, 1);
     });
   });
 }

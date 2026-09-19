@@ -874,6 +874,110 @@
   "@settingsHealthSyncSubtitle": {
     "description": "Subtitle of the health-sync tile."
   },
+  "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
+  "@healthSyncImportUpdatedDays": {
+    "description": "Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncImportAddedSpotting": "Added spotting to {count, plural, =1{1 day} other{{count} days}} from {source}.",
+  "@healthSyncImportAddedSpotting": {
+    "description": "Health import summary: days that gained an imported spotting observation (Issue #458).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncImportAlreadyMatched": "{count, plural, =1{1 day} other{{count} days}} already matched.",
+  "@healthSyncImportAlreadyMatched": {
+    "description": "Health import summary: days already at the same imported value.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportKeptManual": "Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.",
+  "@healthSyncImportKeptManual": {
+    "description": "Health import summary: days whose hand-logged flow differed and was deliberately kept.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportPlacedDeviceZone": "Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.",
+  "@healthSyncImportPlacedDeviceZone": {
+    "description": "Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.",
+  "@healthSyncImportSkippedNoZone": {
+    "description": "Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.",
+  "@healthSyncImportSkippedUnsupported": {
+    "description": "Health import summary: samples whose flow value has no lunarlog equivalent.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncUnbindDialogTitle": "Stop syncing {name} to this phone?",
+  "@healthSyncUnbindDialogTitle": {
+    "description": "Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.",
+  "@healthSyncUnbindDialogWriteBody": {
+    "description": "Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.",
+  "@healthSyncUnbindDialogImportBody": {
+    "description": "Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncUnbindConfirm": "Stop syncing",
+  "@healthSyncUnbindConfirm": {
+    "description": "Confirm action of the health-sync unbind dialog (Issue #893)."
+  },
+  "healthSyncUnbindCancel": "Cancel",
+  "@healthSyncUnbindCancel": {
+    "description": "Cancel action of the health-sync unbind dialog (Issue #893)."
+  },
   "settingsPrivacyTitle": "Privacy policy",
   "@settingsPrivacyTitle": {
     "description": "Settings tile opening the in-app privacy policy dialog."

@@ -713,6 +713,104 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose which profile\'s data may sync to this phone\'s Health app';
 
   @override
+  String healthSyncImportUpdatedDays(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Updated $_temp0 from $source.';
+  }
+
+  @override
+  String healthSyncImportAddedSpotting(int count, String source) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Added spotting to $_temp0 from $source.';
+  }
+
+  @override
+  String healthSyncImportAlreadyMatched(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0 already matched.';
+  }
+
+  @override
+  String healthSyncImportKeptManual(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Kept your own logged value on $_temp0.';
+  }
+
+  @override
+  String healthSyncImportPlacedDeviceZone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Placed $_temp0 using the time zone of this phone.';
+  }
+
+  @override
+  String healthSyncImportSkippedNoZone(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Skipped $_temp0 with no recorded time zone.';
+  }
+
+  @override
+  String healthSyncImportSkippedUnsupported(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count samples',
+      one: '1 sample',
+    );
+    return 'Skipped $_temp0 with no matching flow level.';
+  }
+
+  @override
+  String healthSyncUnbindDialogTitle(String name) {
+    return 'Stop syncing $name to this phone?';
+  }
+
+  @override
+  String healthSyncUnbindDialogWriteBody(String name) {
+    return 'This phone will stop writing data for $name to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.';
+  }
+
+  @override
+  String healthSyncUnbindDialogImportBody(String name) {
+    return 'This phone will stop importing data for $name from its Health app. Nothing already logged is deleted.';
+  }
+
+  @override
+  String get healthSyncUnbindConfirm => 'Stop syncing';
+
+  @override
+  String get healthSyncUnbindCancel => 'Cancel';
+
+  @override
   String get settingsPrivacyTitle => 'Privacy policy';
 
   @override

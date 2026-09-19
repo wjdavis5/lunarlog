@@ -648,6 +648,12 @@ class HealthConnectAdapter(context: Context) {
     // be resolved against the device's current zone. Omitting the key makes
     // the Dart codec report it as samplesWithoutZone and skip it — the same
     // rule #217 applies to a HealthKit sample with no HKMetadataKeyTimeZone.
+    // Note the deliberate difference from the iOS half after Issue #902: a
+    // Health Connect record's `zoneOffset` is the record's OWN, so this map
+    // never sets the `zoneOffsetInferred` flag the Swift read sets when it
+    // has to synthesize an offset from the device zone. The flag defaults to
+    // false in health_channel_codec.dart, so Android rows are always counted
+    // as recorded-zone rows.
     private fun sampleMap(
         id: String,
         kind: String,

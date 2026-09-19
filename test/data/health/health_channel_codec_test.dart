@@ -337,6 +337,38 @@ void main() {
       expect(samples[1].offset, const Duration(hours: 5, minutes: 30));
     });
 
+    test('an iOS device-zone fallback decodes its offset and inferred flag '
+        '(Issue #902)', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'hk-1',
+          'flow': 'medium',
+          'startMs': 1000,
+          'endMs': 2000,
+          'zoneOffsetSeconds': -14400,
+          'zoneOffsetInferred': true,
+        },
+      ]);
+      final sample = (decoded as HealthReadSamples).samples.single;
+      expect(sample.tzName, isNull);
+      expect(sample.offset, const Duration(hours: -4));
+      expect(sample.offsetInferred, isTrue);
+    });
+
+    test('a sample with no inferred flag is a recorded-zone sample', () {
+      final decoded = decodeHealthReadResult([
+        {
+          'recordId': 'hc-1',
+          'flow': 'heavy',
+          'startMs': 1000,
+          'endMs': 2000,
+          'zoneOffsetSeconds': -14400,
+        },
+      ]);
+      final sample = (decoded as HealthReadSamples).samples.single;
+      expect(sample.offsetInferred, isFalse);
+    });
+
     test('a flow sample with a missing or unknown flow, or an unknown kind, '
         'is a failed result', () {
       expect(
