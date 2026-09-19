@@ -236,6 +236,16 @@ void main() {
         HealthSyncCheck.notOwner,
       );
     });
+
+    // Issue #924: a deletion is a health-API touch and goes through the
+    // same guard as every write — a denied binding must block it with zero
+    // channel invocations, exactly like a denied write.
+    test('deleteRecords refuses on a denied binding without invoking the '
+        'channel', () async {
+      final result =
+          await makePlatform(seed: {}).deleteRecords(_facts(), const [flowWriteRecordId]);
+      expectRefusedWithoutInvocation(result, HealthSyncCheck.noBinding);
+    });
   });
 
   group('an allowed write crosses the channel with the full envelope', () {
