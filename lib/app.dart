@@ -578,10 +578,20 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// background would otherwise wait for the sharer's next cycle event.
   /// Re-publishing every connected profile on resume bounds that wait to
   /// the sharer's next foreground, cheaply (one narrow select per resume).
+  ///
+  /// Issue #839: the same signal also drives the shared prediction tickers
+  /// ([CyclePredictionService.setAppForeground]) — one lifecycle hook, the
+  /// engine's own `WidgetsBindingObserver` being the other side of it — so
+  /// the (now single, per-profile) minute timer pauses while backgrounded.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    unawaited(_predictionProjectionPublisher?.republishConnected());
+    if (state == AppLifecycleState.resumed) {
+      _prediction.setAppForeground(true);
+      unawaited(_predictionProjectionPublisher?.republishConnected());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _prediction.setAppForeground(false);
+    }
   }
 
   /// Issue #193: the one-way, opt-in, forward-only menstrual-flow write

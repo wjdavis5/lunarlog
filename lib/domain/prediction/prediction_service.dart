@@ -49,6 +49,17 @@
 /// history or birth-control state the profile also carries. A null provider
 /// (tests, unconfigured wiring) keeps the exact pre-#528 behavior — every
 /// profile resolves as [LifecycleMode.tracking].
+///
+/// Issue #839 (performance): [watch] no longer opens one full-history
+/// `day_entries` query, one combine, one [_PredictionMemo] and one minute
+/// ticker per subscriber. Consumers that agree on `(profileId, today)` share
+/// a single ref-counted [_SharedPredictionStream] — one query, one memo, one
+/// ticker — torn down when the last listener leaves (and rebuilt for a later
+/// one), and paused on `paused`/`hidden` via [setAppForeground]. A
+/// `.distinct(identical)` after the memo stops an unchanged memoised result
+/// from being re-emitted downstream. The public signature and emission
+/// semantics are otherwise unchanged; the one deliberate behavior change is
+/// that a same-instance memo hit no longer propagates.
 library;
 
 import 'dart:async';
@@ -128,10 +139,11 @@ bool _sameOmissions(Set<LocalDate> a, Set<LocalDate> b) {
   return a.every(b.contains);
 }
 
-/// Per-subscription memoisation state for [CyclePredictionService.watch]
-/// (issue #197): a fresh instance per `watch()` call, so concurrent
-/// subscriptions for different profiles (or the same profile from two
-/// widgets) never share a cache. [_today] joins the key (review
+/// Per-shared-pipeline memoisation state for [CyclePredictionService.watch]
+/// (issue #197): one instance per [_SharedPredictionStream] (issue #839), so
+/// the consumers that share a pipeline share its cache, while different
+/// profiles — or the same profile under a different `today` provider — never
+/// share one. [_today] joins the key (review
 /// follow-up) — [CyclePredictionService.watch]'s own doc documents that
 /// [LocalDate] is evaluated per emission so a subscription stays correct
 /// across midnight; without it in the key, an emission carrying unchanged
@@ -199,6 +211,142 @@ class _PredictionMemo {
     _lifecycleMode = lifecycleMode;
     _prediction = value;
   }
+}
+
+/// The identity key for one shared prediction pipeline (issue #839): the
+/// profile id plus, when the caller supplied a *custom* `today` provider,
+/// that function's identity. Two callers share a pipeline only when they
+/// agree on both. A `null` [today] (the common case — every default caller
+/// and every `LocalDate.today` tear-off, which [CyclePredictionService.watch]
+/// normalises to null) is its own bucket, so all default callers for a
+/// profile share. Callers that pass distinct custom closures keep distinct
+/// pipelines, preserving the per-subscription `today` semantics exactly.
+class _WatchKey {
+  const _WatchKey(this.profileId, this.today);
+
+  final String profileId;
+  final LocalDate Function()? today;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _WatchKey &&
+      other.profileId == profileId &&
+      identical(other.today, today);
+
+  @override
+  int get hashCode =>
+      Object.hash(profileId, today == null ? 0 : identityHashCode(today));
+}
+
+/// A ref-counted, replay-latest fan-out of one profile's `watch` pipeline
+/// (issue #839). Every `watch(profileId)` consumer subscribes through one of
+/// these, so the expensive work — the unbounded `day_entries` query, the
+/// decode, the fingerprint pass ([_PredictionMemo]) and the minute ticker —
+/// runs once per (profile, today-provider) instead of once per consumer.
+///
+/// Ref-counting is explicit and conservative: the upstream subscription is
+/// opened lazily on the first listener and cancelled when the last one
+/// leaves ([_onEmpty] lets the owning service drop the entry so a later
+/// listener rebuilds it from scratch). While the app is backgrounded
+/// ([_isForeground] false) the upstream is torn down but the listeners are
+/// kept, so the shared ticker pauses without the UI losing its stream; on
+/// resume the upstream is re-opened (the captured [_PredictionMemo] survives,
+/// so an unchanged re-read still reuses the cached prediction). Each listener
+/// gets a private single-subscription controller, which is what lets a late
+/// subscriber start from the latest value instead of waiting for the next
+/// emission — the same "watch streams replay their current value on listen"
+/// convention every other stream in this service follows.
+class _SharedPredictionStream {
+  _SharedPredictionStream(this._open, this._isForeground, this._onEmpty);
+
+  final Stream<CyclePrediction> Function() _open;
+  final bool Function() _isForeground;
+  final void Function() _onEmpty;
+
+  final List<StreamController<CyclePrediction>> _listeners = [];
+  // Cancelled by [_cancelUpstream] (from [_onCancel] and [pause]); the lint
+  // cannot see the cross-method cancel.
+  // ignore: cancel_subscriptions
+  StreamSubscription<CyclePrediction>? _upstream;
+  CyclePrediction? _latest;
+  bool _hasLatest = false;
+  bool _upstreamClosed = false;
+
+  /// A new listener's private view of this shared pipeline.
+  Stream<CyclePrediction> connect() {
+    final controller = StreamController<CyclePrediction>();
+    controller.onListen = () => _onListen(controller);
+    controller.onCancel = () => _onCancel(controller);
+    return controller.stream;
+  }
+
+  void _onListen(StreamController<CyclePrediction> controller) {
+    if (_upstreamClosed) {
+      // The upstream completed (its sources closed): replay the last value
+      // to this late listener and complete it the same way.
+      if (_hasLatest) controller.add(_latest as CyclePrediction);
+      scheduleMicrotask(() {
+        if (!controller.isClosed) unawaited(controller.close());
+      });
+      return;
+    }
+    _listeners.add(controller);
+    if (_hasLatest) controller.add(_latest as CyclePrediction);
+    _ensureUpstream();
+  }
+
+  void _onCancel(StreamController<CyclePrediction> controller) {
+    _listeners.remove(controller);
+    if (_listeners.isEmpty) {
+      _cancelUpstream();
+      _onEmpty();
+    }
+  }
+
+  void _ensureUpstream() {
+    if (_upstream != null ||
+        _upstreamClosed ||
+        _listeners.isEmpty ||
+        !_isForeground()) {
+      return;
+    }
+    _upstream = _open().listen(_onData, onError: _onError, onDone: _onDone);
+  }
+
+  void _onData(CyclePrediction value) {
+    _latest = value;
+    _hasLatest = true;
+    for (final listener in List.of(_listeners)) {
+      if (!listener.isClosed) listener.add(value);
+    }
+  }
+
+  void _onError(Object error, StackTrace stackTrace) {
+    for (final listener in List.of(_listeners)) {
+      if (!listener.isClosed) listener.addError(error, stackTrace);
+    }
+  }
+
+  void _onDone() {
+    _upstreamClosed = true;
+    _upstream = null;
+    for (final listener in List.of(_listeners)) {
+      if (!listener.isClosed) unawaited(listener.close());
+    }
+  }
+
+  void _cancelUpstream() {
+    final upstream = _upstream;
+    _upstream = null;
+    unawaited(upstream?.cancel());
+  }
+
+  /// Drops the upstream subscription (query + ticker) while keeping every
+  /// listener attached — the `paused`/`hidden` half of the lifecycle hook.
+  void pause() => _cancelUpstream();
+
+  /// Re-opens the upstream after a [pause], if anything is still listening.
+  void resume() => _ensureUpstream();
 }
 
 /// Issue LLA-070: ticks immediately, then re-ticks only when [today]
@@ -353,6 +501,19 @@ class CyclePredictionService {
   /// default here.
   final Stream<void> Function() _dateTicker;
 
+  /// Issue #839: one ref-counted shared pipeline per [_WatchKey]; entries
+  /// are added on first listen and dropped by [_SharedPredictionStream]'s
+  /// `_onEmpty` when the last listener leaves, so a later listener rebuilds
+  /// a fresh query/ticker/memo rather than reusing a torn-down one.
+  final Map<_WatchKey, _SharedPredictionStream> _shared = {};
+
+  /// Issue #839: whether the app is currently foregrounded. Set from the
+  /// single lifecycle hook ([setAppForeground], driven by the app shell's
+  /// existing `WidgetsBindingObserver`), so every shared ticker pauses on
+  /// `paused`/`hidden` and restarts on `resumed` — the same signal the sync
+  /// engine and Realtime coordinator use.
+  bool _appForeground = true;
+
   /// Recomputed on every emission of the profile's day-entry stream and,
   /// when a settings store is wired, of the profile's omission-list key —
   /// except when [_PredictionMemo] finds the entries fingerprint, omission
@@ -363,12 +524,67 @@ class CyclePredictionService {
   ///
   /// Issue #225: when predictions are disabled for this profile in settings,
   /// emits [PredictionsDisabled] immediately.
+  ///
+  /// Issue #839: this no longer opens a query/memo/ticker per call. Callers
+  /// that agree on the profile and the `today` provider share one ref-counted
+  /// pipeline ([_SharedPredictionStream]); the signature, the per-emission
+  /// `today` evaluation and every emission semantic are unchanged. The only
+  /// observable difference is that a memoised (unchanged) recompute is now
+  /// dropped by `.distinct(identical)` instead of being re-emitted
+  /// downstream unchanged.
   Stream<CyclePrediction> watch(String profileId,
       {LocalDate Function()? today}) {
+    // Normalise the default provider to the "no override" bucket: widget
+    // call sites pass the `LocalDate.today` constructor tear-off explicitly
+    // (their field default), while the publishers/coordinator call
+    // `watch(profileId)` with no `today` at all. Without this they would key
+    // differently for the same, semantically-identical provider and never
+    // share. A genuinely custom provider stays its own bucket.
+    final normalizedToday =
+        today == null || identical(today, LocalDate.today) ? null : today;
+    final key = _WatchKey(profileId, normalizedToday);
+    final shared = _shared.putIfAbsent(key, () {
+      final memo = _PredictionMemo();
+      return _SharedPredictionStream(
+        () => _openWatch(profileId, today: normalizedToday, memo: memo),
+        () => _appForeground,
+        () => _shared.remove(key),
+      );
+    });
+    return shared.connect();
+  }
+
+  /// Issue #839: the single lifecycle hook for the shared tickers. The app
+  /// shell calls this from its own `WidgetsBindingObserver` on
+  /// `paused`/`hidden` (`false`) and `resumed` (`true`); every shared
+  /// pipeline tears its query + ticker down while backgrounded and re-opens
+  /// on resume, keeping its listeners and its memo. A no-op when the value is
+  /// unchanged.
+  void setAppForeground(bool foreground) {
+    if (_appForeground == foreground) return;
+    _appForeground = foreground;
+    for (final shared in List.of(_shared.values)) {
+      if (foreground) {
+        shared.resume();
+      } else {
+        shared.pause();
+      }
+    }
+  }
+
+  /// The body of [watch], parameterised so one [_SharedPredictionStream] can
+  /// re-open it on resume with the same [memo] (issue #839). `.distinct(
+  /// identical)` at the end is what lets an unchanged memo result stop
+  /// propagating: [_predictionFor] returns the cached instance on a hit, and
+  /// `identical` drops it rather than fanning it out to every listener.
+  Stream<CyclePrediction> _openWatch(
+    String profileId, {
+    required LocalDate Function()? today,
+    required _PredictionMemo memo,
+  }) {
     final todayOf = today ?? LocalDate.today;
     final entries = _dayEntries.watchForProfile(profileId);
     final exclusions = _exclusions;
-    final memo = _PredictionMemo();
     // entries + facts + birth-control state (issue #233). When the
     // exclusions store is wired it rides on top of this triple.
     final core = combineLatest3(
@@ -430,7 +646,7 @@ class CyclePredictionService {
         birthControlState: data.$4,
         lifecycleMode: data.$5,
       );
-    });
+    }).distinct(identical);
   }
 
   Stream<bool> _predictionsEnabledFor(String profileId) {

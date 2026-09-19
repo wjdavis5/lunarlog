@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
@@ -163,6 +164,7 @@ class FakeSupabaseClient implements SupabaseClient {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late LunarLogDatabase db;
   late LunarLogStorage storage;
   late FakeSyncEngine syncEngine;
@@ -700,6 +702,55 @@ void main() {
       retries.fireNext();
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(client.channelCalls[topic], (callsBefore ?? 1) + 1);
+    });
+  });
+
+  group('lifecycle pause/resume (issue #842)', () {
+    test('pausing removes every channel; resuming re-subscribes them',
+        () async {
+      coordinator.start();
+      final p1 =
+          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue);
+      expect(coordinator.isSubscribed, isTrue);
+
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.paused);
+      await Future<void>.delayed(Duration.zero);
+      expect(client.createdChannels, isEmpty,
+          reason: 'backgrounding tears the channels down');
+      expect(coordinator.isSubscribed, isFalse);
+
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.hidden);
+      expect(client.createdChannels, isEmpty);
+
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue,
+          reason: 'foregrounding restores the channels');
+      expect(coordinator.isSubscribed, isTrue);
+    });
+
+    test('a profile discovered while paused is subscribed on resume',
+        () async {
+      coordinator.start();
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.paused);
+      final p1 =
+          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.createdChannels, isEmpty,
+          reason: 'no channel is opened while backgrounded');
+
+      coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue);
+    });
+
+    test('isSubscribed is false with no channels even though isLive is '
+        'vacuously true', () {
+      expect(coordinator.isLive, isTrue);
+      expect(coordinator.isSubscribed, isFalse,
+          reason: 'the engine must not read "no channels" as connected');
     });
   });
 }
