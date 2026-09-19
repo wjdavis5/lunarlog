@@ -72,6 +72,7 @@ Observation _bbt(
   bool excluded = false,
   ObservationSource source = ObservationSource.manual,
   DateTime? updatedAt,
+  DateTime? observedAt,
 }) => Observation(
   id: 'bbt-$day',
   dayEntryId: 'entry-$day',
@@ -84,6 +85,7 @@ Observation _bbt(
   excluded: excluded,
   source: source,
   updatedAt: updatedAt ?? DateTime.utc(2026, 6, 2),
+  observedAt: observedAt,
 );
 
 class _FakePlatform implements HealthPlatformStore {
@@ -315,6 +317,27 @@ void main() {
     expect(write.celsius, closeTo(36.7, 1e-9));
     expect(write.healthConnectMeasurementLocation, 'MEASUREMENT_LOCATION_UNKNOWN');
     expect(write.recordId, 'bbt-bbt-2026-06-02');
+    expect(write.observedAt, isNull);
+  });
+
+  test('a manual BBT observation forwards observedAt to the write payload',
+      () async {
+    await seedGranted();
+    final observed = DateTime.utc(2026, 6, 2, 6, 45);
+    observations.observations = [
+      _bbt(
+        '2026-06-02',
+        value: 36.7,
+        observedAt: observed,
+        updatedAt: grant.add(const Duration(hours: 1)),
+      ),
+    ];
+
+    final report = await buildService().syncNow();
+
+    expect(report.basalBodyTemperatureSamplesWritten, 1);
+    final write = platform.bbtWrites.single;
+    expect(write.observedAt, observed);
   });
 
   test('a Fahrenheit manual BBT observation is converted to Celsius',

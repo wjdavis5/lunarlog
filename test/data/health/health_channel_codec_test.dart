@@ -427,4 +427,56 @@ void main() {
       expect(decodeHealthReadResult(7), isA<HealthReadFailed>());
     });
   });
+
+  group('encodeBbtArgs (Issue #920)', () {
+    test('instant args for default waking time (07:00 local)', () {
+      // 2026-06-02 America/New_York (EDT, UTC-4):
+      // 07:00 local = 11:00 UTC. startMs == endMs == instantMs.
+      final args = encodeBbtArgs(LocalDate(2026, 6, 2), 'America/New_York');
+      final expectedMs = DateTime.utc(2026, 6, 2, 11).millisecondsSinceEpoch;
+      expect(args['startMs'], expectedMs);
+      expect(args['endMs'], expectedMs);
+      expect(args['instantMs'], expectedMs);
+      expect(args['zoneOffsetMs'], -4 * 3600 * 1000);
+    });
+
+    test('instant args for explicit observedAt', () {
+      final observed = DateTime.utc(2026, 6, 2, 10, 15);
+      final args = encodeBbtArgs(
+        LocalDate(2026, 6, 2),
+        'America/New_York',
+        observedAt: observed,
+      );
+      final expectedMs = observed.millisecondsSinceEpoch;
+      expect(args['startMs'], expectedMs);
+      expect(args['endMs'], expectedMs);
+      expect(args['instantMs'], expectedMs);
+      expect(args['zoneOffsetMs'], -4 * 3600 * 1000);
+    });
+
+    test('DST spring-forward day defaults to post-transition 07:00 EDT', () {
+      final args = encodeBbtArgs(LocalDate(2026, 3, 8), 'America/New_York');
+      final expectedMs = DateTime.utc(2026, 3, 8, 11).millisecondsSinceEpoch;
+      expect(args['startMs'], expectedMs);
+      expect(args['endMs'], expectedMs);
+      expect(args['instantMs'], expectedMs);
+      expect(args['zoneOffsetMs'], -4 * 3600 * 1000);
+    });
+
+    test('DST fall-back day defaults to post-transition 07:00 EST', () {
+      final args = encodeBbtArgs(LocalDate(2026, 11, 1), 'America/New_York');
+      final expectedMs = DateTime.utc(2026, 11, 1, 12).millisecondsSinceEpoch;
+      expect(args['startMs'], expectedMs);
+      expect(args['endMs'], expectedMs);
+      expect(args['instantMs'], expectedMs);
+      expect(args['zoneOffsetMs'], -5 * 3600 * 1000);
+    });
+
+    test('throws TimeZoneResolutionException for an unknown zone', () {
+      expect(
+        () => encodeBbtArgs(LocalDate(2026, 1, 1), 'Not/AZone'),
+        throwsA(isA<TimeZoneResolutionException>()),
+      );
+    });
+  });
 }

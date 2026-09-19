@@ -245,3 +245,52 @@ Duration endZoneOffsetFor(LocalDate date, String tzName) {
   return tz.TZDateTime(location, nextDay.year, nextDay.month, nextDay.day)
       .timeZoneOffset;
 }
+
+/// The default local waking hour for Basal Body Temperature measurements
+/// when no explicit time-of-day was recorded (07:00 local time, Issue #920).
+const int kBbtDefaultHour = 7;
+
+/// The default local waking minute for Basal Body Temperature measurements
+/// when no explicit time-of-day was recorded (07:00 local time, Issue #920).
+const int kBbtDefaultMinute = 0;
+
+/// The UTC instant and time-zone offset for a Basal Body Temperature
+/// measurement (Issue #920).
+///
+/// BBT is by definition a waking point measurement ("temperature at rest
+/// when you wake up in the morning"), not a whole-day category.
+///
+/// If [observedAt] is provided, its UTC instant is used, and the offset
+/// is the time-zone offset in effect in [tzName] at that instant.
+///
+/// If [observedAt] is null, defaults to 07:00 morning local time on [date]
+/// in [tzName] (the conventional choice for waking measurements without
+/// an explicit time, avoiding bedtime 23:59 or midnight 00:00).
+///
+/// Returns a record `(instant: DateTime, offset: Duration)` where `instant`
+/// is a UTC [DateTime] and `offset` is the UTC offset in effect at that
+/// instant in [tzName].
+///
+/// Throws [TimeZoneResolutionException] if [tzName] cannot be resolved
+/// (see [localDayInterval]'s doc comment).
+({DateTime instant, Duration offset}) basalBodyTemperatureInstant({
+  required LocalDate date,
+  required String tzName,
+  DateTime? observedAt,
+}) {
+  final location = _resolveLocation(tzName);
+  if (observedAt != null) {
+    final utcInstant = observedAt.toUtc();
+    final localTime = tz.TZDateTime.from(utcInstant, location);
+    return (instant: utcInstant, offset: localTime.timeZoneOffset);
+  }
+  final localTime = tz.TZDateTime(
+    location,
+    date.year,
+    date.month,
+    date.day,
+    kBbtDefaultHour,
+    kBbtDefaultMinute,
+  );
+  return (instant: localTime.toUtc(), offset: localTime.timeZoneOffset);
+}

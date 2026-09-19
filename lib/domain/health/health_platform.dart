@@ -503,6 +503,7 @@ class HealthBasalBodyTemperatureWrite {
     required this.healthConnectMeasurementLocation,
     required this.recordId,
     required this.recordVersionMs,
+    this.observedAt,
   });
 
   final HealthGuardFacts facts;
@@ -517,6 +518,10 @@ class HealthBasalBodyTemperatureWrite {
 
   final String recordId;
   final int recordVersionMs;
+
+  /// Optional exact instant when the temperature was taken (Issue #920).
+  /// When null, defaults to 07:00 morning local time in [tzName].
+  final DateTime? observedAt;
 }
 
 /// The platform-neutral health-store port (see the library doc for the

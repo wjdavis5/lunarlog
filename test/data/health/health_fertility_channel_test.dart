@@ -55,7 +55,10 @@ HealthOvulationTestWrite _ovulation({HealthGuardFacts? facts}) =>
       recordVersionMs: 1234567890000,
     );
 
-HealthBasalBodyTemperatureWrite _bbt({HealthGuardFacts? facts}) =>
+HealthBasalBodyTemperatureWrite _bbt({
+  HealthGuardFacts? facts,
+  DateTime? observedAt,
+}) =>
     HealthBasalBodyTemperatureWrite(
       facts: facts ?? _facts(),
       date: LocalDate(2026, 8, 30),
@@ -64,6 +67,7 @@ HealthBasalBodyTemperatureWrite _bbt({HealthGuardFacts? facts}) =>
       healthConnectMeasurementLocation: 'MEASUREMENT_LOCATION_UNKNOWN',
       recordId: 'bbt-obs-1',
       recordVersionMs: 1234567890000,
+      observedAt: observedAt,
     );
 
 void main() {
@@ -150,7 +154,7 @@ void main() {
     expect(args['recordId'], 'ovulation-entry-1-luteinizingHormoneSurge');
   });
 
-  test('an allowed BBT write crosses with Celsius and the location constant',
+  test('an allowed BBT write crosses with Celsius, location, and default waking instant',
       () async {
     final result = await makePlatform().writeBasalBodyTemperature(_bbt());
     expect(result, isA<HealthPlatformAllowed>());
@@ -163,6 +167,31 @@ void main() {
       'MEASUREMENT_LOCATION_UNKNOWN',
     );
     expect(args['recordId'], 'bbt-obs-1');
+    // Issue #920: 07:00 EDT in America/New_York is 11:00 UTC.
+    // Instant sample: startMs == endMs == instantMs.
+    final expectedMs = DateTime.utc(2026, 8, 30, 11).millisecondsSinceEpoch;
+    expect(args['startMs'], expectedMs);
+    expect(args['endMs'], expectedMs);
+    expect(args['instantMs'], expectedMs);
+    expect(args['zoneOffsetMs'], -4 * 3600 * 1000);
+  });
+
+  test('an allowed BBT write with explicit observedAt crosses with that instant',
+      () async {
+    final observed = DateTime.utc(2026, 8, 30, 10, 15);
+    final result = await makePlatform().writeBasalBodyTemperature(
+      _bbt(observedAt: observed),
+    );
+    expect(result, isA<HealthPlatformAllowed>());
+    final call = calls.single;
+    expect(call.method, 'writeBasalBodyTemperature');
+    final args = call.arguments as Map<Object?, Object?>;
+    expect(args['celsius'], 36.6);
+    final expectedMs = observed.millisecondsSinceEpoch;
+    expect(args['startMs'], expectedMs);
+    expect(args['endMs'], expectedMs);
+    expect(args['instantMs'], expectedMs);
+    expect(args['zoneOffsetMs'], -4 * 3600 * 1000);
   });
 
   test('a native unavailable answer passes through as unavailable', () async {
