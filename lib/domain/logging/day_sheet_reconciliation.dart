@@ -17,6 +17,7 @@ library;
 import '../models/flow_level.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
+import '../models/observation_category.dart';
 
 /// The `flow` value an autosave actually writes (#247): selecting
 /// "Spotting" on a day with no other flow chosen is still a positive fact
@@ -97,7 +98,7 @@ ObservationMutations computeSpottingMutations({
 }) {
   final existingSpotting = [
     for (final o in existingObservations)
-      if (o.category == 'spotting') o,
+      if (o.category == ObservationCategory.spotting) o,
   ];
   if (!spotting) {
     return ObservationMutations(
@@ -113,7 +114,7 @@ ObservationMutations computeSpottingMutations({
         profileId: profileId,
         localDate: date,
         tz: tz,
-        category: 'spotting',
+        category: ObservationCategory.spotting,
         code: 'spotting',
         updatedAt: updatedAt,
       ),
@@ -143,7 +144,7 @@ ObservationMutations computePainMutations({
   if (painIntensity.isEmpty) return const ObservationMutations();
   final existingPain = [
     for (final o in existingObservations)
-      if (o.category == 'pain') o,
+      if (o.category == ObservationCategory.pain) o,
   ];
   final toUpsert = <Observation>[];
   final toDelete = <String>[];
@@ -173,7 +174,7 @@ ObservationMutations computePainMutations({
         profileId: profileId,
         localDate: date,
         tz: tz,
-        category: 'pain',
+        category: ObservationCategory.pain,
         code: entry.key,
         intensity: intensity,
         updatedAt: updatedAt,
@@ -207,7 +208,7 @@ ObservationMutations computePainMutations({
 /// fresh one rather than adopting a same-category row from another source.
 ObservationMutations computeMeasurementMutations({
   required List<Observation> existingObservations,
-  required String category,
+  required ObservationCategory category,
   required double? value,
   required String unit,
   required bool excluded,
@@ -312,7 +313,7 @@ ObservationMutations computeObservationMutations({
       ObservationMutations.merge(
         computeMeasurementMutations(
           existingObservations: existingObservations,
-          category: 'bbt',
+          category: ObservationCategory.bbt,
           value: bbtValue,
           unit: bbtUnit,
           excluded: bbtExcluded,
@@ -324,7 +325,7 @@ ObservationMutations computeObservationMutations({
         ),
         computeMeasurementMutations(
           existingObservations: existingObservations,
-          category: 'weight',
+          category: ObservationCategory.weight,
           value: weightValue,
           unit: weightUnit,
           excluded: weightExcluded,
@@ -351,7 +352,7 @@ ObservationMutations computeObservationMutations({
 Map<String, int> gradedPainIntensitiesFrom(List<Observation> observations) {
   final result = <String, int>{};
   for (final observation in observations) {
-    if (observation.category != 'pain') continue;
+    if (observation.category != ObservationCategory.pain) continue;
     final code = observation.code;
     final intensity = observation.intensity;
     if (code == null || intensity == null) continue;

@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -203,7 +204,7 @@ Observation _observation(
   String id,
   String profileId,
   String isoDate, {
-  String category = 'pain',
+  ObservationCategory category = ObservationCategory.pain,
   String? code = 'cramps',
 }) =>
     Observation(
@@ -2098,7 +2099,7 @@ void main() {
           .document;
 
       final existing = _observation('local-o1', _p1, '2026-01-05',
-          category: 'pain', code: 'cramps');
+          category: ObservationCategory.pain, code: 'cramps');
 
       final plan = planImport(
         document: document,
@@ -2126,7 +2127,7 @@ void main() {
           .document;
 
       final existing = _observation('local-o1', _p1, '2026-01-05',
-          category: 'pain', code: 'cramps');
+          category: ObservationCategory.pain, code: 'cramps');
 
       final plan = planImport(
         document: document,

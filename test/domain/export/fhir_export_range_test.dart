@@ -13,6 +13,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 
 DayEntry _entry(String id, LocalDate date, {String profileId = 'p1'}) =>
@@ -35,7 +36,7 @@ Observation _observation(
   profileId: profileId,
   localDate: date,
   tz: 'UTC',
-  category: 'weight',
+  category: ObservationCategory.weight,
   valueNum: 60,
   unit: 'kg',
   updatedAt: DateTime.utc(2026, 1, 1),

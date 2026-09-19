@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/models/guardian_note.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
+import 'package:lunarlog/domain/models/observation_category.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart' as domain;
 import 'package:lunarlog/domain/models/profile_mode.dart' as domain;
@@ -111,10 +112,15 @@ domain.Observation observationToDomain(db.Observation row) =>
       localDate: domain.LocalDate.fromIso(row.localDate),
       observedAt: row.observedAt,
       tz: row.tz,
-      category: row.category ??
-          (throw StateError(
-              'observationToDomain: category is null for live observation ${row.id} '
-              '(only a tombstone should ever have a null category)')),
+      // Issue #847: the one place the free-text stored category becomes the
+      // typed closed set; an unrecognised code is retained verbatim as
+      // `UnknownObservationCategory`, never degraded to a known member.
+      category: domain.ObservationCategory.fromCode(
+        row.category ??
+            (throw StateError(
+                'observationToDomain: category is null for live observation ${row.id} '
+                '(only a tombstone should ever have a null category)')),
+      ),
       code: row.code,
       valueNum: row.valueNum,
       valueText: row.valueText,

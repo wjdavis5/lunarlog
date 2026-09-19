@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
@@ -68,28 +69,28 @@ class Harness {
       updatedAt: DateTime.utc(2026, 1, 1),
     ));
     await _seedObservation(
-      category: 'spotting',
+      category: ObservationCategory.spotting,
       code: 'spotting',
     );
     await _seedObservation(
-      category: 'pain',
+      category: ObservationCategory.pain,
       code: 'cramps',
       intensity: 4,
     );
     await _seedObservation(
-      category: 'bbt',
+      category: ObservationCategory.bbt,
       valueNum: 36.6,
       unit: 'celsius',
     );
     await _seedObservation(
-      category: 'weight',
+      category: ObservationCategory.weight,
       valueNum: 61,
       unit: 'kg',
     );
   }
 
   Future<void> _seedObservation({
-    required String category,
+    required ObservationCategory category,
     String? code,
     double? valueNum,
     String? unit,
@@ -214,13 +215,13 @@ void main() {
     final byCategory = {
       for (final o in restoredObs) o.category: o,
     };
-    expect(byCategory['spotting'], isNotNull,
+    expect(byCategory[ObservationCategory.spotting], isNotNull,
         reason: 'spotting is an observation row, not the entry flow');
-    expect(byCategory['pain']!.code, 'cramps');
-    expect(byCategory['pain']!.intensity, 4,
+    expect(byCategory[ObservationCategory.pain]!.code, 'cramps');
+    expect(byCategory[ObservationCategory.pain]!.intensity, 4,
         reason: 'graded tag intensity must survive the round trip');
-    expect(byCategory['bbt']!.valueNum, 36.6);
-    expect(byCategory['weight']!.valueNum, 61);
+    expect(byCategory[ObservationCategory.bbt]!.valueNum, 36.6);
+    expect(byCategory[ObservationCategory.weight]!.valueNum, 61);
 
     await h.dispose();
   });

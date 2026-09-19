@@ -25,6 +25,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 
 /// Wraps a real [DayEntriesRepository], yielding the event loop twice right
@@ -175,7 +176,7 @@ void main() {
     expect(snapshot.entries, hasLength(1));
     expect(snapshot.entries.single.flow.toDb(), 'heavy');
     expect(snapshot.observations, hasLength(1));
-    expect(snapshot.observations.single.category, 'pain');
+    expect(snapshot.observations.single.category, ObservationCategory.pain);
     expect(snapshot.profileMode, isNotNull);
     expect(snapshot.profileMode!.mode, LifecycleMode.conceive);
     expect(snapshot.profileMode!.birthControlMethod, 'pill');

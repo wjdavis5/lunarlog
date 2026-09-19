@@ -2056,7 +2056,8 @@ List<ObservationPlan> _planObservations(
   Set<String> rejectedDates = const {},
 }) {
   final existingKeys = {
-    for (final o in existing) _observationKey(o.localDate.iso, o.category, o.code),
+    for (final o in existing)
+      _observationKey(o.localDate.iso, o.category.wireCode, o.code),
   };
   final liveCountByDate = <String, int>{};
   for (final o in existing) {

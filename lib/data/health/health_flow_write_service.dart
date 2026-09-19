@@ -63,6 +63,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -476,7 +477,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final observationRows = await _observations.listForProfile(profileId);
     final spottingRows = [
       for (final observation in observationRows)
-        if (observation.category == kSpottingObservationCategory) observation,
+        if (observation.category == ObservationCategory.spotting) observation,
     ];
     // Issue #238: the day's graded pain intensity (if any) supplies the
     // severity every one of its symptom samples carries — see
@@ -607,7 +608,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// wearable-sourced value produces no write) and by [_isEligible]
   /// (forward-only, never echo a health-store-sourced row).
   _PendingBbtWrite? _bbtWriteFor(Observation row, DateTime cursor) {
-    if (row.category != kBbtObservationCategory) return null;
+    if (row.category != ObservationCategory.bbt) return null;
     if (!_isEligible(row.updatedAt, row.source, cursor)) return null;
     final resolved = resolveBasalBodyTemperature(row);
     if (resolved == null) return null;

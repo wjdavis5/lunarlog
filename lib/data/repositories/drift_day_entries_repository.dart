@@ -57,7 +57,7 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
             localDate: o.localDate.iso,
             observedAt: o.observedAt,
             tz: o.tz,
-            category: o.category,
+            category: o.category.wireCode,
             code: o.code,
             valueNum: o.valueNum,
             valueText: o.valueText,

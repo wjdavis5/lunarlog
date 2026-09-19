@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
@@ -351,7 +352,9 @@ void main() {
             flow: FlowLevel.spotting));
 
         final obs = await observations.listForProfile(profile.id);
-        final spotting = obs.where((o) => o.category == 'spotting').toList();
+        final spotting = obs
+            .where((o) => o.category == ObservationCategory.spotting)
+            .toList();
         expect(spotting, hasLength(1));
         expect(spotting.single.dayEntryId, saved.id);
         expect(spotting.single.id, spottingAliasId(saved.id));
@@ -374,13 +377,15 @@ void main() {
           profileId: profile.id,
           localDate: saved.localDate,
           tz: saved.tz,
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           updatedAt: DateTime.utc(2026, 7, 22),
         ));
 
         final obs = await observations.listForProfile(profile.id);
-        final spotting = obs.where((o) => o.category == 'spotting').toList();
+        final spotting = obs
+            .where((o) => o.category == ObservationCategory.spotting)
+            .toList();
         expect(spotting, hasLength(1),
             reason: 'a real persisted spotting observation suppresses the '
                 'synthesised alias for the same day entry, never both');
@@ -396,7 +401,8 @@ void main() {
             flow: FlowLevel.notBleeding));
 
         final obs = await observations.listForProfile(profile.id);
-        expect(obs.where((o) => o.category == 'spotting'), isEmpty);
+        expect(
+            obs.where((o) => o.category == ObservationCategory.spotting), isEmpty);
       });
 
       test(
@@ -418,7 +424,7 @@ void main() {
         final obs = await observations.listForDayEntryWithLegacyAlias(saved.id);
 
         expect(obs, hasLength(1));
-        expect(obs.single.category, 'spotting');
+        expect(obs.single.category, ObservationCategory.spotting);
         expect(obs.single.dayEntryId, saved.id);
         expect(obs.single.id, spottingAliasId(saved.id));
         expect(obs.single.id, isNot(spottingAliasId(other.id)));
@@ -439,7 +445,7 @@ void main() {
           profileId: profile.id,
           localDate: saved.localDate,
           tz: saved.tz,
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           updatedAt: DateTime.utc(2026, 7, 26),
         ));
@@ -473,7 +479,7 @@ void main() {
           profileId: profile.id,
           localDate: saved.localDate,
           tz: saved.tz,
-          category: 'pain',
+          category: ObservationCategory.pain,
           code: 'cramps',
           intensity: 2,
           updatedAt: DateTime.utc(2026, 7, 28),
@@ -482,7 +488,7 @@ void main() {
         final obs = await observations.listForDayEntryWithLegacyAlias(saved.id);
 
         expect(obs, hasLength(1));
-        expect(obs.single.category, 'pain');
+        expect(obs.single.category, ObservationCategory.pain);
       });
 
       test(
@@ -636,7 +642,7 @@ void main() {
       required String profileId,
       required String dayEntryId,
       required LocalDate localDate,
-      required String category,
+      required ObservationCategory category,
       String? code,
     }) async {
       await observations.save(Observation(
@@ -668,21 +674,21 @@ void main() {
         profileId: profile.id,
         dayEntryId: inWindow.id,
         localDate: LocalDate(2026, 7, 10),
-        category: 'spotting',
+        category: ObservationCategory.spotting,
         code: 'spotting',
       );
       await saveObservation(
         profileId: profile.id,
         dayEntryId: outOfWindow.id,
         localDate: LocalDate(2026, 8, 10),
-        category: 'spotting',
+        category: ObservationCategory.spotting,
         code: 'spotting',
       );
       await saveObservation(
         profileId: profile.id,
         dayEntryId: inWindowOther.id,
         localDate: LocalDate(2026, 7, 11),
-        category: 'pain',
+        category: ObservationCategory.pain,
         code: 'cramps',
       );
 
@@ -719,7 +725,7 @@ void main() {
       expect(read, hasLength(1));
       expect(read.single.dayEntryId, inWindow.id);
       expect(read.single.id, spottingAliasId(inWindow.id));
-      expect(read.single.category, 'spotting');
+      expect(read.single.category, ObservationCategory.spotting);
     });
 
     test(
@@ -738,7 +744,7 @@ void main() {
           profileId: profile.id,
           dayEntryId: row.id,
           localDate: row.localDate,
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
         );
       }
@@ -770,7 +776,7 @@ void main() {
           profileId: 'p',
           localDate: LocalDate(2026, 7, 15),
           tz: 'America/Chicago',
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
@@ -780,7 +786,7 @@ void main() {
           profileId: 'p',
           localDate: LocalDate(2026, 9, 15),
           tz: 'America/Chicago',
-          category: 'spotting',
+          category: ObservationCategory.spotting,
           code: 'spotting',
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
@@ -794,6 +800,36 @@ void main() {
 
       expect(scoped, {'2026-07-15'});
       expect(fake.listForProfileCalls, 1);
+    });
+  });
+
+  group('observation category store round-trip (issue #847)', () {
+    test('a known and an unknown category both survive store -> read',
+        () async {
+      final profile = await profiles.create(displayName: 'P', isMinor: false);
+      final entry =
+          await dayEntries.save(entryFor(profile.id, LocalDate(2026, 7, 30)));
+      for (final code in ['spotting', 'mood']) {
+        await observations.save(Observation(
+          id: '',
+          dayEntryId: entry.id,
+          profileId: profile.id,
+          localDate: entry.localDate,
+          tz: entry.tz,
+          category: ObservationCategory.fromCode(code),
+          updatedAt: DateTime.utc(2026, 7, 30),
+        ));
+      }
+
+      final read = await observations.listForProfile(profile.id);
+      expect(
+        read.map((o) => o.category.wireCode).toSet(),
+        {'spotting', 'mood'},
+      );
+      expect(
+        read.singleWhere((o) => o.category.wireCode == 'mood').category,
+        isA<UnknownObservationCategory>(),
+      );
     });
   });
 

@@ -36,6 +36,7 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart'
     show GuardianRole, GuardianStatus, ProfileGuardian;
@@ -1322,7 +1323,7 @@ void main() {
         );
         final observations = await h.observations.listForDayEntry(saved.id);
         expect(observations, hasLength(1));
-        expect(observations.single.category, 'spotting');
+        expect(observations.single.category, ObservationCategory.spotting);
         expect(observations.single.code, 'spotting');
         await disposeLogging(tester, h);
       },
@@ -1343,7 +1344,8 @@ void main() {
         final saved = await h.entries.find(h.profile.id, kToday);
         expect(saved!.flow, FlowLevel.light);
         final observations = await h.observations.listForDayEntry(saved.id);
-        expect(observations.map((o) => o.category), contains('spotting'));
+        expect(observations.map((o) => o.category),
+            contains(ObservationCategory.spotting));
         await disposeLogging(tester, h);
       },
     );
@@ -1609,7 +1611,7 @@ void main() {
               'spotting observation for the legacy row instead of silently '
               'dropping the fact',
         );
-        expect(observations.single.category, 'spotting');
+        expect(observations.single.category, ObservationCategory.spotting);
         await disposeLogging(tester, h);
       },
     );
@@ -1636,7 +1638,7 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       final painRows = [
         for (final o in await h.observations.listForDayEntry(saved!.id))
-          if (o.category == 'pain') o,
+          if (o.category == ObservationCategory.pain) o,
       ];
       expect(painRows, hasLength(1));
       expect(painRows.single.code, 'cramps');
@@ -1657,7 +1659,7 @@ void main() {
       expect(
         [
           for (final o in await h.observations.listForDayEntry(saved!.id))
-            if (o.category == 'pain') o,
+            if (o.category == ObservationCategory.pain) o,
         ],
         isEmpty,
         reason:
@@ -1682,7 +1684,7 @@ void main() {
       var saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .singleWhere((o) => o.category == 'pain')
+            .singleWhere((o) => o.category == ObservationCategory.pain)
             .intensity,
         4,
       );
@@ -1709,7 +1711,7 @@ void main() {
       saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .singleWhere((o) => o.category == 'pain')
+            .singleWhere((o) => o.category == ObservationCategory.pain)
             .intensity,
         5,
       );
@@ -1720,7 +1722,7 @@ void main() {
       expect(
         [
           for (final o in await h.observations.listForDayEntry(saved.id))
-            if (o.category == 'pain') o,
+            if (o.category == ObservationCategory.pain) o,
         ],
         isEmpty,
         reason:
@@ -1746,7 +1748,7 @@ void main() {
               profileId: profileId,
               localDate: kToday,
               tz: 'America/Chicago',
-              category: 'pain',
+              category: ObservationCategory.pain,
               code: 'migraine',
               intensity: 5,
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -1775,7 +1777,7 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .singleWhere((o) => o.category == 'pain')
+            .singleWhere((o) => o.category == ObservationCategory.pain)
             .intensity,
         5,
         reason:
@@ -1802,8 +1804,8 @@ void main() {
 
       final saved = await h.entries.find(h.profile.id, kToday);
       final rows = await h.observations.listForDayEntry(saved!.id);
-      final bbtRow = rows.singleWhere((o) => o.category == 'bbt');
-      final weightRow = rows.singleWhere((o) => o.category == 'weight');
+      final bbtRow = rows.singleWhere((o) => o.category == ObservationCategory.bbt);
+      final weightRow = rows.singleWhere((o) => o.category == ObservationCategory.weight);
       expect(bbtRow.valueNum, 36.7);
       expect(bbtRow.unit, 'celsius');
       expect(bbtRow.source, ObservationSource.manual);
@@ -1824,13 +1826,13 @@ void main() {
       await pumpAutosave(tester);
       final saved = await h.entries.find(h.profile.id, kToday);
       final firstId = (await h.observations.listForDayEntry(saved!.id))
-          .singleWhere((o) => o.category == 'bbt')
+          .singleWhere((o) => o.category == ObservationCategory.bbt)
           .id;
 
       await tester.enterText(find.byKey(const ValueKey('bbt-field')), '36.9');
       await pumpAutosave(tester);
       final rows = await h.observations.listForDayEntry(saved.id);
-      final bbtRows = [for (final o in rows) if (o.category == 'bbt') o];
+      final bbtRows = [for (final o in rows) if (o.category == ObservationCategory.bbt) o];
       expect(bbtRows, hasLength(1));
       expect(bbtRows.single.id, firstId);
       expect(bbtRows.single.valueNum, 36.9);
@@ -1849,7 +1851,7 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .where((o) => o.category == 'bbt'),
+            .where((o) => o.category == ObservationCategory.bbt),
         isNotEmpty,
       );
 
@@ -1857,7 +1859,7 @@ void main() {
       await pumpAutosave(tester);
       expect(
         (await h.observations.listForDayEntry(saved.id))
-            .where((o) => o.category == 'bbt'),
+            .where((o) => o.category == ObservationCategory.bbt),
         isEmpty,
       );
       await disposeLogging(tester, h);
@@ -1880,7 +1882,7 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .where((o) => o.category == 'bbt'),
+            .where((o) => o.category == ObservationCategory.bbt),
         isEmpty,
         reason: 'an invalid entry must never reach a write',
       );
@@ -1905,7 +1907,7 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(
         (await h.observations.listForDayEntry(saved!.id))
-            .where((o) => o.category == 'weight'),
+            .where((o) => o.category == ObservationCategory.weight),
         isEmpty,
       );
       await disposeLogging(tester, h);
@@ -1931,7 +1933,7 @@ void main() {
       await pumpAutosave(tester);
 
       final row = (await h.observations.listForDayEntry(saved!.id))
-          .singleWhere((o) => o.category == 'bbt');
+          .singleWhere((o) => o.category == ObservationCategory.bbt);
       expect(
         row.valueNum,
         36.5,
@@ -1955,14 +1957,14 @@ void main() {
 
       final saved = await h.entries.find(h.profile.id, kToday);
       var row = (await h.observations.listForDayEntry(saved!.id))
-          .singleWhere((o) => o.category == 'bbt');
+          .singleWhere((o) => o.category == ObservationCategory.bbt);
       expect(row.excluded, isTrue);
       expect(row.valueNum, 36.5, reason: 'excluding never deletes the value');
 
       await tester.tap(find.byKey(const ValueKey('bbt-exclude-toggle')));
       await pumpAutosave(tester);
       row = (await h.observations.listForDayEntry(saved.id))
-          .singleWhere((o) => o.category == 'bbt');
+          .singleWhere((o) => o.category == ObservationCategory.bbt);
       expect(row.excluded, isFalse);
       await disposeLogging(tester, h);
     });
@@ -1989,8 +1991,8 @@ void main() {
 
       final saved = await h.entries.find(h.profile.id, kToday);
       final rows = await h.observations.listForDayEntry(saved!.id);
-      expect(rows.singleWhere((o) => o.category == 'bbt').unit, 'fahrenheit');
-      expect(rows.singleWhere((o) => o.category == 'weight').unit, 'lb');
+      expect(rows.singleWhere((o) => o.category == ObservationCategory.bbt).unit, 'fahrenheit');
+      expect(rows.singleWhere((o) => o.category == ObservationCategory.weight).unit, 'lb');
 
       await dismissDaySheet(tester);
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
@@ -2031,7 +2033,7 @@ void main() {
               profileId: profileId,
               localDate: kToday,
               tz: 'America/Chicago',
-              category: 'bbt',
+              category: ObservationCategory.bbt,
               valueNum: 36.72,
               unit: 'celsius',
               updatedAt: DateTime.utc(2026, 1, 1),
@@ -2072,7 +2074,7 @@ void main() {
               profileId: profileId,
               localDate: kToday,
               tz: 'America/Chicago',
-              category: 'bbt',
+              category: ObservationCategory.bbt,
               valueNum: 36.5,
               unit: 'celsius',
               updatedAt: DateTime.utc(2026, 1, 1),

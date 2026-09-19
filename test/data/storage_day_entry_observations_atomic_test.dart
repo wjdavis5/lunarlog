@@ -12,6 +12,7 @@ import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
+import 'package:lunarlog/domain/models/observation_category.dart' as domain;
 
 class FixedClock {
   FixedClock(this.now);
@@ -234,7 +235,7 @@ void main() {
             profileId: 'p1',
             localDate: domain.LocalDate(2026, 9, 1),
             tz: 'UTC',
-            category: 'spotting',
+            category: domain.ObservationCategory.spotting,
             code: 'spotting',
             updatedAt: t0,
           ),

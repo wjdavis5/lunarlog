@@ -65,6 +65,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -572,7 +573,7 @@ class LocalHealthImportService implements HealthImportRunner {
     );
     final spotting = [
       for (final observation in existing)
-        if (observation.category == kSpottingObservationCategory) observation,
+        if (observation.category == ObservationCategory.spotting) observation,
     ];
     if (spotting.isNotEmpty) {
       return spotting.any((o) => o.source == _observationSource)
@@ -586,8 +587,8 @@ class LocalHealthImportService implements HealthImportRunner {
         profileId: profileId,
         localDate: date,
         tz: sample.tz,
-        category: kSpottingObservationCategory,
-        code: kSpottingObservationCategory,
+        category: ObservationCategory.spotting,
+        code: ObservationCategory.spotting.wireCode,
         source: _observationSource,
         sourceId: sample.recordId,
         updatedAt: _now(),

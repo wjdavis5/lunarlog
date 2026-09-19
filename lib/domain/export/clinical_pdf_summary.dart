@@ -52,6 +52,7 @@ import '../logging/custom_tag_registry.dart';
 import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
+import '../models/observation_category.dart';
 import '../models/profile.dart';
 import '../prediction/prediction.dart' show kMinCycleDays, kMaxCycleDays;
 import '../tags.dart' as tags;
@@ -421,12 +422,15 @@ Set<String> _observationLabelsOn(
   final labels = <String>{};
   for (final observation in observations) {
     if (observation.excluded) continue;
-    if (_kMeasurementCategories.contains(observation.category)) continue;
-    if (observation.category == 'spotting') {
+    // Issue #847: [ObservationCategory.isMeasurement] is itself an
+    // exhaustive switch, so a new branchable category is a compile error
+    // there rather than silently falling through as a symptom here.
+    if (observation.category.isMeasurement) continue;
+    if (observation.category == ObservationCategory.spotting) {
       labels.add('Spotting');
       continue;
     }
-    final symptomCode = observation.code ?? observation.category;
+    final symptomCode = observation.code ?? observation.category.wireCode;
     if (tags.kPositiveAssertionCodes.contains(symptomCode)) continue;
     final customTag = customTagsByCode[symptomCode];
     if (customTag != null) {
@@ -443,6 +447,3 @@ Set<String> _observationLabelsOn(
   return labels;
 }
 
-/// Observation categories that hold a logged measurement rather than a
-/// symptom (mirrors `csv_export.dart`'s dedicated bbt/weight columns).
-const Set<String> _kMeasurementCategories = {'bbt', 'weight'};

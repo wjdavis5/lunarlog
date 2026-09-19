@@ -35,6 +35,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart'
     show kNotYetSnoozeDays;
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
@@ -226,14 +227,16 @@ class ReminderActionExecutor {
         ));
     if (observations == null) return;
     final dayObservations = await observations.listForDayEntry(entry.id);
-    if (dayObservations.any((o) => o.category == 'spotting')) return;
+    if (dayObservations.any((o) => o.category == ObservationCategory.spotting)) {
+      return;
+    }
     await observations.save(Observation(
       id: '',
       dayEntryId: entry.id,
       profileId: profileId,
       localDate: date,
       tz: tzName,
-      category: 'spotting',
+      category: ObservationCategory.spotting,
       code: 'spotting',
       updatedAt: DateTime.now().toUtc(),
     ));

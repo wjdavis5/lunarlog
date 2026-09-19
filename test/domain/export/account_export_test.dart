@@ -20,6 +20,7 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
@@ -98,7 +99,7 @@ Observation _observation(
   String dayEntryId,
   String profileId,
   String isoDate, {
-  String category = 'pain',
+  ObservationCategory category = ObservationCategory.pain,
   String? code = 'headache',
   double? valueNum,
   int? intensity,

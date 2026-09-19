@@ -5,6 +5,7 @@ library;
 
 import '../models/local_date.dart';
 import '../models/observation.dart';
+import '../models/observation_category.dart';
 
 abstract interface class ObservationsRepository {
   /// Live (non-tombstoned) observations for the profile, ordered by id.
@@ -99,7 +100,7 @@ extension SpottingObservationsRead on ObservationsRepository {
     }
     return {
       for (final observation in observations)
-        if (observation.category == 'spotting' &&
+        if (observation.category == ObservationCategory.spotting &&
             (from == null || !observation.localDate.isBefore(from)) &&
             (to == null || !observation.localDate.isAfter(to)))
           observation.localDate.iso,

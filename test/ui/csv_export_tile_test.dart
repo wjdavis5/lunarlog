@@ -11,6 +11,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -386,7 +387,7 @@ void main() {
               profileId: 'p1',
               localDate: LocalDate(2026, 4, 1),
               tz: 'UTC',
-              category: 'weight',
+              category: ObservationCategory.weight,
               valueNum: 61.0, // ~134.5 lb
               unit: 'kg',
               updatedAt: DateTime.utc(2026, 4, 1),

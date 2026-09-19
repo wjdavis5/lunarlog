@@ -14,6 +14,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart' show kEstimateDisclaimer;
 
@@ -63,7 +64,7 @@ ClinicalPdfSummary _fixtureSummary() {
         profileId: 'p1',
         localDate: starts[1],
         tz: 'UTC',
-        category: 'pain',
+        category: ObservationCategory.pain,
         code: 'migraine',
         updatedAt: DateTime.utc(2026, 1, 1),
       ),
@@ -157,7 +158,7 @@ void main() {
           profileId: 'p1',
           localDate: starts[(tag % 6) + 1].addDays(tag % 28),
           tz: 'UTC',
-          category: 'pain',
+          category: ObservationCategory.pain,
           code: 'symptom_$tag',
           updatedAt: DateTime.utc(2026, 1, 1),
         ),
@@ -213,7 +214,7 @@ void main() {
         profileId: 'p1',
         localDate: starts[1],
         tz: 'UTC',
-        category: 'spotting',
+        category: ObservationCategory.spotting,
         code: 'light',
         updatedAt: DateTime.utc(2026, 1, 1),
       ),

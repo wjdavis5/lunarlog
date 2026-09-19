@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_fertility_mapping.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart';
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/tags.dart';
 
 Set<String> _codesIn(TagCategory category) => {
@@ -23,7 +24,7 @@ Observation _bbt({
   String? unit = 'celsius',
   bool excluded = false,
   ObservationSource source = ObservationSource.manual,
-  String category = 'bbt',
+  ObservationCategory category = ObservationCategory.bbt,
 }) => Observation(
   id: 'obs-1',
   dayEntryId: 'entry-1',
@@ -368,7 +369,7 @@ void main() {
 
     test('a non-bbt category or missing value never resolves', () {
       expect(
-        resolveBasalBodyTemperature(_bbt(category: 'weight')),
+        resolveBasalBodyTemperature(_bbt(category: ObservationCategory.weight)),
         isNull,
       );
       expect(resolveBasalBodyTemperature(_bbt(value: null)), isNull);

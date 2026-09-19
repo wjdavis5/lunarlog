@@ -11,6 +11,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/db/tables.dart' as db;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
+import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 
 import 'mappers.dart';
@@ -37,7 +38,7 @@ class DriftObservationsRepository
     ];
     final daySpottingIds = {
       for (final o in observations)
-        if (o.category == 'spotting') o.dayEntryId,
+        if (o.category == ObservationCategory.spotting) o.dayEntryId,
     };
     for (final entry in await _storage.getDayEntries(profileId: profileId)) {
       if (entry.flow == db.FlowLevel.spotting &&
@@ -71,13 +72,13 @@ class DriftObservationsRepository
         profileId,
         fromLocalDate: from.iso,
         toLocalDate: to.iso,
-        category: 'spotting',
+        category: ObservationCategory.spotting.wireCode,
       ))
         observationToDomain(row),
     ];
     final daySpottingIds = {
       for (final o in observations)
-        if (o.category == 'spotting') o.dayEntryId,
+        if (o.category == ObservationCategory.spotting) o.dayEntryId,
     };
     for (final entry in await _storage.getDayEntries(
       profileId: profileId,
@@ -100,7 +101,9 @@ class DriftObservationsRepository
   Future<List<domain.Observation>> listForDayEntryWithLegacyAlias(
       String dayEntryId) async {
     final observations = await listForDayEntry(dayEntryId);
-    if (observations.any((o) => o.category == 'spotting')) return observations;
+    if (observations.any((o) => o.category == ObservationCategory.spotting)) {
+      return observations;
+    }
     final entry = await _storage.getDayEntryById(dayEntryId);
     if (entry == null ||
         entry.deletedAt != null ||
@@ -119,7 +122,7 @@ class DriftObservationsRepository
         localDate: observation.localDate.iso,
         observedAt: observation.observedAt,
         tz: observation.tz,
-        category: observation.category,
+        category: observation.category.wireCode,
         code: observation.code,
         valueNum: observation.valueNum,
         valueText: observation.valueText,
@@ -148,7 +151,7 @@ domain.Observation _spottingObservationFor(db.DayEntry entry) =>
       profileId: entry.profileId,
       localDate: domain.LocalDate.fromIso(entry.localDate),
       tz: entry.tz,
-      category: 'spotting',
+      category: ObservationCategory.spotting,
       code: 'spotting',
       updatedAt: entry.updatedAt,
     );
