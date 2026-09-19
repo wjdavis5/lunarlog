@@ -40,14 +40,24 @@ sealed class ProfileErasureFailure implements Exception {
   /// .applyServerPurge]'s contract).
   const factory ProfileErasureFailure.network() = ProfileErasureNetworkFailure;
 
-  /// The server's `delete_profile_data` RPC refused the call: the caller is
-  /// not the named profile's accepted `primary_guardian` (or holds no
-  /// session at all). The RPC deliberately raises the identical error for
-  /// a nonexistent profile too (enumeration safety), so this case also
+  /// The server's `delete_profile_data` RPC refused the call because the
+  /// signed-in caller is not the named profile's accepted
+  /// `primary_guardian`. The RPC deliberately raises the identical error
+  /// for a nonexistent profile too (enumeration safety), so this case also
   /// covers "that profile id doesn't exist" from this account's point of
   /// view.
   const factory ProfileErasureFailure.unauthorized() =
       ProfileErasureUnauthorizedFailure;
+
+  /// The caller reached a purge surface with no session at all (Issue
+  /// #883) — distinct from [unauthorized], which means a signed-in caller
+  /// lacks the role. [ProfileErasureService.purgeImportedData] never even
+  /// calls the RPC without a session (it purges locally and succeeds), so
+  /// this is only reachable if a session disappears mid-call; it exists so
+  /// the copy can say "sign in", never "no permission". Mirrors
+  /// `SharingFailure.notSignedIn` (Issue #885).
+  const factory ProfileErasureFailure.notSignedIn() =
+      ProfileErasureNotSignedInFailure;
 
   /// [ProfileErasureService.purgeImportedData]'s `source` was not one of
   /// the server's closed vocabulary — the RPC's own
@@ -74,6 +84,12 @@ final class ProfileErasureUnauthorizedFailure extends ProfileErasureFailure {
   const ProfileErasureUnauthorizedFailure();
   @override
   String toString() => 'ProfileErasureFailure.unauthorized';
+}
+
+final class ProfileErasureNotSignedInFailure extends ProfileErasureFailure {
+  const ProfileErasureNotSignedInFailure();
+  @override
+  String toString() => 'ProfileErasureFailure.notSignedIn';
 }
 
 final class ProfileErasureInvalidSourceFailure extends ProfileErasureFailure {
@@ -130,9 +146,18 @@ abstract interface class ProfileErasureService {
   Future<void> deleteProfile({required String profileId});
 
   /// Purges only [profileId]'s rows whose `source` matches [source] —
-  /// the profile itself and every guardian membership survive. Callable
-  /// only by the profile's accepted `primary_guardian`, like
-  /// [deleteProfile].
+  /// the profile itself and every guardian membership survive.
+  ///
+  /// Issue #883: the local Drift tombstone runs FIRST, always, so this
+  /// works on a device-only profile with no session and no network. The
+  /// server RPC (`delete_profile_data`) is then called only when the
+  /// client holds a session; with `auth.currentUser == null` it is
+  /// skipped entirely and the call succeeds on the strength of the local
+  /// purge — no refused call, no false "not primary guardian" failure.
+  /// With a session the RPC runs as before and the sync engine reconciles.
+  /// Callable only by the profile's accepted `primary_guardian` when a
+  /// session exists; the server enforces this regardless of what the UI
+  /// shows.
   ///
   /// Throws [ProfileErasureFailure] on any failure, including
   /// [ProfileErasureFailure.invalidSource] for a [source] the server does
@@ -143,4 +168,13 @@ abstract interface class ProfileErasureService {
     required String profileId,
     required PurgeableImportSource source,
   });
+
+  /// Issue #883: the live local row totals [purgeImportedData] would
+  /// remove for each source, for [profileId] — the purge dialog's
+  /// preview and its "which source does this profile actually have"
+  /// default. Local-only: never touches the network and needs no session.
+  /// Every [PurgeableImportSource] is present, `0` when it has no live
+  /// rows.
+  Future<Map<PurgeableImportSource, int>> importedDataCounts(
+      String profileId);
 }

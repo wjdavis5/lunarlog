@@ -65,6 +65,7 @@ import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:lunarlog/ui/settings/clinical_pdf_export_tile.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
+import 'package:lunarlog/ui/l10n/profile_erasure_failure_copy.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
@@ -76,6 +77,7 @@ class YourDataSection extends StatefulWidget {
     this.exportAccount,
     this.exportCsv,
     this.profileErasureService,
+    this.platform,
   });
 
   /// Injected collaborator for CSV export testing.
@@ -85,6 +87,12 @@ class YourDataSection extends StatefulWidget {
   /// posture, same gate every other network-backed tile in this app uses)
   /// hides the tile entirely.
   final ProfileErasureService? profileErasureService;
+
+  /// Issue #883: the platform the purge dialog filters import sources by
+  /// (Apple Health imports are iOS-only, Health Connect is Android-only).
+  /// Null means [defaultTargetPlatform]; injectable so tests can pin a
+  /// platform without touching the binding.
+  final TargetPlatform? platform;
 
   /// Whether "Export my data" may render at all; null means "not web"
   /// (matches `AccountSection`'s pre-#222 `showExportAndDelete` default -
@@ -293,14 +301,25 @@ class _YourDataSectionState extends State<YourDataSection> {
 
   /// Opens [_PurgeImportedDataDialog] to collect a profile + source, then
   /// runs the purge. Never role-gated client-side (see the tile's doc
-  /// comment) — an unauthorized attempt surfaces through [_purgeErrorMessage]
-  /// like any other failure.
+  /// comment) — an unauthorized attempt surfaces through
+  /// [profileErasureFailureCopy] like any other failure. Issue #883: the
+  /// service itself now purges locally with or without a session, so a
+  /// signed-out operator succeeds rather than collecting a false
+  /// primary-guardian error.
   Future<void> _purgeImportedData(List<Profile> profiles) async {
     if (_purging) return;
+    final service = widget.profileErasureService;
+    if (service == null) return;
+    // Captured before the first await (use_build_context_synchronously).
+    final l10n = AppLocalizations.of(context);
     final selection = await showDialog<_PurgeSelection>(
       context: context,
       routeSettings: const RouteSettings(name: kRoutePurgeImportedDataDialog),
-      builder: (ctx) => _PurgeImportedDataDialog(profiles: profiles),
+      builder: (ctx) => _PurgeImportedDataDialog(
+        profiles: profiles,
+        service: service,
+        platform: widget.platform ?? defaultTargetPlatform,
+      ),
     );
     if (selection == null || !mounted) return;
 
@@ -309,7 +328,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       _purgeError = null;
     });
     try {
-      await widget.profileErasureService!.purgeImportedData(
+      await service.purgeImportedData(
         profileId: selection.profileId,
         source: selection.source,
       );
@@ -320,21 +339,19 @@ class _YourDataSectionState extends State<YourDataSection> {
       }
     } catch (error) {
       debugPrint('lunarlog your-data: purge failed (${error.runtimeType})');
-      if (mounted) setState(() => _purgeError = _purgeErrorMessage(error));
+      if (mounted) {
+        setState(() => _purgeError = _purgeErrorMessage(l10n, error));
+      }
     } finally {
       if (mounted) setState(() => _purging = false);
     }
   }
 
-  String _purgeErrorMessage(Object error) {
-    if (error is ProfileErasureNetworkFailure) {
-      return "Can't purge while offline. Check your connection and try "
-          'again.';
+  String _purgeErrorMessage(AppLocalizations l10n, Object error) {
+    if (error is ProfileErasureFailure) {
+      return profileErasureFailureCopy(l10n, error);
     }
-    if (error is ProfileErasureUnauthorizedFailure) {
-      return 'Only that profile\'s primary guardian can purge its data.';
-    }
-    return 'Failed to purge imported data. Check connection and try again.';
+    return l10n.profileErasureFailureOther;
   }
 
   /// "Export my data" (mirrors `AccountSection`'s pre-#222 `_exportAccount`
@@ -415,6 +432,28 @@ class _PurgeSelection {
   final PurgeableImportSource source;
 }
 
+/// Issue #883: whether [source] can even exist on [platform] — Apple
+/// Health imports are iOS-only, Health Connect is Android-only, and the
+/// rest are platform-agnostic. Keeps the purge dialog from offering a
+/// source the current device can never have produced (it used to list
+/// "Health Connect (Android)" on iOS).
+bool isPurgeSourceValidOn(
+  PurgeableImportSource source,
+  TargetPlatform platform,
+) {
+  switch (source) {
+    case PurgeableImportSource.healthkit:
+    case PurgeableImportSource.appleHealthObservations:
+      return platform == TargetPlatform.iOS;
+    case PurgeableImportSource.healthConnect:
+      return platform == TargetPlatform.android;
+    case PurgeableImportSource.clueImport:
+    case PurgeableImportSource.fileImport:
+    case PurgeableImportSource.wearable:
+      return true;
+  }
+}
+
 /// "Purge imported data"'s picker (Issue #472): a profile dropdown and a
 /// source dropdown, styled destructively since the purge is irreversible
 /// from this device's point of view (the underlying import file, if kept,
@@ -422,10 +461,23 @@ class _PurgeSelection {
 /// (the `_EnterCodeDialog`/`_ProfileEditDialog` precedent) rather than
 /// closures capturing mutable locals across `showDialog`'s builder, which
 /// Flutter may invoke more than once.
+///
+/// Issue #883: the source list is filtered to the current platform, the
+/// default is a source the selected profile actually has rows for (never
+/// a no-op "Clue import" default), and a live count preview names exactly
+/// how many rows the purge would remove — the best guard against deleting
+/// the wrong source. A profile with no imported rows offers no purge at
+/// all instead of a silent no-op.
 class _PurgeImportedDataDialog extends StatefulWidget {
-  const _PurgeImportedDataDialog({required this.profiles});
+  const _PurgeImportedDataDialog({
+    required this.profiles,
+    required this.service,
+    required this.platform,
+  });
 
   final List<Profile> profiles;
+  final ProfileErasureService service;
+  final TargetPlatform platform;
 
   @override
   State<_PurgeImportedDataDialog> createState() =>
@@ -434,10 +486,72 @@ class _PurgeImportedDataDialog extends StatefulWidget {
 
 class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
   late String _profileId = widget.profiles.first.id;
-  PurgeableImportSource _source = PurgeableImportSource.values.first;
+
+  /// Per-source live counts for [_profileId]; null while the local read is
+  /// still in flight.
+  Map<PurgeableImportSource, int>? _counts;
+  bool _loading = true;
+  bool _loadFailed = false;
+
+  /// The selected source, or null when no platform-valid source has any
+  /// rows (or while loading) — [AlertDialog]'s Purge action is disabled in
+  /// both cases.
+  PurgeableImportSource? _source;
+
+  List<PurgeableImportSource> get _availableSources => [
+        for (final source in PurgeableImportSource.values)
+          if (isPurgeSourceValidOn(source, widget.platform)) source,
+      ];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadCounts(_profileId));
+  }
+
+  Future<void> _loadCounts(String profileId) async {
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+      _counts = null;
+      _source = null;
+    });
+    try {
+      final counts = await widget.service.importedDataCounts(profileId);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _counts = counts;
+        _source = _defaultSourceFor(counts);
+      });
+    } catch (error) {
+      debugPrint('lunarlog your-data: purge counts failed '
+          '(${error.runtimeType})');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+      });
+    }
+  }
+
+  PurgeableImportSource? _defaultSourceFor(
+    Map<PurgeableImportSource, int> counts,
+  ) {
+    for (final source in _availableSources) {
+      if ((counts[source] ?? 0) > 0) return source;
+    }
+    return null;
+  }
+
+  bool get _hasAnyRows =>
+      _counts != null && _availableSources.any((s) => (_counts![s] ?? 0) > 0);
+
+  int get _selectedCount => _source == null ? 0 : (_counts?[_source] ?? 0);
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
       title: const Text('Purge imported data'),
       content: SingleChildScrollView(
@@ -462,8 +576,13 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
               key: const ValueKey('purge-profile-dropdown'),
               value: _profileId,
               isExpanded: true,
-              onChanged: (value) =>
-                  setState(() => _profileId = value ?? _profileId),
+              onChanged: _loading
+                  ? null
+                  : (value) {
+                      if (value == null || value == _profileId) return;
+                      setState(() => _profileId = value);
+                      unawaited(_loadCounts(value));
+                    },
               items: [
                 for (final profile in widget.profiles)
                   DropdownMenuItem<String>(
@@ -473,27 +592,7 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
               ],
             ),
             const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Import source',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-            DropdownButton<PurgeableImportSource>(
-              key: const ValueKey('purge-source-dropdown'),
-              value: _source,
-              isExpanded: true,
-              onChanged: (value) =>
-                  setState(() => _source = value ?? _source),
-              items: [
-                for (final source in PurgeableImportSource.values)
-                  DropdownMenuItem<PurgeableImportSource>(
-                    value: source,
-                    child: Text(source.label),
-                  ),
-              ],
-            ),
+            ..._sourceSection(context, l10n),
           ],
         ),
       ),
@@ -503,11 +602,70 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
           child: const Text('Cancel'),
         ),
         DestructiveButton(
-          onPressed: () => Navigator.of(context)
-              .pop(_PurgeSelection(_profileId, _source)),
+          onPressed: _source == null || _selectedCount == 0
+              ? null
+              : () => Navigator.of(context)
+                  .pop(_PurgeSelection(_profileId, _source!)),
           child: const Text('Purge'),
         ),
       ],
     );
+  }
+
+  List<Widget> _sourceSection(BuildContext context, AppLocalizations l10n) {
+    if (_loading) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+      ];
+    }
+    if (_loadFailed) {
+      return [
+        InlineError(
+          key: const ValueKey('purge-counts-error'),
+          message: l10n.profileErasureFailureOther,
+        ),
+      ];
+    }
+    if (!_hasAnyRows) {
+      return [
+        Text(
+          l10n.purgeImportedDataNoRows,
+          key: const ValueKey('purge-no-rows'),
+        ),
+      ];
+    }
+    final source = _source;
+    return [
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'Import source',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+      DropdownButton<PurgeableImportSource>(
+        key: const ValueKey('purge-source-dropdown'),
+        value: source,
+        isExpanded: true,
+        onChanged: (value) =>
+            setState(() => _source = value ?? _source),
+        items: [
+          for (final source in _availableSources)
+            DropdownMenuItem<PurgeableImportSource>(
+              value: source,
+              child: Text(source.label),
+            ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      if (source != null)
+        Text(
+          l10n.purgeImportedDataPreview(_selectedCount, source.label),
+          key: const ValueKey('purge-count-preview'),
+        ),
+    ];
   }
 }

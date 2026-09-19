@@ -1119,4 +1119,46 @@ mixin LunarLogStorageQueries {
     return query;
   }
 
+  /// Issue #883: live imported-row totals for [profileId], keyed by the
+  /// raw `source` wire value — live `day_entries` plus live
+  /// `observations`, summed per source. The two tables' source
+  /// vocabularies overlap but are not identical (`healthkit` only ever
+  /// appears on day entries; `apple_health`/`wearable` only on
+  /// observations), so summing by the raw string keeps each source's
+  /// count honest rather than silently mapping one vocabulary onto the
+  /// other. A source with no live rows is absent from the map. This is
+  /// the purge dialog's preview and default-source read; local-only, no
+  /// session or network required.
+  Future<Map<String, int>> liveImportedSourceCounts(String profileId) async {
+    final counts = <String, int>{};
+    void add(String? source, int? count) {
+      if (source == null || count == null) return;
+      counts[source] = (counts[source] ?? 0) + count;
+    }
+
+    final dayCount = db.dayEntries.id.count();
+    final dayRows = await (db.selectOnly(db.dayEntries)
+          ..addColumns([db.dayEntries.source, dayCount])
+          ..where(db.dayEntries.profileId.equals(profileId) &
+              db.dayEntries.deletedAt.isNull())
+          ..groupBy([db.dayEntries.source]))
+        .get();
+    for (final row in dayRows) {
+      add(row.read(db.dayEntries.source), row.read(dayCount));
+    }
+
+    final obsCount = db.observations.id.count();
+    final obsRows = await (db.selectOnly(db.observations)
+          ..addColumns([db.observations.source, obsCount])
+          ..where(db.observations.profileId.equals(profileId) &
+              db.observations.deletedAt.isNull())
+          ..groupBy([db.observations.source]))
+        .get();
+    for (final row in obsRows) {
+      add(row.read(db.observations.source), row.read(obsCount));
+    }
+
+    return counts;
+  }
+
 }

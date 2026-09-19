@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
+import 'package:lunarlog/domain/repositories/imported_data_purge_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,8 +96,65 @@ class FakeProfilesRepository implements ProfilesRepository {
   Stream<List<Profile>> watch() => throw UnimplementedError();
 }
 
+/// Records the local, source-scoped purge calls and serves canned
+/// per-source counts — never touches drift.
+class FakeImportedDataPurgeRepository implements ImportedDataPurgeRepository {
+  final List<(String, String)> purges = [];
+  Map<String, int> counts = const {};
+  Object? purgeError;
+
+  @override
+  Future<void> applyLocalPurge({
+    required String profileId,
+    required String source,
+  }) async {
+    final error = purgeError;
+    if (error != null) throw error;
+    purges.add((profileId, source));
+  }
+
+  @override
+  Future<Map<String, int>> liveSourceCounts(String profileId) async => counts;
+}
+
+/// A base64url JWT-shaped string whose payload decodes to `{sub, exp, iat}`
+/// — enough for `GoTrueClient.recoverSession` to accept it as a live session
+/// with no network call, so `client.auth.currentUser?.id` resolves locally
+/// (the `supabase_sharing_service_test.dart` helper).
+String _fakeJwt({required String sub, required DateTime exp}) {
+  String segment(Map<String, Object?> claims) =>
+      base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '');
+  final header = segment({'alg': 'HS256', 'typ': 'JWT'});
+  final payload = segment({
+    'sub': sub,
+    'exp': exp.millisecondsSinceEpoch ~/ 1000,
+    'iat': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+  });
+  return '$header.$payload.fake-signature';
+}
+
+Future<void> signIn(SupabaseClient client, String uid) async {
+  final jwt = _fakeJwt(
+    sub: uid,
+    exp: DateTime.now().add(const Duration(hours: 1)),
+  );
+  await client.auth.recoverSession(jsonEncode({
+    'access_token': jwt,
+    'token_type': 'bearer',
+    'expires_in': 3600,
+    'refresh_token': 'a-refresh-token',
+    'user': {
+      'id': uid,
+      'aud': 'authenticated',
+      'app_metadata': <String, Object?>{},
+      'created_at': '2026-01-01T00:00:00Z',
+    },
+  }));
+}
+
 void main() {
   late FakeProfilesRepository profiles;
+  late FakeImportedDataPurgeRepository purge;
   late MockSyncEngine syncEngine;
 
   SupabaseClient makeClient(
@@ -123,6 +181,7 @@ void main() {
 
   setUp(() {
     profiles = FakeProfilesRepository();
+    purge = FakeImportedDataPurgeRepository();
     syncEngine = MockSyncEngine();
   });
 
@@ -140,6 +199,7 @@ void main() {
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await service.deleteProfile(profileId: 'profile-1');
@@ -160,10 +220,15 @@ void main() {
           400,
         );
       });
+      // Issue #883: this mapping is now auth-state dependent, so sign in to
+      // keep this a genuine "signed in but lacks the role" (unauthorized)
+      // case; the no-session equivalent is pinned separately below.
+      await signIn(client, 'u1');
 
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -190,6 +255,7 @@ void main() {
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -210,6 +276,7 @@ void main() {
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -220,10 +287,11 @@ void main() {
   });
 
   group('purgeImportedData', () {
-    test('calls delete_profile_data with p_source and requests a sync, '
-        'without touching local storage (the tombstones propagate through '
-        'the ordinary pull)', () async {
+    test('signed in: tombstones locally AND calls delete_profile_data with '
+        'p_source, then requests a sync', () async {
+      var rpcCalled = false;
       final client = makeClient((req) async {
+        rpcCalled = true;
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         expect(req.url.path, '/rest/v1/rpc/delete_profile_data');
         expect(body['p_profile_id'], 'profile-1');
@@ -233,10 +301,12 @@ void main() {
           200,
         );
       });
+      await signIn(client, 'u1');
 
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await service.purgeImportedData(
@@ -244,8 +314,107 @@ void main() {
         source: PurgeableImportSource.clueImport,
       );
 
-      expect(profiles.purgedIds, isEmpty);
+      expect(
+        purge.purges,
+        [('profile-1', 'clue_import')],
+        reason: 'the local Drift tombstone always runs',
+      );
+      expect(rpcCalled, isTrue, reason: 'a session means the RPC runs');
       expect(syncEngine.syncRequestCount, 1);
+      expect(
+        profiles.purgedIds,
+        isEmpty,
+        reason: 'purgeImportedData never runs the full-profile wipe',
+      );
+    });
+
+    test('signed out: tombstones the matching local rows, makes NO RPC call '
+        'at all, and reports success on the strength of the local purge',
+        () async {
+      var rpcCalled = false;
+      final client = makeClient((req) async {
+        rpcCalled = true;
+        return http.Response(jsonEncode({'error': 'should not be called'}), 500);
+      });
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      // No throw: the whole point of #883 is that a device-only profile can
+      // purge without a session.
+      await service.purgeImportedData(
+        profileId: 'profile-1',
+        source: PurgeableImportSource.fileImport,
+      );
+
+      expect(purge.purges, [('profile-1', 'file_import')]);
+      expect(rpcCalled, isFalse, reason: 'no session: the RPC is skipped');
+      expect(
+        syncEngine.syncRequestCount,
+        0,
+        reason: 'nothing to reconcile with no session',
+      );
+    });
+
+    test('a signed-in caller who genuinely lacks the primary-guardian role '
+        'maps to unauthorized (the primary-guardian copy)', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message':
+                'profile not found or caller is not its accepted primary_guardian',
+            'code': '42501',
+          }),
+          400,
+        );
+      });
+      await signIn(client, 'not-primary');
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      await expectLater(
+        service.purgeImportedData(
+          profileId: 'profile-1',
+          source: PurgeableImportSource.fileImport,
+        ),
+        throwsA(const ProfileErasureFailure.unauthorized()),
+      );
+      // The local purge still ran first (#883: purge locally, always).
+      expect(purge.purges, [('profile-1', 'file_import')]);
+    });
+
+    test('a no-session refusal never maps to unauthorized — it is '
+        'notSignedIn (issue #883)', () async {
+      // deleteProfile does not skip the RPC, so this is where a no-session
+      // Postgrest refusal can still be observed directly.
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({
+            'message': 'JWT expired',
+            'code': 'PGRST301',
+          }),
+          401,
+        );
+      });
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      await expectLater(
+        service.deleteProfile(profileId: 'profile-1'),
+        throwsA(const ProfileErasureFailure.notSignedIn()),
+      );
+      expect(profiles.purgedIds, isEmpty);
     });
 
     test('an unknown-source refusal maps to invalidSource', () async {
@@ -258,10 +427,12 @@ void main() {
           400,
         );
       });
+      await signIn(client, 'u1');
 
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -281,10 +452,12 @@ void main() {
           503,
         );
       });
+      await signIn(client, 'u1');
 
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -304,10 +477,12 @@ void main() {
           400,
         );
       });
+      await signIn(client, 'u1');
 
       final service = SupabaseProfileErasureService(
         client: client,
         profiles: profiles,
+        importedDataPurge: purge,
         syncEngine: syncEngine,
       );
       await expectLater(
@@ -317,6 +492,29 @@ void main() {
         ),
         throwsA(const ProfileErasureFailure.other()),
       );
+    });
+  });
+
+  group('importedDataCounts', () {
+    test('maps the local per-source counts onto every closed-enum source, '
+        'defaulting an absent one to zero', () async {
+      purge.counts = {'clue_import': 4, 'healthkit': 2};
+      final client = makeClient((req) async {
+        fail('importedDataCounts must never touch the network');
+      });
+
+      final service = SupabaseProfileErasureService(
+        client: client,
+        profiles: profiles,
+        importedDataPurge: purge,
+        syncEngine: syncEngine,
+      );
+      final counts = await service.importedDataCounts('profile-1');
+
+      expect(counts[PurgeableImportSource.clueImport], 4);
+      expect(counts[PurgeableImportSource.healthkit], 2);
+      expect(counts[PurgeableImportSource.fileImport], 0);
+      expect(counts.length, PurgeableImportSource.values.length);
     });
   });
 }
