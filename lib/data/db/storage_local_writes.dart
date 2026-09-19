@@ -328,6 +328,12 @@ void _validateVisitPrepItemBody(String body) {
   _boundedOrThrow(body, kMaxVisitPrepItemLength, 'body');
 }
 
+/// Issue #801: mirrors `guardian_notes_body_length_check` (same max-only
+/// shape as [_validateCareNoteBody]).
+void _validateGuardianNoteBody(String body) {
+  _boundedOrThrow(body, kMaxCareNoteLength, 'body');
+}
+
 /// Issue #257: mirrors `profile_tag_registry_code_length_check` — both the
 /// min (a code is required; unlike a note body, an empty identifier could
 /// never resolve) and the max (the same 64-char ceiling every tag-code
@@ -1488,6 +1494,92 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     });
   }
 
+  // ------------------------------------------------------------ guardian notes
+
+  /// Creates or updates one of the caller's own dated guardian notes (Issue
+  /// #801), keyed by [id] (a fresh ULID is generated when omitted). Marks
+  /// the row dirty and bumps `local_rev`; an update stamps `updated_at`
+  /// strictly after the stored value and revives a tombstone (`deleted_at`
+  /// cleared — under LWW a newer non-delete wins). Throws [ArgumentError]
+  /// for a [body] over [kMaxCareNoteLength] or a malformed [localDate].
+  ///
+  /// Author scoping is a client-side contract too: callers pass the id of
+  /// the caller's own note for that (profile, date); the repository's
+  /// `findOwnNoteForDate` is what makes that possible. The storage layer
+  /// itself is author-agnostic (it does not know the bound account here) —
+  /// the server enforces ownership authoritatively.
+  Future<GuardianNoteData> upsertGuardianNote({
+    String? id,
+    required String profileId,
+    required String localDate,
+    required String tz,
+    required String body,
+    String? loggedByUserId,
+    DateTime? updatedAt,
+  }) async {
+    // Async so validation failures surface as failed futures.
+    _validateGuardianNoteBody(body);
+    _validateLocalDate(localDate);
+    return db.transaction(() async {
+      final now = (updatedAt ?? _now()).toUtc();
+      GuardianNoteData? existing;
+      if (id != null) existing = await _guardianNoteOrNull(id);
+      if (existing == null) {
+        final rowId = id ?? _generator.next();
+        await db.into(db.guardianNotes).insert(GuardianNotesCompanion.insert(
+              id: rowId,
+              profileId: profileId,
+              localDate: localDate,
+              tz: tz,
+              body: body,
+              updatedAt: now,
+              dirty: const Value(true),
+              localRev: const Value(1),
+              loggedByUserId: Value(loggedByUserId),
+            ));
+        return _guardianNoteById(rowId);
+      }
+      final rowId = existing.id;
+      await (db.update(db.guardianNotes)..where((t) => t.id.equals(rowId)))
+          .write(
+        GuardianNotesCompanion(
+          localDate: Value(localDate),
+          tz: Value(tz),
+          body: Value(body),
+          updatedAt: Value(_afterStored(now, existing.updatedAt)),
+          deletedAt: const Value(null),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+          // Author is immutable: never re-stamp an existing row from a
+          // later local write. The server is authoritative anyway.
+        ),
+      );
+      return _guardianNoteById(rowId);
+    });
+  }
+
+  /// Tombstones the guardian note [id]: sets `deleted_at` (and bumps
+  /// `updated_at`), clears `body` (tombstones carry no payload — the
+  /// server's `guardian_notes_tombstone_payload_check` mirror). Marks the
+  /// row dirty. Idempotent: re-deleting a tombstone does nothing. No-op when
+  /// the row is not held locally.
+  Future<void> softDeleteGuardianNote(String id) async {
+    await db.transaction(() async {
+      final existing = await _guardianNoteOrNull(id);
+      if (existing == null || existing.deletedAt != null) return;
+      final at = _afterStored(_now(), existing.updatedAt);
+      await (db.update(db.guardianNotes)..where((t) => t.id.equals(id))).write(
+        GuardianNotesCompanion(
+          body: const Value(''),
+          updatedAt: Value(at),
+          deletedAt: Value(at),
+          dirty: const Value(true),
+          localRev: Value(existing.localRev + 1),
+        ),
+      );
+    });
+  }
+
   // ---------------------------------------------------------- visit prep list
 
   /// Adds a visit-prep item (Issue #128), keyed by [id] (a fresh ULID is
@@ -1914,6 +2006,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       keyColumn: db.profileTagRegistry.id.$name,
       revColumn: db.profileTagRegistry.localRev.$name,
     ),
+    // Issue #801: guardian notes push like every other synced table
+    // (dirty rows ride the batch; [markPushed]'s own switch above clears
+    // them the same way).
+    SyncTable.guardianNotes: () => (
+      table: db.guardianNotes,
+      keyColumn: db.guardianNotes.id.$name,
+      revColumn: db.guardianNotes.localRev.$name,
+    ),
   };
 
   /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
@@ -2010,6 +2110,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           .write(ProfileTagRegistryCompanion.custom(
             dirty: const Constant(true),
             localRev: db.profileTagRegistry.localRev + const Constant(1),
+          ));
+      await db.update(db.guardianNotes)
+          .write(GuardianNotesCompanion.custom(
+            dirty: const Constant(true),
+            localRev: db.guardianNotes.localRev + const Constant(1),
           ));
     });
   }

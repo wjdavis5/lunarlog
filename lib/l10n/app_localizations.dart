@@ -3181,6 +3181,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Done'**
   String get importClueDone;
+
+  /// Day sheet: heading of the per-guardian dated notes section (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'Notes from guardians'**
+  String get guardianNotesSectionTitle;
+
+  /// Day sheet: shown to a read-only guardian when no guardian note exists for the day (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'No guardian notes for this day yet.'**
+  String get guardianNotesEmpty;
+
+  /// Day sheet: author label above the reader's own editable guardian note (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'You'**
+  String get guardianNotesYou;
+
+  /// Day sheet: button that removes the reader's own guardian note (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get guardianNotesRemove;
+
+  /// Day sheet: button that saves a new guardian note (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'Add note'**
+  String get guardianNotesAdd;
+
+  /// Day sheet: button that saves an edit to an existing guardian note (Issue #801).
+  ///
+  /// In en, this message translates to:
+  /// **'Update note'**
+  String get guardianNotesUpdate;
 }
 
 class _AppLocalizationsDelegate

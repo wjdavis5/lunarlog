@@ -642,6 +642,55 @@ class CareNotes extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// One guardian's dated note on a profile's day (Issue #801): the
+/// date-bound, author-scoped sibling of [CareNotes]. Distinct ULIDs per
+/// author per date, per-id last-writer-wins, never merged across authors.
+/// Tombstones clear `body` (the server's
+/// `guardian_notes_tombstone_payload_check`), keeping `local_date`/`tz` as
+/// identity/provenance.
+@DataClassName('GuardianNoteData')
+class GuardianNotes extends Table {
+  /// Client-generated ULID (stable across devices/sync).
+  TextColumn get id => text()();
+
+  /// The profile this note belongs to.
+  TextColumn get profileId =>
+      text().named('profile_id').references(Profiles, #id)();
+
+  /// The civil date the note is about (`yyyy-MM-dd`).
+  TextColumn get localDate => text().named('local_date')();
+
+  /// IANA time zone name the author's day was measured in.
+  TextColumn get tz => text()();
+
+  /// Free-text note (health content; bounded by `kMaxCareNoteLength`,
+  /// cleared on a tombstone like every other payload column).
+  TextColumn get body => text()();
+
+  DateTimeColumn get updatedAt => dateTime().named('updated_at')();
+
+  DateTimeColumn get deletedAt => dateTime().named('deleted_at').nullable()();
+
+  /// See [Profiles.dirty].
+  BoolColumn get dirty => boolean().withDefault(const Constant(false))();
+
+  /// See [Profiles.localRev].
+  IntColumn get localRev =>
+      integer().named('local_rev').withDefault(const Constant(0))();
+
+  /// Supabase auth user who created this note (stamped by server). Also the
+  /// author-ownership key: only this user may edit or tombstone the row.
+  TextColumn get loggedByUserId =>
+      text().named('logged_by_user_id').nullable()();
+
+  /// Supabase auth user who last edited this note (stamped by server).
+  TextColumn get lastModifiedByUserId =>
+      text().named('last_modified_by_user_id').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// One item on a profile's visit-prep checklist (Issue #128): a
 /// question or to-bring for an upcoming appointment. Each item is an
 /// independent row converging as a set (see
@@ -967,6 +1016,12 @@ class SyncState extends Table {
   /// apply path are its entire sync surface).
   IntColumn get cursorDayEntryHistory =>
       integer().named('cursor_day_entry_history')
+          .withDefault(const Constant(0))();
+
+  /// Issue #801: the `guardian_notes` pull cursor, same shape as
+  /// [cursorDayEntries].
+  IntColumn get cursorGuardianNotes =>
+      integer().named('cursor_guardian_notes')
           .withDefault(const Constant(0))();
 
   DateTimeColumn get lastFullPullAt =>

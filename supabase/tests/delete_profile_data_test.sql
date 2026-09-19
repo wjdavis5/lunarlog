@@ -30,7 +30,7 @@
 --      health content/PII).
 
 begin;
-select plan(89);
+select plan(91);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated, service_role;
@@ -318,6 +318,13 @@ select tests.authenticate_as('c');
 insert into public.care_notes (id, profile_id, body, updated_at)
 values (tests.ulid(111), tests.ulid(1), 'Note from caregiver', '2026-09-01T00:00:00Z');
 
+-- Issue #801: a dated, author-scoped guardian note on the profile about to
+-- be purged. Same caregiver author as the care note - both are health text
+-- that must not survive the wipe.
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at)
+values (tests.ulid(113), tests.ulid(1), '2026-09-12', 'UTC',
+        'Guardian note about the day', '2026-09-12T00:00:00Z');
+
 select tests.authenticate_as('a');
 insert into public.visit_prep_items (id, profile_id, body, updated_at)
 values (tests.ulid(112), tests.ulid(1), 'Bring chart', '2026-09-01T00:00:00Z');
@@ -487,6 +494,14 @@ select is((select count(*) from public.care_notes where profile_id = tests.ulid(
   'D: the #128 care note SURVIVES the purge, tombstoned (caregiver-authored content included)');
 select is((select body from public.care_notes where profile_id = tests.ulid(1)), '',
   'D: the tombstoned care note carries no payload');
+
+-- Issue #801: guardian_notes follows the care_notes pattern exactly - the
+-- row survives (tombstoned) so the removal propagates, but its free-text
+-- health content is gone.
+select is((select count(*) from public.guardian_notes where profile_id = tests.ulid(1)), 1::bigint,
+  'D: the #801 guardian note SURVIVES the purge, tombstoned');
+select is((select body from public.guardian_notes where profile_id = tests.ulid(1)), '',
+  'D: the tombstoned guardian note carries no payload (health text cleared)');
 
 select is((select count(*) from public.visit_prep_items where profile_id = tests.ulid(1)), 1::bigint,
   'D: the #128 visit-prep item SURVIVES the purge, tombstoned');

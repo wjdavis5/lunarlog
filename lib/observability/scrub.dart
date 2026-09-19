@@ -104,6 +104,13 @@ const List<String> sentryDenyListedKeys = [
   'visit_prep_items',
   'prep_item',
   'prep_items',
+  // Issue #801: the dated, author-scoped guardian-note table/payload
+  // carries the same free-text health content as `note`/`body` — the
+  // table name and the sync_push parameter are both denied so a breadcrumb
+  // naming the row (or the whole push) drops, not just the bare 'body'.
+  'guardian_note',
+  'guardian_notes',
+  'p_guardian_notes',
   'display_name',
   'local_date',
   'email',

@@ -36,6 +36,7 @@ enum SyncTable {
   profileTagRegistry,
   deletedProfiles,
   dayEntryHistory,
+  guardianNotes,
 }
 
 /// A server copy of a synced row.
@@ -509,6 +510,49 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
 
   @override
   SyncTable get table => SyncTable.visitPrepItems;
+}
+
+/// A server copy of a `guardian_notes` row (Issue #801): one dated,
+/// author-scoped note on a profile. Tombstones (deletedAt set) carry no
+/// payload — the server's `guardian_notes_tombstone_payload_check` clears
+/// `body`, keeping `id`/`profileId`/`localDate`/`tz`. `loggedByUserId` is
+/// the author-ownership key.
+final class RemoteGuardianNoteRow extends RemoteRow {
+  const RemoteGuardianNoteRow({
+    required this.id,
+    required this.profileId,
+    required this.localDate,
+    required this.tz,
+    required this.body,
+    required this.updatedAt,
+    required this.deletedAt,
+    this.serverVersion = 0,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+
+  @override
+  final String id;
+  final String profileId;
+
+  /// ISO calendar date `yyyy-MM-dd`.
+  final String localDate;
+  final String tz;
+
+  /// Free-text note. Empty on a tombstone.
+  final String body;
+  @override
+  final DateTime updatedAt;
+  @override
+  final DateTime? deletedAt;
+  @override
+  final int serverVersion;
+
+  final String? loggedByUserId;
+  final String? lastModifiedByUserId;
+
+  @override
+  SyncTable get table => SyncTable.guardianNotes;
 }
 
 /// A server copy of a `day_entry_merge_events` row (Issue #130): one

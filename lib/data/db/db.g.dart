@@ -6513,6 +6513,697 @@ class CareNotesCompanion extends UpdateCompanion<CareNoteData> {
   }
 }
 
+class $GuardianNotesTable extends GuardianNotes
+    with TableInfo<$GuardianNotesTable, GuardianNoteData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $GuardianNotesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES profiles (id)',
+    ),
+  );
+  static const VerificationMeta _localDateMeta = const VerificationMeta(
+    'localDate',
+  );
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+    'local_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tzMeta = const VerificationMeta('tz');
+  @override
+  late final GeneratedColumn<String> tz = GeneratedColumn<String>(
+    'tz',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _localRevMeta = const VerificationMeta(
+    'localRev',
+  );
+  @override
+  late final GeneratedColumn<int> localRev = GeneratedColumn<int>(
+    'local_rev',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _loggedByUserIdMeta = const VerificationMeta(
+    'loggedByUserId',
+  );
+  @override
+  late final GeneratedColumn<String> loggedByUserId = GeneratedColumn<String>(
+    'logged_by_user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastModifiedByUserIdMeta =
+      const VerificationMeta('lastModifiedByUserId');
+  @override
+  late final GeneratedColumn<String> lastModifiedByUserId =
+      GeneratedColumn<String>(
+        'last_modified_by_user_id',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    profileId,
+    localDate,
+    tz,
+    body,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'guardian_notes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<GuardianNoteData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(
+        _localDateMeta,
+        localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('tz')) {
+      context.handle(_tzMeta, tz.isAcceptableOrUnknown(data['tz']!, _tzMeta));
+    } else if (isInserting) {
+      context.missing(_tzMeta);
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bodyMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('local_rev')) {
+      context.handle(
+        _localRevMeta,
+        localRev.isAcceptableOrUnknown(data['local_rev']!, _localRevMeta),
+      );
+    }
+    if (data.containsKey('logged_by_user_id')) {
+      context.handle(
+        _loggedByUserIdMeta,
+        loggedByUserId.isAcceptableOrUnknown(
+          data['logged_by_user_id']!,
+          _loggedByUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_modified_by_user_id')) {
+      context.handle(
+        _lastModifiedByUserIdMeta,
+        lastModifiedByUserId.isAcceptableOrUnknown(
+          data['last_modified_by_user_id']!,
+          _lastModifiedByUserIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  GuardianNoteData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return GuardianNoteData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      localDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_date'],
+      )!,
+      tz: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tz'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      localRev: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}local_rev'],
+      )!,
+      loggedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}logged_by_user_id'],
+      ),
+      lastModifiedByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_modified_by_user_id'],
+      ),
+    );
+  }
+
+  @override
+  $GuardianNotesTable createAlias(String alias) {
+    return $GuardianNotesTable(attachedDatabase, alias);
+  }
+}
+
+class GuardianNoteData extends DataClass
+    implements Insertable<GuardianNoteData> {
+  /// Client-generated ULID (stable across devices/sync).
+  final String id;
+
+  /// The profile this note belongs to.
+  final String profileId;
+
+  /// The civil date the note is about (`yyyy-MM-dd`).
+  final String localDate;
+
+  /// IANA time zone name the author's day was measured in.
+  final String tz;
+
+  /// Free-text note (health content; bounded by `kMaxCareNoteLength`,
+  /// cleared on a tombstone like every other payload column).
+  final String body;
+  final DateTime updatedAt;
+  final DateTime? deletedAt;
+
+  /// See [Profiles.dirty].
+  final bool dirty;
+
+  /// See [Profiles.localRev].
+  final int localRev;
+
+  /// Supabase auth user who created this note (stamped by server). Also the
+  /// author-ownership key: only this user may edit or tombstone the row.
+  final String? loggedByUserId;
+
+  /// Supabase auth user who last edited this note (stamped by server).
+  final String? lastModifiedByUserId;
+  const GuardianNoteData({
+    required this.id,
+    required this.profileId,
+    required this.localDate,
+    required this.tz,
+    required this.body,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.dirty,
+    required this.localRev,
+    this.loggedByUserId,
+    this.lastModifiedByUserId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['profile_id'] = Variable<String>(profileId);
+    map['local_date'] = Variable<String>(localDate);
+    map['tz'] = Variable<String>(tz);
+    map['body'] = Variable<String>(body);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['dirty'] = Variable<bool>(dirty);
+    map['local_rev'] = Variable<int>(localRev);
+    if (!nullToAbsent || loggedByUserId != null) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId);
+    }
+    if (!nullToAbsent || lastModifiedByUserId != null) {
+      map['last_modified_by_user_id'] = Variable<String>(lastModifiedByUserId);
+    }
+    return map;
+  }
+
+  GuardianNotesCompanion toCompanion(bool nullToAbsent) {
+    return GuardianNotesCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      localDate: Value(localDate),
+      tz: Value(tz),
+      body: Value(body),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      dirty: Value(dirty),
+      localRev: Value(localRev),
+      loggedByUserId: loggedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(loggedByUserId),
+      lastModifiedByUserId: lastModifiedByUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastModifiedByUserId),
+    );
+  }
+
+  factory GuardianNoteData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return GuardianNoteData(
+      id: serializer.fromJson<String>(json['id']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      tz: serializer.fromJson<String>(json['tz']),
+      body: serializer.fromJson<String>(json['body']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      localRev: serializer.fromJson<int>(json['localRev']),
+      loggedByUserId: serializer.fromJson<String?>(json['loggedByUserId']),
+      lastModifiedByUserId: serializer.fromJson<String?>(
+        json['lastModifiedByUserId'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'profileId': serializer.toJson<String>(profileId),
+      'localDate': serializer.toJson<String>(localDate),
+      'tz': serializer.toJson<String>(tz),
+      'body': serializer.toJson<String>(body),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'dirty': serializer.toJson<bool>(dirty),
+      'localRev': serializer.toJson<int>(localRev),
+      'loggedByUserId': serializer.toJson<String?>(loggedByUserId),
+      'lastModifiedByUserId': serializer.toJson<String?>(lastModifiedByUserId),
+    };
+  }
+
+  GuardianNoteData copyWith({
+    String? id,
+    String? profileId,
+    String? localDate,
+    String? tz,
+    String? body,
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? dirty,
+    int? localRev,
+    Value<String?> loggedByUserId = const Value.absent(),
+    Value<String?> lastModifiedByUserId = const Value.absent(),
+  }) => GuardianNoteData(
+    id: id ?? this.id,
+    profileId: profileId ?? this.profileId,
+    localDate: localDate ?? this.localDate,
+    tz: tz ?? this.tz,
+    body: body ?? this.body,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    dirty: dirty ?? this.dirty,
+    localRev: localRev ?? this.localRev,
+    loggedByUserId: loggedByUserId.present
+        ? loggedByUserId.value
+        : this.loggedByUserId,
+    lastModifiedByUserId: lastModifiedByUserId.present
+        ? lastModifiedByUserId.value
+        : this.lastModifiedByUserId,
+  );
+  GuardianNoteData copyWithCompanion(GuardianNotesCompanion data) {
+    return GuardianNoteData(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      tz: data.tz.present ? data.tz.value : this.tz,
+      body: data.body.present ? data.body.value : this.body,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      localRev: data.localRev.present ? data.localRev.value : this.localRev,
+      loggedByUserId: data.loggedByUserId.present
+          ? data.loggedByUserId.value
+          : this.loggedByUserId,
+      lastModifiedByUserId: data.lastModifiedByUserId.present
+          ? data.lastModifiedByUserId.value
+          : this.lastModifiedByUserId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GuardianNoteData(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('tz: $tz, ')
+          ..write('body: $body, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    profileId,
+    localDate,
+    tz,
+    body,
+    updatedAt,
+    deletedAt,
+    dirty,
+    localRev,
+    loggedByUserId,
+    lastModifiedByUserId,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is GuardianNoteData &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.localDate == this.localDate &&
+          other.tz == this.tz &&
+          other.body == this.body &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.dirty == this.dirty &&
+          other.localRev == this.localRev &&
+          other.loggedByUserId == this.loggedByUserId &&
+          other.lastModifiedByUserId == this.lastModifiedByUserId);
+}
+
+class GuardianNotesCompanion extends UpdateCompanion<GuardianNoteData> {
+  final Value<String> id;
+  final Value<String> profileId;
+  final Value<String> localDate;
+  final Value<String> tz;
+  final Value<String> body;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> dirty;
+  final Value<int> localRev;
+  final Value<String?> loggedByUserId;
+  final Value<String?> lastModifiedByUserId;
+  final Value<int> rowid;
+  const GuardianNotesCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.tz = const Value.absent(),
+    this.body = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  GuardianNotesCompanion.insert({
+    required String id,
+    required String profileId,
+    required String localDate,
+    required String tz,
+    required String body,
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.localRev = const Value.absent(),
+    this.loggedByUserId = const Value.absent(),
+    this.lastModifiedByUserId = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       profileId = Value(profileId),
+       localDate = Value(localDate),
+       tz = Value(tz),
+       body = Value(body),
+       updatedAt = Value(updatedAt);
+  static Insertable<GuardianNoteData> custom({
+    Expression<String>? id,
+    Expression<String>? profileId,
+    Expression<String>? localDate,
+    Expression<String>? tz,
+    Expression<String>? body,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? dirty,
+    Expression<int>? localRev,
+    Expression<String>? loggedByUserId,
+    Expression<String>? lastModifiedByUserId,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (localDate != null) 'local_date': localDate,
+      if (tz != null) 'tz': tz,
+      if (body != null) 'body': body,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (dirty != null) 'dirty': dirty,
+      if (localRev != null) 'local_rev': localRev,
+      if (loggedByUserId != null) 'logged_by_user_id': loggedByUserId,
+      if (lastModifiedByUserId != null)
+        'last_modified_by_user_id': lastModifiedByUserId,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  GuardianNotesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? profileId,
+    Value<String>? localDate,
+    Value<String>? tz,
+    Value<String>? body,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? dirty,
+    Value<int>? localRev,
+    Value<String?>? loggedByUserId,
+    Value<String?>? lastModifiedByUserId,
+    Value<int>? rowid,
+  }) {
+    return GuardianNotesCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      localDate: localDate ?? this.localDate,
+      tz: tz ?? this.tz,
+      body: body ?? this.body,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      dirty: dirty ?? this.dirty,
+      localRev: localRev ?? this.localRev,
+      loggedByUserId: loggedByUserId ?? this.loggedByUserId,
+      lastModifiedByUserId: lastModifiedByUserId ?? this.lastModifiedByUserId,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (tz.present) {
+      map['tz'] = Variable<String>(tz.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (localRev.present) {
+      map['local_rev'] = Variable<int>(localRev.value);
+    }
+    if (loggedByUserId.present) {
+      map['logged_by_user_id'] = Variable<String>(loggedByUserId.value);
+    }
+    if (lastModifiedByUserId.present) {
+      map['last_modified_by_user_id'] = Variable<String>(
+        lastModifiedByUserId.value,
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('GuardianNotesCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('localDate: $localDate, ')
+          ..write('tz: $tz, ')
+          ..write('body: $body, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('dirty: $dirty, ')
+          ..write('localRev: $localRev, ')
+          ..write('loggedByUserId: $loggedByUserId, ')
+          ..write('lastModifiedByUserId: $lastModifiedByUserId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $VisitPrepItemsTable extends VisitPrepItems
     with TableInfo<$VisitPrepItemsTable, VisitPrepItemData> {
   @override
@@ -9865,6 +10556,17 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _cursorGuardianNotesMeta =
+      const VerificationMeta('cursorGuardianNotes');
+  @override
+  late final GeneratedColumn<int> cursorGuardianNotes = GeneratedColumn<int>(
+    'cursor_guardian_notes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _lastFullPullAtMeta = const VerificationMeta(
     'lastFullPullAt',
   );
@@ -9926,6 +10628,7 @@ class $SyncStateTable extends SyncState
     cursorDayEntryMergeEvents,
     cursorProfileTagRegistry,
     cursorDayEntryHistory,
+    cursorGuardianNotes,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -10069,6 +10772,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('cursor_guardian_notes')) {
+      context.handle(
+        _cursorGuardianNotesMeta,
+        cursorGuardianNotes.isAcceptableOrUnknown(
+          data['cursor_guardian_notes']!,
+          _cursorGuardianNotesMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_full_pull_at')) {
       context.handle(
         _lastFullPullAtMeta,
@@ -10171,6 +10883,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}cursor_day_entry_history'],
       )!,
+      cursorGuardianNotes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor_guardian_notes'],
+      )!,
       lastFullPullAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_full_pull_at'],
@@ -10262,6 +10978,10 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
   /// [cursorDayEntries] (the table is pull-only, so this cursor plus the
   /// apply path are its entire sync surface).
   final int cursorDayEntryHistory;
+
+  /// Issue #801: the `guardian_notes` pull cursor, same shape as
+  /// [cursorDayEntries].
+  final int cursorGuardianNotes;
   final DateTime? lastFullPullAt;
   final DateTime? lastSyncAt;
 
@@ -10287,6 +11007,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     required this.cursorDayEntryMergeEvents,
     required this.cursorProfileTagRegistry,
     required this.cursorDayEntryHistory,
+    required this.cursorGuardianNotes,
     this.lastFullPullAt,
     this.lastSyncAt,
     this.lastError,
@@ -10316,6 +11037,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorProfileTagRegistry,
     );
     map['cursor_day_entry_history'] = Variable<int>(cursorDayEntryHistory);
+    map['cursor_guardian_notes'] = Variable<int>(cursorGuardianNotes);
     if (!nullToAbsent || lastFullPullAt != null) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt);
     }
@@ -10350,6 +11072,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntryMergeEvents: Value(cursorDayEntryMergeEvents),
       cursorProfileTagRegistry: Value(cursorProfileTagRegistry),
       cursorDayEntryHistory: Value(cursorDayEntryHistory),
+      cursorGuardianNotes: Value(cursorGuardianNotes),
       lastFullPullAt: lastFullPullAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastFullPullAt),
@@ -10400,6 +11123,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntryHistory: serializer.fromJson<int>(
         json['cursorDayEntryHistory'],
       ),
+      cursorGuardianNotes: serializer.fromJson<int>(
+        json['cursorGuardianNotes'],
+      ),
       lastFullPullAt: serializer.fromJson<DateTime?>(json['lastFullPullAt']),
       lastSyncAt: serializer.fromJson<DateTime?>(json['lastSyncAt']),
       lastError: serializer.fromJson<String?>(json['lastError']),
@@ -10431,6 +11157,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
         cursorProfileTagRegistry,
       ),
       'cursorDayEntryHistory': serializer.toJson<int>(cursorDayEntryHistory),
+      'cursorGuardianNotes': serializer.toJson<int>(cursorGuardianNotes),
       'lastFullPullAt': serializer.toJson<DateTime?>(lastFullPullAt),
       'lastSyncAt': serializer.toJson<DateTime?>(lastSyncAt),
       'lastError': serializer.toJson<String?>(lastError),
@@ -10454,6 +11181,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     int? cursorDayEntryMergeEvents,
     int? cursorProfileTagRegistry,
     int? cursorDayEntryHistory,
+    int? cursorGuardianNotes,
     Value<DateTime?> lastFullPullAt = const Value.absent(),
     Value<DateTime?> lastSyncAt = const Value.absent(),
     Value<String?> lastError = const Value.absent(),
@@ -10477,6 +11205,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorProfileTagRegistry:
         cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
     cursorDayEntryHistory: cursorDayEntryHistory ?? this.cursorDayEntryHistory,
+    cursorGuardianNotes: cursorGuardianNotes ?? this.cursorGuardianNotes,
     lastFullPullAt: lastFullPullAt.present
         ? lastFullPullAt.value
         : this.lastFullPullAt,
@@ -10529,6 +11258,9 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
       cursorDayEntryHistory: data.cursorDayEntryHistory.present
           ? data.cursorDayEntryHistory.value
           : this.cursorDayEntryHistory,
+      cursorGuardianNotes: data.cursorGuardianNotes.present
+          ? data.cursorGuardianNotes.value
+          : this.cursorGuardianNotes,
       lastFullPullAt: data.lastFullPullAt.present
           ? data.lastFullPullAt.value
           : this.lastFullPullAt,
@@ -10560,6 +11292,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
           ..write('cursorDayEntryHistory: $cursorDayEntryHistory, ')
+          ..write('cursorGuardianNotes: $cursorGuardianNotes, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -10585,6 +11318,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
     cursorDayEntryMergeEvents,
     cursorProfileTagRegistry,
     cursorDayEntryHistory,
+    cursorGuardianNotes,
     lastFullPullAt,
     lastSyncAt,
     lastError,
@@ -10609,6 +11343,7 @@ class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
           other.cursorDayEntryMergeEvents == this.cursorDayEntryMergeEvents &&
           other.cursorProfileTagRegistry == this.cursorProfileTagRegistry &&
           other.cursorDayEntryHistory == this.cursorDayEntryHistory &&
+          other.cursorGuardianNotes == this.cursorGuardianNotes &&
           other.lastFullPullAt == this.lastFullPullAt &&
           other.lastSyncAt == this.lastSyncAt &&
           other.lastError == this.lastError &&
@@ -10631,6 +11366,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
   final Value<int> cursorDayEntryMergeEvents;
   final Value<int> cursorProfileTagRegistry;
   final Value<int> cursorDayEntryHistory;
+  final Value<int> cursorGuardianNotes;
   final Value<DateTime?> lastFullPullAt;
   final Value<DateTime?> lastSyncAt;
   final Value<String?> lastError;
@@ -10651,6 +11387,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorDayEntryMergeEvents = const Value.absent(),
     this.cursorProfileTagRegistry = const Value.absent(),
     this.cursorDayEntryHistory = const Value.absent(),
+    this.cursorGuardianNotes = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -10672,6 +11409,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     this.cursorDayEntryMergeEvents = const Value.absent(),
     this.cursorProfileTagRegistry = const Value.absent(),
     this.cursorDayEntryHistory = const Value.absent(),
+    this.cursorGuardianNotes = const Value.absent(),
     this.lastFullPullAt = const Value.absent(),
     this.lastSyncAt = const Value.absent(),
     this.lastError = const Value.absent(),
@@ -10693,6 +11431,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Expression<int>? cursorDayEntryMergeEvents,
     Expression<int>? cursorProfileTagRegistry,
     Expression<int>? cursorDayEntryHistory,
+    Expression<int>? cursorGuardianNotes,
     Expression<DateTime>? lastFullPullAt,
     Expression<DateTime>? lastSyncAt,
     Expression<String>? lastError,
@@ -10722,6 +11461,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         'cursor_profile_tag_registry': cursorProfileTagRegistry,
       if (cursorDayEntryHistory != null)
         'cursor_day_entry_history': cursorDayEntryHistory,
+      if (cursorGuardianNotes != null)
+        'cursor_guardian_notes': cursorGuardianNotes,
       if (lastFullPullAt != null) 'last_full_pull_at': lastFullPullAt,
       if (lastSyncAt != null) 'last_sync_at': lastSyncAt,
       if (lastError != null) 'last_error': lastError,
@@ -10746,6 +11487,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
     Value<int>? cursorDayEntryMergeEvents,
     Value<int>? cursorProfileTagRegistry,
     Value<int>? cursorDayEntryHistory,
+    Value<int>? cursorGuardianNotes,
     Value<DateTime?>? lastFullPullAt,
     Value<DateTime?>? lastSyncAt,
     Value<String?>? lastError,
@@ -10772,6 +11514,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           cursorProfileTagRegistry ?? this.cursorProfileTagRegistry,
       cursorDayEntryHistory:
           cursorDayEntryHistory ?? this.cursorDayEntryHistory,
+      cursorGuardianNotes: cursorGuardianNotes ?? this.cursorGuardianNotes,
       lastFullPullAt: lastFullPullAt ?? this.lastFullPullAt,
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastError: lastError ?? this.lastError,
@@ -10839,6 +11582,9 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
         cursorDayEntryHistory.value,
       );
     }
+    if (cursorGuardianNotes.present) {
+      map['cursor_guardian_notes'] = Variable<int>(cursorGuardianNotes.value);
+    }
     if (lastFullPullAt.present) {
       map['last_full_pull_at'] = Variable<DateTime>(lastFullPullAt.value);
     }
@@ -10872,6 +11618,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateRow> {
           ..write('cursorDayEntryMergeEvents: $cursorDayEntryMergeEvents, ')
           ..write('cursorProfileTagRegistry: $cursorProfileTagRegistry, ')
           ..write('cursorDayEntryHistory: $cursorDayEntryHistory, ')
+          ..write('cursorGuardianNotes: $cursorGuardianNotes, ')
           ..write('lastFullPullAt: $lastFullPullAt, ')
           ..write('lastSyncAt: $lastSyncAt, ')
           ..write('lastError: $lastError, ')
@@ -11178,6 +11925,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $ProfileModesTable profileModes = $ProfileModesTable(this);
   late final $CycleOverridesTable cycleOverrides = $CycleOverridesTable(this);
   late final $CareNotesTable careNotes = $CareNotesTable(this);
+  late final $GuardianNotesTable guardianNotes = $GuardianNotesTable(this);
   late final $VisitPrepItemsTable visitPrepItems = $VisitPrepItemsTable(this);
   late final $DayEntryMergeEventsTable dayEntryMergeEvents =
       $DayEntryMergeEventsTable(this);
@@ -11203,6 +11951,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     profileModes,
     cycleOverrides,
     careNotes,
+    guardianNotes,
     visitPrepItems,
     dayEntryMergeEvents,
     profileTagRegistry,
@@ -11382,6 +12131,25 @@ final class $$ProfilesTableReferences
     ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_careNotesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$GuardianNotesTable, List<GuardianNoteData>>
+  _guardianNotesRefsTable(_$LunarLogDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.guardianNotes,
+        aliasName: 'profiles__id__guardian_notes__profile_id',
+      );
+
+  $$GuardianNotesTableProcessedTableManager get guardianNotesRefs {
+    final manager = $$GuardianNotesTableTableManager(
+      $_db,
+      $_db.guardianNotes,
+    ).filter((f) => f.profileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_guardianNotesRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -11741,6 +12509,31 @@ class $$ProfilesTableFilterComposer
           }) => $$CareNotesTableFilterComposer(
             $db: $db,
             $table: $db.careNotes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> guardianNotesRefs(
+    Expression<bool> Function($$GuardianNotesTableFilterComposer f) f,
+  ) {
+    final $$GuardianNotesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.guardianNotes,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GuardianNotesTableFilterComposer(
+            $db: $db,
+            $table: $db.guardianNotes,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -12228,6 +13021,31 @@ class $$ProfilesTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> guardianNotesRefs<T extends Object>(
+    Expression<T> Function($$GuardianNotesTableAnnotationComposer a) f,
+  ) {
+    final $$GuardianNotesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.guardianNotes,
+      getReferencedColumn: (t) => t.profileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$GuardianNotesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.guardianNotes,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> visitPrepItemsRefs<T extends Object>(
     Expression<T> Function($$VisitPrepItemsTableAnnotationComposer a) f,
   ) {
@@ -12351,6 +13169,7 @@ class $$ProfilesTableTableManager
             bool profileModesRefs,
             bool cycleOverridesRefs,
             bool careNotesRefs,
+            bool guardianNotesRefs,
             bool visitPrepItemsRefs,
             bool dayEntryMergeEventsRefs,
             bool profileTagRegistryRefs,
@@ -12488,6 +13307,7 @@ class $$ProfilesTableTableManager
                 profileModesRefs = false,
                 cycleOverridesRefs = false,
                 careNotesRefs = false,
+                guardianNotesRefs = false,
                 visitPrepItemsRefs = false,
                 dayEntryMergeEventsRefs = false,
                 profileTagRegistryRefs = false,
@@ -12502,6 +13322,7 @@ class $$ProfilesTableTableManager
                     if (profileModesRefs) db.profileModes,
                     if (cycleOverridesRefs) db.cycleOverrides,
                     if (careNotesRefs) db.careNotes,
+                    if (guardianNotesRefs) db.guardianNotes,
                     if (visitPrepItemsRefs) db.visitPrepItems,
                     if (dayEntryMergeEventsRefs) db.dayEntryMergeEvents,
                     if (profileTagRegistryRefs) db.profileTagRegistry,
@@ -12636,6 +13457,27 @@ class $$ProfilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (guardianNotesRefs)
+                        await $_getPrefetchedData<
+                          Profile,
+                          $ProfilesTable,
+                          GuardianNoteData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ProfilesTableReferences
+                              ._guardianNotesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ProfilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).guardianNotesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.profileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (visitPrepItemsRefs)
                         await $_getPrefetchedData<
                           Profile,
@@ -12747,6 +13589,7 @@ typedef $$ProfilesTableProcessedTableManager =
         bool profileModesRefs,
         bool cycleOverridesRefs,
         bool careNotesRefs,
+        bool guardianNotesRefs,
         bool visitPrepItemsRefs,
         bool dayEntryMergeEventsRefs,
         bool profileTagRegistryRefs,
@@ -15881,6 +16724,450 @@ typedef $$CareNotesTableProcessedTableManager =
       CareNoteData,
       PrefetchHooks Function({bool profileId})
     >;
+typedef $$GuardianNotesTableCreateCompanionBuilder =
+    GuardianNotesCompanion Function({
+      required String id,
+      required String profileId,
+      required String localDate,
+      required String tz,
+      required String body,
+      required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<String?> loggedByUserId,
+      Value<String?> lastModifiedByUserId,
+      Value<int> rowid,
+    });
+typedef $$GuardianNotesTableUpdateCompanionBuilder =
+    GuardianNotesCompanion Function({
+      Value<String> id,
+      Value<String> profileId,
+      Value<String> localDate,
+      Value<String> tz,
+      Value<String> body,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> dirty,
+      Value<int> localRev,
+      Value<String?> loggedByUserId,
+      Value<String?> lastModifiedByUserId,
+      Value<int> rowid,
+    });
+
+final class $$GuardianNotesTableReferences
+    extends
+        BaseReferences<
+          _$LunarLogDatabase,
+          $GuardianNotesTable,
+          GuardianNoteData
+        > {
+  $$GuardianNotesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $ProfilesTable _profileIdTable(_$LunarLogDatabase db) =>
+      db.profiles.createAlias('guardian_notes__profile_id__profiles__id');
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<String>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager(
+      $_db,
+      $_db.profiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$GuardianNotesTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $GuardianNotesTable> {
+  $$GuardianNotesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tz => $composableBuilder(
+    column: $table.tz,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableFilterComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GuardianNotesTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $GuardianNotesTable> {
+  $$GuardianNotesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tz => $composableBuilder(
+    column: $table.tz,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get localRev => $composableBuilder(
+    column: $table.localRev,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GuardianNotesTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $GuardianNotesTable> {
+  $$GuardianNotesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<String> get tz =>
+      $composableBuilder(column: $table.tz, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<int> get localRev =>
+      $composableBuilder(column: $table.localRev, builder: (column) => column);
+
+  GeneratedColumn<String> get loggedByUserId => $composableBuilder(
+    column: $table.loggedByUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastModifiedByUserId => $composableBuilder(
+    column: $table.lastModifiedByUserId,
+    builder: (column) => column,
+  );
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.profileId,
+      referencedTable: $db.profiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ProfilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.profiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$GuardianNotesTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $GuardianNotesTable,
+          GuardianNoteData,
+          $$GuardianNotesTableFilterComposer,
+          $$GuardianNotesTableOrderingComposer,
+          $$GuardianNotesTableAnnotationComposer,
+          $$GuardianNotesTableCreateCompanionBuilder,
+          $$GuardianNotesTableUpdateCompanionBuilder,
+          (GuardianNoteData, $$GuardianNotesTableReferences),
+          GuardianNoteData,
+          PrefetchHooks Function({bool profileId})
+        > {
+  $$GuardianNotesTableTableManager(
+    _$LunarLogDatabase db,
+    $GuardianNotesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$GuardianNotesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$GuardianNotesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$GuardianNotesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> localDate = const Value.absent(),
+                Value<String> tz = const Value.absent(),
+                Value<String> body = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GuardianNotesCompanion(
+                id: id,
+                profileId: profileId,
+                localDate: localDate,
+                tz: tz,
+                body: body,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String profileId,
+                required String localDate,
+                required String tz,
+                required String body,
+                required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<int> localRev = const Value.absent(),
+                Value<String?> loggedByUserId = const Value.absent(),
+                Value<String?> lastModifiedByUserId = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => GuardianNotesCompanion.insert(
+                id: id,
+                profileId: profileId,
+                localDate: localDate,
+                tz: tz,
+                body: body,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                dirty: dirty,
+                localRev: localRev,
+                loggedByUserId: loggedByUserId,
+                lastModifiedByUserId: lastModifiedByUserId,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$GuardianNotesTable, GuardianNoteData>(table),
+                  $$GuardianNotesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (profileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.profileId,
+                        referencedTable: $$GuardianNotesTableReferences
+                            ._profileIdTable(db),
+                        referencedColumn: $$GuardianNotesTableReferences
+                            ._profileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$GuardianNotesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $GuardianNotesTable,
+      GuardianNoteData,
+      $$GuardianNotesTableFilterComposer,
+      $$GuardianNotesTableOrderingComposer,
+      $$GuardianNotesTableAnnotationComposer,
+      $$GuardianNotesTableCreateCompanionBuilder,
+      $$GuardianNotesTableUpdateCompanionBuilder,
+      (GuardianNoteData, $$GuardianNotesTableReferences),
+      GuardianNoteData,
+      PrefetchHooks Function({bool profileId})
+    >;
 typedef $$VisitPrepItemsTableCreateCompanionBuilder =
     VisitPrepItemsCompanion Function({
       required String id,
@@ -17911,6 +19198,7 @@ typedef $$SyncStateTableCreateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorDayEntryMergeEvents,
   Value<int> cursorProfileTagRegistry,
   Value<int> cursorDayEntryHistory,
+  Value<int> cursorGuardianNotes,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -17932,6 +19220,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder = SyncStateCompanion Function({
   Value<int> cursorDayEntryMergeEvents,
   Value<int> cursorProfileTagRegistry,
   Value<int> cursorDayEntryHistory,
+  Value<int> cursorGuardianNotes,
   Value<DateTime?> lastFullPullAt,
   Value<DateTime?> lastSyncAt,
   Value<String?> lastError,
@@ -18019,6 +19308,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get cursorDayEntryHistory => $composableBuilder(
     column: $table.cursorDayEntryHistory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursorGuardianNotes => $composableBuilder(
+    column: $table.cursorGuardianNotes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -18127,6 +19421,11 @@ class $$SyncStateTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get cursorGuardianNotes => $composableBuilder(
+    column: $table.cursorGuardianNotes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => ColumnOrderings(column),
@@ -18228,6 +19527,11 @@ class $$SyncStateTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get cursorGuardianNotes => $composableBuilder(
+    column: $table.cursorGuardianNotes,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get lastFullPullAt => $composableBuilder(
     column: $table.lastFullPullAt,
     builder: (column) => column,
@@ -18293,6 +19597,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<int> cursorProfileTagRegistry = const Value.absent(),
                 Value<int> cursorDayEntryHistory = const Value.absent(),
+                Value<int> cursorGuardianNotes = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -18313,6 +19618,7 @@ class $$SyncStateTableTableManager
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 cursorProfileTagRegistry: cursorProfileTagRegistry,
                 cursorDayEntryHistory: cursorDayEntryHistory,
+                cursorGuardianNotes: cursorGuardianNotes,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -18335,6 +19641,7 @@ class $$SyncStateTableTableManager
                 Value<int> cursorDayEntryMergeEvents = const Value.absent(),
                 Value<int> cursorProfileTagRegistry = const Value.absent(),
                 Value<int> cursorDayEntryHistory = const Value.absent(),
+                Value<int> cursorGuardianNotes = const Value.absent(),
                 Value<DateTime?> lastFullPullAt = const Value.absent(),
                 Value<DateTime?> lastSyncAt = const Value.absent(),
                 Value<String?> lastError = const Value.absent(),
@@ -18355,6 +19662,7 @@ class $$SyncStateTableTableManager
                 cursorDayEntryMergeEvents: cursorDayEntryMergeEvents,
                 cursorProfileTagRegistry: cursorProfileTagRegistry,
                 cursorDayEntryHistory: cursorDayEntryHistory,
+                cursorGuardianNotes: cursorGuardianNotes,
                 lastFullPullAt: lastFullPullAt,
                 lastSyncAt: lastSyncAt,
                 lastError: lastError,
@@ -18595,6 +19903,8 @@ class $LunarLogDatabaseManager {
       $$CycleOverridesTableTableManager(_db, _db.cycleOverrides);
   $$CareNotesTableTableManager get careNotes =>
       $$CareNotesTableTableManager(_db, _db.careNotes);
+  $$GuardianNotesTableTableManager get guardianNotes =>
+      $$GuardianNotesTableTableManager(_db, _db.guardianNotes);
   $$VisitPrepItemsTableTableManager get visitPrepItems =>
       $$VisitPrepItemsTableTableManager(_db, _db.visitPrepItems);
   $$DayEntryMergeEventsTableTableManager get dayEntryMergeEvents =>

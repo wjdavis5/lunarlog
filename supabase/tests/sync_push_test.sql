@@ -407,7 +407,7 @@ select is((select count(*) from pg_proc p
 -- first) - the signature this literal must resolve is now the 9-arg one
 -- (Issue #130 added p_merge_events, dropping the 7-arg overload first;
 -- Issue #257 added p_tag_registry, dropping the 8-arg overload first).
-select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
+select ok(has_function_privilege('authenticated', 'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
   'authenticated can execute sync_push');
 select is((select prosecdef from pg_proc where proname = 'sync_push' and pronamespace = 'public'::regnamespace),
   true, 'sync_push is security definer (issue #201: day_entries'' sole write path)');
@@ -531,7 +531,7 @@ select is(jsonb_array_length(pg_temp.resp('tags_rpc_validation') -> 'rejected'),
 select is((select count(*) from public.day_entries where id = tests.ulid(142)), 1::bigint,
   '#96: the valid-tags row in the same batch still lands');
 select ok(
-  pg_get_functiondef(to_regprocedure('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'))
+  pg_get_functiondef(to_regprocedure('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'))
     like '%is_valid_tags_array%',
   '#96: sync_push calls is_valid_tags_array itself instead of relying on the table CHECK alone');
 

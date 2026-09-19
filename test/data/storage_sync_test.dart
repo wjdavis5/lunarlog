@@ -2405,6 +2405,7 @@ void main() {
       'day_entry_merge_events',
       'profile_tag_registry',
       'day_entry_history',
+      'guardian_notes',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2463,6 +2464,15 @@ void main() {
       );
       await storage.upsertCareNote(profileId: p.id, body: 'call the doctor');
       await storage.addVisitPrepItem(profileId: p.id, body: 'ask about X');
+      // Issue #801: a dated, author-scoped guardian note is health content
+      // about the shared profile and must leave the removed guardian's
+      // device with everything else.
+      await storage.upsertGuardianNote(
+        profileId: p.id,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        body: 'wiped with the profile',
+      );
       // Issue #130: a merge-disclosure row (discarded note text — health
       // content about the shared profile) must be wiped with everything
       // else.
@@ -2508,6 +2518,7 @@ void main() {
       expect((await storage.getCycleOverridesForProfile(p.id)), isNotEmpty);
       expect((await storage.getCareNotesForProfile(p.id)), isNotEmpty);
       expect((await storage.getVisitPrepItemsForProfile(p.id)), isNotEmpty);
+      expect((await storage.getGuardianNotesForProfile(p.id)), isNotEmpty);
 
       final revokedAt = t0.add(const Duration(hours: 1));
       await storage.applyRemoteRows([
@@ -2538,6 +2549,14 @@ void main() {
       );
       expect(await storage.getCareNotesForProfile(p.id), isEmpty);
       expect(await storage.getVisitPrepItemsForProfile(p.id), isEmpty);
+      // Issue #801: guardian_notes are tombstoned payload-cleared — no live
+      // note and no body text left on the removed guardian's device.
+      expect(await storage.getGuardianNotesForProfile(p.id), isEmpty);
+      expect(
+        (await db.select(db.guardianNotes).get())
+            .every((row) => row.deletedAt != null && row.body == ''),
+        isTrue,
+      );
       // Issue #130: the profile's merge-disclosure rows are hard-deleted
       // (no tombstone on this table) — a removed guardian's device keeps
       // no trace of the family's discarded note texts.

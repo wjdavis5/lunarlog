@@ -32,7 +32,7 @@
 --   5. The helper is migration/test tooling, not a client API: EXECUTE is
 --      denied to anon and authenticated.
 begin;
-select plan(38);
+select plan(41);
 
 -- ---------------------------------------------------------------------------
 -- temp helpers
@@ -157,6 +157,11 @@ select is(
     array['created_by', 'created_at'], '{}'::text[])),
   'model: profile_tag_registry = every column minus created_by/created_at (server-stamped)');
 
+select is(
+  pg_temp.sorted(public.sync_push_payload_keys('guardian_notes')),
+  pg_temp.sorted(pg_temp.expected_keys('guardian_notes', '{}'::text[], '{}'::text[])),
+  'model: guardian_notes = every column, nothing ignored');
+
 -- ---------------------------------------------------------------------------
 -- 2. The live function matches the derivation (the regression pin: a
 --    column added by a later migration without re-emitting sync_push
@@ -190,6 +195,9 @@ select is(pg_temp.sorted(pg_temp.embedded_keys('c_merge_event_keys')),
 select is(pg_temp.sorted(pg_temp.embedded_keys('c_tag_registry_keys')),
   pg_temp.sorted(public.sync_push_payload_keys('profile_tag_registry')),
   'live: embedded c_tag_registry_keys == derived (profile_tag_registry)');
+select is(pg_temp.sorted(pg_temp.embedded_keys('c_guardian_note_keys')),
+  pg_temp.sorted(public.sync_push_payload_keys('guardian_notes')),
+  'live: embedded c_guardian_note_keys == derived (guardian_notes)');
 
 -- ---------------------------------------------------------------------------
 -- 3. The issue's literal AC: every column with an `authenticated` write
@@ -229,6 +237,8 @@ select is(pg_temp.granted_outside_allowlist('c_merge_event_keys', 'day_entry_mer
 select is(pg_temp.granted_outside_allowlist('c_tag_registry_keys', 'profile_tag_registry',
     array['created_by', 'created_at']), 0::bigint,
   'AC: every authenticated write-granted profile_tag_registry column is in the allowlist aside from the server-stamped created_* pair');
+select is(pg_temp.granted_outside_allowlist('c_guardian_note_keys', 'guardian_notes', '{}'::text[]), 0::bigint,
+  'AC: every authenticated write-granted guardian_notes column is in the allowlist');
 
 -- ---------------------------------------------------------------------------
 -- 4. Behavior: the derived model at the RPC surface.

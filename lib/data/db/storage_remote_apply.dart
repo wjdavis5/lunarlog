@@ -41,6 +41,10 @@ class _PageLookup {
   final Map<String, CareNoteData?> careNotes = {};
   final Map<String, VisitPrepItemData?> visitPrepItems = {};
 
+  /// Issue #801's dated, author-scoped guardian notes, prefetched by id
+  /// exactly like the care tables.
+  final Map<String, GuardianNoteData?> guardianNotes = {};
+
   /// Issue #130's tenth synced table, prefetched by id exactly like the
   /// care tables (Issue #42's pattern applied when the table landed).
   final Map<String, DayEntryMergeEventData?> dayEntryMergeEvents = {};
@@ -132,6 +136,7 @@ class _PageLookup {
     cycleOverrides.removeWhere((_, row) => row?.profileId == profileId);
     careNotes.removeWhere((_, row) => row?.profileId == profileId);
     visitPrepItems.removeWhere((_, row) => row?.profileId == profileId);
+    guardianNotes.removeWhere((_, row) => row?.profileId == profileId);
     dayEntryMergeEvents.removeWhere((_, row) => row?.profileId == profileId);
     profileTagRegistry.removeWhere((_, row) => row?.profileId == profileId);
     dayEntryHistory.removeWhere((_, row) => row?.profileId == profileId);
@@ -198,6 +203,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// not held locally yet.
   Future<bool> applyRemoteVisitPrepItem(RemoteVisitPrepItemRow remote) =>
       db.transaction(() => _applyVisitPrepItem(remote, onlyExisting: false));
+
+  /// Applies a server copy of a guardian note keyed by id (Issue #801; the
+  /// same per-id LWW rule as care notes — no cross-author resolver, since
+  /// two authors on the same day are two distinct ids). A tombstone clears
+  /// `body` (mirroring the server's
+  /// `guardian_notes_tombstone_payload_check`), keeping `localDate`/`tz`.
+  /// Throws [RetryableSyncApplyError] when the profile is not held locally
+  /// yet.
+  Future<bool> applyRemoteGuardianNote(RemoteGuardianNoteRow remote) =>
+      db.transaction(() => _applyGuardianNote(remote, onlyExisting: false));
 
   /// Applies a server copy of a merge event keyed by id (Issue #130; the
   /// per-id LWW rule the other profile-scoped tables use, with NO
@@ -276,6 +291,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteProfileModeRow: (r, c) => _applyProfileMode(r as RemoteProfileModeRow, onlyExisting: false, cache: c),
     RemoteCycleOverrideRow: (r, c) => _applyCycleOverride(r as RemoteCycleOverrideRow, onlyExisting: false, cache: c),
     RemoteCareNoteRow: (r, c) => _applyCareNote(r as RemoteCareNoteRow, onlyExisting: false, cache: c),
+    RemoteGuardianNoteRow: (r, c) => _applyGuardianNote(r as RemoteGuardianNoteRow, onlyExisting: false, cache: c),
     RemoteVisitPrepItemRow: (r, c) => _applyVisitPrepItem(r as RemoteVisitPrepItemRow, onlyExisting: false, cache: c),
     RemoteDayEntryMergeEventRow: (r, c) => _applyMergeEvent(r as RemoteDayEntryMergeEventRow, onlyExisting: false, cache: c),
     RemoteProfileTagRegistryRow: (r, c) => _applyTagRegistryEntry(r as RemoteProfileTagRegistryRow, onlyExisting: false, cache: c),
@@ -315,6 +331,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.profileId,
+    ]);
+    profileIds.addAll([
+      for (final row in rows.whereType<RemoteGuardianNoteRow>()) row.profileId,
     ]);
     profileIds.addAll([
       for (final row in rows.whereType<RemoteDayEntryMergeEventRow>())
@@ -386,6 +405,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       {for (final row in rows.whereType<RemoteVisitPrepItemRow>()) row.id},
       readChunk: (ids) =>
           (db.select(db.visitPrepItems)..where((t) => t.id.isIn(ids))).get(),
+      idOf: (row) => row.id,
+    );
+    await _prefetchByIds(
+      cache.guardianNotes,
+      {for (final row in rows.whereType<RemoteGuardianNoteRow>()) row.id},
+      readChunk: (ids) =>
+          (db.select(db.guardianNotes)..where((t) => t.id.isIn(ids))).get(),
       idOf: (row) => row.id,
     );
     await _prefetchByIds(
@@ -527,6 +553,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     SyncTable.profileModes: (c) => SyncStateCompanion(cursorProfileModes: Value(c)),
     SyncTable.cycleOverrides: (c) => SyncStateCompanion(cursorCycleOverrides: Value(c)),
     SyncTable.careNotes: (c) => SyncStateCompanion(cursorCareNotes: Value(c)),
+    SyncTable.guardianNotes: (c) => SyncStateCompanion(cursorGuardianNotes: Value(c)),
     SyncTable.visitPrepItems: (c) => SyncStateCompanion(cursorVisitPrepItems: Value(c)),
     SyncTable.dayEntryMergeEvents: (c) => SyncStateCompanion(cursorDayEntryMergeEvents: Value(c)),
     SyncTable.profileTagRegistry: (c) => SyncStateCompanion(cursorProfileTagRegistry: Value(c)),
@@ -588,6 +615,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         cache,
         (row, c) => _applyVisitPrepItem(row, onlyExisting: false, cache: c),
       );
+      // Issue #801: guardian notes follow visit-prep items (a row
+      // references only a profile, already applied by the time its turn
+      // comes).
+      await _applyEach<RemoteGuardianNoteRow>(
+        rows,
+        cache,
+        (row, c) => _applyGuardianNote(row, onlyExisting: false, cache: c),
+      );
       // Issue #130: merge events follow the care tables (a row references
       // only a profile, already applied by the time its turn comes).
       await _applyEach<RemoteDayEntryMergeEventRow>(
@@ -644,34 +679,34 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// before the two Issue #188 tables. Ids not held locally are no-ops — a
   /// resolution never inserts. One transaction for the batch.
   Future<void> applyResolved(List<RemoteRow> rows) async {
+    // The same flat one-loop-per-type shape [applyRemotePage] uses (see
+    // [_applyEach]'s doc): the loops live in the shared generic helper so
+    // this method carries no branches of its own as tables are added. The
+    // shared [_PageLookup] is unused here (every apply below is
+    // `onlyExisting` and passes no cache), but threading one keeps the
+    // helper's signature uniform.
     await db.transaction(() async {
-      for (final row in rows.whereType<RemoteProfileRow>()) {
-        await _applyProfile(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteDayEntryRow>()) {
-        await _applyDayEntry(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteObservationRow>()) {
-        await _applyObservation(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteProfileModeRow>()) {
-        await _applyProfileMode(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteCycleOverrideRow>()) {
-        await _applyCycleOverride(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteCareNoteRow>()) {
-        await _applyCareNote(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteVisitPrepItemRow>()) {
-        await _applyVisitPrepItem(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteDayEntryMergeEventRow>()) {
-        await _applyMergeEvent(row, onlyExisting: true);
-      }
-      for (final row in rows.whereType<RemoteProfileTagRegistryRow>()) {
-        await _applyTagRegistryEntry(row, onlyExisting: true);
-      }
+      final cache = _PageLookup();
+      await _applyEach<RemoteProfileRow>(
+          rows, cache, (r, c) => _applyProfile(r, onlyExisting: true));
+      await _applyEach<RemoteDayEntryRow>(
+          rows, cache, (r, c) => _applyDayEntry(r, onlyExisting: true));
+      await _applyEach<RemoteObservationRow>(
+          rows, cache, (r, c) => _applyObservation(r, onlyExisting: true));
+      await _applyEach<RemoteProfileModeRow>(
+          rows, cache, (r, c) => _applyProfileMode(r, onlyExisting: true));
+      await _applyEach<RemoteCycleOverrideRow>(
+          rows, cache, (r, c) => _applyCycleOverride(r, onlyExisting: true));
+      await _applyEach<RemoteCareNoteRow>(
+          rows, cache, (r, c) => _applyCareNote(r, onlyExisting: true));
+      await _applyEach<RemoteVisitPrepItemRow>(
+          rows, cache, (r, c) => _applyVisitPrepItem(r, onlyExisting: true));
+      await _applyEach<RemoteGuardianNoteRow>(
+          rows, cache, (r, c) => _applyGuardianNote(r, onlyExisting: true));
+      await _applyEach<RemoteDayEntryMergeEventRow>(rows, cache,
+          (r, c) => _applyMergeEvent(r, onlyExisting: true));
+      await _applyEach<RemoteProfileTagRegistryRow>(rows, cache,
+          (r, c) => _applyTagRegistryEntry(r, onlyExisting: true));
     });
   }
 
@@ -1070,6 +1105,19 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           isChecked: const Value(false),
           checkedByUserId: const Value(null),
           checkedAt: const Value(null),
+          deletedAt: Value(stamp),
+          dirty: const Value(false),
+        ));
+    // Issue #801: a removed guardian's own dated notes are health content
+    // about the shared profile — tombstoned payload-cleared exactly like
+    // care_notes above, so no note text stays readable on the revoked
+    // device. `local_date`/`tz` survive as identity/provenance, mirroring
+    // the server's own tombstone shape.
+    await (db.update(db.guardianNotes)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull()))
+        .write(GuardianNotesCompanion(
+          body: const Value(''),
           deletedAt: Value(stamp),
           dirty: const Value(false),
         ));
@@ -1984,6 +2032,94 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ),
         );
     cache?.visitPrepItems[written.first.id] = written.first;
+  }
+
+  /// Issue #801: applies a server copy of a guardian note keyed by id — the
+  /// same per-id LWW rule [_applyCareNote] uses, with no cross-author
+  /// resolver (two authors on the same day are two distinct ids). A
+  /// tombstone clears `body` (mirroring the server's
+  /// `guardian_notes_tombstone_payload_check`).
+  Future<bool> _applyGuardianNote(
+    RemoteGuardianNoteRow remote, {
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) {
+    final tombstone = remote.isTombstone;
+    final updatedAt = remote.updatedAt.toUtc();
+    final deletedAt = remote.deletedAt?.toUtc();
+    return _applyKeyedRow<RemoteGuardianNoteRow, GuardianNoteData>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+          cache, (c) => c.guardianNotes, remote.id, _guardianNoteOrNull),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      parentProfileId: (r) => r.profileId,
+      entityLabel: 'guardian note',
+      remoteId: remote.id,
+      insert: (r) =>
+          _insertGuardianNote(r, tombstone, updatedAt, deletedAt, cache),
+      update: (r, local) =>
+          _updateGuardianNote(r, local, tombstone, updatedAt, deletedAt, cache),
+      cache: cache,
+    );
+  }
+
+  /// The insert half of [_applyGuardianNote], split out (the sibling apply
+  /// methods' CRAP-gate pattern).
+  Future<void> _insertGuardianNote(
+    RemoteGuardianNoteRow remote,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    _PageLookup? cache,
+  ) async {
+    final written = await db.into(db.guardianNotes).insertReturning(
+          GuardianNotesCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            localDate: remote.localDate,
+            tz: remote.tz,
+            body: tombstone ? '' : remote.body,
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: const Value(false),
+            localRev: const Value(0),
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+          ),
+        );
+    cache?.guardianNotes[written.id] = written;
+  }
+
+  /// The update half of [_applyGuardianNote], split out for the same
+  /// reason. A null stamp on the remote copy never wipes a known local one
+  /// (the _applyCareNote precedent). `local_date`/`tz` are identity-ish and
+  /// always taken from the (already LWW-validated) remote row.
+  Future<void> _updateGuardianNote(
+    RemoteGuardianNoteRow remote,
+    GuardianNoteData local,
+    bool tombstone,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    _PageLookup? cache,
+  ) async {
+    final written = await (db.update(db.guardianNotes)
+          ..where((t) => t.id.equals(remote.id)))
+        .writeReturning(
+      GuardianNotesCompanion(
+        localDate: Value(remote.localDate),
+        tz: Value(remote.tz),
+        body: Value(tombstone ? '' : remote.body),
+        updatedAt: Value(updatedAt),
+        deletedAt: Value(deletedAt),
+        dirty: const Value(false),
+        loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
+        lastModifiedByUserId: Value(
+            remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
+      ),
+    );
+    cache?.guardianNotes[written.first.id] = written.first;
   }
 
   static bool _tagsEqual(List<String> a, List<String> b) {

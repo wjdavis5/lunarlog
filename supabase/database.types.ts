@@ -460,6 +460,56 @@ export type Database = {
           },
         ]
       }
+      guardian_notes: {
+        Row: {
+          body: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          last_modified_by_user_id: string | null
+          local_date: string
+          logged_by_user_id: string | null
+          profile_id: string
+          server_version: number
+          tz: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          id: string
+          last_modified_by_user_id?: string | null
+          local_date: string
+          logged_by_user_id?: string | null
+          profile_id: string
+          server_version?: number
+          tz: string
+          updated_at: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          last_modified_by_user_id?: string | null
+          local_date?: string
+          logged_by_user_id?: string | null
+          profile_id?: string
+          server_version?: number
+          tz?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guardian_notes_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       import_jobs: {
         Row: {
           completed_at: string | null
@@ -1490,6 +1540,7 @@ export type Database = {
           p_care_notes?: Json
           p_cycle_overrides?: Json
           p_day_entries: Json
+          p_guardian_notes?: Json
           p_merge_events?: Json
           p_observations?: Json
           p_profile_modes?: Json

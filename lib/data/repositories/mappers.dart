@@ -11,6 +11,7 @@ import 'package:lunarlog/domain/models/care_note.dart' as domain;
 import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/flow_level.dart' as domain;
+import 'package:lunarlog/domain/models/guardian_note.dart' as domain;
 import 'package:lunarlog/domain/models/local_date.dart' as domain;
 import 'package:lunarlog/domain/models/measurement_unit.dart' as domain;
 import 'package:lunarlog/domain/models/observation.dart' as domain;
@@ -162,6 +163,21 @@ domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
 domain.CareNote careNoteToDomain(db.CareNoteData row) => domain.CareNote(
       id: row.id,
       profileId: row.profileId,
+      body: row.body,
+      updatedAt: row.updatedAt,
+      deletedAt: row.deletedAt,
+      loggedByUserId: row.loggedByUserId,
+      lastModifiedByUserId: row.lastModifiedByUserId,
+    );
+
+/// Issue #801: drift-row -> domain [domain.GuardianNote]. Mirrors
+/// [careNoteToDomain]'s shape, plus the dated identity (`localDate`/`tz`).
+domain.GuardianNote guardianNoteToDomain(db.GuardianNoteData row) =>
+    domain.GuardianNote(
+      id: row.id,
+      profileId: row.profileId,
+      localDate: domain.LocalDate.fromIso(row.localDate),
+      tz: row.tz,
       body: row.body,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,

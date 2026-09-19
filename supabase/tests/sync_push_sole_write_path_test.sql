@@ -36,12 +36,12 @@ select is(
 );
 select ok(
   has_function_privilege('authenticated',
-    'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
+    'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
   'authenticated can still execute sync_push'
 );
 select ok(
   not has_function_privilege('anon',
-    'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
+    'public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)', 'execute'),
   'anon cannot execute sync_push'
 );
 

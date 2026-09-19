@@ -134,7 +134,7 @@ select is(
 -- Structural: the function comment documents this migration's addition.
 -- ---------------------------------------------------------------------------
 select ok(
-  (select obj_description('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
+  (select obj_description('public.sync_push(jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb)'::regprocedure)
      like '%tombstone-purge window%'),
   'the sync_push function comment documents the resurrection guard'
 );

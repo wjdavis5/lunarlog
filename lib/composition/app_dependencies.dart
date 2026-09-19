@@ -49,6 +49,7 @@ import 'package:lunarlog/data/profiles/supabase_profile_erasure_service.dart';
 import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_activity_feed_repository.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
+import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
@@ -90,6 +91,7 @@ import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -123,6 +125,7 @@ class AppDependencies {
     required this.dayEntries,
     required this.observations,
     required this.careContent,
+    required this.guardianNotes,
     required this.tagRegistry,
     required this.settings,
     required this.profileModes,
@@ -162,6 +165,10 @@ class AppDependencies {
   final DayEntriesRepository dayEntries;
   final ObservationsRepository observations;
   final CareContentRepository careContent;
+
+  /// Issue #801: per-guardian dated notes — the date-bound AND
+  /// author-scoped sibling of [careContent].
+  final GuardianNotesRepository guardianNotes;
 
   /// Issue #257: the per-profile custom-tag registry (create/rename/
   /// retire) the day sheet's tag picker drives.
@@ -319,6 +326,7 @@ AppDependencies buildAppDependencies({
     dayEntries: dayEntries,
     observations: observations,
     careContent: DriftCareContentRepository(storage),
+    guardianNotes: DriftGuardianNotesRepository(storage),
     tagRegistry: tagRegistry,
     settings: settings,
     profileModes: profileModes,

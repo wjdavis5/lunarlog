@@ -157,6 +157,11 @@ const List<SyncTable> _pullTableOrder = [
   SyncTable.cycleOverrides,
   SyncTable.careNotes,
   SyncTable.visitPrepItems,
+  // Issue #801: guardian notes follow the care tables (a row references
+  // only a profile, already applied by the time its turn comes). This
+  // table pages via the per-table select fallback (it is deliberately not
+  // in [_pullRpcTables]), exactly like deletedProfiles.
+  SyncTable.guardianNotes,
   // Issue #130: merge events follow the care tables — a row references
   // only a profile (already applied by the time its turn comes).
   SyncTable.dayEntryMergeEvents,
@@ -212,6 +217,7 @@ class _PushCursor {
   String? _profileModeCursor;
   String? _cycleOverrideCursor;
   String? _careNoteCursor;
+  String? _guardianNoteCursor;
   String? _visitPrepItemCursor;
   String? _mergeEventCursor;
   String? _tagRegistryCursor;
@@ -220,6 +226,7 @@ class _PushCursor {
   bool profileModesDone = false;
   bool cycleOverridesDone = false;
   bool careNotesDone = false;
+  bool guardianNotesDone = false;
   bool visitPrepItemsDone = false;
   bool mergeEventsDone = false;
   bool tagRegistryDone = false;
@@ -285,6 +292,15 @@ class _PushCursor {
     return page;
   }
 
+  /// Issue #801: same keyset-paging contract as [readEntryPage].
+  Future<List<GuardianNoteData>> readGuardianNotePage() async {
+    final page = await _storage.readDirtyGuardianNotes(
+        limit: batchSize, afterId: _guardianNoteCursor);
+    guardianNotesDone = page.length < batchSize;
+    if (page.isNotEmpty) _guardianNoteCursor = page.last.id;
+    return page;
+  }
+
   /// Issue #130: same keyset-paging contract as [readEntryPage].
   Future<List<DayEntryMergeEventData>> readMergeEventPage() async {
     final page = await _storage.readDirtyDayEntryMergeEvents(
@@ -312,6 +328,7 @@ class _PushCursor {
       profileModesDone &&
       cycleOverridesDone &&
       careNotesDone &&
+      guardianNotesDone &&
       visitPrepItemsDone &&
       mergeEventsDone &&
       tagRegistryDone;
@@ -437,6 +454,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           db.profileModes,
           db.cycleOverrides,
           db.careNotes,
+          db.guardianNotes,
           db.visitPrepItems,
           db.dayEntryMergeEvents,
           db.profileTagRegistry,
@@ -1180,7 +1198,27 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
     // Issue #130: merge events ride the same chaining rule, once
     // visit-prep items are exhausted.
-    if (cursor.visitPrepItemsDone && !cursor.mergeEventsDone) {
+    if (cursor.visitPrepItemsDone && !cursor.guardianNotesDone) {
+      final guardianNotePage = await cursor.readGuardianNotePage();
+      batch.addAll([
+        for (final row in _apply.pushable(
+            guardianNotePage, (n) => n.id, (n) => n.localRev))
+          SyncPushItem(SyncTable.guardianNotes, row.id, row.localRev,
+              encodeGuardianNote(row), profileId: row.profileId),
+      ]);
+    }
+    await _appendMergeAndRegistryItems(batch, cursor);
+  }
+
+  /// Issue #130/#257: the merge-event and tag-registry pages ride the same
+  /// chaining rule, once guardian notes are exhausted. Split out of
+  /// [_appendCareTableItems] so neither method's branch count reaches the
+  /// CRAP gate as tables are added.
+  Future<void> _appendMergeAndRegistryItems(
+    List<SyncPushItem> batch,
+    _PushCursor cursor,
+  ) async {
+    if (cursor.guardianNotesDone && !cursor.mergeEventsDone) {
       final mergeEventPage = await cursor.readMergeEventPage();
       batch.addAll([
         for (final row in _apply.pushable(mergeEventPage, (e) => e.id, (e) => e.localRev))
@@ -1188,8 +1226,6 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
               encodeDayEntryMergeEvent(row), profileId: row.profileId),
       ]);
     }
-    // Issue #257: the tag registry rides the same chaining rule, once
-    // merge events are exhausted.
     if (cursor.mergeEventsDone && !cursor.tagRegistryDone) {
       final tagRegistryPage = await cursor.readTagRegistryPage();
       batch.addAll([
@@ -1234,6 +1270,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         visitPrepItems: [for (final i in batch) if (i.table == SyncTable.visitPrepItems) i.json],
         mergeEvents: [for (final i in batch) if (i.table == SyncTable.dayEntryMergeEvents) i.json],
         tagRegistry: [for (final i in batch) if (i.table == SyncTable.profileTagRegistry) i.json],
+        guardianNotes: [for (final i in batch) if (i.table == SyncTable.guardianNotes) i.json],
       ));
     } on SyncTransportRejectedError catch (error) {
       // A transport without per-row results: the named rows are rejected,
@@ -1431,6 +1468,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.profileModes: (s) => s.cursorProfileModes,
     SyncTable.cycleOverrides: (s) => s.cursorCycleOverrides,
     SyncTable.careNotes: (s) => s.cursorCareNotes,
+    SyncTable.guardianNotes: (s) => s.cursorGuardianNotes,
     SyncTable.visitPrepItems: (s) => s.cursorVisitPrepItems,
     SyncTable.dayEntryMergeEvents: (s) => s.cursorDayEntryMergeEvents,
     SyncTable.profileTagRegistry: (s) => s.cursorProfileTagRegistry,
