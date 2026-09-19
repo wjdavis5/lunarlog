@@ -215,20 +215,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
       );
 
-  /// [check]'s user-facing deny reason for [profile], or the empty string
-  /// for a non-deny result. [HealthSyncCheck.notOwner] reads differently
-  /// depending on *why* ownership didn't resolve (review fix): a
-  /// never-synced local-only user (no signed-in session yet, or this
-  /// profile's guardians haven't synced) gets an actionable "sign in and
+  /// [check]'s user-facing deny reason, or the empty string for a non-deny
+  /// result. [HealthSyncCheck.notOwner] reads differently depending on
+  /// *why* the account check failed (review fix, tightened by Issue #882
+  /// review round 2): a signed-out caller gets an actionable "sign in and
   /// sync" prompt, distinct from an actual non-owner being told they
-  /// simply aren't this profile's owner.
-  String _denyReasonText(Profile profile, HealthSyncCheck check) =>
+  /// simply aren't this profile's owner. Since #882 [notOwner] is only
+  /// reachable when an owner actually resolved (a profile with no
+  /// `ownerUserId` is allowed), so the two cases are exactly "nobody is
+  /// signed in to prove ownership" and "a different account owns it".
+  String _denyReasonText(HealthSyncCheck check) =>
       switch (check) {
         HealthSyncCheck.minorRequiresOwnershipTransfer =>
           'Minor profiles sync on the same terms as any other profile. '
               'This build has minor health sync turned off.',
-        HealthSyncCheck.notOwner => widget.signedInUserId == null ||
-                _ownerUserIdByProfile[profile.id] == null
+        HealthSyncCheck.notOwner => widget.signedInUserId == null
             ? 'Sign in and sync once so this device can confirm you own '
                 'this profile.'
             : "You are not this profile's owner — only its accepted "
@@ -256,7 +257,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       // screen's last load and the confirm dialog closing (e.g. the
       // binding on this device, or this profile's ownership, changed on
       // another device mid-flow).
-      final reason = _denyReasonText(profile, result);
+      final reason = _denyReasonText(result);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -561,7 +562,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       key: ValueKey('health-sync-profile-${profile.id}'),
       title: Text(profile.displayName),
       subtitle:
-          check.isAllowed ? null : Text(_denyReasonText(profile, check)),
+          check.isAllowed ? null : Text(_denyReasonText(check)),
       trailing: isBound
           ? const Icon(Icons.check_circle, key: ValueKey('health-sync-bound-check'))
           : null,

@@ -85,15 +85,20 @@ void main() {
       expect(result, HealthSyncCheck.notOwner);
     });
 
-    test('unresolved owner (guardians not yet synced) -> notOwner, fails '
-        'closed rather than allowing', () {
+    // Issue #882 review round 2: ownerUserId is null whenever the profile
+    // has no accepted primary_guardian row — a locally created profile
+    // that was never shared or synced. With no owner resolved, nobody else
+    // claims the profile, so the signed-in operator is treated as its
+    // owner and it is allowed.
+    test('signed in with no resolved owner (ownerUserId null) -> allowed '
+        '(Issue #882)', () {
       final result = binding.canBind(
         profile: _profile(id: 'p1'),
         signedInUserId: 'u1',
         ownerUserId: null,
         minorBindingAllowed: false,
       );
-      expect(result, HealthSyncCheck.notOwner);
+      expect(result, HealthSyncCheck.allowed);
     });
 
     test('minor profile, minorBindingAllowed false, no transfer -> '
@@ -372,8 +377,20 @@ void main() {
       expect(result, HealthSyncCheck.allowed);
     });
 
-    test('adult profile, signed in but not the resolved owner -> notOwner '
-        '(the device-only exception is narrow)', () {
+    test('minor profile, signed in with no resolved owner (ownerUserId '
+        'null) -> allowed (Issue #882 review round 2)', () {
+      final result = binding.canBind(
+        profile: _profile(id: 'p1', isMinor: true),
+        signedInUserId: 'u1',
+        ownerUserId: null,
+        minorBindingAllowed: true,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    test('adult profile, signed in as a non-owner while an owner is '
+        'resolved -> notOwner (notOwner means a different account owns it)',
+        () {
       final result = binding.canBind(
         profile: _profile(id: 'p1'),
         signedInUserId: 'someone-else',
@@ -383,8 +400,8 @@ void main() {
       expect(result, HealthSyncCheck.notOwner);
     });
 
-    test('an ownerUserId set with nobody signed in -> notOwner (fails '
-        'closed; the device-only exception needs BOTH sides null)', () {
+    test('an ownerUserId set with nobody signed in -> notOwner (a real '
+        'owner exists and the caller is not that account)', () {
       final result = binding.canBind(
         profile: _profile(id: 'p1'),
         signedInUserId: null,
@@ -573,6 +590,25 @@ void main() {
       final result = await binding.canWrite(
         profile: _profile(id: 'p1'),
         signedInUserId: null,
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      expect(result, HealthSyncCheck.allowed);
+    });
+
+    // Issue #882 review round 2: ownerUserId is null for a locally created,
+    // never-shared profile — signed in or not, nobody else claims it.
+    test('canWrite allows a signed-in profile with no resolved owner '
+        '(ownerUserId null)', () async {
+      await binding.bind(
+        profile: _profile(id: 'p1'),
+        signedInUserId: 'u1',
+        ownerUserId: null,
+        minorBindingAllowed: false,
+      );
+      final result = await binding.canWrite(
+        profile: _profile(id: 'p1'),
+        signedInUserId: 'u1',
         ownerUserId: null,
         minorBindingAllowed: false,
       );

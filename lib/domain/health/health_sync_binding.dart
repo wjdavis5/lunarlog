@@ -191,7 +191,7 @@ class HealthSyncBinding {
       return HealthSyncCheck.allowed;
     }
 
-    if (!_ownerCheckAllows(signedInUserId, ownerUserId, isOwner)) {
+    if (!_ownerCheckAllows(ownerUserId, isOwner)) {
       return HealthSyncCheck.notOwner;
     }
     return HealthSyncCheck.allowed;
@@ -205,20 +205,19 @@ class HealthSyncBinding {
       signedInUserId == ownerUserId;
 
   /// The account-ownership gate shared by adult and (since Issue #882)
-  /// minor profiles alike. A resolved owner passes. A **device-only**
-  /// profile — nobody signed in AND no `ownerUserId` resolved — also
-  /// passes: there is no other account it could belong to, so the local
-  /// operator is treated as its owner and the no-account path the rest of
-  /// the app supports stays usable (Issue #882). Everything else fails
-  /// closed: a signed-in account that does not match a non-null
-  /// `ownerUserId`, and an `ownerUserId` with nobody signed in, both deny
-  /// with [HealthSyncCheck.notOwner].
-  static bool _ownerCheckAllows(
-    String? signedInUserId,
-    String? ownerUserId,
-    bool isOwner,
-  ) =>
-      isOwner || (signedInUserId == null && ownerUserId == null);
+  /// minor profiles alike. [ownerUserId] is `ownerUserIdFor`'s result, so
+  /// it is null whenever the profile has no accepted `primary_guardian`
+  /// row — every profile created locally and never shared or synced, even
+  /// when the operator is signed in. **No resolved owner at all means
+  /// allowed** (Issue #882): nobody else claims the profile, so the local
+  /// operator is treated as its owner. That is the only reading under
+  /// which [HealthSyncCheck.notOwner] keeps its meaning — "a *different*
+  /// account owns this profile" — so [notOwner] is returned only when
+  /// [ownerUserId] is non-null and does not resolve to the signed-in
+  /// account, which covers both "signed in as someone else" and "an owner
+  /// exists but nobody is signed in".
+  static bool _ownerCheckAllows(String? ownerUserId, bool isOwner) =>
+      isOwner || ownerUserId == null;
 
   /// Every leg of the transferred-minor exception (Issue #153 condition 3,
   /// tightened by Issue #296): the feature flag is on, a transfer actually

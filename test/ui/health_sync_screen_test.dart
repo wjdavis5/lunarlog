@@ -495,9 +495,9 @@ void main() {
     expect(find.textContaining("not this profile's owner"), findsNothing);
   });
 
-  testWidgets('an unresolved owner (guardians not yet synced) gets the '
-      'same actionable "sign in and sync" prompt even while signed in',
-      (tester) async {
+  testWidgets('a signed-in profile with no resolved owner (guardians not '
+      'yet synced) is allowed — no one else claims it (Issue #882 review '
+      'round 2)', (tester) async {
     final binding = HealthSyncBinding(FakeSettingsStore());
     await tester.pumpWidget(
       MaterialApp(
@@ -512,7 +512,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Sign in and sync once'), findsOneWidget);
+    final tile = tester.widget<ListTile>(
+      find.byKey(const ValueKey('health-sync-profile-unsynced')),
+    );
+    expect(tile.subtitle, isNull);
+    expect(tile.enabled, isTrue);
+    expect(find.textContaining('Sign in and sync once'), findsNothing);
   });
 
   testWidgets('a throwing repository resolves the spinner into an error '

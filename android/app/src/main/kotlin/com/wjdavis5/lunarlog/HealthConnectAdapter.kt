@@ -706,9 +706,12 @@ class HealthConnectAdapter(context: Context) {
             g.transferredToUserId == g.signedInUserId
         if (minorTransferExceptionHolds) return "allowed"
 
-        // Issue #882: a device-only profile (nobody signed in AND no owner
-        // resolved) is treated as locally owned.
-        return if (!ownerCheckAllows(g.signedInUserId, g.ownerUserId, isOwner)) {
+        // Issue #882: no resolved owner at all means allowed — nobody else
+        // claims the profile, so the local operator is treated as its
+        // owner (the common case for a locally created, never-synced
+        // profile). notOwner is returned only when an owner actually
+        // exists and does not match the signed-in account.
+        return if (!ownerCheckAllows(g.ownerUserId, isOwner)) {
             "notOwner"
         } else {
             "allowed"
@@ -716,14 +719,14 @@ class HealthConnectAdapter(context: Context) {
     }
 
     // Native mirror of HealthSyncBinding._ownerCheckAllows (Issue #882):
-    // a resolved owner passes, and so does a device-only profile (nobody
-    // signed in AND no owner resolved). Everything else fails closed.
+    // ownerUserId == null (no accepted primary_guardian row resolved, even
+    // while signed in) passes, and so does a resolved owner. It fails
+    // closed only when an owner exists and is not the signed-in account.
     private fun ownerCheckAllows(
-        signedInUserId: String?,
         ownerUserId: String?,
         isOwner: Boolean,
     ): Boolean =
-        isOwner || (signedInUserId == null && ownerUserId == null)
+        isOwner || ownerUserId == null
 
     // Native mirror of HealthSyncBinding._isMinorNow: flagged directly, or
     // AT MOST 18 whole years since birthYear (issue #619, LLA-031: `<=`,
