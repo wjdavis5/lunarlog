@@ -196,7 +196,11 @@ void main() {
             await entries.save(_bleed(h.bobId!, start.addDays(i)));
           }
         }
-        for (var i = 0; i < 4; i++) {
+        // Issue #848: only the elapsed days (yesterday, today) of the open
+        // cycle are seeded — the local write path no longer accepts a date
+        // more than a day in the future. The assertion is unchanged: the
+        // current bleed started yesterday, so today reads "Period, day 2".
+        for (var i = 0; i < 2; i++) {
           await entries.save(_bleed(h.bobId!, today.addDays(-1 + i)));
         }
       },

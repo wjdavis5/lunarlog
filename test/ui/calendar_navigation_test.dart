@@ -10,12 +10,14 @@
 /// features touch attribution/guardians/care-mode wiring.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart' as mergelog;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
+import 'package:lunarlog/data/db/db.dart'
+    show DayEntriesCompanion, LunarLogDatabase;
+import 'package:lunarlog/data/db/tables.dart' as db_tables;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -1267,9 +1269,21 @@ void main() {
           await repo.save(
             _entryFor(profileId, LocalDate(2026, 7, 1), FlowLevel.medium),
           );
-          await repo.save(
-            _entryFor(profileId, LocalDate(2026, 9, 30), FlowLevel.medium),
-          );
+          // Issue #848: the local write path now rejects a date more than a
+          // day in the future, but this is a read-window test — the row it
+          // seeds stands in for a legacy future-dated row that arrived via
+          // sync. Insert it directly (bypassing the write path, dirty = true
+          // like a locally-held pulled row) so the month+1 upper-bound
+          // coverage the test exists for is preserved.
+          await db.into(db.dayEntries).insert(DayEntriesCompanion.insert(
+                id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+                profileId: profileId,
+                localDate: '2026-09-30',
+                tz: 'America/Chicago',
+                flow: db_tables.FlowLevel.medium,
+                updatedAt: DateTime.utc(2026, 1, 1),
+                dirty: const Value(true),
+              ));
         },
       );
       expect(recording.calls, hasLength(1));

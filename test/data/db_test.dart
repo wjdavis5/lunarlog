@@ -1126,13 +1126,16 @@ void main() {
       expect(full.where((e) => e.deletedAt != null).single.id, original.id);
 
       // The partial unique index still forbids a second *live* row.
-      expect(
-        () => storage.upsertDayEntry(
+      // Issue #848: awaited rather than fire-and-forget (the local write now
+      // reads the profile before opening its transaction, so an unawaited
+      // call could still be mid-flight when teardown closes the database).
+      await expectLater(
+        storage.upsertDayEntry(
             profileId: profile.id,
             localDate: '2026-06-01',
             tz: 'UTC',
             flow: FlowLevel.heavy),
-        returnsNormally,
+        completes,
         reason: 'upsert of the live row is an update, not a duplicate insert',
       );
       expect(

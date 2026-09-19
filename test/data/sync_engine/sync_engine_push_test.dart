@@ -213,9 +213,12 @@ void main() {
         if (rig.transport.pushes.length == 1 && newProfileId == null) {
           final p2 = await rig.storage.upsertProfile(
               displayName: 'B (created mid-cycle)', isMinor: false);
+          // Issue #848: a past date — the mid-cycle timing this test proves
+          // is date-agnostic, and the local write now rejects a date more
+          // than a day in the future.
           final e2 = await rig.storage.upsertDayEntry(
               profileId: p2.id,
-              localDate: '2030-01-01',
+              localDate: '2020-02-01',
               tz: 'UTC',
               flow: FlowLevel.light);
           newProfileId = p2.id;
@@ -919,7 +922,9 @@ void main() {
       final s = rig.storage;
       final p = await s.upsertProfile(displayName: 'P', isMinor: false);
       final entries = <DayEntry>[];
-      final base = DateTime.utc(2026, 1, 1);
+      // Issue #848: a fully past 500-day span (2020-01-01 .. 2021-05-14) so
+      // every generated date stays inside the local write's date bounds.
+      final base = DateTime.utc(2020, 1, 1);
       for (var d = 0; d < 500; d++) {
         entries.add(await s.upsertDayEntry(
             profileId: p.id,

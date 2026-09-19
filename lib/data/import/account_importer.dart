@@ -22,6 +22,7 @@ import 'package:lunarlog/domain/import/account_importer.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart' as domain;
 import 'package:lunarlog/domain/models/day_entry.dart' as domain;
 import 'package:lunarlog/domain/models/guardian_note.dart' as domain;
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/observation.dart' as domain;
 import 'package:lunarlog/domain/models/profile.dart' as domain;
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -413,6 +414,7 @@ class DriftAccountImportCoordinator
     this.currentUserId,
     this.currentUserIdProvider,
     this.importer,
+    this.todayProvider = LocalDate.today,
   });
 
   final ProfilesRepository profilesRepository;
@@ -445,6 +447,11 @@ class DriftAccountImportCoordinator
   final GuardiansForProfile? guardiansForProfile;
 
   final String? currentUserId;
+
+  /// Issue #848: the local-civil-date seam `planImport` uses to bound every
+  /// imported day entry's date. Defaults to the device's local today (a
+  /// boundary clock read); tests inject a fixed date.
+  final LocalDate Function() todayProvider;
 
   /// Resolves the acting user's id at call time, taking precedence over
   /// [currentUserId] when present. A single coordinator instance provided
@@ -537,6 +544,9 @@ class DriftAccountImportCoordinator
           (guardiansByProfileId[profile.id] ?? const []).any((g) =>
               g.status == GuardianStatus.accepted &&
               g.userId != currentUserId),
+      // Issue #848: bound every imported entry's date against the device's
+      // local today (the same value the calendar uses).
+      today: todayProvider(),
     );
   }
 

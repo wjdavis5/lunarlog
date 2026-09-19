@@ -53,6 +53,7 @@ import 'package:meta/meta.dart' show visibleForTesting;
 import '../export/account_export.dart' show kAccountExportSchemaVersion;
 import '../limits.dart';
 import '../logging/custom_tag_registry.dart';
+import '../logging/day_entry_policy.dart';
 import '../logging/tracking_preferences.dart';
 import '../models/cycle_override.dart';
 import '../models/day_entry.dart';
@@ -1622,6 +1623,7 @@ class ProfilePlan {
     this.guardianNotes = const [],
     this.hasOtherGuardians = false,
     this.restoredFromTombstone = false,
+    this.entryDatesRejected = 0,
   });
 
   final String fileProfileId;
@@ -1690,6 +1692,16 @@ class ProfilePlan {
   /// [ImportPlanSummary.profilesRestored] reports it distinctly from an
   /// ordinary match in the result summary.
   final bool restoredFromTombstone;
+
+  /// Issue #848: how many of the file's day entries were dropped at plan
+  /// time because their date failed [DayEntryPolicy.validateDate] — a date
+  /// more than one day in the future, or one whose year precedes the
+  /// profile's known `birth_year`. Excluded from [entries] entirely (never
+  /// written), and summed into [ImportPlanSummary.entryDatesRejected] so
+  /// the result step can report them honestly rather than as silent data
+  /// loss. A blocked (skipped) profile plans no entries at all, so its
+  /// count stays 0.
+  final int entryDatesRejected;
 }
 
 /// Why a profile was skipped, for the result screen's "rejected" list.
@@ -1719,6 +1731,7 @@ class ImportPlanSummary {
     this.customTagsSkipped = 0,
     this.guardianNotesAdded = 0,
     this.guardianNotesSkipped = 0,
+    this.entryDatesRejected = 0,
   });
 
   final int profilesCreated;
@@ -1728,6 +1741,13 @@ class ImportPlanSummary {
   final int observationsAdded;
   final int observationsSkipped;
   final List<SkippedProfileReason> skippedProfiles;
+
+  /// Issue #848: how many of the file's day entries were dropped because
+  /// their date is out of bounds (more than a day in the future, or before
+  /// the profile's known birth year) — see
+  /// [ProfilePlan.entryDatesRejected]. Reported like every other skipped
+  /// bucket so a restore that silently discarded rows can say so.
+  final int entryDatesRejected;
 
   /// Issue #140 review, LLA-084: mirrors [observationsAdded]/
   /// [observationsSkipped]'s shape for cycle overrides.
@@ -1769,6 +1789,7 @@ class ImportPlanSummary {
       profilesMatched: counts.matched,
       entriesAdded: entryCounts.added,
       entriesMerged: entryCounts.merged,
+      entryDatesRejected: entryCounts.rejected,
       observationsAdded: observationCounts.added,
       observationsSkipped: observationCounts.skipped,
       notesDiscarded: entryCounts.notesDiscarded,
@@ -1807,13 +1828,20 @@ _ProfileCounts _profileOutcomeCounts(List<ProfilePlan> profiles) {
   return (created: created, matched: matched, restored: restored);
 }
 
-typedef _EntryCounts = ({int added, int merged, int notesDiscarded});
+typedef _EntryCounts = ({
+  int added,
+  int merged,
+  int notesDiscarded,
+  int rejected,
+});
 
 _EntryCounts _entryOutcomeCounts(List<ProfilePlan> profiles) {
   var added = 0;
   var merged = 0;
   var notesDiscarded = 0;
+  var rejected = 0;
   for (final p in profiles) {
+    rejected += p.entryDatesRejected;
     for (final e in p.entries) {
       if (e.outcome == DayEntryImportOutcome.add) {
         added++;
@@ -1823,7 +1851,12 @@ _EntryCounts _entryOutcomeCounts(List<ProfilePlan> profiles) {
       }
     }
   }
-  return (added: added, merged: merged, notesDiscarded: notesDiscarded);
+  return (
+    added: added,
+    merged: merged,
+    notesDiscarded: notesDiscarded,
+    rejected: rejected,
+  );
 }
 
 typedef _ObservationCounts = ({int added, int skipped});
@@ -1974,12 +2007,41 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
   );
 }
 
-List<DayEntryPlan> _planEntries(
+/// Issue #848: the planned entries plus the date-bounds rejections.
+typedef _EntryPlanResult = ({
+  List<DayEntryPlan> plans,
+  int rejected,
+  Set<String> rejectedDates,
+});
+
+/// Plans [imported] for one profile, dropping (and counting) any entry whose
+/// date fails [DayEntryPolicy.validateDate] against [today] and the
+/// profile's [birthYear] (when known). A rejected date's observations are
+/// reported through [rejectedDates] so [_planObservations] skips them too,
+/// keeping [ImportPlanSummary.observationsAdded] truthful.
+_EntryPlanResult _planEntries(
   List<ImportedDayEntry> imported,
-  List<DayEntry> existing,
-) {
+  List<DayEntry> existing, {
+  required LocalDate today,
+  int? birthYear,
+}) {
   final byDate = {for (final e in existing) e.localDate.iso: e};
-  return [for (final e in imported) _planDayEntry(e, byDate[e.localDate.iso])];
+  final plans = <DayEntryPlan>[];
+  final rejectedDates = <String>{};
+  for (final e in imported) {
+    if (DayEntryPolicy.validateDate(e.localDate,
+            today: today, birthYear: birthYear)
+        .isValid) {
+      plans.add(_planDayEntry(e, byDate[e.localDate.iso]));
+    } else {
+      rejectedDates.add(e.localDate.iso);
+    }
+  }
+  return (
+    plans: plans,
+    rejected: rejectedDates.length,
+    rejectedDates: rejectedDates,
+  );
 }
 
 String _observationKey(String date, String category, String? code) =>
@@ -1987,8 +2049,12 @@ String _observationKey(String date, String category, String? code) =>
 
 List<ObservationPlan> _planObservations(
   List<ImportedObservation> imported,
-  List<Observation> existing,
-) {
+  List<Observation> existing, {
+  // Issue #848: dates whose day entry was rejected, so the observation is
+  // counted as `skip` rather than `add` (it has no day entry to attach to
+  // after the plan is applied).
+  Set<String> rejectedDates = const {},
+}) {
   final existingKeys = {
     for (final o in existing) _observationKey(o.localDate.iso, o.category, o.code),
   };
@@ -1997,7 +2063,14 @@ List<ObservationPlan> _planObservations(
     liveCountByDate.update(o.localDate.iso, (n) => n + 1, ifAbsent: () => 1);
   }
   return [
-    for (final o in imported) _planObservation(o, existingKeys, liveCountByDate),
+    for (final o in imported)
+      if (rejectedDates.contains(o.localDate.iso))
+        ObservationPlan(
+          outcome: ObservationImportOutcome.skip,
+          imported: o,
+        )
+      else
+        _planObservation(o, existingKeys, liveCountByDate),
   ];
 }
 
@@ -2125,8 +2198,9 @@ ProfilePlan _planProfile(
   List<CustomTag> existingCustomTags,
   List<GuardianNote> existingGuardianNotes,
   String? Function(Profile existingProfile) writeBlockReason,
-  bool Function(Profile existingProfile) hasOtherGuardians,
-) {
+  bool Function(Profile existingProfile) hasOtherGuardians, {
+  required LocalDate today,
+}) {
   // Issue #140 review round 2, item 6: a tombstoned local profile at this
   // id is treated exactly like a live match — run the write-block check
   // against its own stored state, entries/observations merge against
@@ -2137,7 +2211,13 @@ ProfilePlan _planProfile(
   // profile is by definition absent from `existingProfiles`
   // (`ProfilesRepository.list()` never returns one).
   final target = existing ?? tombstoned;
+  // Issue #848: the subject birth year to bound imported dates against —
+  // the stored value for a matched/tombstoned profile, the file's own for
+  // a profile this document creates.
+  final effectiveBirthYear = target?.birthYear ?? imported.birthYear;
   if (target == null) {
+    final planned = _planEntries(imported.dayEntries, const [],
+        today: today, birthYear: effectiveBirthYear);
     return ProfilePlan(
       fileProfileId: imported.id,
       displayName: imported.displayName,
@@ -2156,8 +2236,10 @@ ProfilePlan _planProfile(
       typicalPeriodLengthDays: imported.typicalPeriodLengthDays,
       profileMode: imported.profileMode,
       trackingPreferences: imported.trackingPreferences,
-      entries: _planEntries(imported.dayEntries, const []),
-      observations: _planObservations(imported.observations, const []),
+      entries: planned.plans,
+      entryDatesRejected: planned.rejected,
+      observations: _planObservations(imported.observations, const [],
+          rejectedDates: planned.rejectedDates),
       cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),
       customTags: _planCustomTags(imported.customTags, const []),
       guardianNotes: _planGuardianNotes(imported.guardianNotes, const []),
@@ -2176,12 +2258,16 @@ ProfilePlan _planProfile(
       skipReason: blockReason,
     );
   }
+  final planned = _planEntries(imported.dayEntries, existingEntries,
+      today: today, birthYear: effectiveBirthYear);
   return ProfilePlan(
     fileProfileId: imported.id,
     displayName: existing?.displayName ?? imported.displayName,
     outcome: ProfileImportOutcome.matched,
-    entries: _planEntries(imported.dayEntries, existingEntries),
-    observations: _planObservations(imported.observations, existingObservations),
+    entries: planned.plans,
+    entryDatesRejected: planned.rejected,
+    observations: _planObservations(imported.observations, existingObservations,
+        rejectedDates: planned.rejectedDates),
     cycleOverrides:
         _planCycleOverrides(imported.cycleOverrides, existingCycleOverrides),
     customTags: _planCustomTags(imported.customTags, existingCustomTags),
@@ -2236,7 +2322,16 @@ ImportPlan planImport({
   Map<String, List<GuardianNote>> existingGuardianNotesByProfileId = const {},
   required String? Function(Profile existingProfile) writeBlockReason,
   bool Function(Profile existingProfile) hasOtherGuardians = _noOtherGuardians,
+  /// Issue #848: the caller's local civil "today", used to bound every
+  /// imported entry's date with [DayEntryPolicy.validateDate] (a date more
+  /// than a day in the future, or before the profile's known birth year,
+  /// is dropped and counted in
+  /// [ImportPlanSummary.entryDatesRejected]). Defaults to the device's
+  /// local today, the same boundary-default shape `prediction_service`
+  /// uses; tests pass a fixed date.
+  LocalDate? today,
 }) {
+  final effectiveToday = today ?? LocalDate.today();
   final existingById = {for (final p in existingProfiles) p.id: p};
   return ImportPlan(profiles: [
     for (final imported in document.profiles)
@@ -2251,6 +2346,7 @@ ImportPlan planImport({
         existingGuardianNotesByProfileId[imported.id] ?? const [],
         writeBlockReason,
         hasOtherGuardians,
+        today: effectiveToday,
       ),
   ]);
 }
