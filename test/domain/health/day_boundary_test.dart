@@ -476,6 +476,20 @@ void main() {
       );
     });
 
+    test('basalBodyTemperatureInstant throws TimeZoneResolutionException(unknownZone)', () {
+      expect(
+        () => basalBodyTemperatureInstant(
+          date: LocalDate(2026, 1, 1),
+          tzName: 'Mars/Olympus',
+        ),
+        throwsA(isA<TimeZoneResolutionException>().having(
+          (e) => e.reason,
+          'reason',
+          TimeZoneResolutionReason.unknownZone,
+        )),
+      );
+    });
+
     test('exception carries the offending tzName and a readable message', () {
       try {
         localDayInstant(LocalDate(2026, 1, 1), 'Mars/Olympus');
@@ -485,6 +499,65 @@ void main() {
         expect(e.toString(), contains('Mars/Olympus'));
         expect(e.toString(), contains('unknown time zone'));
       }
+    });
+  });
+
+  group('basalBodyTemperatureInstant (Issue #920)', () {
+    test('defaults to 07:00 morning local time as a UTC instant with zone offset', () {
+      // 2026-06-02 America/New_York is EDT (UTC-4):
+      // 07:00 local is 11:00 UTC, offset is -4h.
+      final result = basalBodyTemperatureInstant(
+        date: LocalDate(2026, 6, 2),
+        tzName: 'America/New_York',
+      );
+      expect(result.instant, DateTime.utc(2026, 6, 2, 11, 0, 0));
+      expect(result.instant.isUtc, isTrue);
+      expect(result.offset, const Duration(hours: -4));
+    });
+
+    test('default 07:00 on DST spring-forward day is already post-transition EDT', () {
+      // 2026-03-08 America/New_York spring-forward at 02:00 -> 03:00.
+      // 07:00 is EDT (UTC-4), instant is 11:00 UTC.
+      final result = basalBodyTemperatureInstant(
+        date: LocalDate(2026, 3, 8),
+        tzName: 'America/New_York',
+      );
+      expect(result.instant, DateTime.utc(2026, 3, 8, 11, 0, 0));
+      expect(result.offset, const Duration(hours: -4));
+    });
+
+    test('default 07:00 on DST fall-back day is post-transition EST', () {
+      // 2026-11-01 America/New_York fall-back at 02:00 -> 01:00.
+      // 07:00 is EST (UTC-5), instant is 12:00 UTC.
+      final result = basalBodyTemperatureInstant(
+        date: LocalDate(2026, 11, 1),
+        tzName: 'America/New_York',
+      );
+      expect(result.instant, DateTime.utc(2026, 11, 1, 12, 0, 0));
+      expect(result.offset, const Duration(hours: -5));
+    });
+
+    test('default 07:00 in positive-offset zone (Europe/London BST)', () {
+      // 2026-06-02 Europe/London is BST (UTC+1):
+      // 07:00 local is 06:00 UTC, offset is +1h.
+      final result = basalBodyTemperatureInstant(
+        date: LocalDate(2026, 6, 2),
+        tzName: 'Europe/London',
+      );
+      expect(result.instant, DateTime.utc(2026, 6, 2, 6, 0, 0));
+      expect(result.offset, const Duration(hours: 1));
+    });
+
+    test('uses observedAt when provided, computing offset in target zone', () {
+      final observed = DateTime.utc(2026, 6, 2, 10, 15);
+      final result = basalBodyTemperatureInstant(
+        date: LocalDate(2026, 6, 2),
+        tzName: 'America/New_York',
+        observedAt: observed,
+      );
+      expect(result.instant, observed);
+      expect(result.instant.isUtc, isTrue);
+      expect(result.offset, const Duration(hours: -4));
     });
   });
 }

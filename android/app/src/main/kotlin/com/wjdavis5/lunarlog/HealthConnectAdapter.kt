@@ -550,6 +550,8 @@ class HealthConnectAdapter(context: Context) {
                 // location field, so it is the honest unknown — never a
                 // guessed site. A platform/wearable-sourced value never
                 // reaches here (Dart filters by source).
+                // Issue #920: BBT is a point/waking measurement (instantMs
+                // resolves observedAt when present or 07:00 morning local time).
                 val g = GuardArgs.parse(args)
                     ?: return result.error(
                         "bad_args", "writeBasalBodyTemperature requires guard args", null)
@@ -564,6 +566,7 @@ class HealthConnectAdapter(context: Context) {
                     return
                 }
                 val instantMs = GuardArgs.number(args, "instantMs")
+                    ?: GuardArgs.number(args, "startMs")
                 val zoneOffsetMs = GuardArgs.number(args, "zoneOffsetMs")
                 val celsius = (args?.get("celsius") as? Number)?.toDouble()
                 val locationWire =

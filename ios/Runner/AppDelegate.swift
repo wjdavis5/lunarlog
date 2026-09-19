@@ -829,6 +829,8 @@ enum HealthKitChannelHandler {
       // #255's convertTemperature); this case only builds the HKQuantity.
       // A platform/wearable-sourced value never reaches here — the Dart
       // resolver filters by source before the write is built.
+      // Issue #920: BBT is a point/waking measurement (start == end),
+      // never a whole-day envelope ending at 23:59:59.
       guard let g = args.flatMap(GuardArgs.init) else {
         badArgs(result, "writeBasalBodyTemperature requires guard args")
         return
@@ -843,8 +845,10 @@ enum HealthKitChannelHandler {
         return
       }
       guard
-        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
-        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value
+          ?? (args?["instantMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+          ?? (args?["instantMs"] as? NSNumber)?.int64Value,
         let celsius = args?["celsius"] as? NSNumber,
         let recordId = args?["recordId"] as? String,
         let recordVersionMs = args?["recordVersionMs"] as? NSNumber
@@ -854,17 +858,12 @@ enum HealthKitChannelHandler {
           "writeBasalBodyTemperature requires startMs/endMs/celsius/recordId/recordVersionMs")
         return
       }
-      let temperatureSample = HKQuantitySample(
-        type: basalBodyTemperatureType,
-        quantity: HKQuantity(
-          unit: HKUnit.degreeCelsius(), doubleValue: celsius.doubleValue),
-        start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
-        end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
-        metadata: [
-          HKMetadataKeyExternalUUID: recordId,
-          HKMetadataKeySyncIdentifier: recordId,
-          HKMetadataKeySyncVersion: recordVersionMs,
-        ]
+      let temperatureSample = buildBasalBodyTemperatureSample(
+        celsius: celsius.doubleValue,
+        startMs: startMs,
+        endMs: endMs,
+        recordId: recordId,
+        recordVersionMs: recordVersionMs
       )
       save([temperatureSample], result: result)
 
@@ -1003,6 +1002,29 @@ enum HealthKitChannelHandler {
 
   private static var basalBodyTemperatureType: HKQuantityType {
     HKObjectType.quantityType(forIdentifier: .basalBodyTemperature)!
+  }
+
+  /// Builds an HKQuantitySample for Basal Body Temperature (Issue #228, #920).
+  /// BBT is a point/waking measurement: start and end dates are identical.
+  static func buildBasalBodyTemperatureSample(
+    celsius: Double,
+    startMs: Int64,
+    endMs: Int64,
+    recordId: String,
+    recordVersionMs: NSNumber
+  ) -> HKQuantitySample {
+    HKQuantitySample(
+      type: basalBodyTemperatureType,
+      quantity: HKQuantity(
+        unit: HKUnit.degreeCelsius(), doubleValue: celsius),
+      start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+      end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+      metadata: [
+        HKMetadataKeyExternalUUID: recordId,
+        HKMetadataKeySyncIdentifier: recordId,
+        HKMetadataKeySyncVersion: recordVersionMs,
+      ]
+    )
   }
 
   /// Reads menstrual-flow samples in `[start, end]` (Issue #217) and flattens
