@@ -480,6 +480,15 @@ class _DaySheetState extends State<DaySheet> {
   /// [_resolveEffectiveFlow]'s `revertToNone`.
   bool _flowExplicitlySet = false;
 
+  /// Issue #889: `true` when turning the Spotting toggle on is what raised
+  /// the in-memory [_flow] from [FlowLevel.none] to
+  /// [FlowLevel.notBleeding]. Turning spotting back off is then allowed to
+  /// undo exactly that raise (through [resolveEffectiveFlow]'s own
+  /// `revertToNone`), while an explicit "Not bleeding" — tapped this
+  /// session or loaded that way — is never reverted. Reset whenever
+  /// spotting is turned off.
+  bool _spottingRaisedFlow = false;
+
   /// The observations repository backing the spotting toggle (#247),
   /// resolved once the sheet is in the tree ([Provider.of] is illegal in
   /// `initState`) and cached so a write started while mounted can finish
@@ -1652,9 +1661,44 @@ class _DaySheetState extends State<DaySheet> {
 
   /// Sets the standalone spotting toggle (issue #247) — shared by the
   /// visible chip and its semantics tap.
+  ///
+  /// Issue #889: the in-memory [_flow] is reconciled here through the same
+  /// [resolveEffectiveFlow] the autosave path uses, so the Flow chips
+  /// render exactly what will be persisted (previously [_flow] stayed
+  /// [FlowLevel.none] while the write path raised it, showing both "None
+  /// ✓" and "Spotting ✓" and then silently reopening as "Not bleeding").
+  /// Turning spotting on over an unlogged day raises the selected chip to
+  /// "Not bleeding"; turning it back off returns it to "None" only when
+  /// this toggle is what raised it ([_spottingRaisedFlow]) — an explicit
+  /// "Not bleeding" (tapped this session or loaded from the store) is left
+  /// alone, and a real bleed level is never touched.
   void _toggleSpotting(bool value) {
     LLHaptics.selection();
-    setState(() => _spotting = value);
+    setState(() {
+      if (value) {
+        final before = _flow;
+        _flow = resolveEffectiveFlow(
+          spotting: true,
+          flow: _flow,
+          hadSpottingOnLoad: _hadSpottingOnLoad,
+          flowExplicitlySet: _flowExplicitlySet,
+        );
+        // Only a genuine raise from "nothing logged" is this toggle's to
+        // undo; a flow that was already notBleeding stays an assertion.
+        if (before == FlowLevel.none) {
+          _spottingRaisedFlow = _flow != FlowLevel.none;
+        }
+      } else {
+        _flow = resolveEffectiveFlow(
+          spotting: false,
+          flow: _flow,
+          hadSpottingOnLoad: _hadSpottingOnLoad || _spottingRaisedFlow,
+          flowExplicitlySet: _flowExplicitlySet,
+        );
+        _spottingRaisedFlow = false;
+      }
+      _spotting = value;
+    });
     _markDirty();
   }
 

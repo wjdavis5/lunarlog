@@ -331,6 +331,21 @@ Future<void> dismissDaySheet(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// The labels of the flow-level [ChoiceChip]s currently selected in the day
+/// sheet's Flow row, in [kSelectableFlowLevels] order (issue #889). The
+/// standalone Spotting toggle is a [FilterChip] — its own observations
+/// category, never a flow level — so it is deliberately excluded, letting a
+/// test assert the Flow row holds exactly one checked level.
+List<String> selectedFlowChipLabels(WidgetTester tester) => [
+      for (final level in kSelectableFlowLevels)
+        if (tester
+            .widget<ChoiceChip>(
+              find.widgetWithText(ChoiceChip, flowLabel(level)),
+            )
+            .selected)
+          flowLabel(level),
+    ];
+
 Future<void> showMonth(WidgetTester tester, int year, int month) async {
   final label = '${monthNames()[month - 1]} $year';
   var guard = 0;
@@ -1440,6 +1455,101 @@ void main() {
               'revert it — that flow value is an independent, deliberate '
               'assertion, not merely spotting-derived',
         );
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'issue #889: tapping Spotting on a "None" day leaves exactly one '
+      'checked flow chip, "Not bleeding" -- never "None" and "Spotting" at '
+      'once, and never changing on reopen',
+      (tester) async {
+        final h = await pumpLogging(tester);
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(selectedFlowChipLabels(tester), ['None']);
+
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await tester.pump();
+
+        expect(
+          selectedFlowChipLabels(tester),
+          ['Not bleeding'],
+          reason: 'spotting alone raises the selected flow chip, so the row '
+              'shows exactly one checked level and it is not "None"',
+        );
+        expect(
+          tester
+              .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+              .selected,
+          isTrue,
+        );
+
+        // Reopening reads the store back: the visible flow chip must still
+        // be "Not bleeding" (the original bug silently changed it here).
+        await pumpAutosave(tester);
+        await dismissDaySheet(tester);
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        expect(selectedFlowChipLabels(tester), ['Not bleeding']);
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'issue #889: untoggling Spotting on a "None" day returns the flow chip '
+      'to "None" and saves FlowLevel.none',
+      (tester) async {
+        final h = await pumpLogging(tester);
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await tester.pump();
+        expect(selectedFlowChipLabels(tester), ['Not bleeding']);
+
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await tester.pump();
+        expect(
+          selectedFlowChipLabels(tester),
+          ['None'],
+          reason: 'this toggle is what raised the flow, so turning spotting '
+              'off undoes exactly that raise',
+        );
+
+        await pumpAutosave(tester);
+        final saved = await h.entries.find(h.profile.id, kToday);
+        expect(saved!.flow, FlowLevel.none);
+        await disposeLogging(tester, h);
+      },
+    );
+
+    testWidgets(
+      'issue #889: toggling Spotting on a real flow level (Light) leaves the '
+      'flow chip unchanged',
+      (tester) async {
+        final h = await pumpLogging(tester);
+
+        await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ChoiceChip, 'Light'));
+        await tester.pump();
+        expect(selectedFlowChipLabels(tester), ['Light']);
+
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await tester.pump();
+        expect(selectedFlowChipLabels(tester), ['Light']);
+        expect(
+          tester
+              .widget<FilterChip>(find.byKey(const ValueKey('spotting-chip')))
+              .selected,
+          isTrue,
+        );
+
+        await tester.tap(find.byKey(const ValueKey('spotting-chip')));
+        await tester.pump();
+        expect(selectedFlowChipLabels(tester), ['Light']);
         await disposeLogging(tester, h);
       },
     );
