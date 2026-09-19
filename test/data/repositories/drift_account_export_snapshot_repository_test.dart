@@ -17,6 +17,7 @@ import 'package:lunarlog/data/db/tables.dart' as dbtables show FlowLevel;
 import 'package:lunarlog/data/repositories/drift_account_export_snapshot_repository.dart';
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_tag_registry_repository.dart';
@@ -118,14 +119,15 @@ void main() {
       profileModesRepository: DriftProfileModesRepository(storage),
       cycleOverridesRepository: DriftCycleOverridesRepository(storage),
       tagRegistryRepository: DriftTagRegistryRepository(storage),
+      guardianNotesRepository: DriftGuardianNotesRepository(storage),
     );
     final profile = await storage.upsertProfile(displayName: 'A', isMinor: false);
     profileId = profile.id;
   });
 
   test(
-      'returns entries, observations, profileMode, cycleOverrides, and '
-      'customTags together for a fully-populated profile', () async {
+      'returns entries, observations, profileMode, cycleOverrides, customTags, '
+      'and guardianNotes together for a fully-populated profile', () async {
     final storage = db.storage;
     final entry = await storage.upsertDayEntry(
       profileId: profileId,
@@ -161,6 +163,12 @@ void main() {
       sortOrder: 1,
       updatedAt: DateTime.utc(2026, 1, 1),
     );
+    await storage.upsertGuardianNote(
+      profileId: profileId,
+      localDate: '2026-01-05',
+      tz: 'UTC',
+      body: 'Caregiver note for Riley',
+    );
 
     final snapshot = await snapshotRepo.forProfile(profileId);
 
@@ -175,6 +183,8 @@ void main() {
     expect(snapshot.cycleOverrides.single.excludedFromAverage, isTrue);
     expect(snapshot.customTags, hasLength(1));
     expect(snapshot.customTags.single.code, 'cramps_severe');
+    expect(snapshot.guardianNotes, hasLength(1));
+    expect(snapshot.guardianNotes.single.body, 'Caregiver note for Riley');
   });
 
   test('profileMode is null when no profile_modes row was ever written',
@@ -190,6 +200,7 @@ void main() {
     expect(snapshot.cycleOverrides, isEmpty);
     expect(snapshot.mergeEvents, isEmpty);
     expect(snapshot.customTags, isEmpty);
+    expect(snapshot.guardianNotes, isEmpty);
   });
 
   test('customTags excludes deleted (tombstoned) tags', () async {
@@ -218,6 +229,28 @@ void main() {
     final snapshot = await snapshotRepo.forProfile(profileId);
     expect(snapshot.customTags, hasLength(1));
     expect(snapshot.customTags.single.id, 'tag-active');
+  });
+
+  test('guardianNotes excludes deleted (soft-deleted) notes', () async {
+    final storage = db.storage;
+    final note = await storage.upsertGuardianNote(
+      profileId: profileId,
+      localDate: '2026-01-05',
+      tz: 'UTC',
+      body: 'Active note',
+    );
+    final deletedNote = await storage.upsertGuardianNote(
+      profileId: profileId,
+      localDate: '2026-01-06',
+      tz: 'UTC',
+      body: 'Deleted note',
+    );
+    await storage.softDeleteGuardianNote(deletedNote.id);
+
+    final snapshot = await snapshotRepo.forProfile(profileId);
+    expect(snapshot.guardianNotes, hasLength(1));
+    expect(snapshot.guardianNotes.single.id, note.id);
+    expect(snapshot.guardianNotes.single.body, 'Active note');
   });
 
   test(

@@ -3,7 +3,7 @@
 -- create_supabase_user / authenticate_as handshake and the pg_temp snapshot
 -- idiom already established in account_deletion_test.sql.
 begin;
-select plan(80);
+select plan(82);
 
 create temp table snap (name text primary key, v jsonb);
 grant all on table snap to authenticated;
@@ -20,6 +20,9 @@ create function pg_temp.profile_by_id(doc jsonb, p_id text) returns jsonb langua
 create function pg_temp.day_entry_ids(profile_json jsonb) returns text[] language sql as
   $$ select coalesce(array_agg(value ->> 'id' order by value ->> 'id'), array[]::text[])
      from jsonb_array_elements(coalesce(profile_json -> 'day_entries', '[]'::jsonb)) $$;
+create function pg_temp.guardian_note_ids(profile_json jsonb) returns text[] language sql as
+  $$ select coalesce(array_agg(value ->> 'id' order by value ->> 'id'), array[]::text[])
+     from jsonb_array_elements(coalesce(profile_json -> 'guardian_notes', '[]'::jsonb)) $$;
 create function pg_temp.count_in(doc jsonb, key text) returns bigint language sql as
   $$ select jsonb_array_length(coalesce(doc -> key, '[]'::jsonb)) $$;
 create function pg_temp.guardian_user_ids_for(doc jsonb, p_id text) returns uuid[] language sql as
@@ -145,6 +148,25 @@ values (tests.ulid(11), tests.ulid(1), '2026-09-02', 'UTC', 'medium', '2026-09-0
         tests.get_supabase_uid('user_b'), tests.get_supabase_uid('user_b'));
 select set_config('role', 'authenticated', true);
 
+-- Issue #870: A logs one guardian note, B logs another on the same profile;
+-- A also has a tombstoned note to prove tombstones are excluded from export.
+select tests.authenticate_as('user_a');
+select set_config('role', 'service_role', true);
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(30), tests.ulid(1), '2026-09-01', 'UTC', 'Riley has a mild headache', '2026-09-01T00:00:00Z',
+        tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_a')),
+       (tests.ulid(32), tests.ulid(1), '2026-09-03', 'UTC', '', '2026-09-03T00:00:00Z',
+        tests.get_supabase_uid('user_a'), tests.get_supabase_uid('user_a'));
+update public.guardian_notes set deleted_at = '2026-09-03T00:00:00Z' where id = tests.ulid(32);
+select set_config('role', 'authenticated', true);
+
+select tests.authenticate_as('user_b');
+select set_config('role', 'service_role', true);
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(31), tests.ulid(1), '2026-09-02', 'UTC', 'Riley is feeling much better', '2026-09-02T00:00:00Z',
+        tests.get_supabase_uid('user_b'), tests.get_supabase_uid('user_b'));
+select set_config('role', 'authenticated', true);
+
 -- B (co_parent) may invite a caregiver/viewer (R3) - a second, distinct
 -- inviter on the same profile, exercising the "invitations the caller
 -- personally created" shared-profile predicate.
@@ -257,6 +279,12 @@ insert into public.push_devices (id, user_id, token, platform)
 values ('00000000-0000-0000-0000-0000000000d1'::uuid, tests.get_supabase_uid('user_d'), 'token-family-c-DDDD9999', 'ios');
 
 select tests.authenticate_as('user_c');
+select set_config('role', 'service_role', true);
+insert into public.guardian_notes (id, profile_id, local_date, tz, body, updated_at, logged_by_user_id, last_modified_by_user_id)
+values (tests.ulid(40), tests.ulid(2), '2026-09-01', 'UTC', 'Family C note', '2026-09-01T00:00:00Z',
+        tests.get_supabase_uid('user_c'), tests.get_supabase_uid('user_c'));
+select set_config('role', 'authenticated', true);
+
 insert into public.notification_preferences (user_id, profile_id, alert_on_log, missed_entry_days)
 values (tests.get_supabase_uid('user_c'), tests.ulid(2), true, 3);
 
@@ -329,6 +357,12 @@ select is(
   pg_temp.day_entry_ids(pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1))),
   array[tests.ulid(10), tests.ulid(11)],
   'A: owned profile carries every live day entry, including the one B (co_parent) logged'
+);
+
+select is(
+  pg_temp.guardian_note_ids(pg_temp.profile_by_id(pg_temp.snap('a_result'), tests.ulid(1))),
+  array[tests.ulid(30), tests.ulid(31)],
+  'A: owned profile carries every live guardian note, including the one B (co_parent) logged'
 );
 
 select is(pg_temp.count_in(pg_temp.snap('a_result'), 'profile_guardians'), 2::bigint,
@@ -493,6 +527,12 @@ select is(
   pg_temp.day_entry_ids(pg_temp.profile_by_id(pg_temp.snap('b_result'), tests.ulid(1))),
   array[tests.ulid(11)],
   'B: shared profile carries only the entry B personally authored, never A''s'
+);
+
+select is(
+  pg_temp.guardian_note_ids(pg_temp.profile_by_id(pg_temp.snap('b_result'), tests.ulid(1))),
+  array[tests.ulid(31)],
+  'B: shared profile carries only the guardian note B personally authored, never A''s'
 );
 
 select is(pg_temp.count_in(pg_temp.snap('b_result'), 'profile_guardians'), 1::bigint,

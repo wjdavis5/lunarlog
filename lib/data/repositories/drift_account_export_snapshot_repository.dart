@@ -14,6 +14,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/cycle_overrides_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
@@ -29,6 +30,7 @@ class DriftAccountExportSnapshotRepository
     required this.profileModesRepository,
     required this.cycleOverridesRepository,
     this.tagRegistryRepository,
+    this.guardianNotesRepository,
   });
 
   final LunarLogStorage storage;
@@ -37,6 +39,7 @@ class DriftAccountExportSnapshotRepository
   final ProfileModesRepository profileModesRepository;
   final CycleOverridesRepository cycleOverridesRepository;
   final TagRegistryRepository? tagRegistryRepository;
+  final GuardianNotesRepository? guardianNotesRepository;
 
   @override
   Future<AccountExportSnapshot> forProfile(String profileId) {
@@ -59,6 +62,14 @@ class DriftAccountExportSnapshotRepository
               for (final row in await storage.getProfileTagRegistry(profileId))
                 customTagToDomain(row),
             ];
+      // Issue #870: the profile's live guardian notes join the same coherent
+      // read.
+      final guardianNotes = guardianNotesRepository != null
+          ? await guardianNotesRepository!.listForProfile(profileId)
+          : [
+              for (final row in await storage.getGuardianNotesForProfile(profileId))
+                guardianNoteToDomain(row),
+            ];
       return (
         entries: entries,
         observations: observations,
@@ -66,6 +77,7 @@ class DriftAccountExportSnapshotRepository
         cycleOverrides: cycleOverrides,
         mergeEvents: mergeEvents,
         customTags: customTags,
+        guardianNotes: guardianNotes,
       );
     });
   }
