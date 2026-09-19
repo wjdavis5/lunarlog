@@ -35,6 +35,17 @@ abstract final class SettingsKeys {
   /// stringified non-negative int; absent (or unparsable) reads as `0`.
   static const String androidNotificationDeniedAttempts =
       'android_notification_denied_attempts';
+
+  /// `'true'` once the operator has made an explicit "Turn on reminders" ask
+  /// on Darwin (issue #863). Darwin's own notification dialog is one-shot
+  /// per install: once the OS has recorded a decision, a repeat
+  /// `requestPermissions()` silently no-ops. The scheduler uses this flag to
+  /// tell "never asked yet — show the prompt" apart from "already decided —
+  /// open notification settings instead", which `checkPermissions()` alone
+  /// cannot (a not-yet-asked permission and a denied one both read as
+  /// disabled). Device-local; absent reads as never asked.
+  static const String darwinNotificationPermissionRequested =
+      'darwin_notification_permission_requested';
   static const String webModalAcknowledged = 'web_modal_acknowledged';
   static const String firstRunNoticeShown = 'first_run_notice_shown';
 

@@ -139,6 +139,14 @@ class ProfileController extends ChangeNotifier {
     LifecycleMode? lifecycleMode,
     String? birthControlMethod,
   }) async {
+    // Issue #865: creating the very first profile also makes it active, so
+    // the home gate lands on that profile's Today instead of a picker
+    // holding one row. The zero-to-one condition is read from the store's
+    // own list before this call -- never a UI flag -- and applies only to
+    // that first creation: a profile added later from the picker leaves the
+    // active pointer alone, because the operator is managing profiles, not
+    // switching to one.
+    final isFirstProfile = _live.isEmpty;
     final profile = await _profiles.create(
       displayName: _validated(displayName),
       isMinor: isMinor,
@@ -154,6 +162,9 @@ class ProfileController extends ChangeNotifier {
       lifecycleMode: lifecycleMode,
       birthControlMethod: birthControlMethod,
     );
+    if (isFirstProfile) {
+      await selectProfile(profile.id);
+    }
     return profile;
   }
 

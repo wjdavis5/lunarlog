@@ -191,6 +191,28 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
     );
   }
 
+  /// Issue #863: whether this device has already made an explicit Darwin
+  /// "Turn on reminders" ask, loaded from
+  /// [SettingsKeys.darwinNotificationPermissionRequested]. Unlike Android's
+  /// denial count, Darwin has no per-attempt history to weigh — only
+  /// "asked" vs "never asked", because the dialog is one-shot. A `null`
+  /// store (a test/unwired tree) reads as never asked.
+  Future<bool> _loadDarwinPermissionRequested() async {
+    final store = settingsStore;
+    if (store == null) return false;
+    return await store.get(SettingsKeys.darwinNotificationPermissionRequested) ==
+        'true';
+  }
+
+  Future<void> _persistDarwinPermissionRequested() async {
+    final store = settingsStore;
+    if (store == null) return;
+    await store.set(
+      SettingsKeys.darwinNotificationPermissionRequested,
+      'true',
+    );
+  }
+
   @override
   Future<NotificationAvailability> initialize({
     void Function(ReminderLaunch launch)? onLaunchFromNotification,
@@ -237,17 +259,22 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       actions: darwinActions,
     );
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    // Issue #863: `requestAlertPermission: false` -- `initialize()` must
+    // never spend iOS's one-shot notification dialog. It used to be `true`,
+    // which is why the system prompt fired over a black screen at first
+    // launch, before onboarding and before any profile existed. The dialog
+    // is now requested explicitly from the in-product "Turn on reminders"
+    // action ([requestPermission]); do not set this back to `true`.
     final darwin = DarwinInitializationSettings(
-      requestAlertPermission: true,
+      requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
       notificationCategories: [reminderCategory],
     );
-    // Issue #287: on Darwin, `requestAlertPermission: true` above means
-    // this call itself is when the OS permission prompt fires -- guarded
-    // the same way the explicit Android request below is, so it never runs
-    // concurrently with FirebasePushTokenSource's own
-    // `FirebaseMessaging.instance.requestPermission()`.
+    // Issue #287: this call no longer requests the Darwin permission (see
+    // above), so the shared gate is only needed here for the plugin's own
+    // `initialize()` channel call. The explicit Darwin request in
+    // [requestPermission] still goes through the same gate.
     await _permissionGate.guard(() => _plugin.initialize(
       settings: InitializationSettings(
         android: android,
@@ -414,17 +441,22 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
       // `MacOSFlutterLocalNotificationsPlugin` DO carry their own
       // `openAppNotificationSettings()` (pinned 22.3.0's
       // platform_flutter_local_notifications.dart:812 / :1020) -- an
-      // earlier version of this comment claimed otherwise. Darwin's own
-      // permission dialog is one-shot-per-install: [initialize]'s
-      // `DarwinInitializationSettings(requestAlertPermission: true, ...)`
-      // already spends it, so a `requestPermissions()` re-request here
-      // would silently no-op forever once the OS has already recorded a
-      // decision, leaving the "Turn on reminders" tap dead exactly like
-      // the pre-fix Android button. Checking the *current* availability
-      // first and routing a denied result to settings avoids that without
-      // inventing a parallel denial counter: the overview hint that drives
-      // this call is itself gated on "not available" already.
-      final current = await checkAvailability();
+      // earlier version of this comment claimed otherwise.
+      //
+      // Issue #863: [initialize] no longer spends Darwin's one-shot
+      // permission dialog (`requestAlertPermission: false`), so this is the
+      // first and only place the system prompt can appear. Darwin exposes
+      // no "not yet decided" status through `checkPermissions()` -- a
+      // never-asked permission and a refused one both read as disabled --
+      // so the persisted
+      // [SettingsKeys.darwinNotificationPermissionRequested] flag tells the
+      // two apart: never asked -> ask (show the prompt); already asked and
+      // still denied -> open settings, because re-requesting a decided
+      // one-shot dialog silently no-ops and would leave the "Turn on
+      // reminders" tap dead. The overview hint that drives this call is
+      // itself gated on "not available" already.
+      final requested = await _loadDarwinPermissionRequested();
+      final current = requested ? await checkAvailability() : null;
       if (current == NotificationAvailability.denied) {
         await iosPlugin?.openAppNotificationSettings();
         await macosPlugin?.openAppNotificationSettings();
@@ -437,6 +469,7 @@ class FlutterLocalNotificationsScheduler implements ReminderScheduler {
           await macosPlugin?.requestPermissions(
               alert: true, badge: false, sound: false);
         });
+        await _persistDarwinPermissionRequested();
       }
     } catch (error) {
       // #3: same tolerance as the Android branch above.

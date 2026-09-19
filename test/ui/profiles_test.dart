@@ -124,8 +124,8 @@ void main() {
 
   group('first run (F1)', () {
     testWidgets('zero profiles forces creation through the intro cards and '
-        'the key-loss notice; created profile (name + minor flag) is '
-        'selectable with empty history', (tester) async {
+        'the key-loss notice; the first created profile lands on its Today '
+        '(#865)', (tester) async {
       final db = await pumpApp(tester);
 
       // Card 1 (identity/value) first — no form, no notice yet (#216).
@@ -157,17 +157,27 @@ void main() {
       await tester.tap(find.text('Create profile'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Profiles'), findsOneWidget,
-          reason: 'picker shows the new profile');
-      expect(find.text('Luna'), findsOneWidget);
+      // Issue #865: the first-ever profile becomes active, so the operator
+      // lands on its Today instead of a picker holding a single row.
+      expect(find.text('Profiles'), findsNothing,
+          reason: 'the one-row picker is not where a first-run user lands');
+      expect(find.byKey(const ValueKey('app-shell-nav-bar')), findsOneWidget,
+          reason: 'AppShell (Today) opens for the new profile');
+      expect(find.text('Luna'), findsOneWidget,
+          reason: 'the switcher shows the active profile');
 
       final profiles = await DriftProfilesRepository(db.storage).list();
       expect(profiles.single.displayName, 'Luna');
       expect(profiles.single.isMinor, isTrue,
           reason: 'minor flag recorded (R5, inert in v1)');
+      expect(
+        await DriftSettingsStore(db.storage)
+            .get(SettingsKeys.lastActiveProfile),
+        profiles.single.id,
+        reason: 'the active-profile pointer is persisted, not just '
+            'navigated past (#865)',
+      );
 
-      await tester.tap(find.text('Luna'));
-      await tester.pumpAndSettle();
       // Issue #182: AppShell opens on the Today tab; Calendar is one tap
       // away via the bottom nav.
       await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
@@ -177,8 +187,8 @@ void main() {
       await disposeApp(tester, db);
     });
 
-    testWidgets('relaunch with the same install opens the profile directly '
-        'and never resurfaces the notice', (tester) async {
+    testWidgets('relaunch with the same install opens the first profile '
+        'directly and never resurfaces the notice (#865)', (tester) async {
       final db = await pumpApp(tester);
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
@@ -189,8 +199,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Create profile'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Luna'));
-      await tester.pumpAndSettle();
+
+      // #865: already on Today; no picker tap was needed to get there.
+      expect(find.byKey(const ValueKey('app-shell-nav-bar')), findsOneWidget);
 
       await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pumpAndSettle();
@@ -202,6 +213,45 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('app-shell-tab-calendar')));
       await tester.pumpAndSettle();
       expect(find.byType(MonthCalendar), findsOneWidget);
+      await disposeApp(tester, db);
+    });
+
+    testWidgets('adding a second profile from the picker keeps the picker '
+        '(#865: the auto-select is zero-to-one only)', (tester) async {
+      late String aliceId;
+      final db = await pumpApp(tester, seed: (db) async {
+        aliceId = (await DriftProfilesRepository(db.storage)
+                .create(displayName: 'Alice', isMinor: false))
+            .id;
+        await DriftSettingsStore(db.storage)
+            .set(SettingsKeys.lastActiveProfile, aliceId);
+      });
+
+      // Alice is active: reach the full picker through her switcher.
+      expect(find.byKey(const ValueKey('app-shell-nav-bar')), findsOneWidget);
+      await tester.tap(find.byTooltip('Switch profile'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Manage profiles…'));
+      await tester.pumpAndSettle();
+      expect(find.text('Profiles'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Add profile'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).first, 'Barb');
+      await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Profiles'), findsOneWidget,
+          reason: 'a second profile must not steal the active pointer — '
+              'the operator is managing profiles, not switching to one');
+      expect(find.text('Alice'), findsOneWidget);
+      expect(find.text('Barb'), findsOneWidget);
+      expect(
+        await DriftSettingsStore(db.storage)
+            .get(SettingsKeys.lastActiveProfile),
+        aliceId,
+        reason: 'the pointer stays on the profile the operator was managing',
+      );
       await disposeApp(tester, db);
     });
 
