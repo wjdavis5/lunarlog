@@ -52,9 +52,16 @@
 --      new table's columns join the accepted-key set automatically.
 --   8. grant execute on the new 10-arg sync_push to authenticated; revoke
 --      from public, anon.
+--   9. create or replace public.tombstone_profile_content(...) re-emitted
+--      from 20260918000000 with ONE new guardian_notes tombstone step
+--      (body cleared to '', updated_at/server_version bumped), so that a
+--      profile purge -- and therefore delete_profile_data() and
+--      delete_account_data() -- actually removes this health text. This is
+--      what makes the PRIVACY.md claim true; the rest of the function is
+--      byte-identical.
 -- No existing table/column is altered, no RLS is weakened, and
--- sync_pull/delete_*/enforce_retention are deliberately untouched (see the
--- PR body's "Not done").
+-- sync_pull/enforce_retention are deliberately untouched (see the PR
+-- body's "Not done").
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
@@ -2719,4 +2726,224 @@ comment on function public.sync_push(
   'edit or tombstone that row, so no guardian can alter another''s note. '
   'The ten per-table key allowlists stay DERIVED (issue #181) and are '
   'materialized at CREATE time by this migration''s DO block.';
+
+-- ---------------------------------------------------------------------------
+-- 8. tombstone_profile_content(): re-emitted from its current definition
+--    (20260918000000_day_entry_history.sql, unchanged since) with ONE new
+--    step -- the guardian_notes tombstone. Issue #801's table is modelled on
+--    public.care_notes, so the profile-wipe step follows the care_notes step
+--    EXACTLY: same `deleted_at = p_now`, same
+--    `updated_at = greatest(updated_at, p_now)`, same `body = ''` payload
+--    clear (the guardian_notes_tombstone_payload_check sentinel), same
+--    `last_modified_by_user_id = coalesce(v_uid, ...)` attribution guard,
+--    scoped `where profile_id = p_profile_id and deleted_at is null`.
+--
+--    Why this is required for the PRIVACY.md claim to be true:
+--    delete_profile_data() / delete_account_data() go through this helper,
+--    which TOMBSTONES a purged profile's content (it does not hard-delete the
+--    profile), so without this step a deleted profile's guardian notes --
+--    free-text health content about a child -- would survive on the server
+--    with their text intact indefinitely. Tombstoning clears the text and
+--    bumps server_version (the table's own trigger) so the removal also
+--    propagates to every co-guardian device via the ordinary incremental
+--    pull. Account deletion's later auth-row hard-delete still cascades the
+--    rows away physically via profiles(id) on delete cascade.
+--
+--    Everything else in the function (authority, the observation
+--    pre-count/catch-all, merge-event and history hard-deletes, the tag
+--    registry tombstone, the returned jsonb) is carried forward
+--    byte-identical; only the new declare/step/return-key are added.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.tombstone_profile_content(
+  p_profile_id text,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_day_entries bigint := 0;
+  v_observations bigint := 0;
+  v_care_notes bigint := 0;
+  v_guardian_notes bigint := 0;
+  v_visit_prep_items bigint := 0;
+  v_cycle_overrides bigint := 0;
+  v_day_entry_merge_events bigint := 0;
+  v_profile_tag_registry bigint := 0;
+  v_day_entry_history bigint := 0;
+begin
+  -- last_modified_by_user_id is set explicitly on every UPDATE below (the
+  -- enforce_day_entry_attribution / enforce_observation_attribution /
+  -- enforce_care_note_attribution / enforce_prep_item_attribution guards
+  -- each raise, on an UPDATE, unless `new.last_modified_by_user_id` equals
+  -- the calling auth.uid() exactly - the same requirement sync_push's own
+  -- UPDATE branches satisfy on every row they touch). coalesce() falls
+  -- back to the row's existing stamp only for a null-auth.uid() caller
+  -- (migrations/service role - the attribution guards return early in that
+  -- case and do not check this column at all, but the coalesce keeps the
+  -- column itself sane either way). cycle_overrides carries no attribution
+  -- columns and needs no such guard.
+  --
+  -- Counted BEFORE the day_entries update below, not via that update's own
+  -- explicit UPDATE row_count: day_entries_after_tombstone_cascade_observations
+  -- (20260913012000_cascade_tombstone_lww_guard.sql, greatest()-guarded)
+  -- tombstones every live child observation as a side effect of the
+  -- day_entries UPDATE's own AFTER trigger, BEFORE the explicit
+  -- `update public.observations ... where deleted_at is null` below ever
+  -- runs - so by the time that statement executes, the cascade has already
+  -- excluded every row it touched from matching `deleted_at is null`, and
+  -- its own row_count would undercount (report 0 even though every
+  -- observation was, correctly, tombstoned - just via the cascade, not
+  -- this statement). Every live observation on the profile is guaranteed
+  -- to end up tombstoned by the end of this function (via the cascade, or
+  -- the explicit catch-all below for the belt-and-suspenders case the
+  -- cascade doesn't cover), so the pre-count here is the correct total
+  -- regardless of which path actually did the write.
+  select count(*) into v_observations
+    from public.observations
+   where profile_id = p_profile_id
+     and deleted_at is null;
+
+  update public.day_entries
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         flow = 'none',
+         note = null,
+         tags = '[]'::jsonb,
+         pms = false,
+         last_modified_by_user_id = coalesce(v_uid, last_modified_by_user_id)
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_day_entries = row_count;
+
+  -- Belt-and-suspenders catch-all (see the comment above): every live
+  -- observation has a day_entry_id, so in practice this touches zero rows
+  -- - the cascade above already got all of them - but it is not relied
+  -- upon for the returned count.
+  update public.observations
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         category = null,
+         code = null,
+         value_num = null,
+         value_text = null,
+         unit = null,
+         intensity = null,
+         excluded = false,
+         raw = null,
+         observed_at = null,
+         last_modified_by_user_id = coalesce(v_uid, last_modified_by_user_id)
+   where profile_id = p_profile_id
+     and deleted_at is null;
+
+  update public.care_notes
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         body = '',
+         last_modified_by_user_id = coalesce(v_uid, last_modified_by_user_id)
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_care_notes = row_count;
+
+  -- Issue #801: the profile's dated, author-scoped guardian notes are
+  -- tombstoned exactly like care_notes above (deliberately the same shape
+  -- and the same propagation reason). `body` clears to the ''
+  -- guardian_notes_tombstone_payload_check sentinel -- no note text
+  -- survives -- while `local_date`/`tz` survive as identity/provenance.
+  -- `server_version` is bumped by the table's own set_server_version
+  -- trigger on this UPDATE, so the deletion reaches every co-guardian
+  -- device through the ordinary incremental pull.
+  update public.guardian_notes
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         body = '',
+         last_modified_by_user_id = coalesce(v_uid, last_modified_by_user_id)
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_guardian_notes = row_count;
+
+  update public.visit_prep_items
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         body = '',
+         is_checked = false,
+         checked_by_user_id = null,
+         checked_at = null,
+         last_modified_by_user_id = coalesce(v_uid, last_modified_by_user_id)
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_visit_prep_items = row_count;
+
+  update public.cycle_overrides
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         excluded_from_average = false,
+         manual_start = false,
+         note_id = null
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_cycle_overrides = row_count;
+
+  -- Issue #130: the profile's merge-disclosure rows are HARD-deleted (the
+  -- one table here without a tombstone): a disclosed discard's retained
+  -- note text is health content with no meaning once the profile content it
+  -- describes is wiped, and both callers (delete_profile_data and
+  -- delete_account_data, via tombstone_profile_content) tombstone rather
+  -- than hard-delete the profile itself -- so the profiles FK cascade
+  -- never fires here and this explicit delete is the ONLY removal path.
+  -- Scoped to the whole profile, exactly like every sibling step: this
+  -- function is only ever called for a profile the caller is authorized to
+  -- wipe (owned-profile account deletion, or the profile's own purge).
+  delete from public.day_entry_merge_events
+   where profile_id = p_profile_id;
+  get diagnostics v_day_entry_merge_events = row_count;
+
+  -- Issue #257: the profile's custom-tag registry rows are TOMBSTONED, not
+  -- hard-deleted (unlike #130's merge events above): these are ordinary
+  -- synced rows whose deletion must PROPAGATE to every co-guardian device,
+  -- and the tombstone (payload cleared per the table's structural CHECK,
+  -- server_version bumped by the trigger) is what carries it through the
+  -- ordinary incremental pull. The user-authored labels leave the server;
+  -- the codes survive per the table's own tombstone contract.
+  update public.profile_tag_registry
+     set deleted_at = p_now,
+         updated_at = greatest(updated_at, p_now),
+         display_name = '',
+         category = '',
+         intensity_enabled = false,
+         hidden_at = null,
+         sort_order = null
+   where profile_id = p_profile_id
+     and deleted_at is null;
+  get diagnostics v_profile_tag_registry = row_count;
+
+  -- Issue #170: the profile's change-history rows are HARD-deleted (the
+  -- #130 merge-events precedent): after a content wipe the feed rows
+  -- describe content that no longer exists, and the wipe is a privacy
+  -- action. Deliberately the LAST content step -- the day_entries UPDATE
+  -- near the top fires record_day_entry_change per tombstoned entry, so a
+  -- delete placed anywhere before it would leave those fresh rows behind.
+  -- (The retention purge and the profile/entry FK cascades cover every
+  -- other removal path; see header item 8.)
+  delete from public.day_entry_history
+   where profile_id = p_profile_id;
+  get diagnostics v_day_entry_history = row_count;
+
+  return jsonb_build_object(
+    'day_entries', v_day_entries,
+    'observations', v_observations,
+    'care_notes', v_care_notes,
+    'guardian_notes', v_guardian_notes,
+    'visit_prep_items', v_visit_prep_items,
+    'cycle_overrides', v_cycle_overrides,
+    'day_entry_merge_events', v_day_entry_merge_events,
+    'profile_tag_registry', v_profile_tag_registry,
+    'day_entry_history', v_day_entry_history
+  );
+end;
+$$;
 
