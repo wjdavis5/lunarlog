@@ -2162,7 +2162,15 @@ class _DaySheetState extends State<DaySheet> {
                   ..._unmappedObservationsSection(theme),
                 // Issue #801: the per-guardian dated notes, beside the shared
                 // day note — never a rework of it.
-                if (!widget.readOnly)
+                // Issue #872: only when the profile actually has guardians to
+                // share with. A signed-out, guardian-less local profile used
+                // to render this section's second note box and a near-identical
+                // disclosure, even though there is no guardian, no one else
+                // with access, and no actionable difference — such a profile
+                // keeps exactly the one shared "Note" box it has always had.
+                if (!widget.readOnly &&
+                    widget.currentUserId != null &&
+                    widget.guardians.isNotEmpty)
                   GuardianNotesSection(
                     profileId: widget.profileId,
                     date: widget.date,

@@ -30,6 +30,41 @@ class MockSyncEngine implements SyncEngine {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// A base64url JWT-shaped string whose payload decodes to `{sub, exp, iat}`
+/// — enough for `GoTrueClient.recoverSession` to accept it as a live session
+/// with no network call, so `client.auth.currentUser?.id` resolves locally
+/// (the `test/data/import/supabase_bulk_importer_test.dart` helper).
+String _fakeJwt({required String sub, required DateTime exp}) {
+  String segment(Map<String, Object?> claims) =>
+      base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '');
+  final header = segment({'alg': 'HS256', 'typ': 'JWT'});
+  final payload = segment({
+    'sub': sub,
+    'exp': exp.millisecondsSinceEpoch ~/ 1000,
+    'iat': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+  });
+  return '$header.$payload.fake-signature';
+}
+
+Future<void> signIn(SupabaseClient client, String uid) async {
+  final jwt = _fakeJwt(
+    sub: uid,
+    exp: DateTime.now().add(const Duration(hours: 1)),
+  );
+  await client.auth.recoverSession(jsonEncode({
+    'access_token': jwt,
+    'token_type': 'bearer',
+    'expires_in': 3600,
+    'refresh_token': 'a-refresh-token',
+    'user': {
+      'id': uid,
+      'aud': 'authenticated',
+      'app_metadata': <String, Object?>{},
+      'created_at': '2026-01-01T00:00:00Z',
+    },
+  }));
+}
+
 void main() {
   late MockSyncEngine syncEngine;
   late List<http.Request> requests;
@@ -518,10 +553,31 @@ void main() {
           400,
         );
       });
+      // Issue #885: this test's original harness was signed out, so the
+      // refusal mapped to notSignedIn instead. The mapping under test is
+      // the *permission* one, so sign the caller in first — the signed-out
+      // case has its own test below.
+      await signIn(client, 'user-mom');
       final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
       expect(
         () => service.cancelInvite('inv-1'),
         throwsA(isA<SharingUnauthorizedFailure>()),
+      );
+    });
+
+    test('maps a no-session refusal to SharingFailure.notSignedIn, not '
+        'SharingFailure.unauthorized (issue #885)', () async {
+      final client = makeClient((req) async {
+        return http.Response(
+          jsonEncode({'message': 'caller lacks permission to cancel this invitation', 'code': '42501'}),
+          400,
+        );
+      });
+      // Deliberately no signIn(): the client holds no session.
+      final service = SupabaseSharingService(client: client, syncEngine: syncEngine);
+      expect(
+        () => service.cancelInvite('inv-1'),
+        throwsA(isA<SharingNotSignedInFailure>()),
       );
     });
 
@@ -590,6 +646,10 @@ void main() {
             400,
           );
         });
+        // Issue #885: this harness was signed out, so a 42501 refusal now
+        // maps to notSignedIn. The mapping under test is the *permission*
+        // one, so sign the caller in first.
+        await signIn(client, 'user-mom');
         final service = SupabaseSharingService(
           client: client,
           syncEngine: syncEngine,

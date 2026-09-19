@@ -33,6 +33,7 @@ void main() {
       SharingFailure.alreadyAccepted(),
       SharingFailure.alreadyGuardian(),
       SharingFailure.unauthorized(),
+      SharingFailure.notSignedIn(),
       SharingFailure.invalidToken(),
       SharingFailure.other(),
     ];
@@ -49,6 +50,18 @@ void main() {
           'Network error. Please check your connection.');
       expect(sharingFailureCopy(_l10n, const SharingFailure.unauthorized()),
           'You do not have permission for this action.');
+    });
+
+    test('a no-session refusal gets its own copy, not the permission one '
+        '(issue #885)', () {
+      expect(
+        sharingFailureCopy(_l10n, const SharingFailure.notSignedIn()),
+        'Sign in to your account to manage sharing.',
+      );
+      expect(
+        sharingFailureCopy(_l10n, const SharingFailure.notSignedIn()),
+        isNot(sharingFailureCopy(_l10n, const SharingFailure.unauthorized())),
+      );
     });
   });
 }

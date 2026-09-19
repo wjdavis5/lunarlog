@@ -2096,6 +2096,24 @@ abstract class AppLocalizations {
   /// **'Invalid invitation link.'**
   String get sharingFailureInvalidToken;
 
+  /// SharingFailure.notSignedIn copy, rendered by sharingFailureCopy (lib/ui/l10n/sharing_failure_copy.dart). A no-session refusal at a sharing surface, distinct from commonUnauthorized (issue #885).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to your account to manage sharing.'**
+  String get sharingFailureNotSignedIn;
+
+  /// Calm state shown in place of a failed pending-invitations load when the device has no session (issue #885).
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing needs an account. Sign in to invite a guardian.'**
+  String get sharingNeedsAccount;
+
+  /// Action button beside sharingNeedsAccount, routing to the existing sign-in screen (issue #885).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get sharingSignInAction;
+
   /// SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt.
   ///
   /// In en, this message translates to:

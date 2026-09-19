@@ -284,6 +284,13 @@ class SupabaseSharingService implements SharingService {
     final code = error.code ?? '';
 
     if (_isUnauthorized(code, msg)) {
+      // Issue #885: the server refuses an unauthenticated caller the same
+      // way it refuses an under-privileged one (42501/permission/JWT), but
+      // with no session the honest copy is "sign in", not "no permission".
+      // Distinguish on the client's own auth state, not on the code alone.
+      if (client.auth.currentUser == null) {
+        return const SharingFailure.notSignedIn();
+      }
       return const SharingFailure.unauthorized();
     }
     final businessFailure = _mapBusinessError(code, msg);

@@ -1183,6 +1183,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingFailureInvalidToken => 'Invalid invitation link.';
 
   @override
+  String get sharingFailureNotSignedIn =>
+      'Sign in to your account to manage sharing.';
+
+  @override
+  String get sharingNeedsAccount =>
+      'Sharing needs an account. Sign in to invite a guardian.';
+
+  @override
+  String get sharingSignInAction => 'Sign in';
+
+  @override
   String get sharingFailureOther =>
       'Failed to accept invitation. Please try again.';
 
