@@ -92,7 +92,7 @@ name: Supabase migrate
 # see that migration and the PR description), pg_net's extension-in-public
 # lint (issue #194's OWN extension relocation is DEFERRED, not done -- see
 # below), and the dashboard-only leaked-password-protection setting.
-# `check-advisor-gate.sh` excludes exactly three narrow, named findings --
+# `check-advisor-gate.sh` excludes exactly two narrow, named findings --
 # see its own header for the full rationale on each -- and every other
 # finding, including one this script has never seen before, still fails
 # the gate:
@@ -117,12 +117,13 @@ name: Supabase migrate
 #     classify-schema-diff.sh already accepts the post-relocation
 #     `WITH SCHEMA extensions` shadow-image shape so the drift gate keeps
 #     passing through the transition.
-#   * `auth_leaked_password_protection` -- a dashboard toggle no migration
-#     or workflow change can flip, confirmed OFF in production as of this
-#     PR, and already on the owner's manual post-deploy checklist (issue
-#     #694). Remove this exclusion once that checklist item is done --
-#     until then it is deliberately excluded here rather than left
-#     failing, since the owner already has it tracked elsewhere.
+#
+# `auth_leaked_password_protection` was a third exclusion until issue #972:
+# the owner completed the issue #18 dashboard checklist on 2026-09-20 and
+# turned leaked-password protection ON, so the finding is gone from
+# production and the exclusion was removed. It is deliberately not
+# re-added; if a future run reports it again the toggle was turned back
+# off, which must fail the gate and reopen issue #18.
 #
 # LLA-111: "run LAST" used to also mean "run only if everything before them
 # succeeded" -- GitHub Actions' default per-step `if:`. That silently
@@ -550,7 +551,7 @@ jobs:
         # instead, via `.github/scripts/check-advisor-gate.sh` (unit
         # tested: `.github/scripts/tests/check-advisor-gate.test.sh`, same
         # pattern as the other stdin-JSON gate scripts in this repo) over
-        # `--output-format json`. That script excludes exactly three
+        # `--output-format json`. That script excludes exactly two
         # narrow, named findings -- see its own header for the full
         # rationale on each:
         #   * `authenticated_security_definer_function_executable` -- by
@@ -560,10 +561,9 @@ jobs:
         #     deferred (production's pg_net is supabase_admin-owned and
         #     non-relocatable, confirmed locally; a plain migration is not
         #     a safe way to move it -- see #194 and the script header).
-        #   * `auth_leaked_password_protection` -- a dashboard-only Auth
-        #     setting, confirmed OFF in production, already on the owner's
-        #     manual post-deploy checklist (issue #694). Remove this
-        #     exclusion once that checklist item is done.
+        # `auth_leaked_password_protection` was a third exclusion until
+        # issue #972 removed it (leaked-password protection turned ON on
+        # 2026-09-20); it now fails the gate like any other finding.
         # Every OTHER finding at warn or above, INCLUDING a lint name this
         # script has never seen before, still fails the gate exactly as
         # before -- this fails closed by construction (see the script's own
