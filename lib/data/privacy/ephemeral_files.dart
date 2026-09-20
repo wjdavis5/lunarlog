@@ -33,6 +33,7 @@ library;
 
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Plugin-owned cache subdirectory names a sweep deletes. `share_plus` is the
@@ -87,9 +88,19 @@ Future<void> deleteDirectoryBestEffort(Directory directory) async {
 
 /// Deletes the plugin cache copies under [cacheDirectory]: every subdirectory
 /// named in [kEphemeralCacheDirNames] plus any direct entry whose name starts
-/// with a prefix in [kEphemeralCacheFilePrefixes]. Tolerates a null (the
-/// platform had no cache directory) or missing directory, and never throws.
-Future<void> sweepEphemeralCachesBestEffort(Directory? cacheDirectory) async {
+/// with a prefix in [kEphemeralCacheFilePrefixes].
+///
+/// On iOS, or when [sweepRootFiles] is true (Issue #943), deletes every direct
+/// regular file at the root of [cacheDirectory] because iOS `file_picker`
+/// copies picked backups directly to `NSTemporaryDirectory()/<original name>`
+/// with no prefix and no subdirectory.
+///
+/// Tolerates a null (the platform had no cache directory) or missing
+/// directory, and never throws.
+Future<void> sweepEphemeralCachesBestEffort(
+  Directory? cacheDirectory, {
+  bool sweepRootFiles = false,
+}) async {
   if (cacheDirectory == null) return;
   for (final name in kEphemeralCacheDirNames) {
     await deleteDirectoryBestEffort(
@@ -98,10 +109,11 @@ Future<void> sweepEphemeralCachesBestEffort(Directory? cacheDirectory) async {
   }
   try {
     if (!await cacheDirectory.exists()) return;
+    final isIos = sweepRootFiles || Platform.isIOS;
     await for (final entity in cacheDirectory.list()) {
       if (entity is! File) continue;
       final name = entity.path.split(Platform.pathSeparator).last;
-      if (kEphemeralCacheFilePrefixes.any(name.startsWith)) {
+      if (isIos || kEphemeralCacheFilePrefixes.any(name.startsWith)) {
         await deleteFileBestEffort(File(entity.path));
       }
     }
@@ -120,12 +132,31 @@ Future<Directory?> temporaryCacheDirectory() async {
   }
 }
 
-/// Resolves the platform cache directory and sweeps it (issue #843). Called
-/// fire-and-forget at startup to cover a process kill mid-share or mid-pick;
-/// never throws and never blocks.
-Future<void> sweepPluginCachesAtStartup() async {
+/// Resolves the platform cache directory and sweeps it (issue #843, issue #943).
+/// Also invokes [clearFilePicker] (defaults to [FilePicker.clearTemporaryFiles])
+/// to purge native temporary picker files. Called fire-and-forget at startup
+/// to cover a process kill mid-share or mid-pick; never throws and never blocks.
+Future<void> sweepPluginCachesAtStartup({
+  Future<void> Function()? clearFilePicker,
+}) async {
   try {
-    await sweepEphemeralCachesBestEffort(await temporaryCacheDirectory());
+    if (clearFilePicker != null) {
+      await clearFilePicker();
+    } else {
+      try {
+        await FilePicker.clearTemporaryFiles();
+      } catch (_) {
+        // Best effort: ignored when unsupported or plugin is unbound in tests.
+      }
+    }
+  } catch (_) {
+    // Best effort: clear failure must never fail a launch.
+  }
+  try {
+    await sweepEphemeralCachesBestEffort(
+      await temporaryCacheDirectory(),
+      sweepRootFiles: Platform.isIOS,
+    );
   } catch (_) {
     // A sweep failure must never fail a launch.
   }
