@@ -317,8 +317,9 @@ void main() {
         ),
       );
 
-      // Card 1: The brand mark (nights_stay icon) top must be >= 59 (safe area inset)
-      final iconFinder = find.byIcon(Icons.nights_stay);
+      // Card 1: The brand mark (issue #808: the bundled app icon, not the
+      // old nights_stay glyph) top must be >= 59 (safe area inset).
+      final iconFinder = find.byKey(const ValueKey('first-run-brand-mark'));
       expect(iconFinder, findsOneWidget);
       final iconTop = tester.getTopLeft(iconFinder).dy;
       expect(iconTop, greaterThanOrEqualTo(59.0));

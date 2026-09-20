@@ -16,11 +16,19 @@
 -- #462, section 11) the recipient's own `leave_prediction_connection` path
 -- -- only the accepted recipient may call it, a non-party (sharer
 -- included) is refused, an unknown id raises not found, and it reaches the
--- identical terminal state and projection GC as a sharer revoke.
+-- identical terminal state and projection GC as a sharer revoke. Issue
+-- #945 (section 6e): minor status is DERIVED server-side exactly like
+-- the client's deriveMinorStatus() (#820) - the predicate's truth table
+-- (birth year authoritative, <= 18 coarse boundary, stored flag the
+-- null-year fallback), an adult birth_year beating a stale is_minor=true
+-- flag at create, a raw flag flip on an adult-year profile no longer
+-- revoking, and a birth_year edit crossing into minority revoking the
+-- ACCEPTED connection and deleting the stored projection in the same
+-- statement.
 -- Fixture style: ownership_transfer_test.sql /
 -- guardian_invitation_revocation_test.sql.
 begin;
-select plan(147);
+select plan(164);
 
 -- One captured RPC result per name (the ownership_transfer_test.sql pattern):
 -- an RPC that both returns a value and mutates state must be called once.
@@ -612,29 +620,57 @@ select ok(
   'clearing the minor flag re-opens creation');
 
 -- The flag can change between arming and redemption: accept re-checks.
--- Issue #518: setting is_minor=true directly would now ALSO trip the
--- profiles_minor_prediction_revocation_guard trigger and immediately
--- revoke this connection - which would make accept fail with "revoked"
--- rather than exercising accept's OWN minor-gate re-check at all. Using
--- birth_year here instead isolates that re-check: a birth_year-implied
--- minority does not touch is_minor, so the trigger does not fire, and the
--- connection survives untouched for the "cleared" case below to redeem.
+-- Issue #518 isolated that re-check from the revocation trigger by using
+-- a birth_year edit (which did not touch is_minor, so the trigger did
+-- not fire). Issue #945 closes that dodge: the trigger now keys on the
+-- DERIVED transition, and a birth_year edit crossing into minority IS
+-- that transition - so the edit revokes the pending connection in the
+-- same statement, and accept's OWN minor-gate re-check is isolated
+-- below the only way it still can be: a service_role-inserted pending
+-- connection for a profile that already counts as a minor
+-- (create_prediction_connection would refuse to arm one, correctly -
+-- every UPDATE path that could produce this state trips the trigger
+-- first, which is exactly why the re-check stays as defense in depth).
 select tests.clear_authentication();
 update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(901);
+select is(
+  pg_temp.conn_revoked(pg_temp.token(291)),
+  true,
+  'Issue #945: a birth_year edit crossing into minority revokes the pending connection in the same statement');
 select tests.authenticate_as('stranger');
 select throws_ok(
   format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(291)),
+  '55000', 'prediction connection was revoked',
+  'the trigger-revoked invite cannot be redeemed');
+
+select set_config('role', 'service_role', true);
+insert into public.prediction_connections
+  (profile_id, owner_user_id, token_hash, recipient_label, expires_at, created_at)
+values
+  (tests.ulid(901), tests.get_supabase_uid('mom'), pg_temp.token(295), 'Partner',
+   clock_timestamp() + interval '24 hours', clock_timestamp());
+select set_config('role', 'authenticated', true);
+select throws_ok(
+  format($$select public.accept_prediction_connection(%L)$$, pg_temp.token(295)),
   '55000', 'prediction-only sharing is unavailable for a minor''s profile',
-  'Issue #518: accepting is refused once the profile is a minor by birth_year, without touching is_minor');
+  'Issue #518/#945: accepting re-checks minor status at redemption and refuses, independent of the trigger');
+select set_config('role', 'service_role', true);
+delete from public.prediction_connections where token_hash = pg_temp.token(295);
+select set_config('role', 'authenticated', true);
 
 select tests.clear_authentication();
 update public.profiles set birth_year = null where id = tests.ulid(901);
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(901), pg_temp.token(296), 'Partner', 72)
+    is not null,
+  'clearing the birth_year re-opens creation (flag still false)');
 select tests.authenticate_as('stranger');
-insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(291));
+insert into r select 'accept_minor_lifted', public.accept_prediction_connection(pg_temp.token(296));
 select is(
   (select v ->> 'profile_id' from r where name = 'accept_minor_lifted'),
   tests.ulid(901),
-  'the same, not-yet-consumed code redeems once the birth_year-implied minority is cleared (connection was never revoked)');
+  'a fresh code redeems once the birth_year-implied minority is cleared');
 
 -- Reset: leave P1 with no live connection, as section 7 expects.
 select tests.authenticate_as('mom');
@@ -820,6 +856,106 @@ select is(
   null,
   'Issue LLA-061: the recipient reads null once the projection is retracted, exactly like an unpublished profile'
 );
+
+-- ---------------------------------------------------------------------------
+-- 6e. Issue #945: minor status is DERIVED server-side exactly like the
+--     client's deriveMinorStatus() (#820) - a present birth_year is
+--     authoritative (minor iff current year - birth_year <= 18, the
+--     coarse fail-closed year rule of #296), and the stored is_minor
+--     flag decides only when no year exists. The disagreement the issue
+--     cites (adult year + stale true flag: the client offers the Share
+--     affordance, the old union predicate refused it) is impossible by
+--     construction now. Fresh profiles P7/P8 isolate this section.
+-- ---------------------------------------------------------------------------
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, created_at, updated_at)
+values (tests.ulid(907), 'Riley P7', false, 0, extract(year from now())::int - 19,
+        '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+-- The cited disagreement case, end to end: an adult-implying birth year
+-- plus a stale is_minor=true flag (the old client pushed true, the year
+-- was edited to adult since, the flag has not synced yet). The server
+-- must agree with the client's adult derivation.
+select tests.clear_authentication();
+update public.profiles set is_minor = true where id = tests.ulid(907);
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(907), pg_temp.token(597), 'Partner', 72)
+    is not null,
+  'Issue #945: an adult birth_year beats a stale is_minor=true flag at create');
+
+-- And the raw flag flipping on that adult-year profile is not the
+-- decision-maker anymore: the derived status never changed, so the
+-- revocation trigger must not fire.
+select tests.clear_authentication();
+update public.profiles set is_minor = false where id = tests.ulid(907);
+select is(
+  pg_temp.conn_revoked(pg_temp.token(597)),
+  false,
+  'Issue #945: an is_minor flip on an adult-year profile leaves the live connection alone (the flag is not the decision-maker)');
+
+-- The shared predicate's truth table, boundary included: the whole
+-- calendar year of the 18th birthday stays minor (#296's coarse rule),
+-- and a present year always wins over the flag in BOTH directions.
+select tests.authenticate_as('mom');
+select is(public.profile_counts_as_minor(false, (extract(year from now())::int - 15)::smallint), true,
+  '#945 truth table: year says 15, flag clear -> minor');
+select is(public.profile_counts_as_minor(false, (extract(year from now())::int - 18)::smallint), true,
+  '#945 truth table: year says 18 (the 18th-birthday calendar year), flag clear -> minor (boundary)');
+select is(public.profile_counts_as_minor(true, (extract(year from now())::int - 18)::smallint), true,
+  '#945 truth table: year says 18, stale flag true -> minor (both agree at the boundary)');
+select is(public.profile_counts_as_minor(false, (extract(year from now())::int - 19)::smallint), false,
+  '#945 truth table: year says 19, flag clear -> adult');
+select is(public.profile_counts_as_minor(true, (extract(year from now())::int - 19)::smallint), false,
+  '#945 truth table: year says 19, stale flag true -> adult (a present year never loses to the flag)');
+select is(public.profile_counts_as_minor(true, null), true,
+  '#945 truth table: no year, flag true -> minor (the null-year fallback, unchanged)');
+select is(public.profile_counts_as_minor(false, null), false,
+  '#945 truth table: no year, flag clear -> adult (unchanged)');
+
+-- The boundary that must stay refused, as an RPC: the birthday has not
+-- passed server-side by the coarse year rule (age 18), and the flag is
+-- stale-clear - derived minor, create refused. Then the full durability
+-- walk on the same profile: once the year says 19 the create succeeds,
+-- and a later year edit crossing back into minority revokes the
+-- ACCEPTED connection and deletes the stored projection in the same
+-- statement (#945's trigger widening).
+select tests.authenticate_as('mom');
+insert into public.profiles (id, display_name, is_minor, sort_order, birth_year, created_at, updated_at)
+values (tests.ulid(908), 'Riley P8', false, 0, extract(year from now())::int - 18,
+        '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+select throws_ok(
+  format($$select public.create_prediction_connection(%L, %L, null, 72)$$,
+    tests.ulid(908), pg_temp.token(598)),
+  '55000', 'prediction-only sharing is unavailable for a minor''s profile',
+  'Issue #945: an 18th-birthday-year profile is still refused (the coarse <= 18 boundary), flag clear');
+
+select tests.clear_authentication();
+update public.profiles set birth_year = extract(year from now())::int - 19 where id = tests.ulid(908);
+select tests.authenticate_as('mom');
+select ok(
+  public.create_prediction_connection(tests.ulid(908), pg_temp.token(598), 'Partner', 72)
+    is not null,
+  'fixture: the year moving past the boundary re-opens creation');
+select tests.authenticate_as('nanny');
+select public.accept_prediction_connection(pg_temp.token(598));
+select tests.authenticate_as('mom');
+select public.upsert_prediction_projection(tests.ulid(908), '{"generated_at":"2026-09-12"}'::jsonb);
+select is(
+  pg_temp.proj_count_for(tests.ulid(908)),
+  1::bigint,
+  'fixture: a normal publish stores a projection while the year says adult');
+
+select tests.clear_authentication();
+update public.profiles set birth_year = extract(year from now())::int - 15 where id = tests.ulid(908);
+select isnt(
+  pg_temp.conn_revoked_for(tests.ulid(908), tests.get_supabase_uid('nanny')),
+  null,
+  'Issue #945: a birth_year edit crossing into minority revokes the ACCEPTED connection in the same statement');
+select is(
+  pg_temp.proj_count_for(tests.ulid(908)),
+  0::bigint,
+  'Issue #945: the same edit deletes the stored projection in the same statement');
 
 -- ---------------------------------------------------------------------------
 -- 7. Pregnancy mode: refused at create AND at accept (life-stage mode,
