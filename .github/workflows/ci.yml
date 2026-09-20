@@ -813,7 +813,7 @@ jobs:
             xcrun simctl list devices available
             exit 1
           fi
-          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$devices")"
+          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$(xcrun simctl list devices available -j)")"
           echo "Using simulator: $name ($udid)"
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
