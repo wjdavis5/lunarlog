@@ -49,13 +49,15 @@
 ///     account it could belong to, so the local operator is treated as its
 ///     owner and the no-account path the rest of the app supports stays
 ///     usable.
-///  3. **Minor gate (Issue #882)**: a profile counts as a minor when either
-///     [Profile.isMinor] is set, or it is not set but the profile is at
-///     most 18 by coarse-year arithmetic against [Profile.birthYear]
-///     (`<= 18`, the fail-closed direction — issue #296; someone born late
-///     in year Y is still 17 for most of year Y+18 and a year-only check
-///     cannot see the birthday) — unticking "Minor" in the profile dialog
-///     must never by itself clear this deny. Since #882 a minor is *not* a
+///  3. **Minor gate (Issue #882)**: a profile counts as a minor per the one
+///     shared [deriveMinorStatus] rule (Issue #820): a present
+///     [Profile.birthYear] is authoritative (at most 18 by coarse-year
+///     arithmetic, `<= 18`, the fail-closed direction — issue #296;
+///     someone born late in year Y is still 17 for most of year Y+18 and a
+///     year-only check cannot see the birthday), and a null birth year
+///     falls back to the stored [Profile.isMinor] flag — unticking "Minor"
+///     in the profile dialog must never by itself clear this deny when a
+///     birth year says otherwise. Since #882 a minor is *not* a
 ///     special deny: it passes condition 2 on exactly the same terms as an
 ///     adult. No ownership transfer is required. The transferred-minor
 ///     exception (transfer targeted the signed-in account itself, i.e.

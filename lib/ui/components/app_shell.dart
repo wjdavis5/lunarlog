@@ -140,6 +140,12 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   late AppTab _tab = AppTab.today;
 
+  /// Issue #820: minor status is derived from the profile's birth year when
+  /// present (the single `deriveMinorStatus` rule), falling back to the
+  /// stored flag otherwise. Evaluated against the shell's injected "today"
+  /// seam, never a wall-clock read inside the derivation.
+  bool get _isMinor => widget.profile.isMinorAsOfYear(widget.todayProvider().year);
+
   /// Tabs built at least once (issue #182: "each tab's own state" survives a
   /// switch away and back via [IndexedStack] -- but building all four up
   /// front, before the operator ever taps Calendar/Insights/More, would
@@ -261,7 +267,7 @@ class _AppShellState extends State<AppShell> {
             profileId: widget.profile.id,
             mode: widget.profile.mode,
             trackingPreferences: widget.profile.trackingPreferences,
-            isMinor: widget.profile.isMinor,
+            isMinor: _isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
@@ -274,7 +280,7 @@ class _AppShellState extends State<AppShell> {
             mode: widget.profile.mode,
             lifecycleMode: _lifecycleMode,
             trackingPreferences: widget.profile.trackingPreferences,
-            isMinor: widget.profile.isMinor,
+            isMinor: _isMinor,
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
@@ -407,7 +413,7 @@ class _AppShellState extends State<AppShell> {
                   mode: widget.profile.mode,
                   lifecycleMode: _lifecycleMode,
                   trackingPreferences: widget.profile.trackingPreferences,
-                  isMinor: widget.profile.isMinor,
+                  isMinor: _isMinor,
                   todayProvider: widget.todayProvider,
                   timezoneProvider: widget.timezoneProvider,
                   guardiansRepository: guardiansRepository,

@@ -71,6 +71,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
       ? _DetailTab.overview
       : _DetailTab.calendar;
 
+  /// Issue #820: minor status derives from birth year when present (falling
+  /// back to the stored flag), evaluated against the injected today seam.
+  bool get _isMinor =>
+      widget.profile.isMinorAsOfYear(widget.todayProvider().year);
+
   @override
   void didUpdateWidget(ProfileDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -173,7 +178,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     readOnly: widget.readOnly,
                     mode: widget.profile.mode,
                     trackingPreferences: widget.profile.trackingPreferences,
-                    isMinor: widget.profile.isMinor,
+                    isMinor: _isMinor,
                     todayProvider: widget.todayProvider,
                     timezoneProvider: widget.timezoneProvider,
                     guardiansRepository: guardiansRepository,
@@ -234,7 +239,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
       profileId: widget.profile.id,
       mode: widget.profile.mode,
       trackingPreferences: widget.profile.trackingPreferences,
-      isMinor: widget.profile.isMinor,
+      isMinor: _isMinor,
       todayProvider: widget.todayProvider,
       readOnly: widget.readOnly,
       timezoneProvider: widget.timezoneProvider,

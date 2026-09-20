@@ -16,18 +16,32 @@ library;
 /// Which value kind a discard lost. The closed set IS the feature: `tags`
 /// merges are a set union and never discard anything, so no event may
 /// claim them (AC).
+///
+/// [guardianNote] is Issue #871's addition: the same disclosure substrate
+/// retains a converged-away guardian note's body (its own note converges
+/// with itself across devices, never another author's), so the extra member
+/// keeps that retained text on the same read/export path. It is filtered
+/// out of the day sheet's notice list — it is not a day-entry merge.
 enum DayEntryMergeEventField {
   flow,
-  note;
+  note,
+  guardianNote;
 
   /// The server/wire string (`day_entry_merge_events.field`'s CHECK set).
-  String toDb() => name;
+  String toDb() => switch (this) {
+        DayEntryMergeEventField.guardianNote => 'guardian_note',
+        DayEntryMergeEventField.flow => 'flow',
+        DayEntryMergeEventField.note => 'note',
+      };
 
   /// Parses the wire string; an unrecognised value (only possible from a
   /// broken writer — the server CHECKs the set) degrades to [note] rather
   /// than throwing, mirroring `row_codec.dart`'s decode-side normalisation.
-  static DayEntryMergeEventField fromDb(String raw) =>
-      raw == 'flow' ? DayEntryMergeEventField.flow : DayEntryMergeEventField.note;
+  static DayEntryMergeEventField fromDb(String raw) => switch (raw) {
+        'flow' => DayEntryMergeEventField.flow,
+        'guardian_note' => DayEntryMergeEventField.guardianNote,
+        _ => DayEntryMergeEventField.note,
+      };
 }
 
 /// One recorded same-date merge discard.

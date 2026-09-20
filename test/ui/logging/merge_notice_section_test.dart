@@ -101,10 +101,13 @@ void main() {
   test('DayEntryMergeEventField round-trips the wire strings', () {
     expect(DayEntryMergeEventField.flow.toDb(), 'flow');
     expect(DayEntryMergeEventField.note.toDb(), 'note');
+    expect(DayEntryMergeEventField.guardianNote.toDb(), 'guardian_note');
     expect(DayEntryMergeEventField.fromDb('flow'),
         DayEntryMergeEventField.flow);
     expect(DayEntryMergeEventField.fromDb('note'),
         DayEntryMergeEventField.note);
+    expect(DayEntryMergeEventField.fromDb('guardian_note'),
+        DayEntryMergeEventField.guardianNote);
     // A broken writer's value degrades to note, never throws.
     expect(DayEntryMergeEventField.fromDb('tags'),
         DayEntryMergeEventField.note);
@@ -206,5 +209,24 @@ void main() {
       currentUserId: 'user-winner',
     );
     expect(find.textContaining('another guardian'), findsWidgets);
+  });
+
+  // Issue #871: a converged-away guardian note is stored in this substrate
+  // for text recovery, though it is filtered out of the day sheet's read.
+  // This pins the (otherwise unreachable) render/restore arms so the closed
+  // enum cannot drift into an unhandled value.
+  testWidgets('a guardian-note disclosure renders and restores through the '
+      'note path', (tester) async {
+    var restored = false;
+    await pumpSection(
+      tester,
+      events: [event(field: DayEntryMergeEventField.guardianNote)],
+      currentUserId: 'user-loser',
+      onRestoreNote: (_) => restored = true,
+    );
+    expect(find.textContaining('guardian note'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('merge-notice-restore')));
+    await tester.pump();
+    expect(restored, isTrue);
   });
 }

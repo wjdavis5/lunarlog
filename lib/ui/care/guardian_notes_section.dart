@@ -153,24 +153,20 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
           for (final note in snapshot.data ?? const <GuardianNote>[])
             if (note.localDate == widget.date) note,
         ];
-        GuardianNote? own;
-        final others = <GuardianNote>[];
-        for (final note in notes) {
-          // An exact author match is "mine" — including a null author for a
-          // never-synced local-only operator (currentUserId null), whose
-          // note the server has not stamped yet.
-          if (note.loggedByUserId == widget.currentUserId) {
-            own = note;
-          } else {
-            others.add(note);
-          }
-        }
+        // Issue #871: a second own note must never be silently dropped. The
+        // newest own note becomes the editable one; every older own note is
+        // rendered as a plain row exactly like another guardian's note. A
+        // viewer's own note (she may have written it before a role change)
+        // is also rendered as a plain row, since she has no editor. The
+        // partition lives in [_partitionOwnNotes] to keep this method's
+        // cyclomatic complexity (and its CRAP score) under the gate.
+        final (own, rowNotes) = _partitionOwnNotes(notes);
         // Adopt the author's own note into the editor once, only when it is
         // not already adopted — an unconditional post-frame setState here
         // would rebuild, schedule another callback, and never settle.
         if (own != null && _adoptedId != own.id) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() => _adopt(own!));
+            if (mounted) setState(() => _adopt(own));
           });
         }
         return Column(
@@ -187,14 +183,50 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
             ),
             const SizedBox(height: LLSpace.space2),
             if (widget.canWrite) _ownEditor(theme, own),
-            for (final note in others) _noteRow(theme, note),
-            if (!widget.canWrite && own == null && others.isEmpty)
+            for (final note in rowNotes) _noteRow(theme, note),
+            if (!widget.canWrite && rowNotes.isEmpty)
               Text(l10n.guardianNotesEmpty,
                   style: theme.textTheme.bodySmall),
           ],
         );
       },
     );
+  }
+
+  /// Splits the day's notes into the author's editable [own] note (the
+  /// newest one, or null) and the plain [rowNotes] to render beneath the
+  /// editor — every other author's note, every older own note, and (for a
+  /// viewer) her own note too, since she has no editor.
+  (GuardianNote?, List<GuardianNote>) _partitionOwnNotes(
+    List<GuardianNote> notes,
+  ) {
+    GuardianNote? own;
+    final rows = <GuardianNote>[];
+    for (final note in notes) {
+      // An exact author match is "mine" — including a null author for a
+      // never-synced local-only operator (currentUserId null), whose note
+      // the server has not stamped yet.
+      if (note.loggedByUserId != widget.currentUserId) {
+        rows.add(note);
+        continue;
+      }
+      if (own == null || _isNewer(note, own)) {
+        if (own != null) rows.add(own);
+        own = note;
+      } else {
+        rows.add(note);
+      }
+    }
+    if (!widget.canWrite && own != null) rows.add(own);
+    return (own, rows);
+  }
+
+  /// Whether [a] should be the editable own note over [b]: later write
+  /// first, id as the deterministic tie-break (ULIDs sort chronologically).
+  static bool _isNewer(GuardianNote a, GuardianNote b) {
+    final byTime = a.updatedAt.compareTo(b.updatedAt);
+    if (byTime != 0) return byTime > 0;
+    return a.id.compareTo(b.id) > 0;
   }
 
   Widget _ownEditor(ThemeData theme, GuardianNote? own) {

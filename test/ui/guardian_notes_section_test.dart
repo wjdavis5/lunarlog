@@ -200,4 +200,88 @@ void main() {
     expect(find.text('Dad wrote this.'), findsOneWidget);
     expect(find.text('Dad'), findsOneWidget);
   });
+
+  // Issue #871: two offline devices can leave two live own notes for one
+  // date. Before the fix, the loop overwrote `own` and the older note simply
+  // vanished for its author (while every other guardian saw both).
+  testWidgets('two own notes for the same date both render; the newest is '
+      'the editable one', (tester) async {
+    final repo = _FakeGuardianNotesRepository([
+      GuardianNote(
+        id: 'g-old',
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        body: 'Older own note.',
+        updatedAt: DateTime.utc(2026, 9, 12, 9),
+        loggedByUserId: 'u1',
+      ),
+      GuardianNote(
+        id: 'g-new',
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        body: 'Newest own note.',
+        updatedAt: DateTime.utc(2026, 9, 12, 11),
+        loggedByUserId: 'u1',
+      ),
+    ]);
+    addTearDown(repo.close);
+    await tester.pumpWidget(wrap(repo));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextFormField>(
+        find.byKey(const ValueKey('guardian-note-field')));
+    expect(field.controller!.text, 'Newest own note.',
+        reason: 'the newest own note is adopted into the editor');
+    expect(find.text('Older own note.'), findsOneWidget,
+        reason: 'the older own note must still be visible to its author');
+    expect(find.byKey(const ValueKey('guardian-note-g-old')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guardian-note-g-new')), findsNothing,
+        reason: 'the newest lives in the editor, not as a plain row');
+  });
+
+  testWidgets("a viewer's own note is still rendered (as a read-only row)",
+      (tester) async {
+    final repo = _FakeGuardianNotesRepository(
+        [note('g1', 'Written before my role changed.', author: 'u1')]);
+    addTearDown(repo.close);
+    await tester.pumpWidget(wrap(repo, canWrite: false));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Written before my role changed.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('guardian-note-field')), findsNothing);
+  });
+
+  testWidgets('a same-instant tie breaks by id (ULID order) so the choice is '
+      'deterministic', (tester) async {
+    final repo = _FakeGuardianNotesRepository([
+      GuardianNote(
+        id: 'g-a',
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        body: 'Lower id.',
+        updatedAt: t0,
+        loggedByUserId: 'u1',
+      ),
+      GuardianNote(
+        id: 'g-b',
+        profileId: 'p1',
+        localDate: date,
+        tz: 'UTC',
+        body: 'Higher id.',
+        updatedAt: t0,
+        loggedByUserId: 'u1',
+      ),
+    ]);
+    addTearDown(repo.close);
+    await tester.pumpWidget(wrap(repo));
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextFormField>(
+        find.byKey(const ValueKey('guardian-note-field')));
+    expect(field.controller!.text, 'Higher id.');
+    expect(find.text('Lower id.'), findsOneWidget);
+  });
 }

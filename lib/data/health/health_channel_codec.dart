@@ -311,7 +311,11 @@ Map<String, Object?> encodeGuardArgs(
         'profileId': facts.profile.id,
         'signedInUserId': facts.signedInUserId,
         'ownerUserId': facts.ownerUserId,
-        'isMinor': facts.profile.isMinor,
+        // Issue #820: carry the DERIVED minor status (birth year wins when
+        // present), not the raw stored flag. The native mirrors still OR
+        // this with their own birth-year arithmetic, so an already-derived
+        // value leaves their result unchanged in every case.
+        'isMinor': facts.profile.isMinorAsOf(DateTime.now()),
         'birthYear': facts.profile.birthYear,
         'transferredAtMs': facts.profile.transferredAt?.millisecondsSinceEpoch,
         'transferredToUserId': facts.profile.transferredToUserId,

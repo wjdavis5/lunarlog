@@ -1615,7 +1615,13 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               localRev: const Value(1),
               loggedByUserId: Value(loggedByUserId),
             ));
-        return _guardianNoteById(rowId);
+        final written = await _guardianNoteById(rowId);
+        await _convergeGuardianNotes(
+          profileId: profileId,
+          localDate: localDate,
+          winner: written,
+        );
+        return written;
       }
       final rowId = existing.id;
       await (db.update(db.guardianNotes)..where((t) => t.id.equals(rowId)))
@@ -1632,8 +1638,107 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           // later local write. The server is authoritative anyway.
         ),
       );
-      return _guardianNoteById(rowId);
+      final written = await _guardianNoteById(rowId);
+      await _convergeGuardianNotes(
+        profileId: profileId,
+        localDate: localDate,
+        winner: written,
+      );
+      return written;
     });
+  }
+
+  /// Issue #871: converge this author's duplicate live notes for one date
+  /// into the row just written. Two devices that wrote offline before the
+  /// deterministic id existed (or a legacy row pulled from the server) can
+  /// leave two live rows for the same `(profile, author, date)`; this
+  /// tombstones every other one under the ordinary per-id last-writer-wins
+  /// rule, so "one note per guardian per date" holds after the author's
+  /// next write. An author-less row (never-synced local-only operator) has
+  /// no coordination key and is left alone.
+  ///
+  /// Before a differing duplicate is discarded, its body is retained in the
+  /// same `day_entry_merge_events` disclosure substrate #130 uses for
+  /// same-date entry merges (field `guardian_note`) so the author can
+  /// recover it — never silently destroyed. The disclosure is device-local
+  /// (`dirty: false`): unlike a day-entry merge there is no second guardian
+  /// who needs the notice, and a synced copy would need `sync_push`'s
+  /// merge-event field validation widened, which is out of scope here.
+  Future<void> _convergeGuardianNotes({
+    required String profileId,
+    required String localDate,
+    required GuardianNoteData winner,
+  }) async {
+    final authorUserId = winner.loggedByUserId;
+    if (authorUserId == null) return;
+    final others = await (db.select(db.guardianNotes)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.localDate.equals(localDate) &
+              t.loggedByUserId.equals(authorUserId) &
+              t.deletedAt.isNull() &
+              t.id.isNotValue(winner.id)))
+        .get();
+    for (final loser in others) {
+      final at = _afterStored(_now(), loser.updatedAt);
+      await (db.update(db.guardianNotes)..where((t) => t.id.equals(loser.id)))
+          .write(
+        GuardianNotesCompanion(
+          body: const Value(''),
+          updatedAt: Value(at),
+          deletedAt: Value(at),
+          dirty: const Value(true),
+          localRev: Value(loser.localRev + 1),
+        ),
+      );
+      await _recordGuardianNoteDiscard(
+        profileId: profileId,
+        localDate: localDate,
+        winner: winner,
+        loser: loser,
+        stamp: at,
+      );
+    }
+  }
+
+  /// Retains a converged-away guardian note's body as a `guardian_note`
+  /// disclosure row (Issue #871). No-op when the losing body is empty or
+  /// identical to the winner's (nothing was lost), and deduplicated on the
+  /// established natural key `(profile, losing row id, field)`.
+  Future<void> _recordGuardianNoteDiscard({
+    required String profileId,
+    required String localDate,
+    required GuardianNoteData winner,
+    required GuardianNoteData loser,
+    required DateTime stamp,
+  }) async {
+    if (loser.body.isEmpty || loser.body == winner.body) return;
+    final already = await (db.select(db.dayEntryMergeEvents)
+          ..where((t) =>
+              t.profileId.equals(profileId) &
+              t.losingRowId.equals(loser.id) &
+              t.field.equals('guardian_note')))
+        .getSingleOrNull();
+    if (already != null) return;
+    await db.into(db.dayEntryMergeEvents).insert(
+          DayEntryMergeEventsCompanion.insert(
+            id: _generator.next(),
+            profileId: profileId,
+            localDate: localDate,
+            winningRowId: winner.id,
+            losingRowId: loser.id,
+            field: 'guardian_note',
+            losingValueText: loser.body.length > kMaxCareNoteLength
+                ? loser.body.substring(0, kMaxCareNoteLength)
+                : loser.body,
+            losingAuthorUserId: Value(loser.loggedByUserId),
+            winningAuthorUserId: Value(winner.loggedByUserId),
+            createdAt: stamp,
+            updatedAt: stamp,
+            dirty: const Value(false),
+            localRev: const Value(1),
+          ),
+        );
   }
 
   /// Tombstones the guardian note [id]: sets `deleted_at` (and bumps

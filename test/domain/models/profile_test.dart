@@ -185,4 +185,48 @@ void main() {
       expect(s, contains('tombstoned'));
     });
   });
+
+  group('minor status derivation (Issue #820)', () {
+    test('a present birth year wins over a disagreeing minor flag, both '
+        'directions', () {
+      // Flagged minor, but the birth year says clearly adult.
+      final flaggedButAdult =
+          _profile(isMinor: true, birthYear: 1980);
+      expect(flaggedButAdult.isMinorAsOfYear(2026), isFalse);
+
+      // Not flagged, but the birth year says clearly a minor.
+      final unflaggedButMinor =
+          _profile(isMinor: false, birthYear: 2020);
+      expect(unflaggedButMinor.isMinorAsOfYear(2026), isTrue);
+    });
+
+    test('a null birth year preserves the stored flag exactly', () {
+      expect(_profile(isMinor: true, birthYear: null).isMinorAsOfYear(2026),
+          isTrue);
+      expect(_profile(isMinor: false, birthYear: null).isMinorAsOfYear(2026),
+          isFalse);
+    });
+
+    test('the <= 18 boundary fails closed across the whole calendar year '
+        'Y + 18 (Issue #296 behavior preserved)', () {
+      // Someone born in year Y is 18-or-younger for all of Y + 18.
+      expect(_profile(birthYear: 2008).isMinorAsOfYear(2026), isTrue);
+      expect(_profile(birthYear: 2007).isMinorAsOfYear(2026), isFalse);
+      expect(_profile(birthYear: 2026 - 18).isMinorAsOfYear(2026), isTrue);
+      expect(_profile(birthYear: 2026 - 19).isMinorAsOfYear(2026), isFalse);
+    });
+
+    test('isMinorAsOf uses the supplied clock, never a wall-clock read', () {
+      final profile = _profile(birthYear: 2008);
+      expect(profile.isMinorAsOf(DateTime.utc(2026, 1, 1)), isTrue);
+      expect(profile.isMinorAsOf(DateTime.utc(2030, 1, 1)), isFalse);
+    });
+
+    test('deriveMinorStatus is the single shared rule', () {
+      expect(deriveMinorStatus(storedIsMinor: true, birthYear: 1980, currentYear: 2026), isFalse);
+      expect(deriveMinorStatus(storedIsMinor: false, birthYear: null, currentYear: 2026), isFalse);
+      expect(deriveMinorStatus(storedIsMinor: true, birthYear: null, currentYear: 2026), isTrue);
+      expect(deriveMinorStatus(storedIsMinor: false, birthYear: 2020, currentYear: 2026), isTrue);
+    });
+  });
 }

@@ -1101,7 +1101,9 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         // Issue #373: PRIVACY.md - minor profiles are never shared. The
         // server refuses the create RPC too; this only keeps the
         // affordance off a screen where it could never succeed.
-        if (widget.profile.isMinor)
+        // Issue #820: "minor" is the derived status (birth year wins when
+        // present), not the raw stored flag.
+        if (widget.profile.isMinorAsOf(DateTime.now()))
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: Text(
