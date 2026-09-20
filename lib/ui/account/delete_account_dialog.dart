@@ -276,7 +276,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                     Text(
                       _blastRadiusCopy(blastRadius),
                       key: const ValueKey('account-delete-blast-radius'),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ],
                   if (blastRadius != null &&

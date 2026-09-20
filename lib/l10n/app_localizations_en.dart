@@ -574,6 +574,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewLongCyclePredictionsOff => 'Turn off predictions';
 
   @override
+  String get overviewStaleHistoryTitle => 'Your history is out of date';
+
+  @override
+  String get overviewStaleHistoryBody =>
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+
+  @override
+  String get overviewStaleHistoryLog => 'Log a period';
+
+  @override
   String get overviewReminderHint =>
       'Reminders unavailable — notifications are off';
 

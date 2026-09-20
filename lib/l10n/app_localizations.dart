@@ -1076,6 +1076,24 @@ abstract class AppLocalizations {
   /// **'Turn off predictions'**
   String get overviewLongCyclePredictionsOff;
 
+  /// Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Your history is out of date'**
+  String get overviewStaleHistoryTitle;
+
+  /// Issue #859: calm, non-alarming body of the stale-history overview card.
+  ///
+  /// In en, this message translates to:
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.'**
+  String get overviewStaleHistoryBody;
+
+  /// Issue #859: primary action on the stale-history card, logging a period start for today.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a period'**
+  String get overviewStaleHistoryLog;
+
   /// Hint line shown when notification permission is denied.
   ///
   /// In en, this message translates to:

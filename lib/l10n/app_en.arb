@@ -727,6 +727,18 @@
   "@overviewLongCyclePredictionsOff": {
     "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
+  "overviewStaleHistoryTitle": "Your history is out of date",
+  "@overviewStaleHistoryTitle": {
+    "description": "Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything."
+  },
+  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.",
+  "@overviewStaleHistoryBody": {
+    "description": "Issue #859: calm, non-alarming body of the stale-history overview card."
+  },
+  "overviewStaleHistoryLog": "Log a period",
+  "@overviewStaleHistoryLog": {
+    "description": "Issue #859: primary action on the stale-history card, logging a period start for today."
+  },
   "overviewReminderHint": "Reminders unavailable — notifications are off",
   "@overviewReminderHint": {
     "description": "Hint line shown when notification permission is denied."
