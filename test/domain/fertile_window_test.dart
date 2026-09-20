@@ -19,6 +19,7 @@ ActivePrediction _prediction({
   required LocalDate estimatedNextStart,
   CycleConfidence tier = CycleConfidence.high,
   PredictionBasis basis = PredictionBasis.statistical,
+  bool staleHistory = false,
 }) {
   return ActivePrediction(
     today: _d(2026, 8, 1),
@@ -32,6 +33,7 @@ ActivePrediction _prediction({
     completedCycleCount: 6,
     validCycleCount: 6,
     tier: tier,
+    staleHistory: staleHistory,
     basis: basis,
   );
 }
@@ -49,6 +51,7 @@ ActivePrediction _predictionWithForecast({
   required List<PredictedCycle> forecast,
   CycleConfidence tier = CycleConfidence.high,
   PredictionBasis basis = PredictionBasis.statistical,
+  bool staleHistory = false,
 }) {
   return ActivePrediction(
     today: today,
@@ -63,6 +66,7 @@ ActivePrediction _predictionWithForecast({
     validCycleCount: 6,
     tier: tier,
     forecast: forecast,
+    staleHistory: staleHistory,
     basis: basis,
   );
 }
@@ -79,6 +83,15 @@ void main() {
       final prediction = _prediction(
         estimatedNextStart: _d(2026, 8, 29),
         basis: PredictionBasis.regimenSchedule,
+      );
+      expect(estimateFertileWindow(prediction), isNull);
+    });
+
+    test('Issue #859: a stale-history prediction -> null (no fertile window '
+        'derived from a rolled estimate nobody observed)', () {
+      final prediction = _prediction(
+        estimatedNextStart: _d(2026, 8, 29),
+        staleHistory: true,
       );
       expect(estimateFertileWindow(prediction), isNull);
     });
@@ -189,6 +202,24 @@ void main() {
           ),
         ],
         basis: PredictionBasis.regimenSchedule,
+      );
+      expect(currentFertileWindow(prediction), isNull);
+    });
+
+    test('Issue #859: a stale-history prediction -> null even with a '
+        'non-empty forecast', () {
+      final prediction = _predictionWithForecast(
+        today: _d(2026, 8, 20),
+        forecast: [
+          PredictedCycle(
+            cycleIndex: 1,
+            start: LocalDate(2026, 9, 4),
+            estimatedPeriodLengthDays: 4,
+            tier: CycleConfidence.high,
+            spreadDays: 0,
+          ),
+        ],
+        staleHistory: true,
       );
       expect(currentFertileWindow(prediction), isNull);
     });
