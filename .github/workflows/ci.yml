@@ -709,7 +709,13 @@ jobs:
     # image upgrade that renames the simulators cannot break this job.
     name: iOS Simulator tests
     runs-on: macos-latest
-    timeout-minutes: 25
+    # Issue #922: raised from 25 so both steps below fit. A cold native build
+    # gets its own 20-minute budget ("Build the app for the simulator") and the
+    # test step keeps its 15-minute one, plus ~5 minutes of checkout / Flutter
+    # setup / cache restore / simulator boot overhead: 20 + 15 + 5 = 40, under
+    # this cap with room to spare. The sub-step budgets are the real bounds; a
+    # hung build or test fails there with a named step, never here.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -730,19 +736,50 @@ jobs:
         # Flutter's kernel/snapshot outputs in .dart_tool/flutter_build) is
         # most of this job's ~12 minutes on a cold hosted Mac. Separate key family from the
         # device build (different SDK/arch products); same fallback shape.
+        #
+        # Issue #922: the sources are hashed as two independent segments (lib
+        # Dart vs ios/Xcode) instead of one, so the fallbacks below can drop
+        # one without dropping the other. A commit that only touches
+        # ios/Runner (e.g. a Swift change) now restores a cache built from the
+        # same lib/ + locks rather than falling straight through to a lock-only
+        # prefix -- narrowing the cold-build window the build step below has to
+        # cover.
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
             build/ios
             .dart_tool/flutter_build
-          key: ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart', 'ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          # Precise primary key: locks + Dart sources + iOS/Xcode sources.
+          key: ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart') }}-${{ hashFiles('ios/Runner/**', 'ios/Runner.xcodeproj/**') }}
+          # Fallbacks, broadest last: keep locks + lib and drop only the
+          # ios/Runner/** hash (a Swift-only change keeps the same lib/ and
+          # locks); then locks only (a Dart-only change keeps the same locks);
+          # then the bare family prefix.
           restore-keys: |
+            ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-${{ hashFiles('lib/**/*.dart') }}-
             ${{ runner.os }}-xcode-simulator-v2-${{ hashFiles('pubspec.lock', 'ios/Podfile.lock') }}-
             ${{ runner.os }}-xcode-simulator-v2-
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Build the app for the simulator
+        # Issue #922 (the remaining half of #827): the cold native build used
+        # to be implicit inside the `flutter test` step below, so a slow build
+        # and the test run shared one 15-minute budget — a cold build could eat
+        # the whole thing and the step would time out with no test ever named.
+        # `flutter test` still invokes the build pipeline (there is no flag to
+        # point it at a prebuilt binary), but it builds the same ios/ project
+        # into the same build/ios + ~/Library/Developer/Xcode/DerivedData tree
+        # this step warms, so the expensive native (CocoaPods/Swift) compile
+        # happens here under a budget sized for a genuinely cold build, and the
+        # test step's own build is a short incremental one on top of it.
+        # 20 minutes is ~2x the ~12-minute cold build observed on a hosted Mac.
+        # Do not collapse this back into the test step: that re-creates the
+        # shared budget this split exists to remove.
+        timeout-minutes: 20
+        run: flutter build ios --simulator --debug
 
       - name: Pick and boot a simulator
         id: sim
@@ -794,6 +831,13 @@ jobs:
         # step timeout below stays as the backstop. Do not remove the
         # per-test timeouts to "simplify" the file — they are the evidence
         # this job otherwise lacks.
+        #
+        # Issue #922: this 15-minute budget now covers only the test run (and
+        # the short incremental Dart rebuild `flutter test` does on top of the
+        # "Build the app for the simulator" step above) — the cold native
+        # build no longer competes for it. With the per-test 2-minute bounds
+        # firing first, 15 minutes is generous; keep the build and test steps
+        # separate rather than collapsing them back into one.
         timeout-minutes: 15
         env:
           SIM_UDID: ${{ steps.sim.outputs.udid }}
