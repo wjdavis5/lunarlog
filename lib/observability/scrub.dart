@@ -171,6 +171,10 @@ const List<String> sentryDenyListedKeys = [
   'mode',
   'is_minor',
   'birth_year',
+  // Issue #853: the composed irregular-cycles framing flag carries a
+  // health inference (that a profile's cycles vary enough to need it) —
+  // scrubbed like its `mode` sibling, never waived.
+  'irregular_framing',
   'birth_control_method',
   'birth_control_started_on',
   'birth_control_stopped_on',

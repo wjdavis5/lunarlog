@@ -193,9 +193,14 @@ void main() {
         appVersion: '1.0.0+1',
       );
       final profiles = doc['profiles'] as List;
-      final on = profiles[0] as Map;
-      final off = profiles[1] as Map;
-      final unset = profiles[2] as Map;
+      // buildAccountExport sorts profiles by id (p-off < p-on < p-unset),
+      // so each map is looked up by its id, never by input position.
+      final byId = {
+        for (final p in profiles) (p as Map)['id'] as String: p,
+      };
+      final on = byId['p-on']!;
+      final off = byId['p-off']!;
+      final unset = byId['p-unset']!;
       expect(on['irregularFraming'], isTrue);
       expect(off['irregularFraming'], isFalse);
       expect(unset['irregularFraming'], isNull,
@@ -467,8 +472,9 @@ void main() {
     test('schema version was bumped to 9 for the new keys (since moved to '
         '10 for profiles[].trackingPreferences, Issue #648, 11 for '
         'profiles[].mergeEvents, Issue #130, 12 for profiles[].customTags, '
-        'Issue #824, and 13 for profiles[].guardianNotes, Issue #870)', () {
-      expect(kAccountExportSchemaVersion, 13);
+        'Issue #824, 13 for profiles[].guardianNotes, Issue #870, and 14 for '
+        'profiles[].irregularFraming, Issue #853)', () {
+      expect(kAccountExportSchemaVersion, 14);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -683,7 +689,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mergeEvents'], isEmpty);
       expect((profiles[1] as Map)['mergeEvents'], isEmpty);
@@ -773,7 +779,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['customTags'], isEmpty);
       expect((profiles[1] as Map)['customTags'], isEmpty);
@@ -850,7 +856,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['guardianNotes'], isEmpty);
       expect((profiles[1] as Map)['guardianNotes'], isEmpty);

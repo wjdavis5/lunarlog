@@ -144,13 +144,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// creation, changeable later from the profile's edit dialog.
   ProfileMode _mode = ProfileMode.standard;
 
-  /// Issue #853: the explicit irregular-framing choice, or null while the
-  /// toggle is untouched — null keeps the engine default (ON for a teen
-  /// profile until `CycleConfidence.high`, OFF otherwise), which is what
-  /// the switch displays for an untouched control.
-  bool? _irregularChoice;
-
-  /// The cycle-questions step (#216): shown between the name form and
+  /// Cycle-questions step (#216): shown between the name form and
   /// profile creation, so the home gate's zero-profiles decision (which
   /// would unmount this screen the moment a profile exists) is untouched.
   bool _cycleQuestionsPending = false;
@@ -379,8 +373,13 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         displayName: _nameController.text,
         isMinor: _isMinor,
         mode: _mode,
-        // Issue #853: null (untouched toggle) keeps the engine default.
-        irregularFraming: _irregularChoice,
+        // Issue #853: creation always leaves the flag at the engine default
+        // (null) — ON for a teen profile until `CycleConfidence.high`, OFF
+        // otherwise, with no control on this form: the explicit tri-state
+        // lives in the profile edit dialog
+        // (`ProfileDialogs`' irregular-framing-toggle), which is also where
+        // the framing is visible and changeable later.
+        irregularFraming: null,
         // Issue #530: the three cycle answers feed provisional seeding —
         // captured here, not just in the recorder.
         facts: CycleFacts(
@@ -702,8 +701,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                           setState(() => _mode = value ?? ProfileMode.standard),
                       items: [
                         // Issue #853: `irregular` is a legacy wire value,
-                        // not a choice — the framing is the toggle below,
-                        // composed with any mode.
+                        // not a choice — the framing is the composed flag
+                        // (editable later from the profile's edit dialog),
+                        // never a rival entry in this dropdown.
                         for (final mode in ProfileMode.choosableModes)
                           DropdownMenuItem<ProfileMode>(
                             value: mode,
@@ -719,22 +719,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 child: Text(
                   _mode.hint,
                   key: const ValueKey('care-mode-hint'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              SwitchListTile(
-                key: const ValueKey('irregular-framing-toggle'),
-                value: _irregularChoice ?? (_mode == ProfileMode.teen),
-                onChanged: (value) =>
-                    setState(() => _irregularChoice = value),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                title: Text(l10n.profileIrregularFramingLabel),
-                subtitle: Text(
-                  l10n.profileIrregularFramingHint,
-                  key: const ValueKey('irregular-framing-hint'),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

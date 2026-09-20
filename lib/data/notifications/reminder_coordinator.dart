@@ -412,7 +412,15 @@ class ReminderCoordinator with WidgetsBindingObserver {
             irregularFraming: irregularFramingInEffect(
               mode: entry.value,
               stored: _irregularFraming[entry.key],
-              tier: _latest[entry.key]?.tier,
+              // Only an ActivePrediction carries a tier; every other
+              // prediction state (not-enough-history/suppressed/disabled)
+              // reads null, which irregularFramingInEffect resolves to a
+              // teen's framing ON — the early months are exactly when the
+              // "late" nag would be wrong.
+              tier: switch (_latest[entry.key]) {
+                final ActivePrediction p => p.tier,
+                _ => null,
+              },
             ),
           ),
       },

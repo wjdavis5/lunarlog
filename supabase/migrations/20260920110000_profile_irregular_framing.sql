@@ -1,5 +1,5 @@
 -- ===========================================================================
--- 20260920000000_profile_irregular_framing.sql
+-- 20260920110000_profile_irregular_framing.sql
 -- Issue #853: teen mode never says "late"; irregular becomes a flag
 -- composed with the care mode, not a rival value of it.
 --

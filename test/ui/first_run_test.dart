@@ -762,7 +762,12 @@ void main() {
       await tester.enterText(find.byType(TextFormField), 'Nova');
       await tester.tap(find.byType(DropdownButton<ProfileMode>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Irregular cycles').last);
+      // Issue #853: `irregular` is no longer offered — it is a legacy wire
+      // value, not a rival mode; the framing composes via the edit dialog's
+      // flag instead. The picker offers exactly standard/teen/caregiver.
+      expect(find.text('Irregular cycles'), findsNothing,
+          reason: 'issue #853: irregular is not a choosable mode');
+      await tester.tap(find.text('Teen').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('first-run-continue')));
       await tester.pumpAndSettle();
@@ -771,7 +776,10 @@ void main() {
 
       final profiles = await DriftProfilesRepository(h.db.storage).list();
       expect(profiles.single.displayName, 'Nova');
-      expect(profiles.single.mode, ProfileMode.irregular);
+      expect(profiles.single.mode, ProfileMode.teen);
+      // Creation never writes an explicit framing choice: the engine
+      // default (ON for teen until CycleConfidence.high) applies.
+      expect(profiles.single.irregularFraming, isNull);
       await h.dispose();
     });
   });

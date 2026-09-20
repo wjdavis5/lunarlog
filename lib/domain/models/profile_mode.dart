@@ -15,7 +15,7 @@
 /// **legacy wire value** only: the server CHECK (`profiles_mode_check`)
 /// still accepts it and every read boundary maps it to
 /// `standard` + `irregularFraming: true` (the server data migration in
-/// `20260920000000_profile_irregular_framing.sql`, the read-time mapping
+/// `20260920110000_profile_irregular_framing.sql`, the read-time mapping
 /// in `row_codec.dart`'s `decodeProfile`, and the local v28 Drift step),
 /// so an old client's push can never wedge a new one. It is never offered
 /// as a picker choice ([choosableModes]).

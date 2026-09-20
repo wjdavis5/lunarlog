@@ -275,7 +275,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   default) and the data migration converting any stored
   ///   `mode = 'irregular'` row to `mode = 'standard'` +
   ///   `irregular_framing = 1`, mirroring the server-side migration in
-  ///   `20260920000000_profile_irregular_framing.sql`.
+  ///   `20260920110000_profile_irregular_framing.sql`.
   @override
   int get schemaVersion => 28;
 
@@ -1208,7 +1208,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   /// [_hasColumn] (LLA-015) real-schema guard the other profile column
   /// steps use covers a schema reconstructed by something other than a
   /// real `onCreate`. Mirrors the server-side data migration in
-  /// `20260920000000_profile_irregular_framing.sql` (a row left
+  /// `20260920110000_profile_irregular_framing.sql` (a row left
   /// `irregular` on the server by an old client's push is additionally
   /// mapped at read time in `row_codec.dart`'s `decodeProfile`, so this
   /// local conversion and the server's can land in either order).
