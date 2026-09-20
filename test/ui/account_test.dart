@@ -2377,9 +2377,18 @@ void main() {
       await h.openSettings();
       await h.settle();
 
+      // Issue #971: the tile copy no longer implies the sessions end the
+      // instant the operator confirms; it names the one-hour access-token
+      // window a global signOut cannot close.
+      expect(
+        find.text('Signs out all devices, though others may take up to an '
+            'hour to notice.'),
+        findsOneWidget,
+      );
       await tester.tap(key('account-sign-out-everywhere'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('10 minutes'), findsOneWidget);
+      expect(find.textContaining('may keep working for up to an hour'),
+          findsOneWidget);
       await tester.tap(key('account-sign-out-everywhere-confirm'));
       await h.settle();
       expect(h.auth.signOutCalls.first, AuthSignOutScope.global);

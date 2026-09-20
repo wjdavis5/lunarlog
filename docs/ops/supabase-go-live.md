@@ -37,9 +37,12 @@ JWT are CLI defaults) and says nothing about the cloud project.
       12-character minimum (`kMinPasswordLength` in
       `lib/ui/account/sign_in_screen.dart`) and maps the server's
       `weakPassword` rejection to generic copy, so the two must agree.
-- [ ] JWT expiry at the dashboard minimum (target 10 minutes). "Sign out
-      everywhere" revokes sessions, not tokens, so this bounds how long another
-      device keeps access.
+- [ ] JWT expiry left at Supabase's default (1 hour) — the chosen setting, not
+      a compromise to revisit (owner decision, #971; the dashboard minimum was
+      declined as too disruptive). "Sign out everywhere" revokes sessions, not
+      tokens, so this bounds how long another device keeps access; the app's
+      confirmation copy says other devices may take up to an hour to notice.
+      See the "JWT expiry rationale" note below.
 - [ ] Session inactivity timeout set, if the project tier offers it.
 - [ ] Apple provider enabled with the bundle id `com.wjdavis5.lunarlog` as
       the client id (native iOS flow only; no Services ID or client secret
@@ -107,22 +110,20 @@ passwordless email depends on custom SMTP above like every other email.
       tighten too. The app has no resend button: an expired confirmation
       link means signing up again; an expired reset or sign-in link means
       requesting a new one (#2 AS5).
-- [ ] Sign-ups closed once the household's accounts exist: turn off "Allow
-      new users to sign up" (Authentication → Sign In / Providers), or keep
-      it on behind a `before_user_created` auth hook that rejects any email
-      not on a household allow-list. That allow-list lives **only** in a
-      table in the Supabase project, populated from the dashboard SQL editor
-      — never in a tracked migration, under `docs/`, or in a secret. Open
-      sign-ups let anyone holding the publishable key create accounts and
-      burn the project-wide 30 OTP sends per hour, denying the household its
-      links (#2 KTD3). With sign-ups closed, every create path — passwordless
-      create mode, a first Google or Apple sign-in (Hide My Email included) —
-      shows "New accounts for this app are set up by the account owner".
-      **Onboarding a new household member after closure:** reopen sign-ups
-      briefly (or add the address to the allow-list), have them create the
-      account on their device, then close again. A Hide My Email identity is
-      attached afterwards from the account section ("Add Apple"), never by a
-      fresh sign-up.
+- [ ] Sign-ups **stay open** — "Allow new users to sign up" on
+      (Authentication → Sign In / Providers). lunarlog is a public store app:
+      anyone who downloads it may create an account, so this is the intended
+      posture, not a transitional state (the early single-household "close it
+      once the household's accounts exist" framing was retired by #800/#821).
+      Open sign-ups let anyone holding the publishable key create accounts,
+      which is exactly why the project-wide auth email rate limit (#2 KTD3's
+      30 OTP sends per hour) is now load-bearing: it is set deliberately in
+      the custom-SMTP rate-limit step, tracked in #970, so a burst of public
+      sign-ups cannot starve the household's links. The app still renders
+      "New accounts for this app are set up by the account owner" whenever an
+      operator deliberately closes sign-ups for a locked-down deployment; the
+      code path stays even though closed sign-ups are no longer the documented
+      posture.
 - [ ] `ios/Runner/Info.plist` gains a `CFBundleURLTypes` entry whose scheme
       is the **reversed iOS client id**
       (`com.googleusercontent.apps.<iOS client id>`), in the same change
@@ -824,10 +825,14 @@ household member's.
       "Different account" screen appears and its copy names the Google case
       as well as Hide My Email; "Switch account" leaves A's data intact and
       no sync runs.
-- [ ] **Google sign-in with sign-ups closed (#2 KTD3).** With "Allow new
-      users to sign up" off, sign in with a Google account that has no
-      Supabase user: the screen shows "New accounts for this app are set up
-      by the account owner", not the generic failure copy.
+- [ ] **(Optional — not the default posture) Google sign-in with sign-ups
+      closed (#2 KTD3).** Only for a deliberately locked-down deployment:
+      with "Allow new users to sign up" off, sign in with a Google account
+      that has no Supabase user and confirm the screen shows "New accounts for
+      this app are set up by the account owner", not the generic failure copy.
+      Sign-ups open is lunarlog's intended posture for the public store app
+      (#971), so a normal go-live skips this item; it remains here only to
+      keep the still-supported closed path verified.
 - [ ] **iOS Google sign-in, no consent prompt (#2 AS3).** On iPhone the
       sign-in completes with no consent or scope prompt after the picker and
       Supabase accepts the token (iOS tokens carry `at_hash`, so the silent
@@ -1318,14 +1323,21 @@ pgTAP tests.
   SMTP is a go-live blocker, not a nicety. After configuring it, set the
   auth email rate limit deliberately (Authentication → Rate Limits) — the
   app has no resend button, so a hit limit shows up as a user seeing
-  "Check your email" and nothing arriving.
+  "Check your email" and nothing arriving. Because sign-ups stay open to the
+  public (#971, above), this rate limit is the control that keeps the #2 KTD3
+  project-wide OTP-send budget from being exhausted by strangers: it replaces
+  the old "close sign-ups once the household's accounts exist" mitigation and
+  is a go-live requirement, not tuning. The SMTP configuration and
+  rate-limit step are tracked in #970.
 - **JWT expiry rationale.** "Sign out everywhere" (`signOut(scope: AuthSignOutScope.global)`)
   revokes refresh tokens, not issued access tokens; a lost or shared device
   keeps reading the account's rows through PostgREST until its JWT expires.
-  The dashboard minimum (target 10 minutes) bounds that window at the cost of
-  a refresh every few minutes, which the SDK does automatically. The
-  confirmation copy in the app ("Ends every session of this account…") is
-  written against this behaviour.
+  Supabase's default of 1 hour is the chosen setting (owner decision, #971;
+  the dashboard minimum was declined as too disruptive), so that reach is
+  bounded at up to an hour while the SDK's automatic refresh is unchanged.
+  The confirmation copy in the app is written against this window: it says
+  other devices may take up to an hour to notice rather than claiming the
+  sessions end instantly.
 - **What the client stores.** Native builds keep the Supabase session and
   PKCE verifier in `flutter_secure_storage` (iOS Keychain
   `first_unlock_this_device`, non-synchronizable; Android encrypted
