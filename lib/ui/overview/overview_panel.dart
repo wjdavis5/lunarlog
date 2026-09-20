@@ -788,7 +788,7 @@ class _OverviewPanelState extends State<OverviewPanel>
     // state between kMaxOpenCycleDays and the stale threshold is
     // deliberately untouched (stale is a strictly further step).
     if (prediction.staleHistory) {
-      return _staleHistoryCard(context, prediction);
+      return _staleHistoryCard(context);
     }
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -855,10 +855,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// without rendering numbers the roll-forward machinery can no longer
   /// justify. Actions are hidden for a read-only (viewer/archived) tree,
   /// matching the long-cycle prompt's own rule.
-  Widget _staleHistoryCard(
-    BuildContext context,
-    ActivePrediction prediction,
-  ) {
+  Widget _staleHistoryCard(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     return Card(
