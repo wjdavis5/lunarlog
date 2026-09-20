@@ -1,6 +1,7 @@
 package com.wjdavis5.lunarlog
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import androidx.activity.ComponentActivity
 import androidx.health.connect.client.HealthConnectClient
@@ -258,6 +259,50 @@ class HealthConnectAdapter(context: Context) {
                     // a user who has only ever imported still sees the prompt.
                     launcher.launch(allPermissions)
                 }
+            }
+
+            "permissionStatus" -> {
+                // Issue #959: the OS permission state for the status line on
+                // the Health sync screen. The SDK-availability check runs
+                // first (an unavailable Health Connect is "unavailable",
+                // never "denied"), then the requested permission set is
+                // compared against getGrantedPermissions(). Android's runtime
+                // model cannot distinguish "never asked" from "denied" from
+                // the granted set alone, so a not-fully-granted result is
+                // reported as "denied" — the actionable state that offers the
+                // settings deep link. Read and write permissions ride the
+                // same requested set (allPermissions), so no read-only denial
+                // can be surfaced on its own.
+                if (!isAvailable()) {
+                    result.success("unavailable")
+                    return
+                }
+                val controller = PermissionController(contextApp)
+                CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
+                    try {
+                        val granted = controller.getGrantedPermissions()
+                        result.success(
+                            if (granted.containsAll(allPermissions)) "granted"
+                            else "denied")
+                    } catch (e: Exception) {
+                        result.success("unavailable")
+                    }
+                }
+            }
+
+            "openPermissionSettings" -> {
+                // Issue #959: Health Connect's own settings/permission
+                // activity is where the operator changes this app's access.
+                // Best effort, like the iOS Settings deep link.
+                try {
+                    val intent =
+                        Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    contextApp.startActivity(intent)
+                } catch (e: Exception) {
+                    // No Health Connect settings UI to open — nothing to do.
+                }
+                result.success(null)
             }
 
             "writeMenstrualFlow" -> {
