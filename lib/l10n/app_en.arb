@@ -1938,6 +1938,10 @@
   "@profilePickerActionsTooltip": {
     "description": "Tooltip on a profile row's overflow-actions icon button."
   },
+  "editProfileAction": "Edit profile",
+  "@editProfileAction": {
+    "description": "Issue #860: the profile row's overflow-menu item and the profile edit dialog's title. The dialog edits the name plus Life-stage mode, Care mode, Relationship and Birth control, so it is labelled for everything it does rather than only the rename it used to be labelled for."
+  },
   "profilePickerSharedWithMeTooltip": "Shared with me",
   "@profilePickerSharedWithMeTooltip": {
     "description": "Tooltip on the profile picker's shared-predictions entry point."
@@ -2328,12 +2332,29 @@
   },
   "postpartumDayTitle": "Day {days} of postpartum",
   "@postpartumDayTitle": {
-    "description": "Postpartum-mode Cycle View headline: the whole-day counter since the profile entered Postpartum mode (Issue #455). Deliberately framed as 'of postpartum' rather than 'since birth' because the mode start is the app's only recorded proxy for that date.",
+    "description": "Postpartum-mode Cycle View headline: the whole-day counter since the profile entered Postpartum mode (Issue #455). Deliberately framed as 'of postpartum' rather than 'since birth' because the mode start is the app's only recorded proxy for that date — used only when no birth date was supplied (Issue #861).",
     "placeholders": {
       "days": {
         "type": "int"
       }
     }
+  },
+  "postpartumDaySinceBirth": "Day {days} since birth",
+  "@postpartumDaySinceBirth": {
+    "description": "Postpartum-mode Cycle View headline when the operator supplied a birth date (Issue #861): the whole-day counter runs from that date, so 'since birth' is the honest framing.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "postpartumBirthDateLabel": "Birth date",
+  "@postpartumBirthDateLabel": {
+    "description": "Label for the birth-date field shown in the profile edit dialog while the life-stage mode is Postpartum (Issue #861)."
+  },
+  "postpartumBirthDateHint": "Optional. Pick the date to count from, or leave it blank to count from today.",
+  "@postpartumBirthDateHint": {
+    "description": "Hint under the Postpartum birth-date field explaining the field is optional and what a blank value means (Issue #861)."
   },
   "postpartumStartMissing": "Postpartum mode is on. The start date wasn't recorded, so there's no day count yet.",
   "@postpartumStartMissing": {
@@ -2397,9 +2418,9 @@
   "@perimenopauseTitle": {
     "description": "Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196)."
   },
-  "perimenopauseBody": "In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.",
+  "perimenopauseBody": "In perimenopause, cycle lengths vary from one to the next. Comparing each cycle with the one before it is how change shows up — not a count of days late.",
   "@perimenopauseBody": {
-    "description": "Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196)."
+    "description": "Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196). Issue #862: names the comparison as cycle-to-cycle rather than claiming the still-open cycle is the one shown."
   },
   "perimenopauseNotEnoughTitle": "Nothing to compare yet",
   "@perimenopauseNotEnoughTitle": {
@@ -2409,35 +2430,35 @@
   "@perimenopauseNotEnoughBody": {
     "description": "Body of the Perimenopause-mode Cycle View card's empty state (Issue #196)."
   },
-  "perimenopauseLengthLonger": "This cycle is {days} longer than the last",
+  "perimenopauseLengthLonger": "Your last completed cycle was {days} longer than the one before it",
   "@perimenopauseLengthLonger": {
-    "description": "Perimenopause comparison line when the current cycle is longer than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.",
+    "description": "Perimenopause comparison line when the compared cycle is longer than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: the card compares the two most recent COMPLETED cycles (an open cycle has no length yet), so the copy names those rather than saying 'this cycle' — which every other surface uses for the still-open one.",
     "placeholders": {
       "days": {
         "type": "String"
       }
     }
   },
-  "perimenopauseLengthShorter": "This cycle is {days} shorter than the last",
+  "perimenopauseLengthShorter": "Your last completed cycle was {days} shorter than the one before it",
   "@perimenopauseLengthShorter": {
-    "description": "Perimenopause comparison line when the current cycle is shorter than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.",
+    "description": "Perimenopause comparison line when the compared cycle is shorter than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: names the completed cycles the card actually compares, never 'this cycle'.",
     "placeholders": {
       "days": {
         "type": "String"
       }
     }
   },
-  "perimenopauseLengthSame": "This cycle is the same length as the last",
+  "perimenopauseLengthSame": "Your last completed cycle was the same length as the one before it",
   "@perimenopauseLengthSame": {
-    "description": "Perimenopause comparison line when the two compared cycles are the same length (Issue #196)."
+    "description": "Perimenopause comparison line when the two compared cycles are the same length (Issue #196). Issue #862: names the completed cycles the card actually compares, never 'this cycle'."
   },
   "perimenopauseLengthUnknown": "This cycle is still in progress — compare it once it ends",
   "@perimenopauseLengthUnknown": {
     "description": "Perimenopause comparison line when the current cycle has not finished, so no length difference can honestly be stated (Issue #196)."
   },
-  "perimenopauseBleedDays": "Bleeding days: {current} this cycle, {previous} last cycle",
+  "perimenopauseBleedDays": "Bleeding days: {current} in the newer cycle, {previous} in the one before it",
   "@perimenopauseBleedDays": {
-    "description": "Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts.",
+    "description": "Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts. Issue #862: 'the newer cycle' / 'the one before it' stays true whether the card is comparing two completed cycles or (with only two starts) the open one against the last completed one, where 'this cycle' would misname the pair.",
     "placeholders": {
       "current": {
         "type": "String"

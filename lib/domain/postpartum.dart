@@ -26,17 +26,22 @@ import 'models/local_date.dart';
 
 /// Whole civil days on [today] since the profile entered Postpartum mode
 /// ([modeStartedOn] is `profile_modes.mode_started_on`). Floored at 0 so a
-/// `today` before the stored start — a clock rollback, or a date entered
-/// in error — reads as day 0 rather than a negative count.
+/// `today` before the anchor — a clock rollback, or a date entered in
+/// error — reads as day 0 rather than a negative count.
 ///
-/// This is the plan's "day-count since birth" surrogate: the mode start is
-/// stamped when the operator selects Postpartum, which is the app's only
-/// recorded proxy for that date.
+/// Issue #861: [birthDate] is `profile_modes.postpartum_birth_date`, the
+/// optional actual birth date the operator can supply. When present it is
+/// the anchor the count runs from (the number is then usefully "since
+/// birth"); when absent the mode start remains the surrogate — stamped
+/// when the operator selects Postpartum, which is the app's only recorded
+/// proxy for that date. The caller supplies exactly one meaning, never
+/// mixes them.
 int daysSincePostpartumStart({
   required LocalDate modeStartedOn,
   required LocalDate today,
+  LocalDate? birthDate,
 }) {
-  final days = today.difference(modeStartedOn);
+  final days = today.difference(birthDate ?? modeStartedOn);
   return days < 0 ? 0 : days;
 }
 

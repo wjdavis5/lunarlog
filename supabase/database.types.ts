@@ -1010,6 +1010,7 @@ export type Database = {
           health_sync_consent: boolean
           mode: string
           mode_started_on: string | null
+          postpartum_birth_date: string | null
           profile_id: string
           server_version: number
           updated_at: string
@@ -1022,6 +1023,7 @@ export type Database = {
           health_sync_consent?: boolean
           mode?: string
           mode_started_on?: string | null
+          postpartum_birth_date?: string | null
           profile_id: string
           server_version?: number
           updated_at: string
@@ -1034,6 +1036,7 @@ export type Database = {
           health_sync_consent?: boolean
           mode?: string
           mode_started_on?: string | null
+          postpartum_birth_date?: string | null
           profile_id?: string
           server_version?: number
           updated_at?: string

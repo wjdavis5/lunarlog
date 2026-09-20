@@ -322,4 +322,93 @@ void main() {
       expect(row!.estimatedDueDate, '2028-03-01');
     });
   });
+
+  group('postpartum_birth_date (Issue #861)', () {
+    test('entering postpartum writes the collected birth date', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.postpartum,
+          postpartumBirthDate: '2026-09-01',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.mode, 'postpartum');
+      expect(row.modeStartedOn, '2026-09-01');
+      expect(row.postpartumBirthDate, '2026-09-01');
+    });
+
+    test('entering postpartum without a birth date stores null (the '
+        'mode-start surrogate stays in force)', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.postpartum),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.postpartumBirthDate, isNull);
+    });
+
+    test('an unchanged-postpartum re-record keeps the stored birth date even '
+        'when the answer carries none', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.postpartum,
+          postpartumBirthDate: '2026-09-01',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.postpartum),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.postpartumBirthDate, '2026-09-01');
+    });
+
+    test('leaving postpartum KEEPS the stored birth date — the record of the '
+        'postpartum that was', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.postpartum,
+          postpartumBirthDate: '2026-09-01',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.tracking),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.mode, 'tracking');
+      expect(row.postpartumBirthDate, '2026-09-01');
+    });
+
+    test('a later re-entry overwrites with the newly collected date', () async {
+      final profileId = await seedProfile();
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.postpartum,
+          postpartumBirthDate: '2026-09-01',
+        ),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(lifecycleMode: LifecycleMode.tracking),
+      );
+      await recorder.record(
+        profileId,
+        const OnboardingCycleAnswers(
+          lifecycleMode: LifecycleMode.postpartum,
+          postpartumBirthDate: '2027-03-01',
+        ),
+      );
+      final row = await db.storage.getProfileMode(profileId);
+      expect(row!.postpartumBirthDate, '2027-03-01');
+    });
+  });
 }

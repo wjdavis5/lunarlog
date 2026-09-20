@@ -20,7 +20,8 @@ import '../models/lifecycle_mode.dart';
 /// lazy-default contract), the date the current mode took effect (Issue
 /// #192's exit-exclusion interval needs it; null when never stamped),
 /// the Pregnancy-mode estimated due date (Issue #192; null when not
-/// recorded), the optional free-text birth-control method answer, and
+/// recorded), the Postpartum-mode birth date (Issue #861; null when not
+/// supplied), the optional free-text birth-control method answer, and
 /// its raw effective-date columns (`yyyy-MM-dd` or null — issue #260's
 /// `birth_control_started_on`/`birth_control_stopped_on`, consumed by
 /// the #183 reminders and #233's prediction adaptation).
@@ -28,6 +29,7 @@ typedef ProfileLifecycleMode = ({
   LifecycleMode mode,
   String? modeStartedOn,
   String? estimatedDueDate,
+  String? postpartumBirthDate,
   String? birthControlMethod,
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
@@ -44,8 +46,11 @@ abstract interface class ProfileModesRepository {
   /// column unset). [estimatedDueDate] (Issue #192) is the
   /// Pregnancy-mode due date — derived (last recorded period start +
   /// 280 days, Naegele's rule) or manually supplied by the caller; null
-  /// keeps the column unset. Callers that only want to change one field
-  /// read the current row first via [find].
+  /// keeps the column unset. [postpartumBirthDate] (Issue #861) is the
+  /// optional Postpartum-mode birth date the day counter counts from
+  /// when supplied; null keeps the column unset (the counter then falls
+  /// back to `modeStartedOn`). Callers that only want to change one
+  /// field read the current row first via [find].
   ///
   /// The birth-control effective dates are owned by this save (issue
   /// #183's anchor requirement): when the recorded method changes to a
@@ -61,6 +66,7 @@ abstract interface class ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   });
 

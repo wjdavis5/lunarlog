@@ -486,6 +486,7 @@ void main() {
             mode: LifecycleMode.conceive,
             modeStartedOn: null,
             estimatedDueDate: null,
+            postpartumBirthDate: null,
             birthControlMethod: 'pill',
             birthControlStartedOn: '2026-06-01',
             birthControlStoppedOn: null,

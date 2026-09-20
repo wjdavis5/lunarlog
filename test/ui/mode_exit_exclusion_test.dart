@@ -90,6 +90,7 @@ class _StubProfileModesRepository implements ProfileModesRepository {
         mode: LifecycleMode.pregnancy,
         modeStartedOn: '2025-02-28',
         estimatedDueDate: dueDate,
+        postpartumBirthDate: null,
         birthControlMethod: null,
         birthControlStartedOn: null,
         birthControlStoppedOn: null,

@@ -531,6 +531,17 @@ class ProfileModes extends Table {
   TextColumn get estimatedDueDate =>
       text().named('estimated_due_date').nullable()();
 
+  /// Postpartum-mode birth date (Issue #861), as an ISO calendar date
+  /// `yyyy-MM-dd` — optionally supplied when the operator switches to
+  /// Postpartum, stored here (synced like every other `profile_modes`
+  /// column) and used by the Postpartum day counter. Null when not
+  /// supplied: the counter falls back to `modeStartedOn` (today's
+  /// existing surrogate). Kept on exit rather than cleared, like
+  /// `estimatedDueDate` — the mode column says whether the mode is
+  /// current; this stays as the record of the postpartum that was.
+  TextColumn get postpartumBirthDate =>
+      text().named('postpartum_birth_date').nullable()();
+
   /// Current birth-control method (free text, #260 owns the vocabulary) or
   /// null when none is recorded.
   TextColumn get birthControlMethod =>

@@ -11,6 +11,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logging/day_entry_policy.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -49,6 +50,22 @@ String? validateProfileName(String? value) {
 const int kMinBirthYear = 1900;
 const int kMaxBirthYear = 2200;
 
+/// Issue #861: the accepted value of a picked Postpartum birth date, or
+/// null when it fails [DayEntryPolicy]'s shared date bounds — a date more
+/// than a day in the future, or one whose year precedes the profile's known
+/// birth year. The dialog's picker already bounds the future and the far
+/// past; this reuses #848's one validator rather than writing a second one
+/// (and is the seam its unit tests drive directly).
+String? acceptedPostpartumBirthDate(
+  LocalDate date, {
+  required LocalDate today,
+  int? birthYear,
+}) =>
+    DayEntryPolicy.validateDate(date, today: today, birthYear: birthYear)
+            .isValid
+        ? date.iso
+        : null;
+
 /// Shared birth-year validation: optional (an empty value always validates,
 /// R2), otherwise an integer within [kMinBirthYear]-[kMaxBirthYear]
 /// inclusive, matching the server's CHECK constraint exactly.
@@ -76,6 +93,7 @@ class ProfileEditResult {
     this.lifecycleMode = LifecycleMode.tracking,
     this.birthControlChoice = BirthControlChoice.notAnswered,
     this.estimatedDueDate,
+    this.postpartumBirthDate,
   });
 
   final String displayName;
@@ -109,6 +127,13 @@ class ProfileEditResult {
   /// was neither derivable nor picked. Rides the recorder seam into
   /// `profile_modes.estimated_due_date`.
   final String? estimatedDueDate;
+
+  /// Issue #861: the optional Postpartum-mode birth date (`yyyy-MM-dd`)
+  /// collected when the life-stage answer is `postpartum` — manually
+  /// picked, optional, and null when skipped. Rides the recorder seam into
+  /// `profile_modes.postpartum_birth_date`; the day counter counts from it
+  /// when present, and falls back to the mode-start surrogate when null.
+  final String? postpartumBirthDate;
 }
 
 Future<ProfileEditResult?> showProfileEditDialog(
@@ -173,6 +198,12 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   bool _dueDateDerived = false;
   bool _derivingDueDate = false;
 
+  /// Issue #861: the Postpartum-mode birth-date answer. Null until a date is
+  /// picked — the field is optional, and a blank value keeps the existing
+  /// mode-start day-count surrogate rather than forcing a date into a flow
+  /// that works without one.
+  String? _postpartumBirthDate;
+
   @override
   void initState() {
     super.initState();
@@ -195,6 +226,11 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
         // pre-filled (not a fresh derivation — it is a chosen value).
         _estimatedDueDate = row.estimatedDueDate;
         _dueDateDerived = false;
+      }
+      if (row.mode == LifecycleMode.postpartum) {
+        // An already-postpartum profile edits with its stored birth date
+        // pre-filled, if one was supplied (Issue #861).
+        _postpartumBirthDate = row.postpartumBirthDate;
       }
     });
   }
@@ -294,6 +330,9 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           estimatedDueDate: _lifecycleMode == LifecycleMode.pregnancy
               ? _estimatedDueDate
               : null,
+          postpartumBirthDate: _lifecycleMode == LifecycleMode.postpartum
+              ? _postpartumBirthDate
+              : null,
         ),
       );
     }
@@ -357,6 +396,81 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
     }
   }
 
+  /// Issue #861: the Postpartum birth-date field — optional, blank by
+  /// default, opening a date picker on tap. The picker is bounded to the
+  /// last 24 months (no future date, nothing absurdly far past), and the
+  /// picked value is re-checked against the shared [DayEntryPolicy] bounds
+  /// (#848) so a date before the profile's birth year is refused with an
+  /// honest message rather than stored.
+  Widget _postpartumBirthDateField(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final iso = _postpartumBirthDate;
+    final LocalDate? birth = iso == null ? null : _tryParseIso(iso);
+    final valueText = birth == null
+        ? '—'
+        : dates.formatLocalDateMonthDayYear(
+            birth,
+            locale: dates.calendarLocale(context),
+          );
+    return MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            key: const ValueKey('edit-postpartum-birth-date-field'),
+            onTap: _pickPostpartumBirthDate,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: l10n.postpartumBirthDateLabel,
+              ),
+              child: Text(
+                valueText,
+                key: const ValueKey('edit-postpartum-birth-date-value'),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              l10n.postpartumBirthDateHint,
+              key: const ValueKey('edit-postpartum-birth-date-hint'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Issue #861: picks the optional Postpartum birth date. Bounded to the
+  /// last 24 months so the future and the absurdly far past are unreachable
+  /// in the picker itself; the picked value is then passed through
+  /// [acceptedPostpartumBirthDate] (the shared [DayEntryPolicy] bounds,
+  /// #848) so a date before the profile's known birth year is refused too —
+  /// an invalid pick leaves the shown value unchanged.
+  Future<void> _pickPostpartumBirthDate() async {
+    final today = LocalDate.today();
+    final initial = _postpartumBirthDate == null
+        ? null
+        : DateTime.tryParse(_postpartumBirthDate!);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? today.toDateTime(),
+      firstDate: today.addMonths(-24).toDateTime(),
+      lastDate: today.toDateTime(),
+      helpText: AppLocalizations.of(context).postpartumBirthDateLabel,
+    );
+    if (picked == null || !mounted) return;
+    final accepted = acceptedPostpartumBirthDate(
+      LocalDate.fromDateTime(picked),
+      today: today,
+      birthYear: widget.existing?.birthYear,
+    );
+    setState(() => _postpartumBirthDate = accepted ?? _postpartumBirthDate);
+  }
+
   @override
   Widget build(BuildContext context) {
     final existing = widget.existing;
@@ -375,7 +489,9 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              existing == null ? 'Add profile' : 'Rename profile',
+              existing == null
+                  ? 'Add profile'
+                  : AppLocalizations.of(context).editProfileAction,
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: LLSpace.space3),
@@ -531,6 +647,13 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                       if (_lifecycleMode == LifecycleMode.pregnancy) ...[
                         const SizedBox(height: LLSpace.space2),
                         _dueDateField(context),
+                      ],
+                      // Issue #861: entering Postpartum mode optionally
+                      // collects the birth date the day counter runs from.
+                      // Blank keeps the existing mode-start surrogate.
+                      if (_lifecycleMode == LifecycleMode.postpartum) ...[
+                        const SizedBox(height: LLSpace.space2),
+                        _postpartumBirthDateField(context),
                       ],
                       const SizedBox(height: LLSpace.space3),
                       MergeSemantics(

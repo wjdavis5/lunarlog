@@ -1585,6 +1585,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profilePickerActionsTooltip => 'Profile actions';
 
   @override
+  String get editProfileAction => 'Edit profile';
+
+  @override
   String get profilePickerSharedWithMeTooltip => 'Shared with me';
 
   @override
@@ -1893,6 +1896,18 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String postpartumDaySinceBirth(int days) {
+    return 'Day $days since birth';
+  }
+
+  @override
+  String get postpartumBirthDateLabel => 'Birth date';
+
+  @override
+  String get postpartumBirthDateHint =>
+      'Optional. Pick the date to count from, or leave it blank to count from today.';
+
+  @override
   String get postpartumStartMissing =>
       'Postpartum mode is on. The start date wasn\'t recorded, so there\'s no day count yet.';
 
@@ -1940,7 +1955,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get perimenopauseBody =>
-      'In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.';
+      'In perimenopause, cycle lengths vary from one to the next. Comparing each cycle with the one before it is how change shows up — not a count of days late.';
 
   @override
   String get perimenopauseNotEnoughTitle => 'Nothing to compare yet';
@@ -1951,17 +1966,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perimenopauseLengthLonger(String days) {
-    return 'This cycle is $days longer than the last';
+    return 'Your last completed cycle was $days longer than the one before it';
   }
 
   @override
   String perimenopauseLengthShorter(String days) {
-    return 'This cycle is $days shorter than the last';
+    return 'Your last completed cycle was $days shorter than the one before it';
   }
 
   @override
   String get perimenopauseLengthSame =>
-      'This cycle is the same length as the last';
+      'Your last completed cycle was the same length as the one before it';
 
   @override
   String get perimenopauseLengthUnknown =>
@@ -1969,7 +1984,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perimenopauseBleedDays(String current, String previous) {
-    return 'Bleeding days: $current this cycle, $previous last cycle';
+    return 'Bleeding days: $current in the newer cycle, $previous in the one before it';
   }
 
   @override

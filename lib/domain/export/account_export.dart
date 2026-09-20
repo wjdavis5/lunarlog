@@ -355,6 +355,7 @@ Map<String, Object?>? _exportProfileMode(ProfileLifecycleMode? mode) {
     // the pregnancy due date ride the export alongside the mode itself.
     'modeStartedOn': mode.modeStartedOn,
     'estimatedDueDate': mode.estimatedDueDate,
+    'postpartumBirthDate': mode.postpartumBirthDate,
     'birthControlMethod': mode.birthControlMethod,
     'birthControlStartedOn': mode.birthControlStartedOn,
     'birthControlStoppedOn': mode.birthControlStoppedOn,

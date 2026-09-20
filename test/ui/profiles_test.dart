@@ -607,11 +607,15 @@ void main() {
       await tester.tap(find.descendant(
           of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rename'));
+      await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
 
+      // Issue #860: the action opens the full editor — labelled "Edit
+      // profile", not "Rename", so the life-stage/care-mode controls it
+      // also carries are not hidden behind a rename-only label.
+      expect(find.text('Edit profile'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Alice'), findsOneWidget,
-          reason: 'rename dialog prefilled');
+          reason: 'rename path still prefilled');
       await tester.enterText(find.byType(TextFormField).first, 'Alicia');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
@@ -633,7 +637,7 @@ void main() {
       await tester.tap(find.descendant(
           of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rename'));
+      await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byType(TextFormField).first, 'Alicia');
@@ -781,7 +785,7 @@ void main() {
       await tester.tap(find.descendant(
           of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rename'));
+      await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
 
       expect(find.text('Daughter'), findsOneWidget,
@@ -949,7 +953,7 @@ void main() {
       await tester.tap(find.descendant(
           of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rename'));
+      await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
 
       final route = ModalRoute.of(
@@ -1042,7 +1046,7 @@ void main() {
         await tester.tap(find.descendant(
             of: tile, matching: find.byType(PopupMenuButton<String>)));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Rename'));
+        await tester.tap(find.text('Edit profile'));
         await tester.pumpAndSettle();
 
         await tester.tap(find.byType(DropdownButton<ProfileMode>));
@@ -1076,7 +1080,7 @@ void main() {
       await tester.tap(find.descendant(
           of: tile, matching: find.byType(PopupMenuButton<String>)));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rename'));
+      await tester.tap(find.text('Edit profile'));
       await tester.pumpAndSettle();
 
       await tester

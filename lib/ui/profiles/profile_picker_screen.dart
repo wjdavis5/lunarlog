@@ -209,9 +209,9 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     SharingService? sharing,
     Profile profile,
   ) {
+    final l10n = AppLocalizations.of(context);
     final info = overview?.infoFor(profile.id) ?? const SharingProfileInfo.unknown();
-    final roleSubtitle =
-        sharingProfileRoleSubtitle(AppLocalizations.of(context), info);
+    final roleSubtitle = sharingProfileRoleSubtitle(l10n, info);
     // Issue #241: the picker row is a ProfileCard — avatar, cycle status
     // (when a prediction service exists; an unconfigured tree keeps the
     // bare name/subtitle row), and the #126 badges, replacing the bare
@@ -227,7 +227,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}',
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
       trailing: PopupMenuButton<String>(
-        tooltip: AppLocalizations.of(context).profilePickerActionsTooltip,
+        tooltip: l10n.profilePickerActionsTooltip,
         onSelected: (action) => _onRowAction(context, profile, action),
         itemBuilder: (context) {
           // Issue #531: an unknown role (null - the guardian rows haven't
@@ -241,7 +241,8 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
           return [
             const PopupMenuItem(value: 'caregivers', child: Text('Guardians')),
             if (canEdit)
-              const PopupMenuItem(value: 'rename', child: Text('Rename')),
+              PopupMenuItem(
+                  value: 'rename', child: Text(l10n.editProfileAction)),
             if (canDelete)
               const PopupMenuItem(value: 'archive', child: Text('Archive')),
           ];
@@ -354,6 +355,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         birthControlMethod:
             birthControlStoredValue(result.birthControlChoice),
         estimatedDueDate: result.estimatedDueDate,
+        postpartumBirthDate: result.postpartumBirthDate,
       ),
     );
   }

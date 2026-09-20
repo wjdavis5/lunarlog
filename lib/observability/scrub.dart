@@ -178,8 +178,10 @@ const List<String> sentryDenyListedKeys = [
   'mode_started_on',
   // Issue #192: a pregnancy due date is health content of the most
   // sensitive kind the app carries (it dates a pregnancy) — scrubbed
-  // like its `mode_started_on` sibling.
+  // like its `mode_started_on` sibling. Issue #861's postpartum birth
+  // date is the same kind of health content and is scrubbed alongside it.
   'estimated_due_date',
+  'postpartum_birth_date',
   'cycle_start_date',
   'last_period_start',
   'typical_cycle_length_days',

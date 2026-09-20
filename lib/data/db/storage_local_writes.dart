@@ -334,12 +334,16 @@ void _validateObservation({
 void _validateProfileModePayload({
   String? modeStartedOn,
   String? estimatedDueDate,
+  String? postpartumBirthDate,
   String? birthControlMethod,
   String? birthControlStartedOn,
   String? birthControlStoppedOn,
 }) {
   if (modeStartedOn != null) _validateLocalDate(_parseLocalDate(modeStartedOn));
   if (estimatedDueDate != null) _validateLocalDate(_parseLocalDate(estimatedDueDate));
+  if (postpartumBirthDate != null) {
+    _validateLocalDate(_parseLocalDate(postpartumBirthDate));
+  }
   _boundedOrThrow(
       birthControlMethod, kMaxBirthControlMethodLength, 'birthControlMethod');
   if (birthControlStartedOn != null) {
@@ -1358,6 +1362,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
     String? birthControlStartedOn,
     String? birthControlStoppedOn,
@@ -1368,6 +1373,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     _validateProfileModePayload(
       modeStartedOn: modeStartedOn,
       estimatedDueDate: estimatedDueDate,
+      postpartumBirthDate: postpartumBirthDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: birthControlStartedOn,
       birthControlStoppedOn: birthControlStoppedOn,
@@ -1381,6 +1387,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               mode: Value(mode),
               modeStartedOn: Value(modeStartedOn),
               estimatedDueDate: Value(estimatedDueDate),
+              postpartumBirthDate: Value(postpartumBirthDate),
               birthControlMethod: Value(birthControlMethod),
               birthControlStartedOn: Value(birthControlStartedOn),
               birthControlStoppedOn: Value(birthControlStoppedOn),
@@ -1397,6 +1404,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         mode: Value(mode),
         modeStartedOn: Value(modeStartedOn),
         estimatedDueDate: Value(estimatedDueDate),
+        postpartumBirthDate: Value(postpartumBirthDate),
         birthControlMethod: Value(birthControlMethod),
         birthControlStartedOn: Value(birthControlStartedOn),
         birthControlStoppedOn: Value(birthControlStoppedOn),

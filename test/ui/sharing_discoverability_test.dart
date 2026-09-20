@@ -1181,7 +1181,7 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('Guardians'), findsOneWidget);
-      expect(find.text('Rename'), canEdit ? findsOneWidget : findsNothing);
+      expect(find.text('Edit profile'), canEdit ? findsOneWidget : findsNothing);
       expect(find.text('Archive'), canDelete ? findsOneWidget : findsNothing);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();

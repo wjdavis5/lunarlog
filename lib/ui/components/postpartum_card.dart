@@ -24,6 +24,7 @@ class PostpartumCard extends StatelessWidget {
   const PostpartumCard({
     super.key,
     this.daysSinceStart,
+    this.sinceBirth = false,
     this.showReturnOffer = false,
     this.canSwitch = true,
     this.onSwitchToTracking,
@@ -32,6 +33,12 @@ class PostpartumCard extends StatelessWidget {
   /// Whole days since the profile entered Postpartum mode
   /// (`daysSincePostpartumStart`), or null when no start date is recorded.
   final int? daysSinceStart;
+
+  /// Issue #861: whether the count runs from a supplied birth date rather
+  /// than the mode-start surrogate. False (the default) keeps the honest
+  /// "of postpartum" wording; true says "since birth", which is only true
+  /// when the caller computed the count from a real birth date.
+  final bool sinceBirth;
 
   /// Whether a bleed has been logged during the interval — the
   /// cycles-have-returned offer's trigger. Ignored (and the offer omitted)
@@ -62,7 +69,9 @@ class PostpartumCard extends StatelessWidget {
           children: [
             if (days != null) ...[
               Text(
-                l10n.postpartumDayTitle(days),
+                sinceBirth
+                    ? l10n.postpartumDaySinceBirth(days)
+                    : l10n.postpartumDayTitle(days),
                 key: const ValueKey('postpartum-day'),
                 style: theme.textTheme.headlineSmall,
               ),

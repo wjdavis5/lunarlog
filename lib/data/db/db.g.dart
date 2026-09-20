@@ -4577,6 +4577,17 @@ class $ProfileModesTable extends ProfileModes
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _postpartumBirthDateMeta =
+      const VerificationMeta('postpartumBirthDate');
+  @override
+  late final GeneratedColumn<String> postpartumBirthDate =
+      GeneratedColumn<String>(
+        'postpartum_birth_date',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _birthControlMethodMeta =
       const VerificationMeta('birthControlMethod');
   @override
@@ -4667,6 +4678,7 @@ class $ProfileModesTable extends ProfileModes
     mode,
     modeStartedOn,
     estimatedDueDate,
+    postpartumBirthDate,
     birthControlMethod,
     birthControlStartedOn,
     birthControlStoppedOn,
@@ -4716,6 +4728,15 @@ class $ProfileModesTable extends ProfileModes
         estimatedDueDate.isAcceptableOrUnknown(
           data['estimated_due_date']!,
           _estimatedDueDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('postpartum_birth_date')) {
+      context.handle(
+        _postpartumBirthDateMeta,
+        postpartumBirthDate.isAcceptableOrUnknown(
+          data['postpartum_birth_date']!,
+          _postpartumBirthDateMeta,
         ),
       );
     }
@@ -4800,6 +4821,10 @@ class $ProfileModesTable extends ProfileModes
         DriftSqlType.string,
         data['${effectivePrefix}estimated_due_date'],
       ),
+      postpartumBirthDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}postpartum_birth_date'],
+      ),
       birthControlMethod: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}birth_control_method'],
@@ -4862,6 +4887,16 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
   /// any later re-entry).
   final String? estimatedDueDate;
 
+  /// Postpartum-mode birth date (Issue #861), as an ISO calendar date
+  /// `yyyy-MM-dd` — optionally supplied when the operator switches to
+  /// Postpartum, stored here (synced like every other `profile_modes`
+  /// column) and used by the Postpartum day counter. Null when not
+  /// supplied: the counter falls back to `modeStartedOn` (today's
+  /// existing surrogate). Kept on exit rather than cleared, like
+  /// `estimatedDueDate` — the mode column says whether the mode is
+  /// current; this stays as the record of the postpartum that was.
+  final String? postpartumBirthDate;
+
   /// Current birth-control method (free text, #260 owns the vocabulary) or
   /// null when none is recorded.
   final String? birthControlMethod;
@@ -4883,6 +4918,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
     required this.mode,
     this.modeStartedOn,
     this.estimatedDueDate,
+    this.postpartumBirthDate,
     this.birthControlMethod,
     this.birthControlStartedOn,
     this.birthControlStoppedOn,
@@ -4901,6 +4937,9 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
     }
     if (!nullToAbsent || estimatedDueDate != null) {
       map['estimated_due_date'] = Variable<String>(estimatedDueDate);
+    }
+    if (!nullToAbsent || postpartumBirthDate != null) {
+      map['postpartum_birth_date'] = Variable<String>(postpartumBirthDate);
     }
     if (!nullToAbsent || birthControlMethod != null) {
       map['birth_control_method'] = Variable<String>(birthControlMethod);
@@ -4928,6 +4967,9 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
       estimatedDueDate: estimatedDueDate == null && nullToAbsent
           ? const Value.absent()
           : Value(estimatedDueDate),
+      postpartumBirthDate: postpartumBirthDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(postpartumBirthDate),
       birthControlMethod: birthControlMethod == null && nullToAbsent
           ? const Value.absent()
           : Value(birthControlMethod),
@@ -4954,6 +4996,9 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
       mode: serializer.fromJson<String>(json['mode']),
       modeStartedOn: serializer.fromJson<String?>(json['modeStartedOn']),
       estimatedDueDate: serializer.fromJson<String?>(json['estimatedDueDate']),
+      postpartumBirthDate: serializer.fromJson<String?>(
+        json['postpartumBirthDate'],
+      ),
       birthControlMethod: serializer.fromJson<String?>(
         json['birthControlMethod'],
       ),
@@ -4977,6 +5022,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
       'mode': serializer.toJson<String>(mode),
       'modeStartedOn': serializer.toJson<String?>(modeStartedOn),
       'estimatedDueDate': serializer.toJson<String?>(estimatedDueDate),
+      'postpartumBirthDate': serializer.toJson<String?>(postpartumBirthDate),
       'birthControlMethod': serializer.toJson<String?>(birthControlMethod),
       'birthControlStartedOn': serializer.toJson<String?>(
         birthControlStartedOn,
@@ -4996,6 +5042,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
     String? mode,
     Value<String?> modeStartedOn = const Value.absent(),
     Value<String?> estimatedDueDate = const Value.absent(),
+    Value<String?> postpartumBirthDate = const Value.absent(),
     Value<String?> birthControlMethod = const Value.absent(),
     Value<String?> birthControlStartedOn = const Value.absent(),
     Value<String?> birthControlStoppedOn = const Value.absent(),
@@ -5012,6 +5059,9 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
     estimatedDueDate: estimatedDueDate.present
         ? estimatedDueDate.value
         : this.estimatedDueDate,
+    postpartumBirthDate: postpartumBirthDate.present
+        ? postpartumBirthDate.value
+        : this.postpartumBirthDate,
     birthControlMethod: birthControlMethod.present
         ? birthControlMethod.value
         : this.birthControlMethod,
@@ -5036,6 +5086,9 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
       estimatedDueDate: data.estimatedDueDate.present
           ? data.estimatedDueDate.value
           : this.estimatedDueDate,
+      postpartumBirthDate: data.postpartumBirthDate.present
+          ? data.postpartumBirthDate.value
+          : this.postpartumBirthDate,
       birthControlMethod: data.birthControlMethod.present
           ? data.birthControlMethod.value
           : this.birthControlMethod,
@@ -5061,6 +5114,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
           ..write('mode: $mode, ')
           ..write('modeStartedOn: $modeStartedOn, ')
           ..write('estimatedDueDate: $estimatedDueDate, ')
+          ..write('postpartumBirthDate: $postpartumBirthDate, ')
           ..write('birthControlMethod: $birthControlMethod, ')
           ..write('birthControlStartedOn: $birthControlStartedOn, ')
           ..write('birthControlStoppedOn: $birthControlStoppedOn, ')
@@ -5078,6 +5132,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
     mode,
     modeStartedOn,
     estimatedDueDate,
+    postpartumBirthDate,
     birthControlMethod,
     birthControlStartedOn,
     birthControlStoppedOn,
@@ -5094,6 +5149,7 @@ class ProfileModeData extends DataClass implements Insertable<ProfileModeData> {
           other.mode == this.mode &&
           other.modeStartedOn == this.modeStartedOn &&
           other.estimatedDueDate == this.estimatedDueDate &&
+          other.postpartumBirthDate == this.postpartumBirthDate &&
           other.birthControlMethod == this.birthControlMethod &&
           other.birthControlStartedOn == this.birthControlStartedOn &&
           other.birthControlStoppedOn == this.birthControlStoppedOn &&
@@ -5108,6 +5164,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
   final Value<String> mode;
   final Value<String?> modeStartedOn;
   final Value<String?> estimatedDueDate;
+  final Value<String?> postpartumBirthDate;
   final Value<String?> birthControlMethod;
   final Value<String?> birthControlStartedOn;
   final Value<String?> birthControlStoppedOn;
@@ -5121,6 +5178,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
     this.mode = const Value.absent(),
     this.modeStartedOn = const Value.absent(),
     this.estimatedDueDate = const Value.absent(),
+    this.postpartumBirthDate = const Value.absent(),
     this.birthControlMethod = const Value.absent(),
     this.birthControlStartedOn = const Value.absent(),
     this.birthControlStoppedOn = const Value.absent(),
@@ -5135,6 +5193,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
     this.mode = const Value.absent(),
     this.modeStartedOn = const Value.absent(),
     this.estimatedDueDate = const Value.absent(),
+    this.postpartumBirthDate = const Value.absent(),
     this.birthControlMethod = const Value.absent(),
     this.birthControlStartedOn = const Value.absent(),
     this.birthControlStoppedOn = const Value.absent(),
@@ -5150,6 +5209,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
     Expression<String>? mode,
     Expression<String>? modeStartedOn,
     Expression<String>? estimatedDueDate,
+    Expression<String>? postpartumBirthDate,
     Expression<String>? birthControlMethod,
     Expression<String>? birthControlStartedOn,
     Expression<String>? birthControlStoppedOn,
@@ -5164,6 +5224,8 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
       if (mode != null) 'mode': mode,
       if (modeStartedOn != null) 'mode_started_on': modeStartedOn,
       if (estimatedDueDate != null) 'estimated_due_date': estimatedDueDate,
+      if (postpartumBirthDate != null)
+        'postpartum_birth_date': postpartumBirthDate,
       if (birthControlMethod != null)
         'birth_control_method': birthControlMethod,
       if (birthControlStartedOn != null)
@@ -5183,6 +5245,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
     Value<String>? mode,
     Value<String?>? modeStartedOn,
     Value<String?>? estimatedDueDate,
+    Value<String?>? postpartumBirthDate,
     Value<String?>? birthControlMethod,
     Value<String?>? birthControlStartedOn,
     Value<String?>? birthControlStoppedOn,
@@ -5197,6 +5260,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
       mode: mode ?? this.mode,
       modeStartedOn: modeStartedOn ?? this.modeStartedOn,
       estimatedDueDate: estimatedDueDate ?? this.estimatedDueDate,
+      postpartumBirthDate: postpartumBirthDate ?? this.postpartumBirthDate,
       birthControlMethod: birthControlMethod ?? this.birthControlMethod,
       birthControlStartedOn:
           birthControlStartedOn ?? this.birthControlStartedOn,
@@ -5224,6 +5288,11 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
     }
     if (estimatedDueDate.present) {
       map['estimated_due_date'] = Variable<String>(estimatedDueDate.value);
+    }
+    if (postpartumBirthDate.present) {
+      map['postpartum_birth_date'] = Variable<String>(
+        postpartumBirthDate.value,
+      );
     }
     if (birthControlMethod.present) {
       map['birth_control_method'] = Variable<String>(birthControlMethod.value);
@@ -5263,6 +5332,7 @@ class ProfileModesCompanion extends UpdateCompanion<ProfileModeData> {
           ..write('mode: $mode, ')
           ..write('modeStartedOn: $modeStartedOn, ')
           ..write('estimatedDueDate: $estimatedDueDate, ')
+          ..write('postpartumBirthDate: $postpartumBirthDate, ')
           ..write('birthControlMethod: $birthControlMethod, ')
           ..write('birthControlStartedOn: $birthControlStartedOn, ')
           ..write('birthControlStoppedOn: $birthControlStoppedOn, ')
@@ -15462,6 +15532,7 @@ typedef $$ProfileModesTableCreateCompanionBuilder =
       Value<String> mode,
       Value<String?> modeStartedOn,
       Value<String?> estimatedDueDate,
+      Value<String?> postpartumBirthDate,
       Value<String?> birthControlMethod,
       Value<String?> birthControlStartedOn,
       Value<String?> birthControlStoppedOn,
@@ -15477,6 +15548,7 @@ typedef $$ProfileModesTableUpdateCompanionBuilder =
       Value<String> mode,
       Value<String?> modeStartedOn,
       Value<String?> estimatedDueDate,
+      Value<String?> postpartumBirthDate,
       Value<String?> birthControlMethod,
       Value<String?> birthControlStartedOn,
       Value<String?> birthControlStoppedOn,
@@ -15535,6 +15607,11 @@ class $$ProfileModesTableFilterComposer
 
   ColumnFilters<String> get estimatedDueDate => $composableBuilder(
     column: $table.estimatedDueDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get postpartumBirthDate => $composableBuilder(
+    column: $table.postpartumBirthDate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15621,6 +15698,11 @@ class $$ProfileModesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get postpartumBirthDate => $composableBuilder(
+    column: $table.postpartumBirthDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get birthControlMethod => $composableBuilder(
     column: $table.birthControlMethod,
     builder: (column) => ColumnOrderings(column),
@@ -15699,6 +15781,11 @@ class $$ProfileModesTableAnnotationComposer
 
   GeneratedColumn<String> get estimatedDueDate => $composableBuilder(
     column: $table.estimatedDueDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get postpartumBirthDate => $composableBuilder(
+    column: $table.postpartumBirthDate,
     builder: (column) => column,
   );
 
@@ -15789,6 +15876,7 @@ class $$ProfileModesTableTableManager
                 Value<String> mode = const Value.absent(),
                 Value<String?> modeStartedOn = const Value.absent(),
                 Value<String?> estimatedDueDate = const Value.absent(),
+                Value<String?> postpartumBirthDate = const Value.absent(),
                 Value<String?> birthControlMethod = const Value.absent(),
                 Value<String?> birthControlStartedOn = const Value.absent(),
                 Value<String?> birthControlStoppedOn = const Value.absent(),
@@ -15802,6 +15890,7 @@ class $$ProfileModesTableTableManager
                 mode: mode,
                 modeStartedOn: modeStartedOn,
                 estimatedDueDate: estimatedDueDate,
+                postpartumBirthDate: postpartumBirthDate,
                 birthControlMethod: birthControlMethod,
                 birthControlStartedOn: birthControlStartedOn,
                 birthControlStoppedOn: birthControlStoppedOn,
@@ -15817,6 +15906,7 @@ class $$ProfileModesTableTableManager
                 Value<String> mode = const Value.absent(),
                 Value<String?> modeStartedOn = const Value.absent(),
                 Value<String?> estimatedDueDate = const Value.absent(),
+                Value<String?> postpartumBirthDate = const Value.absent(),
                 Value<String?> birthControlMethod = const Value.absent(),
                 Value<String?> birthControlStartedOn = const Value.absent(),
                 Value<String?> birthControlStoppedOn = const Value.absent(),
@@ -15830,6 +15920,7 @@ class $$ProfileModesTableTableManager
                 mode: mode,
                 modeStartedOn: modeStartedOn,
                 estimatedDueDate: estimatedDueDate,
+                postpartumBirthDate: postpartumBirthDate,
                 birthControlMethod: birthControlMethod,
                 birthControlStartedOn: birthControlStartedOn,
                 birthControlStoppedOn: birthControlStoppedOn,

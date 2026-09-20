@@ -177,7 +177,7 @@ void main() {
     await tester.tap(find.byTooltip('Profile actions').first);
     await tester.pumpAndSettle();
     expect(find.text('Guardians'), findsOneWidget);
-    expect(find.text('Rename'), findsOneWidget);
+    expect(find.text('Edit profile'), findsOneWidget);
     expect(find.text('Archive'), findsOneWidget);
     await h.dispose();
   });

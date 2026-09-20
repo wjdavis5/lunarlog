@@ -2660,6 +2660,12 @@ abstract class AppLocalizations {
   /// **'Profile actions'**
   String get profilePickerActionsTooltip;
 
+  /// Issue #860: the profile row's overflow-menu item and the profile edit dialog's title. The dialog edits the name plus Life-stage mode, Care mode, Relationship and Birth control, so it is labelled for everything it does rather than only the rename it used to be labelled for.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get editProfileAction;
+
   /// Tooltip on the profile picker's shared-predictions entry point.
   ///
   /// In en, this message translates to:
@@ -3170,11 +3176,29 @@ abstract class AppLocalizations {
   /// **'Pregnancy excluded from cycle averages'**
   String get pregnancyExitExclusionDone;
 
-  /// Postpartum-mode Cycle View headline: the whole-day counter since the profile entered Postpartum mode (Issue #455). Deliberately framed as 'of postpartum' rather than 'since birth' because the mode start is the app's only recorded proxy for that date.
+  /// Postpartum-mode Cycle View headline: the whole-day counter since the profile entered Postpartum mode (Issue #455). Deliberately framed as 'of postpartum' rather than 'since birth' because the mode start is the app's only recorded proxy for that date — used only when no birth date was supplied (Issue #861).
   ///
   /// In en, this message translates to:
   /// **'Day {days} of postpartum'**
   String postpartumDayTitle(int days);
+
+  /// Postpartum-mode Cycle View headline when the operator supplied a birth date (Issue #861): the whole-day counter runs from that date, so 'since birth' is the honest framing.
+  ///
+  /// In en, this message translates to:
+  /// **'Day {days} since birth'**
+  String postpartumDaySinceBirth(int days);
+
+  /// Label for the birth-date field shown in the profile edit dialog while the life-stage mode is Postpartum (Issue #861).
+  ///
+  /// In en, this message translates to:
+  /// **'Birth date'**
+  String get postpartumBirthDateLabel;
+
+  /// Hint under the Postpartum birth-date field explaining the field is optional and what a blank value means (Issue #861).
+  ///
+  /// In en, this message translates to:
+  /// **'Optional. Pick the date to count from, or leave it blank to count from today.'**
+  String get postpartumBirthDateHint;
 
   /// Postpartum card quiet line when the mode is postpartum but no mode-start date was stamped (a row entered before #188 stamped the column), matching the pregnancy card's honest no-data state (Issue #455).
   ///
@@ -3254,10 +3278,10 @@ abstract class AppLocalizations {
   /// **'Cycle changes'**
   String get perimenopauseTitle;
 
-  /// Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196).
+  /// Introductory line of the Perimenopause-mode Cycle View card, explaining why it leads with comparison rather than a lateness countdown (Issue #196). Issue #862: names the comparison as cycle-to-cycle rather than claiming the still-open cycle is the one shown.
   ///
   /// In en, this message translates to:
-  /// **'In perimenopause, cycle lengths vary from one to the next. Comparing this cycle with the last is how change shows up — not a count of days late.'**
+  /// **'In perimenopause, cycle lengths vary from one to the next. Comparing each cycle with the one before it is how change shows up — not a count of days late.'**
   String get perimenopauseBody;
 
   /// Heading of the Perimenopause-mode Cycle View card's honest empty state, shown with fewer than two logged cycles (Issue #196).
@@ -3272,22 +3296,22 @@ abstract class AppLocalizations {
   /// **'Keep logging — once a second cycle is recorded, this view compares them so you can spot changes. Irregular cycles are expected around perimenopause.'**
   String get perimenopauseNotEnoughBody;
 
-  /// Perimenopause comparison line when the current cycle is longer than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.
+  /// Perimenopause comparison line when the compared cycle is longer than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: the card compares the two most recent COMPLETED cycles (an open cycle has no length yet), so the copy names those rather than saying 'this cycle' — which every other surface uses for the still-open one.
   ///
   /// In en, this message translates to:
-  /// **'This cycle is {days} longer than the last'**
+  /// **'Your last completed cycle was {days} longer than the one before it'**
   String perimenopauseLengthLonger(String days);
 
-  /// Perimenopause comparison line when the current cycle is shorter than the previous one (Issue #196). {days} is an already-formatted, pluralized day count.
+  /// Perimenopause comparison line when the compared cycle is shorter than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: names the completed cycles the card actually compares, never 'this cycle'.
   ///
   /// In en, this message translates to:
-  /// **'This cycle is {days} shorter than the last'**
+  /// **'Your last completed cycle was {days} shorter than the one before it'**
   String perimenopauseLengthShorter(String days);
 
-  /// Perimenopause comparison line when the two compared cycles are the same length (Issue #196).
+  /// Perimenopause comparison line when the two compared cycles are the same length (Issue #196). Issue #862: names the completed cycles the card actually compares, never 'this cycle'.
   ///
   /// In en, this message translates to:
-  /// **'This cycle is the same length as the last'**
+  /// **'Your last completed cycle was the same length as the one before it'**
   String get perimenopauseLengthSame;
 
   /// Perimenopause comparison line when the current cycle has not finished, so no length difference can honestly be stated (Issue #196).
@@ -3296,10 +3320,10 @@ abstract class AppLocalizations {
   /// **'This cycle is still in progress — compare it once it ends'**
   String get perimenopauseLengthUnknown;
 
-  /// Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts.
+  /// Perimenopause comparison line giving each compared cycle's bleed-day count (Issue #196). Both are already-formatted, pluralized day counts. Issue #862: 'the newer cycle' / 'the one before it' stays true whether the card is comparing two completed cycles or (with only two starts) the open one against the last completed one, where 'this cycle' would misname the pair.
   ///
   /// In en, this message translates to:
-  /// **'Bleeding days: {current} this cycle, {previous} last cycle'**
+  /// **'Bleeding days: {current} in the newer cycle, {previous} in the one before it'**
   String perimenopauseBleedDays(String current, String previous);
 
   /// Button on the Perimenopause-mode Cycle View card that opens the full side-by-side cycle comparison (Issue #196, reusing Issue #235's screen).

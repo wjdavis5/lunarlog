@@ -821,6 +821,9 @@ ProfileLifecycleMode? _parseProfileMode(Object? raw, {required String context}) 
     estimatedDueDate: _parseOptionalLocalDate(raw['estimatedDueDate'],
             context: '$modeContext estimatedDueDate')
         ?.iso,
+    postpartumBirthDate: _parseOptionalLocalDate(raw['postpartumBirthDate'],
+            context: '$modeContext postpartumBirthDate')
+        ?.iso,
     birthControlMethod: _boundedString(raw['birthControlMethod'],
         kMaxBirthControlMethodLength, context: '$modeContext birthControlMethod'),
     birthControlStartedOn: _parseOptionalLocalDate(raw['birthControlStartedOn'],
