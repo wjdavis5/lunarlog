@@ -202,11 +202,12 @@ void main() {
           .data,
       contains('6 days longer'),
     );
-    // The emphasis is bold, never colour-only (a11y).
+    // The emphasis is a weight (issue #808: the ramp's semibold, not w700),
+    // never colour-only (a11y).
     final lengthText = tester.widget<Text>(
       find.byKey(const ValueKey('perimenopause-length-change')),
     );
-    expect(lengthText.style?.fontWeight, FontWeight.bold);
+    expect(lengthText.style?.fontWeight, FontWeight.w600);
     // Issue #862: the copy names the completed cycles the card actually
     // compares, never "this cycle" (which every other surface uses for the
     // still-open one).
