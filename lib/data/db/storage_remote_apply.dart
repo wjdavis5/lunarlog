@@ -1227,6 +1227,21 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// is left untouched for the same reason [_tombstoneRevokedSharedProfile]
   /// leaves it — a later, legitimate write to the same row must win
   /// normally. Idempotent: a second call matches zero live rows.
+  ///
+  /// Issue #907: the same import that wrote the rows also wrote the
+  /// profile's cycle facts (`last_period_start` and the two typical lengths,
+  /// #218) from the file, and those are exactly what the provisional
+  /// prediction falls back to when no live episode exists — so a purge that
+  /// emptied the profile left "Cycle day 876" derived from a date the user
+  /// just removed. There is no per-field provenance for those columns today,
+  /// so the chosen rule is deliberately conservative: clear all three ONLY
+  /// when this purge leaves the profile with no live day entries at all
+  /// (any remaining live entry — a hand log, another source — means the
+  /// facts are left exactly as they were, so a profile that still shows
+  /// history is never silently altered). Unlike the day-entry/observation
+  /// tombstones above, this IS a genuine profile edit and is marked dirty
+  /// with the usual `local_rev`/`updated_at` bump, so it syncs and a later
+  /// reconcile cannot restore the stale server copy over it.
   Future<void> applyLocalImportedDataPurge({
     required String profileId,
     required String source,
@@ -1267,7 +1282,43 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
               deletedAt: Value(stamp),
               dirty: const Value(false),
             ));
+        // Issue #907: only when nothing live remains for the profile.
+        await _clearCycleFactsIfProfileEmpty(profileId);
       });
+
+  /// Issue #907: clears the three #218 cycle-fact columns on [profileId]
+  /// when — and only when — the profile has no live day entries left at all.
+  /// Called inside [applyLocalImportedDataPurge]'s own transaction, after
+  /// the source's rows have been tombstoned. No-op for the (common) case
+  /// where a live entry survives, for an absent/tombstoned profile, and when
+  /// all three columns are already null (so a purge never dirties a profile
+  /// just to write nulls over nulls).
+  Future<void> _clearCycleFactsIfProfileEmpty(String profileId) async {
+    final remaining = await (db.selectOnly(db.dayEntries)
+          ..addColumns([db.dayEntries.id])
+          ..where(db.dayEntries.profileId.equals(profileId) &
+              db.dayEntries.deletedAt.isNull())
+          ..limit(1))
+        .get();
+    if (remaining.isNotEmpty) return;
+    final existing = await _profileOrNull(profileId);
+    if (existing == null || existing.deletedAt != null) return;
+    if (existing.lastPeriodStart == null &&
+        existing.typicalCycleLengthDays == null &&
+        existing.typicalPeriodLengthDays == null) {
+      return;
+    }
+    await (db.update(db.profiles)..where((t) => t.id.equals(profileId))).write(
+      ProfilesCompanion(
+        lastPeriodStart: const Value(null),
+        typicalCycleLengthDays: const Value(null),
+        typicalPeriodLengthDays: const Value(null),
+        updatedAt: Value(_afterStored(_now(), existing.updatedAt)),
+        dirty: const Value(true),
+        localRev: Value(existing.localRev + 1),
+      ),
+    );
+  }
 
   Future<bool> _applyDayEntry(
     RemoteDayEntryRow remote, {

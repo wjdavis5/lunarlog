@@ -733,6 +733,38 @@ class _ImportScreenState extends State<ImportScreen> {
       '${_count(summary.profilesMatched, 'matched profile', 'matched profiles')} '
       '(${summary.entriesAdded} entries added, ${summary.entriesMerged} merged).';
 
+  /// Issue #925: the preview's warning for day entries the plan will drop
+  /// because their date is out of bounds — shown before the user commits so
+  /// the count the preview otherwise reports ("3 day entries") is not a
+  /// silent overstatement. Null when nothing was rejected.
+  String? _entryDatesRejectedPreview(
+    AppLocalizations l10n,
+    ImportPlanSummary summary,
+  ) {
+    final count = summary.entryDatesRejected;
+    if (count == 0) return null;
+    return l10n.importEntryDatesRejectedPreview(
+      count,
+      _rejectionReasons(l10n, summary),
+    );
+  }
+
+  /// Issue #925: "1 more than a day in the future and 2 before the birth
+  /// year", naming only the non-zero rules. The two reasons have different
+  /// fixes, so both are named when both occurred.
+  String _rejectionReasons(AppLocalizations l10n, ImportPlanSummary summary) {
+    final future = summary.entryDatesRejectedFuture;
+    final before = summary.entryDatesRejectedBeforeBirthYear;
+    if (future > 0 && before > 0) {
+      return l10n.importEntryDatesRejectionReasonsJoin(
+        l10n.importEntryDatesRejectionFuture(future),
+        l10n.importEntryDatesRejectionBeforeBirthYear(before),
+      );
+    }
+    if (future > 0) return l10n.importEntryDatesRejectionFuture(future);
+    return l10n.importEntryDatesRejectionBeforeBirthYear(before);
+  }
+
   Scaffold _previewScaffold(
     BuildContext context,
     ImportPreview preview,
@@ -740,6 +772,7 @@ class _ImportScreenState extends State<ImportScreen> {
   ) {
     final summary = plan.summary;
     final error = _error;
+    final l10n = AppLocalizations.of(context);
     return _scaffold(SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -752,6 +785,10 @@ class _ImportScreenState extends State<ImportScreen> {
           const SizedBox(height: 8),
           Text(_planSummaryText(summary),
               key: const ValueKey('import-preview-plan')),
+          if (_entryDatesRejectedPreview(l10n, summary) case final warning?) ...[
+            const SizedBox(height: 8),
+            Text(warning, key: const ValueKey('import-preview-rejected')),
+          ],
           _skippedList(const ValueKey('import-preview-skipped'), summary.skippedProfiles),
           if (plan.sharesWithOtherGuardians) ...[
             const SizedBox(height: 8),
@@ -784,14 +821,31 @@ class _ImportScreenState extends State<ImportScreen> {
     ));
   }
 
-  String _resultSummaryText(ImportPlanSummary summary) =>
+  String _resultSummaryText(AppLocalizations l10n, ImportPlanSummary summary) =>
       'Import complete: '
       '${_count(summary.profilesCreated, 'profile', 'profiles')} created, '
       '${summary.profilesMatched} matched, '
       '${summary.entriesAdded} entries added, ${summary.entriesMerged} merged, '
       '${summary.observationsAdded} observations added, '
       '${summary.observationsSkipped} skipped'
+      '${_entryDatesRejectedSuffix(l10n, summary)}'
       '${_notesDiscardedSuffix(summary)}.';
+
+  /// Issue #925: a restore whose file carried out-of-bounds dates drops them,
+  /// and the bare result line's "0 skipped" (observations) otherwise reads as
+  /// though nothing was. This counts the rejected day entries in the same
+  /// sentence as the other outcomes, naming the reason(s) — omitted entirely
+  /// when nothing was rejected, so a clean import reads exactly as before.
+  String _entryDatesRejectedSuffix(
+    AppLocalizations l10n,
+    ImportPlanSummary summary,
+  ) =>
+      summary.entryDatesRejected == 0
+          ? ''
+          : ', ${l10n.importEntryDatesRejectedResult(
+              summary.entryDatesRejected,
+              _rejectionReasons(l10n, summary),
+            )}';
 
   /// Issue #140 review, item 9: report honesty — a merged entry can keep
   /// the device's own note over the file's, and `entriesMerged` alone
@@ -803,10 +857,11 @@ class _ImportScreenState extends State<ImportScreen> {
               'not applied (an existing note was kept)';
 
   Scaffold _resultScaffold(BuildContext context, ImportPlanSummary summary) {
+    final l10n = AppLocalizations.of(context);
     return _scaffold(Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(_resultSummaryText(summary),
+        Text(_resultSummaryText(l10n, summary),
             key: const ValueKey('import-result-summary')),
         _skippedList(const ValueKey('import-result-skipped'), summary.skippedProfiles),
         const SizedBox(height: 16),

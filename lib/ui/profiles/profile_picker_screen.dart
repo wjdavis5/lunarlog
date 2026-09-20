@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/mode_intervals.dart' show hasModeIntervalExclusi
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
@@ -307,7 +308,15 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     final modes = Provider.of<ProfileModesRepository?>(context, listen: false);
     final priorModeRow = await modes?.find(profile.id);
     if (!context.mounted) return;
-    final result = await showProfileEditDialog(context, existing: profile);
+    // Issue #923: bound a new birth year against the profile's earliest
+    // live entry, read through the existing DayEntriesRepository.
+    final earliestEntryYear = await _earliestEntryYear(context, profile.id);
+    if (!context.mounted) return;
+    final result = await showProfileEditDialog(
+      context,
+      existing: profile,
+      earliestEntryYear: earliestEntryYear,
+    );
     if (result == null) return;
     final priorMode = priorModeRow?.mode ?? LifecycleMode.tracking;
     final priorStartedOn = priorModeRow?.modeStartedOn;
@@ -333,6 +342,29 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         estimatedDueDate: priorDueDate,
       );
     }
+  }
+
+  /// Issue #923: the calendar year of [profileId]'s earliest live day
+  /// entry, or null when it has none. Read through the existing
+  /// [DayEntriesRepository] (`listForProfile`) rather than a new query; a
+  /// tree without that repository (some tests) gets no cross-field bound.
+  Future<int?> _earliestEntryYear(
+    BuildContext context,
+    String profileId,
+  ) async {
+    final DayEntriesRepository repository;
+    try {
+      repository = context.read<DayEntriesRepository>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+    final entries = await repository.listForProfile(profileId);
+    if (entries.isEmpty) return null;
+    var earliest = entries.first.localDate;
+    for (final entry in entries) {
+      if (entry.localDate.isBefore(earliest)) earliest = entry.localDate;
+    }
+    return earliest.year;
   }
 
   /// Persists the #216 onboarding answers that are editable from the

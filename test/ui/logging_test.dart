@@ -33,6 +33,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
+import 'package:lunarlog/domain/logging/day_entry_policy.dart';
 import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
@@ -432,6 +433,23 @@ class ThrowingDayEntriesRepository implements DayEntriesRepository {
   Future<List<mergelog.DayEntryMergeEvent>> mergeEventsForProfile(
           String profileId) async =>
       const [];
+}
+
+/// Issue #923: a save that throws [error] exactly once per call — lets a
+/// widget test drive the day sheet with a typed
+/// [DayEntryDateOutOfBounds] (a date-bounds rejection, which must show
+/// rule-specific copy) versus a plain [ArgumentError] (a genuine bug, which
+/// keeps the generic copy).
+class ErrorThrowingDayEntriesRepository extends ThrowingDayEntriesRepository {
+  ErrorThrowingDayEntriesRepository(this.error) : super(failSave: true);
+
+  final Object error;
+
+  @override
+  Future<DayEntry> save(DayEntry entry) async {
+    saveCalls++;
+    throw error;
+  }
 }
 
 /// Guardians repository whose per-profile streams only emit when a test says
@@ -1124,6 +1142,83 @@ void main() {
             .selected,
         isTrue,
       );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a typed future-date bounds rejection shows its own copy, '
+        'never the generic bug banner (Issue #923)', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        entryRepositoryOverride: ErrorThrowingDayEntriesRepository(
+          DayEntryDateOutOfBounds(
+            kToday.addDays(2).iso,
+            DayEntryDateViolation.futureDate,
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+      expect(
+        find.text(
+          "This day is more than a day in the future, so it can't be saved.",
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text("Couldn't save — try again"),
+        findsNothing,
+        reason: 'a date-bounds rejection is user input, not a bug',
+      );
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('a typed before-birth-year bounds rejection names the cause '
+        '(Issue #923)', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        entryRepositoryOverride: ErrorThrowingDayEntriesRepository(
+          DayEntryDateOutOfBounds(
+            '2010-06-01',
+            DayEntryDateViolation.beforeBirthYear,
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+      expect(
+        find.textContaining("before the profile's birth year"),
+        findsOneWidget,
+      );
+      expect(find.text("Couldn't save — try again"), findsNothing);
+      await disposeLogging(tester, h);
+    });
+
+    testWidgets('an unrecognised-code ArgumentError still shows the generic '
+        'banner (keep the genuine-bug path, Issue #923)', (tester) async {
+      final h = await pumpLogging(
+        tester,
+        entryRepositoryOverride: ErrorThrowingDayEntriesRepository(
+          ArgumentError.value('heavy_flow', 'tags', 'not a known tag code'),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Heavy'));
+      await pumpAutosave(tester);
+
+      expect(find.byKey(const ValueKey('save-error')), findsOneWidget);
+      expect(find.text("Couldn't save — try again"), findsOneWidget);
       await disposeLogging(tester, h);
     });
 

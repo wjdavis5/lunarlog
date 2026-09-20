@@ -1627,6 +1627,8 @@ class ProfilePlan {
     this.hasOtherGuardians = false,
     this.restoredFromTombstone = false,
     this.entryDatesRejected = 0,
+    this.entryDatesRejectedFuture = 0,
+    this.entryDatesRejectedBeforeBirthYear = 0,
   });
 
   final String fileProfileId;
@@ -1705,6 +1707,14 @@ class ProfilePlan {
   /// loss. A blocked (skipped) profile plans no entries at all, so its
   /// count stays 0.
   final int entryDatesRejected;
+
+  /// Issue #925: [entryDatesRejected] split by rule — how many were dropped
+  /// for being more than a day in the future, and how many for preceding the
+  /// profile's birth year. The two have different fixes (wait for the date
+  /// vs correct the birth year), so the preview/result name them separately.
+  /// Their sum equals [entryDatesRejected].
+  final int entryDatesRejectedFuture;
+  final int entryDatesRejectedBeforeBirthYear;
 }
 
 /// Why a profile was skipped, for the result screen's "rejected" list.
@@ -1735,6 +1745,8 @@ class ImportPlanSummary {
     this.guardianNotesAdded = 0,
     this.guardianNotesSkipped = 0,
     this.entryDatesRejected = 0,
+    this.entryDatesRejectedFuture = 0,
+    this.entryDatesRejectedBeforeBirthYear = 0,
   });
 
   final int profilesCreated;
@@ -1751,6 +1763,14 @@ class ImportPlanSummary {
   /// [ProfilePlan.entryDatesRejected]. Reported like every other skipped
   /// bucket so a restore that silently discarded rows can say so.
   final int entryDatesRejected;
+
+  /// Issue #925: [entryDatesRejected] split by the rule that rejected each
+  /// entry, so the preview warning and the result summary can name the cause
+  /// — a future date and a pre-birth-year date have different fixes. Summed
+  /// from every [ProfilePlan.entryDatesRejectedFuture]/
+  /// [ProfilePlan.entryDatesRejectedBeforeBirthYear].
+  final int entryDatesRejectedFuture;
+  final int entryDatesRejectedBeforeBirthYear;
 
   /// Issue #140 review, LLA-084: mirrors [observationsAdded]/
   /// [observationsSkipped]'s shape for cycle overrides.
@@ -1793,6 +1813,9 @@ class ImportPlanSummary {
       entriesAdded: entryCounts.added,
       entriesMerged: entryCounts.merged,
       entryDatesRejected: entryCounts.rejected,
+      entryDatesRejectedFuture: entryCounts.rejectedFuture,
+      entryDatesRejectedBeforeBirthYear:
+          entryCounts.rejectedBeforeBirthYear,
       observationsAdded: observationCounts.added,
       observationsSkipped: observationCounts.skipped,
       notesDiscarded: entryCounts.notesDiscarded,
@@ -1836,6 +1859,8 @@ typedef _EntryCounts = ({
   int merged,
   int notesDiscarded,
   int rejected,
+  int rejectedFuture,
+  int rejectedBeforeBirthYear,
 });
 
 _EntryCounts _entryOutcomeCounts(List<ProfilePlan> profiles) {
@@ -1843,8 +1868,12 @@ _EntryCounts _entryOutcomeCounts(List<ProfilePlan> profiles) {
   var merged = 0;
   var notesDiscarded = 0;
   var rejected = 0;
+  var rejectedFuture = 0;
+  var rejectedBeforeBirthYear = 0;
   for (final p in profiles) {
     rejected += p.entryDatesRejected;
+    rejectedFuture += p.entryDatesRejectedFuture;
+    rejectedBeforeBirthYear += p.entryDatesRejectedBeforeBirthYear;
     for (final e in p.entries) {
       if (e.outcome == DayEntryImportOutcome.add) {
         added++;
@@ -1859,6 +1888,8 @@ _EntryCounts _entryOutcomeCounts(List<ProfilePlan> profiles) {
     merged: merged,
     notesDiscarded: notesDiscarded,
     rejected: rejected,
+    rejectedFuture: rejectedFuture,
+    rejectedBeforeBirthYear: rejectedBeforeBirthYear,
   );
 }
 
@@ -2011,9 +2042,14 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
 }
 
 /// Issue #848: the planned entries plus the date-bounds rejections.
+/// Issue #925: the rejections are split by rule so the preview/result can
+/// say *why* (future-dated versus before the birth year — two different
+/// fixes for the user) rather than reporting a bare count.
 typedef _EntryPlanResult = ({
   List<DayEntryPlan> plans,
   int rejected,
+  int rejectedFuture,
+  int rejectedBeforeBirthYear,
   Set<String> rejectedDates,
 });
 
@@ -2031,18 +2067,30 @@ _EntryPlanResult _planEntries(
   final byDate = {for (final e in existing) e.localDate.iso: e};
   final plans = <DayEntryPlan>[];
   final rejectedDates = <String>{};
+  var rejectedFuture = 0;
+  var rejectedBeforeBirthYear = 0;
   for (final e in imported) {
-    if (DayEntryPolicy.validateDate(e.localDate,
-            today: today, birthYear: birthYear)
-        .isValid) {
+    final validation = DayEntryPolicy.validateDate(e.localDate,
+        today: today, birthYear: birthYear);
+    if (validation.isValid) {
       plans.add(_planDayEntry(e, byDate[e.localDate.iso]));
     } else {
       rejectedDates.add(e.localDate.iso);
+      switch (validation.violation) {
+        case DayEntryDateViolation.futureDate:
+          rejectedFuture++;
+        case DayEntryDateViolation.beforeBirthYear:
+          rejectedBeforeBirthYear++;
+        case null:
+          break;
+      }
     }
   }
   return (
     plans: plans,
     rejected: rejectedDates.length,
+    rejectedFuture: rejectedFuture,
+    rejectedBeforeBirthYear: rejectedBeforeBirthYear,
     rejectedDates: rejectedDates,
   );
 }
@@ -2242,6 +2290,8 @@ ProfilePlan _planProfile(
       trackingPreferences: imported.trackingPreferences,
       entries: planned.plans,
       entryDatesRejected: planned.rejected,
+      entryDatesRejectedFuture: planned.rejectedFuture,
+      entryDatesRejectedBeforeBirthYear: planned.rejectedBeforeBirthYear,
       observations: _planObservations(imported.observations, const [],
           rejectedDates: planned.rejectedDates),
       cycleOverrides: _planCycleOverrides(imported.cycleOverrides, const []),
@@ -2270,6 +2320,8 @@ ProfilePlan _planProfile(
     outcome: ProfileImportOutcome.matched,
     entries: planned.plans,
     entryDatesRejected: planned.rejected,
+    entryDatesRejectedFuture: planned.rejectedFuture,
+    entryDatesRejectedBeforeBirthYear: planned.rejectedBeforeBirthYear,
     observations: _planObservations(imported.observations, existingObservations,
         rejectedDates: planned.rejectedDates),
     cycleOverrides:

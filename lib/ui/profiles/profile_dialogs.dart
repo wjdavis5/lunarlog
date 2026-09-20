@@ -83,6 +83,32 @@ String? validateBirthYear(String? value) {
   return null;
 }
 
+/// Issue #923: [validateBirthYear] plus a last cross-field rule — a birth
+/// year later than the calendar year of the profile's earliest live day
+/// entry is refused, naming the conflict. Before this, such a typo saved
+/// fine and then made every earlier entry fail autosave forever with the
+/// generic "Couldn't save" banner (#848's date-bounds policy rejects a
+/// date whose year precedes the profile's birth year). [earliestEntryYear]
+/// is null when the profile has no live entries (a new profile, or a
+/// profile whose entries were all purged) — then this adds nothing beyond
+/// [validateBirthYear].
+String? validateBirthYearForProfile(
+  String? value, {
+  int? earliestEntryYear,
+}) {
+  final base = validateBirthYear(value);
+  if (base != null || earliestEntryYear == null) return base;
+  final text = value?.trim() ?? '';
+  if (text.isEmpty) return null;
+  final parsed = int.tryParse(text);
+  if (parsed == null) return null;
+  if (parsed > earliestEntryYear) {
+    return 'This profile has entries from $earliestEntryYear. Enter '
+        '$earliestEntryYear or earlier.';
+  }
+  return null;
+}
+
 class ProfileEditResult {
   const ProfileEditResult(
     this.displayName,
@@ -139,12 +165,16 @@ class ProfileEditResult {
 Future<ProfileEditResult?> showProfileEditDialog(
   BuildContext context, {
   Profile? existing,
+  int? earliestEntryYear,
 }) {
   return showModalBottomSheet<ProfileEditResult>(
     context: context,
     isScrollControlled: true,
     routeSettings: const RouteSettings(name: kRouteProfileEditDialog),
-    builder: (dialogContext) => _ProfileEditDialog(existing: existing),
+    builder: (dialogContext) => _ProfileEditDialog(
+      existing: existing,
+      earliestEntryYear: earliestEntryYear,
+    ),
   );
 }
 
@@ -152,13 +182,26 @@ Future<ProfileEditResult?> showProfileEditDialog(
 Future<ProfileEditResult?> showProfileEditSheet(
   BuildContext context, {
   Profile? existing,
+  int? earliestEntryYear,
 }) =>
-    showProfileEditDialog(context, existing: existing);
+    showProfileEditDialog(
+      context,
+      existing: existing,
+      earliestEntryYear: earliestEntryYear,
+    );
 
 class _ProfileEditDialog extends StatefulWidget {
-  const _ProfileEditDialog({this.existing});
+  const _ProfileEditDialog({this.existing, this.earliestEntryYear});
 
   final Profile? existing;
+
+  /// Issue #923: the calendar year of the profile's earliest live day
+  /// entry, when it has any — the upper bound [validateBirthYearForProfile]
+  /// enforces on a new birth year. Read through the existing
+  /// [DayEntriesRepository] by the caller (see
+  /// `profile_picker_screen.dart`'s `_onRenameAction`); null (a new profile,
+  /// or a caller that did not supply it) applies no extra rule.
+  final int? earliestEntryYear;
 
   @override
   State<_ProfileEditDialog> createState() => _ProfileEditDialogState();
@@ -636,7 +679,14 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         decoration: const InputDecoration(
                           labelText: 'Birth year (optional)',
                         ),
-                        validator: validateBirthYear,
+                        // Issue #923: refuse a birth year later than the
+                        // profile's earliest live entry — such a year would
+                        // save fine here but make every earlier entry
+                        // unsaveable afterwards.
+                        validator: (value) => validateBirthYearForProfile(
+                          value,
+                          earliestEntryYear: widget.earliestEntryYear,
+                        ),
                       ),
                       const SizedBox(height: LLSpace.space3),
                       MergeSemantics(

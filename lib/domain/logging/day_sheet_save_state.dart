@@ -16,9 +16,49 @@
 library;
 
 import '../models/day_entry.dart';
+import 'day_entry_policy.dart';
 
 sealed class DaySheetSaveState {
   const DaySheetSaveState();
+}
+
+/// Issue #923: what an error thrown by the day sheet's repository write is.
+///
+/// Before this, any [ArgumentError] from the write path was treated as a
+/// genuine bug (an unrecognised chip code that slipped past the taxonomy
+/// check) and reported to Sentry with a generic "Couldn't save" banner. But
+/// since #848 the storage layer also throws [ArgumentError] for a date-bounds
+/// rejection — a *user-input* condition, not a bug. This classification keeps
+/// the two apart without matching on an exception message: the two date
+/// cases get rule-specific copy and are never reported, and [bug] keeps the
+/// prior report-and-generic-copy behaviour.
+enum DaySheetWriteErrorClass {
+  /// The date is more than a day in the future ([DayEntryDateViolation
+  /// .futureDate]).
+  futureDate,
+
+  /// The date precedes the profile's birth year
+  /// ([DayEntryDateViolation.beforeBirthYear]).
+  beforeBirthYear,
+
+  /// Anything else — a genuine bug (e.g. an unrecognised tag code) or a
+  /// transient failure. Reported to Sentry, shown with the generic copy.
+  bug,
+}
+
+/// Classifies [error] from a day-sheet write (Issue #923). A typed
+/// [DayEntryDateOutOfBounds] carries its failed rule directly; every other
+/// error — including a plain [ArgumentError] — is [DaySheetWriteErrorClass
+/// .bug].
+DaySheetWriteErrorClass classifyDaySheetWriteError(Object error) {
+  if (error is! DayEntryDateOutOfBounds) {
+    return DaySheetWriteErrorClass.bug;
+  }
+  return switch (error.violation) {
+    DayEntryDateViolation.futureDate => DaySheetWriteErrorClass.futureDate,
+    DayEntryDateViolation.beforeBirthYear =>
+      DaySheetWriteErrorClass.beforeBirthYear,
+  };
 }
 
 /// Nothing pending, no write in flight, no banner. Old:

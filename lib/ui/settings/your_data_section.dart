@@ -566,7 +566,10 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
             const Text(
               'Only entries and observations tagged with the chosen import '
               'source are removed. Manually logged data, and the profile '
-              'itself, are never touched.',
+              'itself, are never touched. If this purge leaves the profile '
+              'with no entries at all, its saved cycle details (last period '
+              'start and typical cycle length) are cleared too, since they '
+              'may have come from the import.',
             ),
             const SizedBox(height: 16),
             Align(
