@@ -220,3 +220,4 @@ If you have any questions, concerns, or requests regarding this Privacy Policy o
 Email: [will@wjdavis5.net](mailto:will@wjdavis5.net)  
 Repository: [https://github.com/wjdavis5/lunarlog](https://github.com/wjdavis5/lunarlog)  
 Issues: [https://github.com/wjdavis5/lunarlog/issues](https://github.com/wjdavis5/lunarlog/issues)  
+Security Vulnerabilities: [SECURITY.md](SECURITY.md) (or email [will@wjdavis5.net](mailto:will@wjdavis5.net))  
