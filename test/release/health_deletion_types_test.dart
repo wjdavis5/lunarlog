@@ -275,7 +275,7 @@ void main() {
 
     test('the status is the SDK check plus getGrantedPermissions over '
         'allPermissions', () {
-      expect(kotlin, contains('getGrantedPermissions()'));
+      expect(kotlin, contains('permissionController.getGrantedPermissions()'));
       expect(kotlin, contains('granted.containsAll(allPermissions)'));
     });
 

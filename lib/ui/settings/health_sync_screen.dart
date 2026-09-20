@@ -243,22 +243,27 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   /// platform actually uses. Note there is deliberately no read dimension:
   /// HealthKit's read authorization is opaque, so the line never claims to
   /// know (or denies) read access — it reports the write/access state only.
-  String _permissionStatusText(HealthPermissionStatus status) {
+  String _permissionStatusText(
+    AppLocalizations l10n,
+    HealthPermissionStatus status,
+  ) {
     final source = _sourceName(_importPlatform);
     return switch (status) {
-      HealthPermissionStatus.granted => '$source access: granted',
-      HealthPermissionStatus.notAsked => '$source access: not yet asked',
+      HealthPermissionStatus.granted =>
+        l10n.healthSyncPermissionGranted(source),
+      HealthPermissionStatus.notAsked =>
+        l10n.healthSyncPermissionNotAsked(source),
       HealthPermissionStatus.denied =>
-        '$source access: denied — open Settings to change',
+        l10n.healthSyncPermissionDenied(source),
       HealthPermissionStatus.unavailable =>
-        '$source access is not available on this device.',
+        l10n.healthSyncPermissionUnavailable(source),
     };
   }
 
   /// The status line plus — only in the denied state — the platform
   /// settings deep link (Issue #959). Null when no probe is wired, so an
   /// unconfigured build shows exactly what it showed before.
-  Widget? _permissionStatusSection() {
+  Widget? _permissionStatusSection(AppLocalizations l10n) {
     final status = _permissionStatus;
     if (status == null) return null;
     return Column(
@@ -267,7 +272,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         Padding(
           key: const ValueKey('health-sync-permission-status'),
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(_permissionStatusText(status)),
+          child: Text(_permissionStatusText(l10n, status)),
         ),
         // The settings link is offered only when it is actionable: a denied
         // permission is the one state the operator can fix in OS settings.
@@ -275,7 +280,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
           ListTile(
             key: const ValueKey('health-sync-open-settings'),
             leading: const Icon(Icons.settings_outlined),
-            title: const Text('Open Settings'),
+            title: Text(l10n.healthSyncPermissionOpenSettings),
             onTap: () => widget.permissionProbe?.openPermissionSettings(),
           ),
       ],
@@ -595,7 +600,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
       );
     }
-    final permissionSection = _permissionStatusSection();
+    final permissionSection =
+        _permissionStatusSection(AppLocalizations.of(context));
     return Scaffold(
       appBar: AppBar(title: const Text('Health app sync')),
       body: ListView(

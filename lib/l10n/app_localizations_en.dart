@@ -756,6 +756,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
 
   @override
+  String healthSyncPermissionGranted(String source) {
+    return '$source access: granted';
+  }
+
+  @override
+  String healthSyncPermissionNotAsked(String source) {
+    return '$source access: not yet asked';
+  }
+
+  @override
+  String healthSyncPermissionDenied(String source) {
+    return '$source access: denied — open Settings to change';
+  }
+
+  @override
+  String healthSyncPermissionUnavailable(String source) {
+    return '$source access is not available on this device.';
+  }
+
+  @override
+  String get healthSyncPermissionOpenSettings => 'Open Settings';
+
+  @override
   String healthSyncImportUpdatedDays(int count, String source) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

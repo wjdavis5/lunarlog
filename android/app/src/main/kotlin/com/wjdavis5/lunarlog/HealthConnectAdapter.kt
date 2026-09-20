@@ -273,14 +273,17 @@ class HealthConnectAdapter(context: Context) {
                 // settings deep link. Read and write permissions ride the
                 // same requested set (allPermissions), so no read-only denial
                 // can be surfaced on its own.
-                if (!isAvailable()) {
+                // The client owns the PermissionController
+                // (`client.permissionController`); getGrantedPermissions is
+                // its suspend query, so it runs on a coroutine.
+                val client = healthConnectClient()
+                if (client == null) {
                     result.success("unavailable")
                     return
                 }
-                val controller = PermissionController(contextApp)
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
-                        val granted = controller.getGrantedPermissions()
+                        val granted = client.permissionController.getGrantedPermissions()
                         result.success(
                             if (granted.containsAll(allPermissions)) "granted"
                             else "denied")

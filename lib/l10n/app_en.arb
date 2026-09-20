@@ -929,6 +929,46 @@
   "@settingsHealthSyncSymptomsAndroidLimitation": {
     "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it."
   },
+  "healthSyncPermissionGranted": "{source} access: granted",
+  "@healthSyncPermissionGranted": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionNotAsked": "{source} access: not yet asked",
+  "@healthSyncPermissionNotAsked": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS permission sheet has not been answered yet.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionDenied": "{source} access: denied — open Settings to change",
+  "@healthSyncPermissionDenied": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionUnavailable": "{source} access is not available on this device.",
+  "@healthSyncPermissionUnavailable": {
+    "description": "Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionOpenSettings": "Open Settings",
+  "@healthSyncPermissionOpenSettings": {
+    "description": "The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959)."
+  },
   "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
   "@healthSyncImportUpdatedDays": {
     "description": "Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).",

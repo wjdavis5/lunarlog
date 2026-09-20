@@ -1320,6 +1320,36 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: granted'**
+  String healthSyncPermissionGranted(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): the OS permission sheet has not been answered yet.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: not yet asked'**
+  String healthSyncPermissionNotAsked(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: denied — open Settings to change'**
+  String healthSyncPermissionDenied(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access is not available on this device.'**
+  String healthSyncPermissionUnavailable(String source);
+
+  /// The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959).
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get healthSyncPermissionOpenSettings;
+
   /// Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).
   ///
   /// In en, this message translates to:
