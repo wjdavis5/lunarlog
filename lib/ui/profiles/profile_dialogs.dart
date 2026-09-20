@@ -207,8 +207,33 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   @override
   void initState() {
     super.initState();
+    // Issue #820: the "is this a minor" control flips between an editable
+    // checkbox (no birth year) and a derived, read-only display (birth year
+    // present) as the operator types, so the field needs to drive rebuilds.
+    _birthYear.addListener(_onBirthYearChanged);
     unawaited(_loadProfileModeRow());
   }
+
+  void _onBirthYearChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The parsed, in-range birth year currently in the field, or null when
+  /// blank or not yet valid. Drives both the derived-minor display and the
+  /// stored flag emitted on submit.
+  int? get _parsedBirthYear {
+    final text = _birthYear.text.trim();
+    if (text.isEmpty) return null;
+    final parsed = int.tryParse(text);
+    if (parsed == null || parsed < kMinBirthYear || parsed > kMaxBirthYear) {
+      return null;
+    }
+    return parsed;
+  }
+
+  /// Whether a birth year is present, in which case minor status is derived
+  /// and the independent checkbox is replaced by a read-only display.
+  bool get _hasBirthYear => _parsedBirthYear != null;
 
   Future<void> _loadProfileModeRow() async {
     final existing = widget.existing;
@@ -316,14 +341,19 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// field's "done" (#165): validate, then pop with the collected result.
   void _submit() {
     if (_formKey.currentState!.validate()) {
-      final trimmedBirthYear = _birthYear.text.trim();
+      final birthYear = _parsedBirthYear;
       Navigator.of(context).pop(
         ProfileEditResult(
           _name.text,
-          _isMinor,
+          // Issue #820: a present birth year is authoritative; the stored
+          // flag is kept only as the fallback when no year is supplied.
+          deriveMinorStatus(
+            storedIsMinor: _isMinor,
+            birthYear: birthYear,
+            currentYear: DateTime.now().year,
+          ),
           mode: _mode,
-          birthYear:
-              trimmedBirthYear.isEmpty ? null : int.tryParse(trimmedBirthYear),
+          birthYear: birthYear,
           relationship: _relationship,
           lifecycleMode: _lifecycleMode,
           birthControlChoice: _birthControl,
@@ -336,6 +366,41 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
         ),
       );
     }
+  }
+
+  /// Issue #820: the minor control. With no birth year it is the editable
+  /// fallback checkbox (the pre-#820 behavior, preserving every existing
+  /// profile's classification). The moment a valid birth year is present it
+  /// becomes a read-only, derived display — the operator can no longer set
+  /// a flag that disagrees with the age.
+  Widget _minorControl(BuildContext context) {
+    if (!_hasBirthYear) {
+      return CheckboxListTile(
+        key: const ValueKey('edit-minor-checkbox'),
+        value: _isMinor,
+        onChanged: (value) => setState(() => _isMinor = value ?? false),
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsets.zero,
+        title: const Text('This profile is for a minor'),
+      );
+    }
+    final isMinor = deriveMinorStatus(
+      storedIsMinor: _isMinor,
+      birthYear: _parsedBirthYear,
+      currentYear: DateTime.now().year,
+    );
+    final theme = Theme.of(context);
+    return ListTile(
+      key: const ValueKey('edit-minor-derived'),
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        isMinor ? Icons.verified_user_outlined : Icons.person_outline,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+      title: Text(isMinor
+          ? 'Counts as a minor (derived from birth year)'
+          : 'Counts as an adult (derived from birth year)'),
+    );
   }
 
   /// Issue #192: the estimated-due-date field shown only while the
@@ -516,13 +581,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         onFieldSubmitted: (_) => _birthYearFocus.requestFocus(),
                         autofillHints: const [AutofillHints.name],
                       ),
-                      CheckboxListTile(
-                        value: _isMinor,
-                        onChanged: (value) => setState(() => _isMinor = value ?? false),
-                        controlAffinity: ListTileControlAffinity.leading,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('This profile is for a minor'),
-                      ),
+                      _minorControl(context),
                       const SizedBox(height: LLSpace.space3),
                       // #557: MergeSemantics folds the label into the dropdown's
                       // own announcement, so a screen reader hears "Care mode,
@@ -566,6 +625,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         ),
                       ),
                       TextFormField(
+                        key: const ValueKey('edit-birth-year-field'),
                         controller: _birthYear,
                         focusNode: _birthYearFocus,
                         keyboardType: TextInputType.number,

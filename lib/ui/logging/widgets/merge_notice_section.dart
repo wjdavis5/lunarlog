@@ -96,6 +96,11 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
       DayEntryMergeEventField.flow =>
         'Two entries for this date were merged; $winner flow level was kept '
             'and $loser was discarded.',
+      // Issue #871: never reaches this section (filtered out of the day
+      // sheet's read — a guardian-note convergence is not a day-entry
+      // merge), but the closed enum keeps the switch exhaustive.
+      DayEntryMergeEventField.guardianNote =>
+        'A guardian note for this date was replaced on sync.',
     };
   }
 
@@ -129,11 +134,13 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
               restoreLabel: switch (event.field) {
                 DayEntryMergeEventField.note => 'Restore my note',
                 DayEntryMergeEventField.flow => 'Restore my flow level',
+                DayEntryMergeEventField.guardianNote => 'Restore my note',
               },
               onDismiss: () => onDismiss(event),
               onRestore: () => switch (event.field) {
                     DayEntryMergeEventField.note => onRestoreNote(event),
                     DayEntryMergeEventField.flow => onRestoreFlow(event),
+                    DayEntryMergeEventField.guardianNote => onRestoreNote(event),
                   },
             ),
         ],

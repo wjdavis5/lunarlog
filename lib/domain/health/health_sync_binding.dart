@@ -246,26 +246,15 @@ class HealthSyncBinding {
     return target != null && target == signedInUserId;
   }
 
-  /// Whether [profile] counts as a minor for the gate above: either
-  /// flagged directly via [Profile.isMinor], or not flagged but at most 18
-  /// whole years since [Profile.birthYear], evaluated against [now]'s
-  /// year — unticking "Minor" in the profile dialog must never by itself
-  /// clear this deny. [Profile.birthYear] is a year-only field (no
-  /// month/day), so this is a coarse same-calendar-year comparison, not an
-  /// exact birthday check — and the comparison is deliberately `<= 18`
-  /// (Issue #296), not `< 18`: someone born late in year Y is still 17 for
-  /// most of year Y+18, and a year-only check can't see the birthday, so
-  /// the whole calendar year Y+18 fails closed. The cost — an actual
-  /// 18-year-old is denied for up to that one extra year (or allowed
-  /// through the transfer exception, which is consented, not automatic) —
-  /// is the safe direction; the previous `< 18` let a 17-year-old born in
-  /// December compute as 18 and skip the gate entirely.
-  static bool _isMinorNow(Profile profile, DateTime now) {
-    if (profile.isMinor) return true;
-    final birthYear = profile.birthYear;
-    if (birthYear == null) return false;
-    return now.year - birthYear <= 18;
-  }
+  /// Whether [profile] counts as a minor for the gate above — the shared
+  /// [deriveMinorStatus] rule (Issue #820; this method used to own a second
+  /// copy of it). A present [Profile.birthYear] is authoritative
+  /// (`<= 18` coarse-year, fail-closed, Issue #296); a null year falls back
+  /// to the stored [Profile.isMinor] flag. Unticking "Minor" in the profile
+  /// dialog must never by itself clear this deny while a birth year says
+  /// otherwise.
+  static bool _isMinorNow(Profile profile, DateTime now) =>
+      profile.isMinorAsOf(now);
 
   /// Attempts to bind [profile] as this device's sole health-store
   /// profile. Evaluates [canBind] before writing anything, so a denied

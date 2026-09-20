@@ -11,8 +11,10 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/db/storage.dart';
+import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
 import 'package:lunarlog/data/sync/remote_rows.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 
 class FixedClock {
   FixedClock(this.now);
@@ -279,5 +281,177 @@ void main() {
             localRevAtPush: a.localRev),
         isTrue);
     expect(await storage.readDirtyGuardianNotes(), hasLength(1));
+  });
+
+  group('Issue #871: duplicate own notes converge', () {
+    test('deterministicGuardianNoteId is stable, ULID-shaped, and keyed by '
+        'the natural key', () {
+      final id = deterministicGuardianNoteId(
+        profileId: 'p1',
+        authorUserId: 'u1',
+        localDateIso: '2026-09-12',
+      );
+      expect(id, hasLength(26));
+      expect(RegExp(r'^[0-9A-HJKMNP-TV-Z]{26}$').hasMatch(id), isTrue,
+          reason: 'must satisfy the server ULID CHECK');
+      expect(
+        deterministicGuardianNoteId(
+          profileId: 'p1',
+          authorUserId: 'u1',
+          localDateIso: '2026-09-12',
+        ),
+        id,
+        reason: 'stable across calls (and so across devices)',
+      );
+      expect(
+        deterministicGuardianNoteId(
+          profileId: 'p1',
+          authorUserId: 'u2',
+          localDateIso: '2026-09-12',
+        ),
+        isNot(id),
+      );
+      expect(
+        deterministicGuardianNoteId(
+          profileId: 'p1',
+          authorUserId: 'u1',
+          localDateIso: '2026-09-13',
+        ),
+        isNot(id),
+      );
+    });
+
+    test('repository save mints one deterministic row for repeated offline '
+        'writes', () async {
+      final repo = DriftGuardianNotesRepository(storage);
+      final first = await repo.save(
+        profileId: 'p1',
+        localDate: LocalDate(2026, 9, 12),
+        tz: 'UTC',
+        body: 'From my phone.',
+        loggedByUserId: 'u1',
+      );
+      clock.now = t1;
+      final second = await repo.save(
+        profileId: 'p1',
+        localDate: LocalDate(2026, 9, 12),
+        tz: 'UTC',
+        body: 'From my tablet.',
+        loggedByUserId: 'u1',
+      );
+      expect(second.id, first.id,
+          reason: 'the same natural key mints the same id');
+      final live = await storage.getGuardianNotesForProfile('p1');
+      expect(live, hasLength(1));
+      expect(live.single.body, 'From my tablet.');
+    });
+
+    test('a legacy duplicate row is converged on the next write, retaining '
+        'the discarded body as a recoverable disclosure', () async {
+      // Two live rows with distinct (legacy random) ids, as two offline
+      // devices produced before the deterministic id existed.
+      final older = await storage.upsertGuardianNote(
+        id: 'aaaaaaaaaaaaaaaaaaaaaaaaaa',
+        profileId: 'p1',
+        localDate: '2026-09-12',
+        tz: 'UTC',
+        body: 'The text that must survive recovery.',
+        loggedByUserId: 'u1',
+        updatedAt: t0,
+      );
+      clock.now = t1;
+      final newer = await storage.upsertGuardianNote(
+        id: 'bbbbbbbbbbbbbbbbbbbbbbbbbb',
+        profileId: 'p1',
+        localDate: '2026-09-12',
+        tz: 'UTC',
+        body: 'The surviving text.',
+        loggedByUserId: 'u1',
+        updatedAt: t1,
+      );
+
+      final live = await storage.getGuardianNotesForProfile('p1');
+      expect(live, hasLength(1), reason: 'one live note per author per date');
+      expect(live.single.id, newer.id);
+      expect(live.single.body, 'The surviving text.');
+
+      final all = await storage.getGuardianNotesForProfile('p1',
+          includeTombstones: true);
+      final loser = all.singleWhere((r) => r.id == older.id);
+      expect(loser.deletedAt, isNotNull);
+      expect(loser.body, isEmpty, reason: 'tombstones carry no payload');
+
+      // The discarded text is retained, not silently destroyed.
+      final disclosures = await storage.getDayEntryMergeEventsForProfile(
+        'p1',
+        now: t1,
+      );
+      final discard = disclosures
+          .singleWhere((e) => e.losingRowId == older.id);
+      expect(discard.field, 'guardian_note');
+      expect(discard.winningRowId, newer.id);
+      expect(discard.losingValueText, 'The text that must survive recovery.');
+
+      // ...but it is NOT a day-entry merge, so the day sheet never shows it.
+      expect(
+        await storage.getDayEntryMergeEventsForDay(
+          'p1',
+          '2026-09-12',
+          now: t1,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('convergence records no disclosure when the discarded body is '
+        'identical or empty (nothing was lost)', () async {
+      await storage.upsertGuardianNote(
+        id: 'cccccccccccccccccccccccccc',
+        profileId: 'p1',
+        localDate: '2026-09-14',
+        tz: 'UTC',
+        body: 'Same.',
+        loggedByUserId: 'u1',
+        updatedAt: t0,
+      );
+      clock.now = t1;
+      await storage.upsertGuardianNote(
+        id: 'dddddddddddddddddddddddddd',
+        profileId: 'p1',
+        localDate: '2026-09-14',
+        tz: 'UTC',
+        body: 'Same.',
+        loggedByUserId: 'u1',
+        updatedAt: t1,
+      );
+      expect(
+        await storage.getDayEntryMergeEventsForProfile('p1', now: t1),
+        isEmpty,
+      );
+
+      await storage.upsertGuardianNote(
+        id: 'eeeeeeeeeeeeeeeeeeeeeeeeee',
+        profileId: 'p1',
+        localDate: '2026-09-15',
+        tz: 'UTC',
+        body: '',
+        loggedByUserId: 'u1',
+        updatedAt: t0,
+      );
+      clock.now = t2;
+      await storage.upsertGuardianNote(
+        id: 'ffffffffffffffffffffffffff',
+        profileId: 'p1',
+        localDate: '2026-09-15',
+        tz: 'UTC',
+        body: 'Kept.',
+        loggedByUserId: 'u1',
+        updatedAt: t2,
+      );
+      expect(
+        await storage.getDayEntryMergeEventsForProfile('p1', now: t2),
+        isEmpty,
+      );
+    });
   });
 }

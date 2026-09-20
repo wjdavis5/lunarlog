@@ -385,7 +385,8 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen> {
         // the calendar's sheets do (a co-parent opening a day from the
         // feed edits under the profile's own curated set, AC6).
         trackingPreferences: widget.profile.trackingPreferences,
-        isMinor: widget.profile.isMinor,
+        isMinor:
+            widget.profile.isMinorAsOfYear(widget.todayProvider().year),
         readOnly: widget.readOnly || viewerReadOnly,
         timezoneProvider: widget.timezoneProvider,
         currentUserId: _currentUserId,

@@ -10,6 +10,34 @@ import 'profile_mode.dart';
 import 'profile_relationship.dart';
 import '../logging/tracking_preferences.dart';
 
+/// The single definition of "is this person a minor" (Issue #820, the
+/// #295 decision: a minor is a minor until they are 18; special cases are
+/// explicitly out of scope). Pure and clock-free — the caller supplies the
+/// current calendar year.
+///
+/// **A present [birthYear] is authoritative.** Minor iff
+/// `currentYear - birthYear <= 18`. The comparison is deliberately `<=`
+/// (Issue #296), not `<`: [birthYear] is a year-only field with no
+/// month/day, so someone born late in year Y is still 17 for most of year
+/// Y+18, and a year-only check cannot see the birthday — the whole
+/// calendar year Y+18 fails closed. The cost (an actual 18-year-old is
+/// treated as a minor for up to that one extra year) is the safe
+/// direction.
+///
+/// **A null [birthYear] falls back to the stored [storedIsMinor] flag**,
+/// so no existing profile changes classification in either direction
+/// while birth year is optional (#820's whole reason for keeping the
+/// column): a profile flagged minor with no birth year stays a minor, and
+/// an unflagged adult with no birth year stays an adult.
+bool deriveMinorStatus({
+  required bool storedIsMinor,
+  required int? birthYear,
+  required int currentYear,
+}) {
+  if (birthYear != null) return currentYear - birthYear <= 18;
+  return storedIsMinor;
+}
+
 class Profile {
   Profile({
     required this.id,
@@ -37,7 +65,15 @@ class Profile {
   final String id;
 
   final String displayName;
+
+  /// The stored minor flag. Since #820 it is the **fallback** only: a
+  /// present [birthYear] is authoritative, and callers that mean "is this
+  /// person a minor" MUST read [isMinorAsOfYear]/[isMinorAsOf] rather than
+  /// this field. The column is retained because it is the only minor signal
+  /// a profile without a birth year has (and the server default), so
+  /// existing profiles never change classification in either direction.
   final bool isMinor;
+
   final int sortOrder;
 
   /// Care mode (Issue #131, R12): drives vocabulary, logging defaults, and
@@ -60,13 +96,25 @@ class Profile {
 
   /// Optional birth year of the profile subject (Issue #4 R1). Still never
   /// gates, forces, or auto-schedules an ownership *transfer* (R2), but no
-  /// longer display-only: since the #153 health-sync guard it also feeds
-  /// the fail-closed minor determination in
-  /// `lib/domain/health/health_sync_binding.dart` (`_isMinorNow`) — an
-  /// under-18-by-coarse-year profile is denied health-store binding unless
-  /// the transferred-to-own-account exception holds. That gate fails
-  /// closed on a missing year; it never uses this field for anything else.
+  /// longer display-only: since #820 it is the authoritative input to the
+  /// one [deriveMinorStatus] definition whenever it is present. That gate
+  /// falls back to [isMinor] on a missing year; it never uses this field
+  /// for anything else.
   final int? birthYear;
+
+  /// Whether this profile counts as a minor in [currentYear] — the shared
+  /// [deriveMinorStatus] rule (Issue #820). Callers that mean "is this
+  /// person a minor" MUST use this rather than reading [isMinor] directly,
+  /// so a present [birthYear] always wins over a disagreeing stored flag.
+  bool isMinorAsOfYear(int currentYear) => deriveMinorStatus(
+        storedIsMinor: isMinor,
+        birthYear: birthYear,
+        currentYear: currentYear,
+      );
+
+  /// [isMinorAsOfYear] with a [DateTime] clock. The clock is passed in,
+  /// never read here, so the boundary stays deterministic under test.
+  bool isMinorAsOf(DateTime today) => isMinorAsOfYear(today.year);
 
   /// Optional closed-set relationship of the subject to the profile creator
   /// (R3), or null when unset or when the stored value is not one this

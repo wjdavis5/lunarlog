@@ -628,6 +628,10 @@ mixin LunarLogStorageQueries {
       ..where((t) =>
           t.profileId.equals(profileId) &
           t.localDate.equals(localDate) &
+          // Issue #871: a guardian-note convergence is stored in this
+          // substrate for text recovery, but it is not a day-entry merge
+          // and must never render in the day sheet's notice list.
+          t.field.isIn(const ['flow', 'note']) &
           t.createdAt.isBiggerThanValue(windowStart))
       ..orderBy([(t) => OrderingTerm(expression: t.id)]);
     return query.get();
