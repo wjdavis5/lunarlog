@@ -460,6 +460,23 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       );
     }
 
+    // Issue #959: re-check the OS write permission on EVERY pass, not only
+    // on the first write. The forward-only cursor is deliberately left in
+    // place when the OS permission is revoked (nothing already written is
+    // deleted), but the pass stops before any write — so a revocation in OS
+    // settings takes effect on the very next pass and surfaces in the
+    // Health sync screen's status line. `notAsked` does NOT block: that is
+    // exactly the first-pass grant moment the stage below performs. No
+    // exception text and no health content enters the report or the logs —
+    // the blocked result is the typed `permissionDenied`, nothing more.
+    final permission = await _platform.permissionStatus();
+    if (permission == HealthPermissionStatus.denied) {
+      return const HealthFlowSyncReport(
+        bound: true,
+        blocked: HealthPlatformResult.permissionDenied(),
+      );
+    }
+
     // Keep the native-side binding mirror in step (idempotent natively).
     // #173 left this unwired ("the flag-flip PR must wire bind/unbind
     // through the port"); storing it here means every pass re-asserts the

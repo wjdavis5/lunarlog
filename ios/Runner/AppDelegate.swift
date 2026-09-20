@@ -553,6 +553,54 @@ enum HealthKitChannelHandler {
         }
       }
 
+    case "permissionStatus":
+      // Issue #959: the OS write (share) permission state for the status
+      // line on the Health sync screen. Deliberately consults ONLY the
+      // write sample types (`writtenSampleTypes`, the same list the
+      // authorization sheet and deleteRecords use): HealthKit's read
+      // authorization is opaque by Apple's design, so a denied read must
+      // never be reported as a refusal here. `.sharingDenied` is the only
+      // denial that maps to "denied"; a partial grant (some types denied)
+      // reports denied, because writes to those types will fail.
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      var denied = false
+      var notAsked = false
+      for type in writtenSampleTypes {
+        switch store.authorizationStatus(for: type) {
+        case .sharingDenied:
+          denied = true
+        case .notDetermined:
+          notAsked = true
+        case .sharingAuthorized:
+          break
+        @unknown default:
+          break
+        }
+      }
+      if denied {
+        result("denied")
+      } else if notAsked {
+        result("notAsked")
+      } else {
+        result("granted")
+      }
+
+    case "openPermissionSettings":
+      // Issue #959: the settings deep link offered when the status line is
+      // denied. iOS only lets an app open its OWN Settings page, which is
+      // exactly where the Apple Health permission for lunarlog lives.
+      DispatchQueue.main.async {
+        guard let url = URL(string: UIApplication.openSettingsURLString)
+        else {
+          result(nil)
+          return
+        }
+        UIApplication.shared.open(url, options: [:]) { _ in result(nil) }
+      }
+
     case "writeMenstrualFlow":
       guard let g = args.flatMap(GuardArgs.init) else {
         badArgs(result, "writeMenstrualFlow requires guard args")

@@ -7,7 +7,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -233,12 +235,40 @@ void main() {
   Future<List<ProfileGuardian>> guardiansForProfile(String profileId) async =>
       guardiansByProfile[profileId] ?? const [];
 
+  // Issue #959: the OS-permission status is driven through the real
+  // `lunarlog/health` channel via a mock handler — the "channel fake" the
+  // issue asks for — so these tests also pin the method name the native
+  // halves must answer, not merely a hand-rolled Dart stand-in.
+  const healthChannel = MethodChannel('lunarlog/health');
+  final permissionCalls = <MethodCall>[];
+  Object? permissionResult;
+  setUp(() {
+    permissionCalls.clear();
+    permissionResult = 'granted';
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(healthChannel, (call) async {
+      permissionCalls.add(call);
+      if (call.method == 'permissionStatus') return permissionResult;
+      return null;
+    });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(healthChannel, null);
+  });
+
+  HealthPermissionProbe buildPermissionProbe() => MethodChannelHealthPlatform(
+        binding: HealthSyncBinding(FakeSettingsStore()),
+        minorBindingAllowed: true,
+      );
+
   Future<void> pumpScreen(
     WidgetTester tester, {
     required HealthSyncBinding binding,
     String? signedInUserId = 'u1',
     ProfilesRepository? profilesRepository,
     HealthImportRunner? importer,
+    HealthPermissionProbe? permissionProbe,
     bool writeEnabled = true,
   }) async {
     // Issue #186 added revocation/30-day-limit copy above the profile
@@ -262,6 +292,7 @@ void main() {
           binding: binding,
           signedInUserId: signedInUserId,
           importer: importer,
+          permissionProbe: permissionProbe,
           writeEnabled: writeEnabled,
         ),
       ),
@@ -838,6 +869,149 @@ void main() {
       expect(
         find.textContaining("Couldn't finish the import. Please try again."),
         findsOneWidget,
+      );
+    });
+  });
+
+  // Issue #959: the OS permission state is shown per platform, with the
+  // settings deep link offered only when it is denied.
+  group('Issue #959 OS permission status', () {
+    Future<HealthSyncBinding> boundBinding(FakeSettingsStore settings) async {
+      final binding = HealthSyncBinding(settings);
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      return binding;
+    }
+
+    testWidgets('renders granted / not-yet-asked / denied from the channel '
+        'fake, and offers the settings link only when denied', (tester) async {
+      final probe = buildPermissionProbe();
+      final binding = HealthSyncBinding(FakeSettingsStore());
+
+      for (final (wire, expected) in [
+        ('granted', 'Apple Health access: granted'),
+        ('notAsked', 'Apple Health access: not yet asked'),
+        ('denied', 'Apple Health access: denied — open Settings to change'),
+      ]) {
+        permissionResult = wire;
+        // Tear the previous tree down so the screen's State is recreated
+        // and re-runs its permission load for the new wire value.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpScreen(tester, binding: binding, permissionProbe: probe);
+
+        expect(
+          find.byKey(const ValueKey('health-sync-permission-status')),
+          findsOneWidget,
+        );
+        expect(find.text(expected), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('health-sync-open-settings')),
+          wire == 'denied' ? findsOneWidget : findsNothing,
+        );
+      }
+    });
+
+    testWidgets('read status is never rendered as denied on iOS — a granted '
+        'or not-yet-asked write permission is never a refusal', (tester) async {
+      final probe = buildPermissionProbe();
+      final binding = HealthSyncBinding(FakeSettingsStore());
+
+      for (final wire in ['granted', 'notAsked']) {
+        permissionResult = wire;
+        await tester.pumpWidget(const SizedBox.shrink());
+        await pumpScreen(tester, binding: binding, permissionProbe: probe);
+
+        const statusKey = ValueKey('health-sync-permission-status');
+        expect(
+          find.descendant(
+            of: find.byKey(statusKey),
+            matching: find.textContaining('denied'),
+          ),
+          findsNothing,
+        );
+        // The line reports the write/access state only — Apple's opaque read
+        // authorization must never surface as a status.
+        expect(
+          find.descendant(
+            of: find.byKey(statusKey),
+            matching: find.textContaining('read'),
+          ),
+          findsNothing,
+        );
+      }
+    });
+
+    testWidgets('tapping the settings link opens the platform settings deep '
+        'link', (tester) async {
+      permissionResult = 'denied';
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        permissionProbe: buildPermissionProbe(),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-open-settings')));
+      await tester.pumpAndSettle();
+
+      expect(
+        permissionCalls.map((call) => call.method),
+        contains('openPermissionSettings'),
+      );
+    });
+
+    testWidgets('a revoked write permission updates the line after an import '
+        '(Issue #959)', (tester) async {
+      final importer = _FakeImporter(
+        const HealthImportSummary(samplesRead: 1, daysWritten: 1),
+      );
+      permissionResult = 'granted';
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        importer: importer,
+        permissionProbe: buildPermissionProbe(),
+      );
+
+      expect(find.text('Apple Health access: granted'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('health-sync-open-settings')),
+        findsNothing,
+      );
+
+      // The OS permission is revoked while the screen is open; the import
+      // pass re-reads the status and the line follows.
+      permissionResult = 'denied';
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Apple Health access: denied — open Settings to change'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-open-settings')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('no probe means no status line or settings link (an '
+        'unconfigured build)', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding);
+
+      expect(
+        find.byKey(const ValueKey('health-sync-permission-status')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('health-sync-open-settings')),
+        findsNothing,
       );
     });
   });
