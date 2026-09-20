@@ -130,7 +130,7 @@ class _MfaSettingsSectionState extends State<MfaSettingsSection> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Text(l10n.mfaSectionTitle,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
             ..._tiles(l10n, factors),
             if (_error != null)

@@ -2540,25 +2540,9 @@ class _DaySheetState extends State<DaySheet> {
                 if (_unmappedObservations.isNotEmpty)
                   ..._unmappedObservationsSection(theme),
                 // Issue #801: the per-guardian dated notes, beside the shared
-                // day note — never a rework of it.
-                // Issue #872: only when the profile actually has guardians to
-                // share with. A signed-out, guardian-less local profile used
-                // to render this section's second note box and a near-identical
-                // disclosure, even though there is no guardian, no one else
-                // with access, and no actionable difference — such a profile
-                // keeps exactly the one shared "Note" box it has always had.
-                if (!widget.readOnly &&
-                    widget.currentUserId != null &&
-                    widget.guardians.isNotEmpty)
-                  GuardianNotesSection(
-                    profileId: widget.profileId,
-                    date: widget.date,
-                    tz: (widget.timezoneProvider ??
-                        resolveCurrentTimeZoneSync)(),
-                    currentUserId: widget.currentUserId,
-                    guardians: widget.guardians,
-                    canWrite: _guardianNotesCanWrite,
-                  ),
+                // day note — never a rework of it. Gated in
+                // [_guardianNotesSlot] (issues #872 and #869).
+                ..._guardianNotesSlot(),
               ],
             ),
           ),
@@ -2852,6 +2836,38 @@ class _DaySheetState extends State<DaySheet> {
         true;
   }
 
+  /// The guardian-notes section (issue #801), or nothing.
+  ///
+  /// Issue #872: rendered only when the profile actually has guardians to
+  /// share with. A signed-out, guardian-less local profile used to render
+  /// this section's second note box and a near-identical disclosure, even
+  /// though there is no guardian, no one else with access, and no
+  /// actionable difference — such a profile keeps exactly the one shared
+  /// "Note" box it has always had.
+  ///
+  /// Issue #869: NOT gated on [DaySheet.readOnly]. The read-only sheet (a
+  /// `viewer`, or a guardian with no logging role) renders the same section
+  /// with [GuardianNotesSection.canWrite] false, so a viewer reads every
+  /// guardian note exactly as `PRIVACY.md` §5 and the open-and-transparent
+  /// decision on issue #800 say she can. Before this fix the section was
+  /// only built inside the editable body, so the one role the policy names
+  /// as read-only could not actually read.
+  List<Widget> _guardianNotesSlot() {
+    if (widget.currentUserId == null || widget.guardians.isEmpty) {
+      return const [];
+    }
+    return [
+      GuardianNotesSection(
+        profileId: widget.profileId,
+        date: widget.date,
+        tz: (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)(),
+        currentUserId: widget.currentUserId,
+        guardians: widget.guardians,
+        canWrite: _guardianNotesCanWrite,
+      ),
+    ];
+  }
+
   /// Issue #642, LLA-012: bounded via [SingleChildScrollView] — before this
   /// fix, a long note, several tag chips, or (once LLA-011 lands alongside
   /// this) spotting/graded-pain-intensity lines could exceed
@@ -2885,6 +2901,10 @@ class _DaySheetState extends State<DaySheet> {
                 AppLocalizations.of(context).daySheetNoEntry,
                 style: theme.textTheme.bodyMedium,
               ),
+              // Issue #869: a guardian note is keyed by date, not by entry,
+              // so a viewer must see the day's notes even when nobody
+              // logged an entry for it.
+              ..._guardianNotesSlot(),
             ],
           ),
         ),
@@ -2977,6 +2997,8 @@ class _DaySheetState extends State<DaySheet> {
                       ? AppLocalizations.of(context).daySheetNoNote
                       : existing.note!,
                 ),
+                // Issue #869: the viewer reads guardian notes too.
+                ..._guardianNotesSlot(),
               ],
             ),
           ),

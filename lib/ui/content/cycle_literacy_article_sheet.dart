@@ -54,7 +54,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
                     article.category.displayName,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: colorScheme.onSecondaryContainer,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -74,7 +74,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
               article.title,
               key: ValueKey('article-title-${article.id}'),
               style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
@@ -104,7 +104,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
               Text(
                 section.heading,
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 8),
@@ -126,7 +126,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
             Text(
               'Source & Review',
               style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
@@ -156,7 +156,6 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
                 CycleLiteracyArticle.kMedicalDisclaimer,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
-                  fontSize: 11,
                 ),
               ),
             ),

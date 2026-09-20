@@ -32,7 +32,7 @@ class SymptomTrendsSection extends StatelessWidget {
           'Symptom Trends & Patterns',
           key: const ValueKey('symptom-trends-heading'),
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),
@@ -59,7 +59,7 @@ class SymptomTrendsSection extends StatelessWidget {
                     Text(
                       'Recurring Symptoms',
                       style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -83,7 +83,6 @@ class SymptomTrendsSection extends StatelessWidget {
                   Text(
                     'Patterns reflect descriptive logs only and are not clinical diagnostics.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      fontSize: 10,
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
@@ -177,7 +176,7 @@ class _CrampPredictionCard extends StatelessWidget {
                   child: Text(
                     'Anticipated Cramp Window',
                     style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -188,7 +187,7 @@ class _CrampPredictionCard extends StatelessWidget {
               prediction.summaryText,
               key: const ValueKey('cramp-prediction-summary'),
               style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
                 color: colorScheme.onSurface,
               ),
             ),
@@ -208,7 +207,6 @@ class _CrampPredictionCard extends StatelessWidget {
               '${prediction.totalCyclesAnalyzed} recorded cycles.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
-                fontSize: 11,
               ),
             ),
             const SizedBox(height: 8),
@@ -217,7 +215,6 @@ class _CrampPredictionCard extends StatelessWidget {
               key: const ValueKey('cramp-prediction-disclaimer'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
-                fontSize: 10,
               ),
             ),
           ],
@@ -261,7 +258,6 @@ class _SymptomPatternRow extends StatelessWidget {
               child: Text(
                 pattern.trend.displayName,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  fontSize: 10,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ),
@@ -280,7 +276,6 @@ class _SymptomPatternRow extends StatelessWidget {
           'Logged ${pattern.totalOccurrences} times across ${pattern.cycleCount} cycles',
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
-            fontSize: 11,
           ),
         ),
       ],

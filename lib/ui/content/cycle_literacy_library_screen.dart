@@ -57,7 +57,6 @@ class CycleLiteracyLibraryScreen extends StatelessWidget {
               CycleLiteracyArticle.kMedicalDisclaimer,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
-                fontSize: 11,
               ),
             ),
           ),
@@ -89,7 +88,7 @@ class _CategorySection extends StatelessWidget {
         Text(
           category.displayName,
           style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 8),

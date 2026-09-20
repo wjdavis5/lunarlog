@@ -43,7 +43,7 @@ class PhaseInsightsCard extends StatelessWidget {
                     info.subphase.displayName,
                     key: const ValueKey('phase-name-text'),
                     style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -81,7 +81,7 @@ class PhaseInsightsCard extends StatelessWidget {
             Text(
               'Helpful to track:',
               style: theme.textTheme.labelMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
@@ -114,7 +114,6 @@ class PhaseInsightsCard extends StatelessWidget {
                         info.hedgedNotice!,
                         key: const ValueKey('phase-hedged-notice'),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 11,
                           color: colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -142,7 +141,6 @@ class PhaseInsightsCard extends StatelessWidget {
             Text(
               'Source: ${info.source} · Rev: ${info.reviewDate}',
               style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 10,
                 color: colorScheme.onSurfaceVariant,
               ),
             ),

@@ -539,12 +539,23 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Icon(Icons.nights_stay, size: 48),
+      // Issue #808: the app's real brand mark (already bundled for the
+      // launcher icon) instead of a stock `Icons.nights_stay` glyph, with
+      // the wordmark raised to the display face's headlineSmall slot.
+      // `Center` keeps it at 72dp inside the stretched column.
+      Center(
+        child: Image.asset(
+          'assets/branding/app_icon_1024.png',
+          key: const ValueKey('first-run-brand-mark'),
+          width: 72,
+          height: 72,
+        ),
+      ),
       const SizedBox(height: LLSpace.space2),
       Text(
         kFirstRunBrandName,
         textAlign: TextAlign.center,
-        style: LLType.titleMedium.toTextStyle(),
+        style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: LLSpace.space4),
       Text(
