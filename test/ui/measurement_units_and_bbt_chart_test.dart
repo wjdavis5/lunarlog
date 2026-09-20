@@ -8,6 +8,8 @@
 /// [ObservationsRepository] added for the BBT rows the chart reads.
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +20,7 @@ import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/insights/bbt_chart.dart';
+import 'package:lunarlog/domain/insights/cycle_insights_calculator.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -26,6 +29,7 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
@@ -34,9 +38,73 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/insights/bbt_chart.dart';
+import 'package:lunarlog/ui/insights/symptom_trends_section.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+
+/// A [CyclePredictionService] whose [watch] emits one fixed prediction and
+/// never reacts to writes (issue #841's coalescing test needs to isolate an
+/// entries tick's own rebuilds from the prediction stream's).
+class FixedPredictionService extends CyclePredictionService {
+  FixedPredictionService(this.fixed, DayEntriesRepository entries)
+      : super(entries);
+
+  final CyclePrediction fixed;
+
+  @override
+  Stream<CyclePrediction> watch(
+    String profileId, {
+    LocalDate Function()? today,
+  }) =>
+      Stream<CyclePrediction>.value(fixed);
+}
+
+/// A controllable [ObservationsRepository] (issue #841): while [gated] is
+/// true, [listForProfile] returns a future the test completes by hand, so
+/// the entries tick's single `setState` can be observed before and after
+/// the observations read lands.
+class GatedObservationsRepository implements ObservationsRepository {
+  bool gated = false;
+  int reads = 0;
+  Completer<List<Observation>>? _pending;
+
+  @override
+  Future<List<Observation>> listForProfile(String profileId) {
+    reads++;
+    if (!gated) return Future.value(const []);
+    return (_pending ??= Completer<List<Observation>>()).future;
+  }
+
+  void complete(List<Observation> observations) =>
+      (_pending ??= Completer<List<Observation>>()).complete(observations);
+
+  @override
+  Future<List<Observation>> listForDayEntry(String dayEntryId) async =>
+      const [];
+
+  @override
+  Future<List<Observation>> listForDayEntryWithLegacyAlias(
+    String dayEntryId,
+  ) async =>
+      const [];
+
+  @override
+  Future<Observation> save(Observation observation) async => observation;
+
+  @override
+  Future<void> delete(String id) async {}
+}
+
+/// Every non-null `Text.data` currently rendered, in tree order.
+List<String> renderedTexts(WidgetTester tester) {
+  final out = <String>[];
+  for (final element in find.byType(Text).evaluate()) {
+    final data = (element.widget as Text).data;
+    if (data != null) out.add(data);
+  }
+  return out;
+}
 
 class Harness {
   Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory()) {
@@ -122,6 +190,28 @@ class Harness {
     LocalDate date,
     double celsius, {
     bool excluded = false,
+  }) => _recordMeasurement(
+    profileId,
+    date,
+    ObservationCategory.bbt,
+    celsius,
+    'celsius',
+    excluded: excluded,
+  );
+
+  /// Seeds a `weight` observation on [date] (issue #841's regression
+  /// fixture also covers a non-BBT measurement riding the same
+  /// observations read as BBT).
+  Future<void> recordWeight(String profileId, LocalDate date, double kg) =>
+      _recordMeasurement(profileId, date, ObservationCategory.weight, kg, 'kg');
+
+  Future<void> _recordMeasurement(
+    String profileId,
+    LocalDate date,
+    ObservationCategory category,
+    double value,
+    String unit, {
+    bool excluded = false,
   }) async {
     final existing = await entries.find(profileId, date);
     final entry = await entries.save(
@@ -145,9 +235,9 @@ class Harness {
         profileId: profileId,
         localDate: date,
         tz: 'UTC',
-        category: ObservationCategory.bbt,
-        valueNum: celsius,
-        unit: 'celsius',
+        category: category,
+        valueNum: value,
+        unit: unit,
         excluded: excluded,
         updatedAt: DateTime.utc(2026, 1, 1),
       ),
@@ -417,6 +507,207 @@ void main() {
       );
       expect(find.byKey(const ValueKey('bbt-chart-empty')), findsOneWidget);
       expect(find.byKey(const ValueKey('bbt-chart')), findsNothing);
+    });
+  });
+
+  group('AnalysisTab performance (issue #841)', () {
+    testWidgets(
+        'the insight report is derived once per changed input, never per '
+        'rebuild', (tester) async {
+      final h = Harness(tester);
+      tester.view.physicalSize = const Size(800, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      final profile =
+          await h.profiles.create(displayName: 'Alice', isMinor: false);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 31), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 3, 2), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 4, 1), 4);
+
+      var computations = 0;
+      final tab = AnalysisTab(
+        profileId: profile.id,
+        todayProvider: () => LocalDate(2026, 4, 20),
+        insightsCalculator:
+            ({required entries, required episodes, prediction}) {
+          computations++;
+          return CycleInsightsCalculator.compute(
+            entries: entries,
+            episodes: episodes,
+            prediction: prediction,
+          );
+        },
+      );
+
+      await tester.pumpWidget(h.appFor(home: tab));
+      await tester.pumpAndSettle();
+      final afterMount = computations;
+      expect(afterMount, greaterThan(0));
+      final reportBefore = tester
+          .widget<SymptomTrendsSection>(find.byType(SymptomTrendsSection))
+          .report;
+
+      // Rebuild with unchanged inputs (same widget instance, same data): the
+      // memoised report must be reused, not re-derived.
+      await tester.pumpWidget(h.appFor(home: tab));
+      await tester.pumpAndSettle();
+
+      expect(computations, afterMount,
+          reason: 'an unchanged rebuild must reuse the cached report');
+      final reportAfter = tester
+          .widget<SymptomTrendsSection>(find.byType(SymptomTrendsSection))
+          .report;
+      expect(identical(reportBefore, reportAfter), isTrue,
+          reason: 'the same report instance is reused across the rebuild');
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'an entries tick rebuilds the tab once, once the observations read '
+        'lands', (tester) async {
+      final h = Harness(tester);
+      final profile =
+          await h.profiles.create(displayName: 'Alice', isMinor: false);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 31), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 3, 2), 4);
+
+      final observations = GatedObservationsRepository();
+      final tab = AnalysisTab(
+        profileId: profile.id,
+        todayProvider: () => LocalDate(2026, 4, 20),
+      );
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<ProfilesRepository>.value(value: h.profiles),
+            Provider<DayEntriesRepository>.value(value: h.entries),
+            Provider<SettingsStore>.value(value: h.settings),
+            Provider<ObservationsRepository>.value(value: observations),
+            Provider<CyclePredictionService>.value(
+              value: FixedPredictionService(
+                const NotEnoughHistory(
+                  episodeCount: 0,
+                  completedCycleCount: 0,
+                  validCycleCount: 0,
+                  usableCycleCount: 0,
+                ),
+                h.entries,
+              ),
+            ),
+            Provider<CycleHistoryService>.value(value: h.historyService),
+            Provider<CycleExclusionList>.value(value: h.exclusions),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(body: tab),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      var rebuilds = 0;
+      debugOnRebuildDirtyWidget = (Element element, bool debugReportRebuild) {
+        if (element.widget is AnalysisTab) rebuilds++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+      // Arm the gate and write a new day entry: the entries stream ticks, but
+      // the single setState must wait for the observations read.
+      observations.gated = true;
+      await h.recordBleed(profile.id, LocalDate(2026, 4, 1), 4);
+      await tester.pumpAndSettle();
+
+      expect(observations.reads, greaterThan(0),
+          reason: 'sanity: the entries tick reached the observations read');
+      expect(rebuilds, 0,
+          reason: 'entries alone must not rebuild while the observations '
+              'read is still in flight — the two setStates are coalesced');
+
+      observations.complete(const []);
+      await tester.pumpAndSettle();
+
+      expect(rebuilds, 1,
+          reason: 'entries + observations land in one setState, so one '
+              'rebuild');
+
+      await h.dispose();
+    });
+
+    testWidgets(
+        'memoisation renders byte-identical content to a fresh mount for a '
+        'multi-cycle, tagged, BBT/weight fixture', (tester) async {
+      final h = Harness(tester);
+      tester.view.physicalSize = const Size(800, 5000);
+      tester.view.devicePixelRatio = 1.0;
+      final profile =
+          await h.profiles.create(displayName: 'Alice', isMinor: false);
+
+      final starts = [
+        LocalDate(2026, 1, 1),
+        LocalDate(2026, 1, 31),
+        LocalDate(2026, 3, 2),
+        LocalDate(2026, 4, 1),
+      ];
+      for (final start in starts) {
+        for (var d = 0; d < 4; d++) {
+          await h.entries.save(
+            DayEntry(
+              id: '',
+              profileId: profile.id,
+              localDate: start.addDays(d),
+              tz: 'UTC',
+              flow: FlowLevel.medium,
+              tags: d == 1 ? const ['cramps', 'headache'] : const [],
+              note: null,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        }
+      }
+      await h.recordBbt(profile.id, LocalDate(2026, 1, 2), 36.5);
+      await h.recordBbt(profile.id, LocalDate(2026, 2, 1), 36.7);
+      await h.recordBbt(profile.id, LocalDate(2026, 3, 3), 36.6);
+      await h.recordBbt(profile.id, LocalDate(2026, 4, 2), 36.8);
+      await h.recordWeight(profile.id, LocalDate(2026, 1, 3), 61.5);
+      await h.recordWeight(profile.id, LocalDate(2026, 3, 4), 61.0);
+
+      await tester.pumpWidget(
+        h.appFor(
+          home: AnalysisTab(
+            profileId: profile.id,
+            todayProvider: () => LocalDate(2026, 4, 20),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final first = renderedTexts(tester);
+
+      // Fully dispose and remount: a fresh State derives everything from
+      // scratch. The memoised render must be byte-identical.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      await tester.pumpWidget(
+        h.appFor(
+          home: AnalysisTab(
+            profileId: profile.id,
+            todayProvider: () => LocalDate(2026, 4, 20),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final second = renderedTexts(tester);
+
+      expect(second, first,
+          reason: 'memoisation must not change any rendered content');
+      expect(first, contains('Cramps'));
+      expect(first, contains('Headache'));
+      expect(find.byKey(const ValueKey('bbt-chart')), findsOneWidget);
+
+      await h.dispose();
     });
   });
 }
