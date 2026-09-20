@@ -153,8 +153,8 @@ class _CurveStrip extends StatelessWidget {
                       '${day.date.day}',
                       style: theme.textTheme.labelMedium?.copyWith(
                         fontWeight: day.date == estimate.peakDay
-                            ? FontWeight.bold
-                            : FontWeight.normal,
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
                     Text(

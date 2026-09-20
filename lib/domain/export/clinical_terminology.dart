@@ -21,20 +21,21 @@
 /// - [kSystemSnomed] - `http://snomed.info/sct` - codes the *finding*
 ///   (the symptom/observation itself).
 /// - [kSystemLunarlogLocal] -
-///   `https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag` -
+///   `https://lunarlog.app/fhir/CodeSystem/tag` -
 ///   lunarlog's own code system for concepts with no verified external
 ///   mapping. This is an `http(s)://` URL under a domain lunarlog
-///   actually controls (the GitHub org that publishes this repo), not an
-///   unregistered `urn:` scheme: FHIR only requires `Coding.system` to be
-///   a URI that uniquely identifies the coding scheme (R4), but RFC 8141
-///   requires `urn:` namespace identifiers to be formally registered -
-///   which this constant's previous value, `urn:lunarlog:code`, never
-///   was - and FHIR's own guidance for a locally-defined system is an
-///   `http(s)://` URL under a domain the publisher controls, even before
-///   any document is actually published at that address. **This string
-///   is permanent once #157 starts emitting FHIR Bundles** - changing it
-///   later would break every previously exported `Observation.code`, so
-///   it is not to be revisited casually (see
+///   controls, not an unregistered `urn:` scheme: FHIR only requires
+///   `Coding.system` to be a URI that uniquely identifies the coding
+///   scheme (R4), but RFC 8141 requires `urn:` namespace identifiers to be
+///   formally registered - which this constant's value before 2026-09-09,
+///   `urn:lunarlog:code`, never was - and FHIR's own guidance for a
+///   locally-defined system is an `http(s)://` URL under a domain the
+///   publisher controls, even before any document is actually published at
+///   that address. #961 moved the base here from
+///   `https://github.com/wjdavis5/lunarlog/fhir/...`, before the first
+///   store build shipped an export. **The `lunarlog.app` URI is frozen
+///   from the first shipped build and must never change**, because a
+///   Bundle already handed to a clinician cannot be recalled (see
 ///   `docs/clinical/terminology.md` for the local-code policy this
 ///   backs).
 ///
@@ -84,13 +85,25 @@ const String kSystemLoinc = 'http://loinc.org';
 /// `http://snomed.info/sct` - SNOMED CT codes the *finding*.
 const String kSystemSnomed = 'http://snomed.info/sct';
 
-/// `https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag` -
+/// The permanent URI base for lunarlog's own FHIR code systems -
+/// `https://lunarlog.app/fhir/CodeSystem`. Every lunarlog-local
+/// `Coding.system` this export emits is this one base plus a short path
+/// segment (`/tag` for the tag taxonomy, `/flow` for flow levels,
+/// `/export-version` for the Bundle's version tag). #961 collapsed the
+/// three previously-repeated full-literal bases onto this single constant
+/// and moved them here from `https://github.com/wjdavis5/lunarlog/fhir/...`,
+/// before the first store build shipped an export. **Frozen from the first
+/// shipped build and never to change**: a Bundle already handed to a
+/// clinician cannot be recalled, so this value is an identity, not a link.
+/// Nothing needs to resolve at it for FHIR validity.
+const String kFhirCodeSystemBase = 'https://lunarlog.app/fhir/CodeSystem';
+
+/// `https://lunarlog.app/fhir/CodeSystem/tag` -
 /// lunarlog's own local code system, used whenever no external code has
 /// been verified for a concept. See the file doc comment above and
 /// `docs/clinical/terminology.md` for the policy. **Permanent once #157
 /// emits FHIR Bundles** - do not change this value casually.
-const String kSystemLunarlogLocal =
-    'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag';
+const String kSystemLunarlogLocal = '$kFhirCodeSystemBase/tag';
 
 /// Where the local-code policy and every row's provenance is written up
 /// in full. [ClinicalCode.provenanceUrl] points here (as a repo-relative

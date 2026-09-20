@@ -107,9 +107,12 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Text('Export range', style: TextStyle(fontSize: 20)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                'Export range',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
             ),
             Flexible(
               child: SingleChildScrollView(
