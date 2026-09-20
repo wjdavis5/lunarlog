@@ -32,6 +32,7 @@ import 'package:lunarlog/data/health/health_fertility_mapping.dart'
     show kBbtObservationCategory;
 import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
@@ -45,6 +46,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
+import '../../support/fake_health_export_ledger.dart';
 import '../../support/fake_settings_store.dart';
 
 const _profileId = 'p1';
@@ -269,6 +271,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -302,6 +305,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -331,6 +335,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -371,6 +376,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -401,6 +407,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -448,6 +455,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -486,6 +494,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -522,6 +531,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -557,6 +567,7 @@ void main() {
         binding: binding,
         source: source,
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 10),
       );
       coordinator.start();
@@ -568,6 +579,94 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 30));
 
       expect(deletion.calls, isEmpty);
+    });
+
+    test(
+        'issue #936: a row exported in an earlier session (seeded from the '
+        'persisted ledger) and tombstoned before this one began is deleted, '
+        'and its ledger rows are dropped on success', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      // The write path's persisted record of an earlier session's export:
+      // the entry's own flow id plus a symptom derived from its tags.
+      final ledger = FakeHealthExportLedger();
+      await ledger.record([
+        HealthExportLedgerEntry(
+          recordId: _entryId,
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+        HealthExportLedgerEntry(
+          recordId: healthSymptomRecordId(_entryId, 'abdominalCramps'),
+          profileId: _profileId,
+          sourceRowId: _entryId,
+          kind: HealthExportLedgerKind.entry,
+          localDate: '2026-09-01',
+          exportedAt: DateTime.utc(2026, 9, 1),
+        ),
+      ]);
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      // No live emission is ever seen this session — the tombstone alone
+      // must suffice, which is exactly what pre-#936 could not do.
+      await source
+          .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls.expand((call) => call).toSet(), {
+        _entryId,
+        healthSymptomRecordId(_entryId, 'abdominalCramps'),
+      });
+      expect(ledger.rows, isEmpty,
+          reason: 'successfully deleted records must not keep their ledger '
+              'rows forever');
+    });
+
+    test(
+        'issue #936: a ledger read failure is swallowed and the coordinator '
+        'still subscribes with the live-emission memory', () async {
+      final settings = FakeSettingsStore({
+        SettingsKeys.healthStoreProfileId: _profileId,
+      });
+      final binding = HealthSyncBinding(settings);
+      final source = _FakeTombstoneSource();
+      final deletion = _FakeDeletion();
+      final ledger = FakeHealthExportLedger()..throwOnRead = StateError('boom');
+      final coordinator = HealthSyncTombstoneCoordinator(
+        binding: binding,
+        source: source,
+        deletionService: deletion,
+        ledger: ledger,
+        debounce: const Duration(milliseconds: 10),
+      );
+      coordinator.start();
+      addTearDown(() => coordinator.dispose());
+
+      // Seen live (as pre-#936), then tombstoned: still deleted.
+      await source.emitEntries([_entry(_entryId)]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      await source
+          .emitEntries([_entry(_entryId, deletedAt: DateTime.utc(2026, 9, 2))]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(deletion.calls, [
+        [_entryId]
+      ]);
     });
   });
 
@@ -602,6 +701,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );
       coordinator.start();
@@ -639,6 +739,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );
       coordinator.start();
@@ -687,6 +788,7 @@ void main() {
         binding: binding,
         source: DriftHealthSyncTombstoneSource(storage),
         deletionService: deletion,
+        ledger: FakeHealthExportLedger(),
         debounce: const Duration(milliseconds: 20),
       );
       coordinator.start();

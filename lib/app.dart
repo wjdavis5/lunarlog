@@ -610,6 +610,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       // call sites must agree on.
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+      ledger: _deps.healthExportLedger,
     );
     if (coordinator == null) return;
     _healthFlowCoordinator = coordinator;
@@ -628,6 +629,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       tombstoneSource: _deps.healthSyncTombstoneSource,
       guardiansForProfile: _profileGuardians.getForProfile,
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
+      ledger: _deps.healthExportLedger,
     );
     if (coordinator == null) return;
     _healthSyncTombstoneCoordinator = coordinator;

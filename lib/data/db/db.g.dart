@@ -11983,6 +11983,454 @@ class HealthSyncStateCompanion extends UpdateCompanion<HealthSyncStateRow> {
   }
 }
 
+class $HealthExportLedgerTable extends HealthExportLedger
+    with TableInfo<$HealthExportLedgerTable, HealthExportLedgerRowData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HealthExportLedgerTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _recordIdMeta = const VerificationMeta(
+    'recordId',
+  );
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+    'record_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _profileIdMeta = const VerificationMeta(
+    'profileId',
+  );
+  @override
+  late final GeneratedColumn<String> profileId = GeneratedColumn<String>(
+    'profile_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceRowIdMeta = const VerificationMeta(
+    'sourceRowId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceRowId = GeneratedColumn<String>(
+    'source_row_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localDateMeta = const VerificationMeta(
+    'localDate',
+  );
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+    'local_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _exportedAtMeta = const VerificationMeta(
+    'exportedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> exportedAt = GeneratedColumn<DateTime>(
+    'exported_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    recordId,
+    profileId,
+    sourceRowId,
+    kind,
+    localDate,
+    exportedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'health_export_ledger';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HealthExportLedgerRowData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('record_id')) {
+      context.handle(
+        _recordIdMeta,
+        recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(
+        _profileIdMeta,
+        profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('source_row_id')) {
+      context.handle(
+        _sourceRowIdMeta,
+        sourceRowId.isAcceptableOrUnknown(
+          data['source_row_id']!,
+          _sourceRowIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceRowIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(
+        _localDateMeta,
+        localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('exported_at')) {
+      context.handle(
+        _exportedAtMeta,
+        exportedAt.isAcceptableOrUnknown(data['exported_at']!, _exportedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_exportedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {recordId};
+  @override
+  HealthExportLedgerRowData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HealthExportLedgerRowData(
+      recordId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_id'],
+      )!,
+      profileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}profile_id'],
+      )!,
+      sourceRowId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_row_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      localDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_date'],
+      )!,
+      exportedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}exported_at'],
+      )!,
+    );
+  }
+
+  @override
+  $HealthExportLedgerTable createAlias(String alias) {
+    return $HealthExportLedgerTable(attachedDatabase, alias);
+  }
+}
+
+class HealthExportLedgerRowData extends DataClass
+    implements Insertable<HealthExportLedgerRowData> {
+  /// The platform external id this device wrote (Health Connect
+  /// `clientRecordId` / HealthKit `HKMetadataKeyExternalUUID`); the key.
+  final String recordId;
+
+  /// The bound profile this export belonged to.
+  final String profileId;
+
+  /// The source day-entry or observation id the record was derived from
+  /// (one record id can embed it, but this preserves the grouping key the
+  /// deletion paths diff against).
+  final String sourceRowId;
+
+  /// `entry` | `spotting` | `bbt` — mirrors
+  /// `domain.HealthExportLedgerKind`.
+  final String kind;
+
+  /// ISO calendar date `yyyy-MM-dd` the export was for (provenance only).
+  final String localDate;
+
+  /// The UTC instant the record was exported.
+  final DateTime exportedAt;
+  const HealthExportLedgerRowData({
+    required this.recordId,
+    required this.profileId,
+    required this.sourceRowId,
+    required this.kind,
+    required this.localDate,
+    required this.exportedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['record_id'] = Variable<String>(recordId);
+    map['profile_id'] = Variable<String>(profileId);
+    map['source_row_id'] = Variable<String>(sourceRowId);
+    map['kind'] = Variable<String>(kind);
+    map['local_date'] = Variable<String>(localDate);
+    map['exported_at'] = Variable<DateTime>(exportedAt);
+    return map;
+  }
+
+  HealthExportLedgerCompanion toCompanion(bool nullToAbsent) {
+    return HealthExportLedgerCompanion(
+      recordId: Value(recordId),
+      profileId: Value(profileId),
+      sourceRowId: Value(sourceRowId),
+      kind: Value(kind),
+      localDate: Value(localDate),
+      exportedAt: Value(exportedAt),
+    );
+  }
+
+  factory HealthExportLedgerRowData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HealthExportLedgerRowData(
+      recordId: serializer.fromJson<String>(json['recordId']),
+      profileId: serializer.fromJson<String>(json['profileId']),
+      sourceRowId: serializer.fromJson<String>(json['sourceRowId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      exportedAt: serializer.fromJson<DateTime>(json['exportedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'recordId': serializer.toJson<String>(recordId),
+      'profileId': serializer.toJson<String>(profileId),
+      'sourceRowId': serializer.toJson<String>(sourceRowId),
+      'kind': serializer.toJson<String>(kind),
+      'localDate': serializer.toJson<String>(localDate),
+      'exportedAt': serializer.toJson<DateTime>(exportedAt),
+    };
+  }
+
+  HealthExportLedgerRowData copyWith({
+    String? recordId,
+    String? profileId,
+    String? sourceRowId,
+    String? kind,
+    String? localDate,
+    DateTime? exportedAt,
+  }) => HealthExportLedgerRowData(
+    recordId: recordId ?? this.recordId,
+    profileId: profileId ?? this.profileId,
+    sourceRowId: sourceRowId ?? this.sourceRowId,
+    kind: kind ?? this.kind,
+    localDate: localDate ?? this.localDate,
+    exportedAt: exportedAt ?? this.exportedAt,
+  );
+  HealthExportLedgerRowData copyWithCompanion(
+    HealthExportLedgerCompanion data,
+  ) {
+    return HealthExportLedgerRowData(
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      sourceRowId: data.sourceRowId.present
+          ? data.sourceRowId.value
+          : this.sourceRowId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      exportedAt: data.exportedAt.present
+          ? data.exportedAt.value
+          : this.exportedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthExportLedgerRowData(')
+          ..write('recordId: $recordId, ')
+          ..write('profileId: $profileId, ')
+          ..write('sourceRowId: $sourceRowId, ')
+          ..write('kind: $kind, ')
+          ..write('localDate: $localDate, ')
+          ..write('exportedAt: $exportedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    recordId,
+    profileId,
+    sourceRowId,
+    kind,
+    localDate,
+    exportedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HealthExportLedgerRowData &&
+          other.recordId == this.recordId &&
+          other.profileId == this.profileId &&
+          other.sourceRowId == this.sourceRowId &&
+          other.kind == this.kind &&
+          other.localDate == this.localDate &&
+          other.exportedAt == this.exportedAt);
+}
+
+class HealthExportLedgerCompanion
+    extends UpdateCompanion<HealthExportLedgerRowData> {
+  final Value<String> recordId;
+  final Value<String> profileId;
+  final Value<String> sourceRowId;
+  final Value<String> kind;
+  final Value<String> localDate;
+  final Value<DateTime> exportedAt;
+  final Value<int> rowid;
+  const HealthExportLedgerCompanion({
+    this.recordId = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.sourceRowId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.exportedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  HealthExportLedgerCompanion.insert({
+    required String recordId,
+    required String profileId,
+    required String sourceRowId,
+    required String kind,
+    required String localDate,
+    required DateTime exportedAt,
+    this.rowid = const Value.absent(),
+  }) : recordId = Value(recordId),
+       profileId = Value(profileId),
+       sourceRowId = Value(sourceRowId),
+       kind = Value(kind),
+       localDate = Value(localDate),
+       exportedAt = Value(exportedAt);
+  static Insertable<HealthExportLedgerRowData> custom({
+    Expression<String>? recordId,
+    Expression<String>? profileId,
+    Expression<String>? sourceRowId,
+    Expression<String>? kind,
+    Expression<String>? localDate,
+    Expression<DateTime>? exportedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (recordId != null) 'record_id': recordId,
+      if (profileId != null) 'profile_id': profileId,
+      if (sourceRowId != null) 'source_row_id': sourceRowId,
+      if (kind != null) 'kind': kind,
+      if (localDate != null) 'local_date': localDate,
+      if (exportedAt != null) 'exported_at': exportedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  HealthExportLedgerCompanion copyWith({
+    Value<String>? recordId,
+    Value<String>? profileId,
+    Value<String>? sourceRowId,
+    Value<String>? kind,
+    Value<String>? localDate,
+    Value<DateTime>? exportedAt,
+    Value<int>? rowid,
+  }) {
+    return HealthExportLedgerCompanion(
+      recordId: recordId ?? this.recordId,
+      profileId: profileId ?? this.profileId,
+      sourceRowId: sourceRowId ?? this.sourceRowId,
+      kind: kind ?? this.kind,
+      localDate: localDate ?? this.localDate,
+      exportedAt: exportedAt ?? this.exportedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<String>(profileId.value);
+    }
+    if (sourceRowId.present) {
+      map['source_row_id'] = Variable<String>(sourceRowId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (exportedAt.present) {
+      map['exported_at'] = Variable<DateTime>(exportedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HealthExportLedgerCompanion(')
+          ..write('recordId: $recordId, ')
+          ..write('profileId: $profileId, ')
+          ..write('sourceRowId: $sourceRowId, ')
+          ..write('kind: $kind, ')
+          ..write('localDate: $localDate, ')
+          ..write('exportedAt: $exportedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$LunarLogDatabase extends GeneratedDatabase {
   _$LunarLogDatabase(QueryExecutor e) : super(e);
   $LunarLogDatabaseManager get managers => $LunarLogDatabaseManager(this);
@@ -12009,6 +12457,8 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
   late final $HealthSyncStateTable healthSyncState = $HealthSyncStateTable(
     this,
   );
+  late final $HealthExportLedgerTable healthExportLedger =
+      $HealthExportLedgerTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -12029,6 +12479,7 @@ abstract class _$LunarLogDatabase extends GeneratedDatabase {
     appSettings,
     syncState,
     healthSyncState,
+    healthExportLedger,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -19976,6 +20427,254 @@ typedef $$HealthSyncStateTableProcessedTableManager =
       HealthSyncStateRow,
       PrefetchHooks Function()
     >;
+typedef $$HealthExportLedgerTableCreateCompanionBuilder =
+    HealthExportLedgerCompanion Function({
+      required String recordId,
+      required String profileId,
+      required String sourceRowId,
+      required String kind,
+      required String localDate,
+      required DateTime exportedAt,
+      Value<int> rowid,
+    });
+typedef $$HealthExportLedgerTableUpdateCompanionBuilder =
+    HealthExportLedgerCompanion Function({
+      Value<String> recordId,
+      Value<String> profileId,
+      Value<String> sourceRowId,
+      Value<String> kind,
+      Value<String> localDate,
+      Value<DateTime> exportedAt,
+      Value<int> rowid,
+    });
+
+class $$HealthExportLedgerTableFilterComposer
+    extends Composer<_$LunarLogDatabase, $HealthExportLedgerTable> {
+  $$HealthExportLedgerTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceRowId => $composableBuilder(
+    column: $table.sourceRowId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get exportedAt => $composableBuilder(
+    column: $table.exportedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$HealthExportLedgerTableOrderingComposer
+    extends Composer<_$LunarLogDatabase, $HealthExportLedgerTable> {
+  $$HealthExportLedgerTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get profileId => $composableBuilder(
+    column: $table.profileId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceRowId => $composableBuilder(
+    column: $table.sourceRowId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get exportedAt => $composableBuilder(
+    column: $table.exportedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HealthExportLedgerTableAnnotationComposer
+    extends Composer<_$LunarLogDatabase, $HealthExportLedgerTable> {
+  $$HealthExportLedgerTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<String> get profileId =>
+      $composableBuilder(column: $table.profileId, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceRowId => $composableBuilder(
+    column: $table.sourceRowId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get exportedAt => $composableBuilder(
+    column: $table.exportedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$HealthExportLedgerTableTableManager
+    extends
+        RootTableManager<
+          _$LunarLogDatabase,
+          $HealthExportLedgerTable,
+          HealthExportLedgerRowData,
+          $$HealthExportLedgerTableFilterComposer,
+          $$HealthExportLedgerTableOrderingComposer,
+          $$HealthExportLedgerTableAnnotationComposer,
+          $$HealthExportLedgerTableCreateCompanionBuilder,
+          $$HealthExportLedgerTableUpdateCompanionBuilder,
+          (
+            HealthExportLedgerRowData,
+            BaseReferences<
+              _$LunarLogDatabase,
+              $HealthExportLedgerTable,
+              HealthExportLedgerRowData
+            >,
+          ),
+          HealthExportLedgerRowData,
+          PrefetchHooks Function()
+        > {
+  $$HealthExportLedgerTableTableManager(
+    _$LunarLogDatabase db,
+    $HealthExportLedgerTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HealthExportLedgerTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HealthExportLedgerTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HealthExportLedgerTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> recordId = const Value.absent(),
+                Value<String> profileId = const Value.absent(),
+                Value<String> sourceRowId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> localDate = const Value.absent(),
+                Value<DateTime> exportedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => HealthExportLedgerCompanion(
+                recordId: recordId,
+                profileId: profileId,
+                sourceRowId: sourceRowId,
+                kind: kind,
+                localDate: localDate,
+                exportedAt: exportedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String recordId,
+                required String profileId,
+                required String sourceRowId,
+                required String kind,
+                required String localDate,
+                required DateTime exportedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => HealthExportLedgerCompanion.insert(
+                recordId: recordId,
+                profileId: profileId,
+                sourceRowId: sourceRowId,
+                kind: kind,
+                localDate: localDate,
+                exportedAt: exportedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $HealthExportLedgerTable,
+                    HealthExportLedgerRowData
+                  >(table),
+                  BaseReferences<
+                    _$LunarLogDatabase,
+                    $HealthExportLedgerTable,
+                    HealthExportLedgerRowData
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$HealthExportLedgerTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LunarLogDatabase,
+      $HealthExportLedgerTable,
+      HealthExportLedgerRowData,
+      $$HealthExportLedgerTableFilterComposer,
+      $$HealthExportLedgerTableOrderingComposer,
+      $$HealthExportLedgerTableAnnotationComposer,
+      $$HealthExportLedgerTableCreateCompanionBuilder,
+      $$HealthExportLedgerTableUpdateCompanionBuilder,
+      (
+        HealthExportLedgerRowData,
+        BaseReferences<
+          _$LunarLogDatabase,
+          $HealthExportLedgerTable,
+          HealthExportLedgerRowData
+        >,
+      ),
+      HealthExportLedgerRowData,
+      PrefetchHooks Function()
+    >;
 
 class $LunarLogDatabaseManager {
   final _$LunarLogDatabase _db;
@@ -20010,4 +20709,6 @@ class $LunarLogDatabaseManager {
       $$SyncStateTableTableManager(_db, _db.syncState);
   $$HealthSyncStateTableTableManager get healthSyncState =>
       $$HealthSyncStateTableTableManager(_db, _db.healthSyncState);
+  $$HealthExportLedgerTableTableManager get healthExportLedger =>
+      $$HealthExportLedgerTableTableManager(_db, _db.healthExportLedger);
 }

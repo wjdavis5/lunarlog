@@ -53,6 +53,7 @@ import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart'
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
+import 'package:lunarlog/data/repositories/drift_health_export_ledger.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
@@ -103,6 +104,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
 import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -136,6 +138,7 @@ class AppDependencies {
     required this.deviceDiagnostics,
     required this.healthSyncAnchors,
     required this.healthSyncTombstoneSource,
+    required this.healthExportLedger,
     required this.accountExportWriter,
     required this.fhirBundleWriter,
     required this.csvExportWriter,
@@ -191,6 +194,11 @@ class AppDependencies {
   /// [dayEntries]/[observations], whose UI-facing streams filter tombstones
   /// out.
   final HealthSyncTombstoneSource healthSyncTombstoneSource;
+
+  /// The device-local health-store export ledger (Issue #936) — never
+  /// synced to the server; the drift `health_export_ledger` table's domain
+  /// contract. Seeds both health-store deletion paths across app restarts.
+  final HealthExportLedger healthExportLedger;
 
   final AccountExportWriter accountExportWriter;
   final FhirBundleWriter fhirBundleWriter;
@@ -338,6 +346,7 @@ AppDependencies buildAppDependencies({
     deviceDiagnostics: PlatformDeviceDiagnosticsCollector(),
     healthSyncAnchors: DriftHealthSyncStateRepository(storage),
     healthSyncTombstoneSource: DriftHealthSyncTombstoneSource(storage),
+    healthExportLedger: DriftHealthExportLedger(storage),
     accountExportWriter: PlatformAccountExportWriter(
       remoteSource: builtAccountExportRemoteSource,
     ),
@@ -588,6 +597,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
   guardiansForProfile,
   required String? Function() signedInUserId,
   required bool minorBindingAllowed,
+  required HealthExportLedger ledger,
 }) {
   if (!AppConfig.hasHealthSync) return null;
   if (kIsWeb || !_healthWritePlatforms.contains(defaultTargetPlatform)) {
@@ -609,6 +619,7 @@ HealthFlowWriteCoordinator? buildHealthFlowWriteCoordinator({
     settings: settings,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+    ledger: ledger,
   );
   return LocalHealthFlowWriteCoordinator(
     binding: binding,
@@ -677,6 +688,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
   required Future<List<ProfileGuardian>> Function(String profileId)
   guardiansForProfile,
   required String? Function() signedInUserId,
+  required HealthExportLedger ledger,
 }) {
   if (!AppConfig.hasHealthSync) return null;
   if (kIsWeb || !_healthWritePlatforms.contains(defaultTargetPlatform)) {
@@ -699,6 +711,7 @@ HealthSyncTombstoneCoordinator? buildHealthSyncTombstoneCoordinator({
     binding: binding,
     source: tombstoneSource,
     deletionService: deletionService,
+    ledger: ledger,
   );
 }
 

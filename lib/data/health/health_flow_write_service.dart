@@ -24,6 +24,16 @@
 ///   it (and the whole batch) to be retried by the next pass rather than
 ///   half-skipping.
 ///
+/// **The remember-side is persisted (Issue #936).** The record ids a prior
+/// export wrote are held in the device-local [HealthExportLedger], not only
+/// in [_exportedEntryRecordIds]/[_exportedBbtRecordIds] process memory, and
+/// are seeded from it on the first pass for a bound profile. Before this,
+/// a symptom/BTT/fertility sample exported in an earlier app session was
+/// never reconciled away after a relaunch (on iOS a fresh process is the
+/// common case), because the diff's "previous" side was empty. The ledger
+/// is cleared per profile on deletion and outright on unbind; it never
+/// syncs and holds ids/provenance only.
+///
 /// **The guard is not re-implemented here.** Every write goes through the
 /// port, whose implementations evaluate `HealthSyncBinding.canWrite` first
 /// (Dart side) and whose native halves re-evaluate the mirrored predicate
@@ -53,6 +63,7 @@ library;
 // ignore_for_file: prefer_initializing_formals
 
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_flow_write_service.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -217,6 +228,7 @@ class _PendingOvulationWrite {
 /// One resolved BBT observation write (Issue #228).
 class _PendingBbtWrite {
   const _PendingBbtWrite({
+    required this.observationId,
     required this.date,
     required this.tzName,
     required this.resolved,
@@ -225,6 +237,9 @@ class _PendingBbtWrite {
     this.observedAt,
   });
 
+  /// The source `observations` row id, preserved as the persisted ledger's
+  /// grouping key (Issue #936).
+  final String observationId;
   final LocalDate date;
   final String tzName;
   final ResolvedBasalBodyTemperature resolved;
@@ -254,6 +269,18 @@ class _Batch {
   /// diff. Built from [healthRecordIdsForEntry], never by parsing the
   /// pending writes' ids.
   final Map<String, Set<String>> entryRecordIds = {};
+
+  /// The ISO civil date behind each [entryRecordIds] key, so the persisted
+  /// ledger can record provenance (Issue #936).
+  final Map<String, String> entryLocalDates = {};
+
+  /// Every spotting observation written through the flow writer this pass
+  /// (Issue #936), keyed by observation id: its record id and civil date.
+  /// Spotting writes are not part of [entryRecordIds], so the persisted
+  /// ledger needs them separately for the tombstone coordinator's
+  /// cross-session spotting deletion.
+  final Map<String, ({String recordId, String localDate})> spottingExports =
+      {};
 
   /// Every live, exportable BBT observation's record id this pass,
   /// regardless of the forward-only cursor — the "still present" side of
@@ -340,6 +367,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     required SettingsStore settings,
     required GuardiansForProfile guardiansForProfile,
     required String? Function() signedInUserId,
+    required HealthExportLedger ledger,
     DateTime Function()? now,
   })  : _platform = platform,
         _binding = binding,
@@ -350,6 +378,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         _settings = settings,
         _guardiansForProfile = guardiansForProfile,
         _signedInUserId = signedInUserId,
+        _ledger = ledger,
         _now = now ?? (() => DateTime.now().toUtc());
 
   final HealthPlatformStore _platform;
@@ -361,7 +390,18 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   final SettingsStore _settings;
   final GuardiansForProfile _guardiansForProfile;
   final String? Function() _signedInUserId;
+
+  /// The persisted device-local export ledger (Issue #936). Both in-memory
+  /// sets below are seeded from it on the first pass for a bound profile, so
+  /// a tombstone or an edit made in a later app session still reconciles.
+  final HealthExportLedger _ledger;
+
   final DateTime Function() _now;
+
+  /// The profile [_exportedEntryRecordIds]/[_exportedBbtRecordIds] currently
+  /// hold ledger state for; null until the first pass. Cleared by
+  /// [onUnbound].
+  String? _ledgerProfileId;
 
   /// The record ids the previous pass recorded for each day entry (Issue
   /// #930) — the "previously exported" side of the removed-record diff.
@@ -372,13 +412,16 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// Deliberately this service's own memory rather than the tombstone
   /// coordinator's: only the write path knows which record was actually
   /// exported (the coordinator's set is seeded by live stream emissions,
-  /// including rows the forward-only cursor never wrote). See
+  /// including rows the forward-only cursor never wrote). Persisted across
+  /// sessions in [HealthExportLedger] (Issue #936) — seeded from it by
+  /// [_ensureLedgerLoaded] on the first pass for a bound profile. See
   /// [_reconcileRemovedRecords].
   final Map<String, Set<String>> _exportedEntryRecordIds = {};
 
   /// The BBT record ids a previous export wrote (Issue #930), compared
   /// against the live BBT set on every pass so a reading cleared from a day
-  /// that itself still exists is reconciled away.
+  /// that itself still exists is reconciled away. Also persisted across
+  /// sessions in [HealthExportLedger] (Issue #936).
   final Set<String> _exportedBbtRecordIds = {};
 
   /// Runs one sync pass for the currently bound profile. Never throws —
@@ -394,6 +437,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     if (bound == null) {
       return const HealthFlowSyncReport(bound: false);
     }
+
+    // Issue #936: seed the remembered export sets from the persisted ledger
+    // before diffing, so a relaunch (a fresh process on iOS is the common
+    // case) still reconciles a tombstone or edit made in an earlier
+    // session.
+    await _ensureLedgerLoaded(bound.profile.id);
 
     // Pre-flight only (the port re-checks per call, natively mirrored):
     // refuses the pass before any channel traffic when the guard would
@@ -434,7 +483,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     }
 
     final batch = await _collectBatch(bound.profile.id, grant.cursor!);
-    final outcome = await _writeBatch(batch, bound.facts);
+    final outcome = await _writeBatch(batch, bound.facts, bound.profile.id);
     if (outcome.failure == null && outcome.newest != null) {
       await _settings.set(
         SettingsKeys.healthSyncWrittenThroughMs,
@@ -565,6 +614,9 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
       // Issue #930: the ids this entry asserts *now*, for the reconcile
       // diff against what the previous export wrote for it.
       batch.entryRecordIds[entry.id] = healthRecordIdsForEntry(entry);
+      // Issue #936: the date behind that grouping key, for the persisted
+      // ledger's provenance.
+      batch.entryLocalDates[entry.id] = entry.localDate.iso;
     }
 
     _collectObservationWrites(
@@ -609,6 +661,13 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
         healthSpottingRecordId(row.id),
         mapSpottingToHealthWrite(inPeriodEpisode: containing != null),
         containing,
+      );
+      // Issue #936: remember this spotting export for the persisted ledger
+      // (its own record id, keyed by the observation id), so a later
+      // session's tombstone can delete it.
+      batch.spottingExports[row.id] = (
+        recordId: healthSpottingRecordId(row.id),
+        localDate: row.localDate.iso,
       );
     }
 
@@ -671,6 +730,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final resolved = resolveBasalBodyTemperature(row);
     if (resolved == null) return null;
     return _PendingBbtWrite(
+      observationId: row.id,
       date: row.localDate,
       tzName: row.tz,
       resolved: resolved,
@@ -778,6 +838,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   Future<_BatchOutcome> _writeBatch(
     _Batch batch,
     HealthGuardFacts facts,
+    String profileId,
   ) async {
     final flow = await _writeFlowRecords(batch.pending, facts);
     final periods = await _writePeriodRecords(batch.pendingPeriods, facts);
@@ -792,7 +853,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // Runs after the writes so the remembered sets move "now" -> "after the
     // write"; a failure here blocks the pass (and leaves the cursor) so the
     // removal is retried rather than silently skipped.
-    final removed = await _reconcileRemovedRecords(batch, facts);
+    final removed = await _reconcileRemovedRecords(batch, facts, profileId);
     return _BatchOutcome(
       written: flow.written,
       reconciled: flow.reconciled,
@@ -815,31 +876,88 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     );
   }
 
+  /// Seeds [_exportedEntryRecordIds]/[_exportedBbtRecordIds] from the
+  /// persisted ledger (Issue #936) the first time a pass runs for
+  /// [profileId]. A relaunch — a fresh process on iOS is the common case,
+  /// not an edge case — otherwise starts with empty sets, so
+  /// `previous.difference(current)` is always empty and an edit made in an
+  /// earlier session is never reconciled away.
+  ///
+  /// Spotting rows are deliberately not loaded into memory: the write path
+  /// only diffs entry-derived and BBT records, while the persisted spotting
+  /// rows exist for the tombstone coordinator's own cross-session deletion.
+  Future<void> _ensureLedgerLoaded(String profileId) async {
+    if (_ledgerProfileId == profileId) return;
+    final rows = await _ledger.readForProfile(profileId);
+    _exportedEntryRecordIds.clear();
+    _exportedBbtRecordIds.clear();
+    for (final row in rows) {
+      switch (row.kind) {
+        case HealthExportLedgerKind.entry:
+          _exportedEntryRecordIds
+              .putIfAbsent(row.sourceRowId, () => <String>{})
+              .add(row.recordId);
+        case HealthExportLedgerKind.bbt:
+          _exportedBbtRecordIds.add(row.recordId);
+        case HealthExportLedgerKind.spotting:
+          break;
+      }
+    }
+    _ledgerProfileId = profileId;
+  }
+
   /// Reconciles the records a *previous* export wrote against what this pass
   /// found (Issue #930) — the fix for a symptom/BTT/fertility sample left
   /// orphaned when a live day entry is edited rather than deleted.
   ///
   /// The remembered set is this service's own [_exportedEntryRecordIds] /
-  /// [_exportedBbtRecordIds], seeded only from this device's own exports
-  /// through [healthRecordIdsForEntry] and the BBT builder. A remembered id
-  /// that the current state no longer produces is deleted;
-  /// an id that is unchanged (a graded intensity or flow edit rewrites the
-  /// same id) is left alone. Deleting is a health-API touch, so it goes
-  /// through the same `_authorityDrift` recheck and guarded
+  /// [_exportedBbtRecordIds], seeded from the persisted device-local ledger
+  /// (Issue #936, [HealthExportLedger]) and otherwise maintained from this
+  /// device's own exports through [healthRecordIdsForEntry] and the BBT
+  /// builder. A remembered id that the current state no longer produces is
+  /// deleted; an id that is unchanged (a graded intensity or flow edit
+  /// rewrites the same id) is left alone. Deleting is a health-API touch,
+  /// so it goes through the same `_authorityDrift` recheck and guarded
   /// [HealthPlatformStore.deleteRecords] as every write — no new bypass.
   /// Returns the first removal failure, or null when every removal was
   /// allowed.
   Future<HealthPlatformResult?> _reconcileRemovedRecords(
     _Batch batch,
     HealthGuardFacts facts,
+    String profileId,
   ) async {
-    final entryFailure = await _reconcileEntryRemovals(batch, facts);
+    final entryFailure =
+        await _reconcileEntryRemovals(batch, facts, profileId);
     final bbtFailure = await _reconcileBbtRemovals(batch, facts);
     // Only once the BBT diff is computed: every BBT id this pass exported is
     // remembered so a LATER clear can address it.
+    final bbtExports = <HealthExportLedgerEntry>[];
     for (final item in batch.pendingBbt) {
       _exportedBbtRecordIds.add(item.recordId);
+      bbtExports.add(HealthExportLedgerEntry(
+        recordId: item.recordId,
+        profileId: profileId,
+        sourceRowId: item.observationId,
+        kind: HealthExportLedgerKind.bbt,
+        localDate: item.date.iso,
+        exportedAt: _now(),
+      ));
     }
+    // Issue #936: spotting exports are persisted too, so a tombstone in a
+    // later session can still delete them (the coordinator seeds its own
+    // observation memory from the ledger).
+    final spottingExports = <HealthExportLedgerEntry>[];
+    for (final export in batch.spottingExports.entries) {
+      spottingExports.add(HealthExportLedgerEntry(
+        recordId: export.value.recordId,
+        profileId: profileId,
+        sourceRowId: export.key,
+        kind: HealthExportLedgerKind.spotting,
+        localDate: export.value.localDate,
+        exportedAt: _now(),
+      ));
+    }
+    await _ledger.record([...bbtExports, ...spottingExports]);
     return entryFailure ?? bbtFailure;
   }
 
@@ -847,31 +965,45 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// entry, delete the ids it produced on a previous export but no longer
   /// produces, then remember the current set. A delete failure leaves the
   /// old set in place so the removal is retried on the next pass (LLA-019's
-  /// discipline), rather than being silently acknowledged.
+  /// discipline), rather than being silently acknowledged. The persisted
+  /// ledger moves in lockstep: removed ids are dropped on a successful
+  /// delete, and the current set is written so the next session's diff sees
+  /// it.
   Future<HealthPlatformResult?> _reconcileEntryRemovals(
     _Batch batch,
     HealthGuardFacts facts,
+    String profileId,
   ) async {
     HealthPlatformResult? failure;
     for (final entry in batch.entryRecordIds.entries) {
       final current = entry.value;
       final previous = _exportedEntryRecordIds[entry.key] ?? const <String>{};
       final removed = previous.difference(current);
-      if (removed.isEmpty) {
-        _exportedEntryRecordIds[entry.key] = current;
-        continue;
+      if (removed.isNotEmpty) {
+        final drift = await _authorityDrift(facts);
+        if (drift != null) {
+          failure ??= drift;
+          continue;
+        }
+        final result = await _platform.deleteRecords(facts, removed.toList());
+        if (result is! HealthPlatformAllowed) {
+          failure ??= result;
+          continue;
+        }
+        await _ledger.removeRecordIds(removed.toList());
       }
-      final drift = await _authorityDrift(facts);
-      if (drift != null) {
-        failure ??= drift;
-        continue;
-      }
-      final result = await _platform.deleteRecords(facts, removed.toList());
-      if (result is HealthPlatformAllowed) {
-        _exportedEntryRecordIds[entry.key] = current;
-      } else {
-        failure ??= result;
-      }
+      _exportedEntryRecordIds[entry.key] = current;
+      await _ledger.record([
+        for (final recordId in current)
+          HealthExportLedgerEntry(
+            recordId: recordId,
+            profileId: profileId,
+            sourceRowId: entry.key,
+            kind: HealthExportLedgerKind.entry,
+            localDate: batch.entryLocalDates[entry.key] ?? '',
+            exportedAt: _now(),
+          ),
+      ]);
     }
     return failure;
   }
@@ -879,7 +1011,8 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
   /// The BBT half of [_reconcileRemovedRecords]: a remembered BBT record
   /// whose observation is no longer live-and-resolved (the operator cleared
   /// the reading, leaving the day itself in place) is deleted. The memory is
-  /// only cleared on success, so a refusal retries.
+  /// only cleared on success, so a refusal retries; the persisted ledger
+  /// row is dropped only alongside the same successful delete.
   Future<HealthPlatformResult?> _reconcileBbtRemovals(
     _Batch batch,
     HealthGuardFacts facts,
@@ -891,6 +1024,7 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     final result = await _platform.deleteRecords(facts, removed.toList());
     if (result is HealthPlatformAllowed) {
       _exportedBbtRecordIds.removeAll(removed);
+      await _ledger.removeRecordIds(removed.toList());
       return null;
     }
     return result;
@@ -1298,6 +1432,12 @@ class LocalHealthFlowWriteService implements HealthFlowWriteService {
     // never diff (and delete) against the old profile's exports.
     _exportedEntryRecordIds.clear();
     _exportedBbtRecordIds.clear();
+    _ledgerProfileId = null;
+    // Issue #936: the persisted ledger belongs to one binding, exactly like
+    // the cursor — a re-bind must never diff (and delete) against the old
+    // profile's exports, and the rows describe a health store this device
+    // may no longer be permitted to touch.
+    await _ledger.clearAll();
     await _platform.unbindProfile();
   }
 

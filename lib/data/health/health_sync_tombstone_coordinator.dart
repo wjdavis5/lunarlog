@@ -35,6 +35,13 @@
 /// write path uses — and relays the whole set on a tombstone. Without this,
 /// a widened native delete would still never be asked for the right ids.
 ///
+/// **Issue #936:** that memory is seeded from the persisted device-local
+/// [HealthExportLedger] on bind, so a row tombstoned *before this session
+/// began* — the common case on iOS, where a fresh process is normal — is
+/// still deleted. Previously the remembered set started empty every launch
+/// and this was a documented accepted gap. Successfully deleted ids are
+/// removed from the ledger so the table does not grow forever.
+///
 /// Best-effort, like every background upkeep here: a throwing pass is
 /// swallowed — the next genuine change re-arms it.
 ///
@@ -43,6 +50,7 @@ library;
 
 import 'dart:async';
 
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_deletion_service.dart';
 import 'package:lunarlog/domain/health/health_sync_tombstone_source.dart';
@@ -60,14 +68,23 @@ class HealthSyncTombstoneCoordinator {
     required HealthSyncBinding binding,
     required HealthSyncTombstoneSource source,
     required HealthSyncDeletionService deletionService,
+    required HealthExportLedger ledger,
     this.debounce = const Duration(milliseconds: 300),
   })  : _binding = binding,
         _source = source,
-        _deletionService = deletionService;
+        _deletionService = deletionService,
+        _ledger = ledger;
 
   final HealthSyncBinding _binding;
   final HealthSyncTombstoneSource _source;
   final HealthSyncDeletionService _deletionService;
+
+  /// The persisted device-local export ledger (Issue #936) — the
+  /// cross-session source of the record ids the write path actually
+  /// exported. Seeded into [_knownEntryRecordIds]/[_knownObservationRecordIds]
+  /// on bind, so a row tombstoned before this session began still has its
+  /// record ids to delete.
+  final HealthExportLedger _ledger;
   final Duration debounce;
 
   StreamSubscription<String?>? _boundSub;
@@ -86,21 +103,27 @@ class HealthSyncTombstoneCoordinator {
   List<DayEntry> _latestEntries = const [];
   List<HealthTombstoneObservation> _latestObservations = const [];
 
-  /// Every health-store record id each live day entry produced this process
-  /// (Issue #924) — the entry's own flow id plus its symptom,
-  /// cervical-mucus, and ovulation-test ids. A day-entry tombstone clears
-  /// the entry's tags (`softDeleteDayEntry`), so the derived ids can only be
-  /// reconstructed from a live emission the coordinator already saw — the
-  /// same accepted gap [_knownObservationRecordIds] documents for a row
-  /// tombstoned before this session began.
+  /// Every health-store record id each live day entry produced (Issue #924)
+  /// — the entry's own flow id plus its symptom, cervical-mucus, and
+  /// ovulation-test ids. A day-entry tombstone clears the entry's tags
+  /// (`softDeleteDayEntry`), so the derived ids can only be reconstructed
+  /// from a live emission the coordinator saw or from the persisted
+  /// [HealthExportLedger] (Issue #936, [_seedLedger]) — the cross-session
+  /// half that used to be an accepted gap.
   final Map<String, Set<String>> _knownEntryRecordIds = {};
 
   /// The record id each live observation maps to (Issue #924): a spotting
   /// observation's own id, or `bbt-<id>` for a BBT row. Mirrors
-  /// [_knownEntryRecordIds]'s "remember it live" requirement — a tombstone
-  /// (direct or a day-entry cascade) nulls `category`, so the post-tombstone
-  /// row alone carries no trace of what it used to be.
+  /// [_knownEntryRecordIds]'s requirement — a tombstone (direct or a
+  /// day-entry cascade) nulls `category`, so the post-tombstone row alone
+  /// carries no trace of what it used to be. Seeded from the ledger too
+  /// (Issue #936).
   final Map<String, String> _knownObservationRecordIds = {};
+
+  /// The profile the coordinator is currently subscribed to (or loading
+  /// for) — lets the async ledger seed abandon itself if the binding moved
+  /// on before it resolved.
+  String? _activeProfileId;
 
   void start() {
     if (_disposed) return;
@@ -111,7 +134,49 @@ class HealthSyncTombstoneCoordinator {
     if (_disposed) return;
     _resetSubscriptions();
     if (profileId == null) return;
+    _activeProfileId = profileId;
+    // Issue #936: seed from the persisted ledger BEFORE subscribing, so the
+    // source's immediate initial emission cannot race ahead of the seed and
+    // schedule a deletion pass with an empty memory.
+    unawaited(_subscribeFor(profileId));
+  }
+
+  /// Loads [profileId]'s ledger rows and, if the binding has not moved on,
+  /// seeds them then subscribes. The write path is the ledger's only
+  /// writer, so these are exactly the record ids this device exported.
+  Future<void> _subscribeFor(String profileId) async {
+    // Best-effort, like every background upkeep here: a storage read that
+    // fails (a database closing during shutdown, an unexpected drift error)
+    // must not surface as an unhandled async error. Proceeding with an
+    // empty seed is the pre-#936 behaviour — only records seen live this
+    // session are deletable.
+    List<HealthExportLedgerEntry> rows;
+    try {
+      rows = await _ledger.readForProfile(profileId);
+    } catch (_) {
+      rows = const [];
+    }
+    if (_disposed || _activeProfileId != profileId) return;
+    _seedLedger(rows);
     _subscribe(profileId);
+  }
+
+  /// Seeds the in-memory record-id maps from the persisted ledger (Issue
+  /// #936). Entry-kind rows group by their source day-entry id;
+  /// spotting/BBT rows map their source observation id to the one record id
+  /// they export.
+  void _seedLedger(List<HealthExportLedgerEntry> rows) {
+    for (final row in rows) {
+      switch (row.kind) {
+        case HealthExportLedgerKind.entry:
+          _knownEntryRecordIds
+              .putIfAbsent(row.sourceRowId, () => <String>{})
+              .add(row.recordId);
+        case HealthExportLedgerKind.spotting:
+        case HealthExportLedgerKind.bbt:
+          _knownObservationRecordIds[row.sourceRowId] = row.recordId;
+      }
+    }
   }
 
   void _resetSubscriptions() {
@@ -130,6 +195,7 @@ class HealthSyncTombstoneCoordinator {
     _latestObservations = const [];
     _knownEntryRecordIds.clear();
     _knownObservationRecordIds.clear();
+    _activeProfileId = null;
   }
 
   void _subscribe(String profileId) {
@@ -206,6 +272,12 @@ class HealthSyncTombstoneCoordinator {
       // recorded done — a refusal (transient permission/provider failure)
       // must be retried by the next change, not silently swallowed.
       if (report.blocked == null) {
+        // Issue #936: the persisted ledger rows go with the successfully
+        // deleted store samples, so the table does not grow forever. This
+        // runs BEFORE the ids join _alreadyDeleted: a ledger-write failure
+        // must leave the ids retryable (a second delete of an already-gone
+        // sample is a documented no-op) rather than stranding the rows.
+        await _ledger.removeRecordIds(tombstoned);
         _alreadyDeleted = {..._alreadyDeleted, ...tombstoned};
       }
     } catch (_) {

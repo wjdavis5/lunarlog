@@ -100,6 +100,14 @@ const String kProfileTagRegistryProfileIndexSql =
     'CREATE INDEX IF NOT EXISTS ix_profile_tag_registry_profile_id '
     'ON profile_tag_registry (profile_id)';
 
+/// Schema v27 (issue #936): index over `health_export_ledger.profile_id` —
+/// every ledger read (seeding the write path and the tombstone coordinator
+/// on startup) and the per-profile clear on profile/account deletion filter
+/// by it.
+const String kHealthExportLedgerProfileIndexSql =
+    'CREATE INDEX IF NOT EXISTS ix_health_export_ledger_profile_id '
+    'ON health_export_ledger (profile_id)';
+
 /// Schema v23 (issue #170): composite index over
 /// `day_entry_history(profile_id, changed_at)` — the change-history feed
 /// read (`LunarLogStorageQueries.getDayEntryHistoryForProfile`) filters by
@@ -148,6 +156,7 @@ const String kObservationsProfileIndexSql =
   AppSettings,
   SyncState,
   HealthSyncState,
+  HealthExportLedger,
 ])
 class LunarLogDatabase extends _$LunarLogDatabase {
   LunarLogDatabase(super.executor);
@@ -255,8 +264,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   mode: the optional birth date the day counter counts from when
   ///   supplied; null keeps the counter on the `mode_started_on`
   ///   surrogate).
+  /// * 27 — `health_export_ledger` table (Issue #936, the persisted
+  ///   device-local record of what this device exported to its own OS
+  ///   health store) with a `profile_id` index. Device-local, never synced
+  ///   — the `health_sync_state` posture. No backfill: a device upgrading
+  ///   into this version starts with an empty ledger, so its already-exported
+  ///   samples remain the documented pre-#936 gap until re-exported.
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -275,6 +290,7 @@ class LunarLogDatabase extends _$LunarLogDatabase {
           await customStatement(kProfileTagRegistryProfileIndexSql);
           await customStatement(kDayEntryHistoryProfileChangedAtIndexSql);
           await customStatement(kGuardianNotesProfileDateIndexSql);
+          await customStatement(kHealthExportLedgerProfileIndexSql);
         },
         onUpgrade: (m, from, to) => onUpgradeSteps(m, from, to),
         beforeOpen: (details) async {
@@ -558,6 +574,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV25(m, from);
     // Issue #861's v26 step, same shape again.
     await _upgradeToV26(m, from);
+    // Issue #936's v27 step, same shape again.
+    await _upgradeToV27(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -611,6 +629,11 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     // fixture that starts at v25 via `createAll` alone never ran the real
     // `onCreate`). A no-op for every real device.
     await customStatement(kGuardianNotesProfileDateIndexSql);
+    // Issue #936 extends the same unconditional re-assert to the v27
+    // export-ledger index, for the identical reason (a schema-verification
+    // fixture that starts at v27 via `createAll` alone never ran the real
+    // `onCreate`). A no-op for every real device.
+    await customStatement(kHealthExportLedgerProfileIndexSql);
   }
 
   /// The v9 upgrade step (Issue #188): the `profile_modes` and
@@ -1008,6 +1031,9 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await delete(appSettings).go();
       await delete(syncState).go();
       await delete(healthSyncState).go();
+      // Issue #936: the device-local export ledger goes with them (no FK,
+      // but a full wipe removes every table's rows regardless).
+      await delete(healthExportLedger).go();
     });
     // Issue #203: reclaim unused pages after wiping all data.
     await vacuum();
@@ -1143,6 +1169,24 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profile_modes.postpartum_birth_date');
       }
       await _advanceSchemaVersion(26);
+    });
+  }
+
+  /// The v27 upgrade step (Issue #936): the device-local
+  /// `health_export_ledger` table and its `profile_id` index. Same
+  /// standalone-method shape as [_upgradeToV25] — a fresh table created
+  /// exactly once, with no `sync_state` cursor (the ledger never syncs).
+  /// No backfill: a device upgrading into v27 starts with an empty ledger,
+  /// so samples exported before this version remain the documented
+  /// pre-#936 gap until they are re-exported by an ordinary pass.
+  Future<void> _upgradeToV27(Migrator m, int from) async {
+    if (from >= 27) return;
+    await transaction(() async {
+      await m.createTable(healthExportLedger);
+      await migrationStepHook?.call('health_export_ledger');
+      await customStatement(kHealthExportLedgerProfileIndexSql);
+      await migrationStepHook?.call('health_export_ledger.profile_id_index');
+      await _advanceSchemaVersion(27);
     });
   }
 }
