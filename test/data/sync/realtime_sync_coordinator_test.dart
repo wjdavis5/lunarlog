@@ -292,16 +292,47 @@ void main() {
       final p1 = await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
       await Future<void>.delayed(const Duration(milliseconds: 50));
 
-      expect(client.createdChannels, hasLength(1));
+      // Issue #778: while signed out no channel is opened at all — the
+      // server would reject it under RLS, so #771's backoff-tapered retry
+      // series is never started. The old assertion here (a channel already
+      // exists pre-sign-in) pinned the implementation, not the requirement:
+      // `_onProfilesUpdated` records `_lastProfileIds` before subscribing,
+      // so the sign-in rebuild below does not depend on a pre-sign-in
+      // channel ever existing.
+      expect(client.createdChannels, isEmpty);
       expect(client.removedChannels, isEmpty);
 
       auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'guardian-a'));
       await Future<void>.delayed(Duration.zero);
 
-      expect(client.removedChannels, hasLength(1),
-          reason: 'the pre-sign-in channel is torn down');
       expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue,
-          reason: 'and re-created under the signed-in identity');
+          reason: 'sign-in rebuilds the channel from the recorded profile '
+              'set under the signed-in identity, without a restart');
+    });
+
+    test('a signed-out device never opens a channel at all (issue #778)',
+        () async {
+      authCoordinator.start();
+      final p1 = await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final p2 = await storage.upsertProfile(displayName: 'Child 2', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(client.channelCalls, isEmpty,
+          reason: 'client.channel() is never even called while signed out');
+      expect(client.createdChannels, isEmpty);
+      expect(client.removedChannels, isEmpty);
+      expect(authCoordinator.channelStatuses, isEmpty);
+      expect(authCoordinator.isSubscribed, isFalse,
+          reason: 'no channels means not subscribed, not "vacuously live"');
+
+      // The profile watch still tracks ids: a later sign-in subscribes for
+      // the whole recorded set (the rebuild path is pinned by the test
+      // above; this re-asserts it with two profiles).
+      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'guardian-a'));
+      await Future<void>.delayed(Duration.zero);
+      expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue);
+      expect(client.createdChannels.containsKey('profile:${p2.id}'), isTrue);
     });
 
     test('a second session event for the same user id does not churn channels',
@@ -542,11 +573,11 @@ void main() {
     });
 
     test(
-        'a signed-out channel that reports subscribed before the server '
-        'rejects it still backs off to the cap (issue #771)', () async {
+        'a signed-in channel that the server keeps rejecting still backs '
+        'off to the cap (issues #771/#778)', () async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      final signedOutCoordinator = RealtimeSyncCoordinator(
+      final rejectingServerCoordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: syncEngine,
         storage: storage,
@@ -554,37 +585,33 @@ void main() {
         debounceDuration: const Duration(milliseconds: 50),
         retryTimerFactory: retries.call,
       );
-      addTearDown(signedOutCoordinator.dispose);
+      addTearDown(rejectingServerCoordinator.dispose);
 
-      signedOutCoordinator.start();
-      final p1 =
-          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      rejectingServerCoordinator.start();
+      // Issue #778 closed the signed-out door this test originally used (a
+      // signed-out coordinator no longer opens a channel at all), but the
+      // retry machinery it pinned still governs a *signed-in* device whose
+      // subscription is rejected — kept proven here.
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
+      client.nextStatus = RealtimeSubscribeStatus.channelError;
+      await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      final topic = 'profile:${p1.id}';
 
-      // Every fresh channel reports `subscribed` from the join ack, then the
-      // server's post-join rejection arrives as `channelError` on the same
-      // channel -- the shape the realtime client produces when no authorized
-      // identity can set up replication (RealtimeChannel.subscribe's
-      // onSystemEvents handler). The optimistic `subscribed` must not reset
-      // the backoff counter, or the delay stays pinned at the base forever.
-      void rejectCurrentChannel() {
-        client.createdChannels[topic]!
-            .emitStatus(RealtimeSubscribeStatus.channelError);
-      }
+      // The join itself is rejected — the channel reports `channelError`
+      // synchronously on subscribe, with no optimistic `subscribed` ack
+      // reaching the client first — and a retry is already pending.
+      expect(retries.pending, hasLength(1));
 
-      rejectCurrentChannel();
-
-      // Fail each fired retry's replacement the same way.
-      for (var i = 0; i < 8; i++) {
-        expect(retries.pending, hasLength(1));
+      // Each fired retry opens a replacement that the server rejects the
+      // same way, scheduling the next attempt by itself.
+      for (var i = 0; i < 6; i++) {
         retries.fireNext();
         await Future<void>.delayed(const Duration(milliseconds: 50));
-        rejectCurrentChannel();
       }
 
       expect(
-        retries.delays.take(7).toList(),
+        retries.delays,
         [
           kRealtimeRetryBase,
           kRealtimeRetryBase * 2,
@@ -603,8 +630,8 @@ void main() {
       );
     });
 
-    test('a signed-out retry storm logs the failure once, not per attempt '
-        '(issue #771)', () async {
+    test('a persistent rejection logs the failure once per episode, not per '
+        'attempt (issue #771)', () async {
       final logs = <String>[];
       final originalDebugPrint = debugPrint;
       debugPrint = (String? message, {int? wrapWidth}) {
@@ -614,7 +641,7 @@ void main() {
 
       final auth = FakeAuthService();
       addTearDown(auth.dispose);
-      final signedOutCoordinator = RealtimeSyncCoordinator(
+      final signedInCoordinator = RealtimeSyncCoordinator(
         client: client,
         syncEngine: syncEngine,
         storage: storage,
@@ -622,21 +649,26 @@ void main() {
         debounceDuration: const Duration(milliseconds: 50),
         retryTimerFactory: retries.call,
       );
-      addTearDown(signedOutCoordinator.dispose);
+      addTearDown(signedInCoordinator.dispose);
 
-      signedOutCoordinator.start();
+      // Issue #778 removed the signed-out storm this test originally drove
+      // (no channel is opened while signed out); the log-once behavior it
+      // pinned still governs a signed-in device whose every subscribe is
+      // rejected.
+      signedInCoordinator.start();
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
       final p1 =
           await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final topic = 'profile:${p1.id}';
 
-      for (var i = 0; i < 5; i++) {
-        client.createdChannels[topic]!
-            .emitStatus(RealtimeSubscribeStatus.channelError);
-        if (retries.pending.isNotEmpty) {
-          retries.fireNext();
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
+      client.nextStatus = RealtimeSubscribeStatus.channelError;
+      client.createdChannels[topic]!
+          .emitStatus(RealtimeSubscribeStatus.channelError);
+      for (var i = 0; i < 4; i++) {
+        retries.fireNext();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
       }
 
       expect(logs, hasLength(1),
@@ -703,6 +735,59 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(client.channelCalls[topic], (callsBefore ?? 1) + 1);
     });
+
+    test(
+        'sign-out mid-subscription tears the channel down and cancels its '
+        'pending retry (issue #778)', () async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final midSubscriptionCoordinator = RealtimeSyncCoordinator(
+        client: client,
+        syncEngine: syncEngine,
+        storage: storage,
+        auth: auth,
+        debounceDuration: const Duration(milliseconds: 50),
+        retryTimerFactory: retries.call,
+      );
+      addTearDown(midSubscriptionCoordinator.dispose);
+
+      midSubscriptionCoordinator.start();
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
+      final p1 = await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final topic = 'profile:${p1.id}';
+      final liveChannel = client.createdChannels[topic]!;
+      expect(liveChannel.subscribeCount, 1);
+
+      // The channel degrades and a retry is pending when the sign-out lands.
+      liveChannel.emitStatus(RealtimeSubscribeStatus.closed);
+      expect(retries.pending, hasLength(1));
+
+      await auth.signOut();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(client.createdChannels, isEmpty,
+          reason: 'sign-out tears the live channel down');
+      expect(client.removedChannels, contains(liveChannel));
+      expect(retries.pending, isEmpty,
+          reason: 'the pending retry timer is cancelled, not left to fire '
+              'into a signed-out coordinator');
+
+      // Firing the (now-cancelled) timer must not re-subscribe, and a late
+      // status from the removed channel must be dropped rather than
+      // recorded or retried.
+      for (final timer in retries.timers) {
+        timer.fire();
+      }
+      liveChannel.emitStatus(RealtimeSubscribeStatus.channelError);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(client.channelCalls[topic], 1,
+          reason: 'no channel is re-opened while signed out');
+      expect(midSubscriptionCoordinator.channelStatuses, isEmpty);
+      expect(retries.pending, isEmpty);
+    });
   });
 
   group('lifecycle pause/resume (issue #842)', () {
@@ -743,6 +828,37 @@ void main() {
 
       coordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue);
+    });
+
+    test('resume while signed out opens no channel (issue #778)', () async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final signedOutCoordinator = RealtimeSyncCoordinator(
+        client: client,
+        syncEngine: syncEngine,
+        storage: storage,
+        auth: auth,
+        debounceDuration: const Duration(milliseconds: 50),
+      );
+      addTearDown(signedOutCoordinator.dispose);
+
+      signedOutCoordinator.start();
+      signedOutCoordinator.didChangeAppLifecycleState(AppLifecycleState.paused);
+      final p1 =
+          await storage.upsertProfile(displayName: 'Child 1', isMinor: true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      signedOutCoordinator.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(client.channelCalls, isEmpty,
+          reason: 'resume must not open a channel there is no authorized '
+              'identity to bind');
+
+      // Signing in afterwards still brings the channel up — the recorded
+      // profile set survives the pause/resume cycle.
+      auth.emit(AuthSessionState.signedIn, user: const AuthUser(id: 'guardian-a'));
+      await Future<void>.delayed(Duration.zero);
       expect(client.createdChannels.containsKey('profile:${p1.id}'), isTrue);
     });
 

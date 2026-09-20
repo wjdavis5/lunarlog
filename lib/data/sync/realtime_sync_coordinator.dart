@@ -195,7 +195,11 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
   /// re-subscribes from the last-known profile set under the new identity
   /// (KTD3). A transition to signed-out removes channels and stops there —
   /// there is no authorized identity to bind a fresh subscription to, so
-  /// resubscribing would just open channels the server will reject.
+  /// resubscribing would just open channels the server will reject. Since
+  /// issue #778 the same posture covers the initial subscribe too (see
+  /// [_onProfilesUpdated]): a signed-out coordinator never opens a channel
+  /// in the first place, so there is nothing to tear down on sign-out
+  /// unless the sign-out happens mid-subscription.
   void _rebuildChannels() {
     for (final removal in _clearChannels()) {
       unawaited(removal);
@@ -229,6 +233,15 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
     // 2. Add channels for newly discovered profiles, unless backgrounded
     // (issue #842) — [_onResumed] picks them up from [_lastProfileIds].
     if (_lifecyclePaused) return;
+    // Issue #778: with an auth source, a signed-out coordinator opens no
+    // channel at all — there is no authorized identity to bind the
+    // subscription to, so the server rejects it under RLS and every retry
+    // is doomed (the #771 storm, just backoff-tapered now). The profile
+    // watch still tracks ids in [_lastProfileIds], so sign-in rebuilds the
+    // channels via [_rebuildChannels] without waiting for another
+    // emission. A coordinator without an auth source has no identity
+    // concept and keeps subscribing unconditionally.
+    if (auth != null && _boundUserId == null) return;
     for (final id in currentIds) {
       if (!_channels.containsKey(id)) {
         _subscribeToProfile(id);
