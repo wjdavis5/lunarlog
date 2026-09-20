@@ -116,6 +116,8 @@ class _FakePredictionService implements PredictionConnectionService {
       rawToken: 'raw-token',
       tokenHash: 'hash-token',
       inviteUri: Uri.parse('lunarlog://invite?code=raw-token&kind=prediction'),
+      // Fixed fixture expiry; this fake's invite is never rendered against
+      // the real clock (issue #949).
       expiresAt: DateTime.utc(2026, 9, 20),
     );
   }
