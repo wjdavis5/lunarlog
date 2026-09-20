@@ -53,13 +53,13 @@ import 'generated_migrations/schema_v7.dart' as v7;
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 20` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 26;
+const int _kCurrentSchemaVersion = 27;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -571,6 +571,49 @@ void main() {
         contains('ix_day_entry_history_profile_changed_at'),
         reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create the '
             'issue #170 feed index (a customStatement creation invisible '
+            'to migrateAndValidate, same situation as the live-entry '
+            'partial index above)',
+      );
+    });
+
+    test(
+        'upgrading from v$fromVersion creates the health_export_ledger table '
+        '(Issue #936) with its id/provenance columns and its profile index',
+        () async {
+      final connection = await verifier.startAt(fromVersion);
+      final db = LunarLogDatabase(connection);
+      addTearDown(db.close);
+
+      await verifier.migrateAndValidate(db, _kCurrentSchemaVersion);
+
+      final columns =
+          await db.customSelect("PRAGMA table_info('health_export_ledger')").get();
+      expect(
+        columns.map((row) => row.data['name'] as String).toSet(),
+        {
+          'record_id',
+          'profile_id',
+          'source_row_id',
+          'kind',
+          'local_date',
+          'exported_at',
+        },
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create the '
+            'full device-local export-ledger shape (ids/provenance only)',
+      );
+
+      final indexNames = (await db
+              .customSelect(
+                "SELECT name FROM sqlite_master WHERE type = 'index'",
+              )
+              .get())
+          .map((row) => row.read<String>('name'))
+          .toSet();
+      expect(
+        indexNames,
+        contains('ix_health_export_ledger_profile_id'),
+        reason: 'v$fromVersion -> v$_kCurrentSchemaVersion must create the '
+            'issue #936 profile index (a customStatement creation invisible '
             'to migrateAndValidate, same situation as the live-entry '
             'partial index above)',
       );

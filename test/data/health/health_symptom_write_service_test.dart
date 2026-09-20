@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
+import '../../support/fake_health_export_ledger.dart';
 import '../../support/fake_settings_store.dart';
 
 const _profileId = 'profile-1';
@@ -198,6 +199,8 @@ void main() {
   late _FakeDayEntries dayEntries;
   late _FakeObservations observations;
 
+  final ledger = FakeHealthExportLedger();
+
   LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
     platform: platform,
     binding: HealthSyncBinding(settings),
@@ -208,6 +211,7 @@ void main() {
     settings: settings,
     guardiansForProfile: (_) async => [_ownerRow()],
     signedInUserId: () => _ownerId,
+    ledger: ledger,
     now: () => DateTime.utc(2026, 6, 1, 12),
   );
 

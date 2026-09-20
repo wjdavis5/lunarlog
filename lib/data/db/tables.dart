@@ -1082,3 +1082,44 @@ class HealthSyncState extends Table {
   @override
   Set<Column> get primaryKey => {platform};
 }
+
+/// The device-local health-store export ledger (Issue #936): one row per
+/// health-store sample this device actually wrote, so a tombstone or an
+/// edit made in a later app session can still reconcile the sample away.
+/// **Deliberately never synced to the server** — exactly
+/// [HealthSyncState]'s rationale: what this device exported to its own
+/// health store is per-device state, not account state. It is not a member
+/// of the remote `SyncTable` set, so `sync_push`/`remote_rows.dart`/
+/// `row_codec.dart` cannot see it, and the account export never reads it.
+///
+/// Ids and provenance only ([recordId]/[sourceRowId]/[kind]/[localDate]) —
+/// no flow level, tag, note, or measurement ever reaches this table.
+/// Rows are removed once their record is deleted from the store, and
+/// cleared per profile on profile/account deletion or outright on unbind.
+@DataClassName('HealthExportLedgerRowData')
+class HealthExportLedger extends Table {
+  /// The platform external id this device wrote (Health Connect
+  /// `clientRecordId` / HealthKit `HKMetadataKeyExternalUUID`); the key.
+  TextColumn get recordId => text().named('record_id')();
+
+  /// The bound profile this export belonged to.
+  TextColumn get profileId => text().named('profile_id')();
+
+  /// The source day-entry or observation id the record was derived from
+  /// (one record id can embed it, but this preserves the grouping key the
+  /// deletion paths diff against).
+  TextColumn get sourceRowId => text().named('source_row_id')();
+
+  /// `entry` | `spotting` | `bbt` — mirrors
+  /// `domain.HealthExportLedgerKind`.
+  TextColumn get kind => text()();
+
+  /// ISO calendar date `yyyy-MM-dd` the export was for (provenance only).
+  TextColumn get localDate => text().named('local_date')();
+
+  /// The UTC instant the record was exported.
+  DateTimeColumn get exportedAt => dateTime().named('exported_at')();
+
+  @override
+  Set<Column> get primaryKey => {recordId};
+}

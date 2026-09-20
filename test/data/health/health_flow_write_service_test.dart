@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_record_ids.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
+import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -28,6 +29,7 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 
+import '../../support/fake_health_export_ledger.dart';
 import '../../support/fake_settings_store.dart';
 
 const _profileId = 'profile-1';
@@ -315,6 +317,7 @@ void main() {
   late _FakeProfiles profiles;
   late _FakeDayEntries dayEntries;
   late _FakeObservations observations;
+  late FakeHealthExportLedger ledger;
   late DateTime clock;
 
   LocalHealthFlowWriteService buildService() => LocalHealthFlowWriteService(
@@ -325,6 +328,7 @@ void main() {
         dayEntries: dayEntries,
         observations: observations,
         settings: settings,
+        ledger: ledger,
         guardiansForProfile: (_) async => [_ownerRow()],
         signedInUserId: () => _ownerId,
         now: () => clock,
@@ -343,6 +347,7 @@ void main() {
     profiles = _FakeProfiles();
     dayEntries = _FakeDayEntries();
     observations = _FakeObservations();
+    ledger = FakeHealthExportLedger();
     clock = DateTime.utc(2026, 6, 1, 12);
   });
 
@@ -380,6 +385,7 @@ void main() {
         dayEntries: dayEntries,
         observations: observations,
         settings: settings,
+        ledger: ledger,
         guardiansForProfile: (_) async => [_ownerRow()],
         signedInUserId: () => 'someone-else',
         now: () => clock,
@@ -1044,6 +1050,7 @@ void main() {
         dayEntries: dayEntries,
         observations: observations,
         settings: settings,
+        ledger: ledger,
         guardiansForProfile: (_) async {
           guardianCalls++;
           return guardianCalls <= 2 ? [_ownerRow()] : [_transferredRow()];
@@ -1099,6 +1106,7 @@ void main() {
         dayEntries: dayEntries,
         observations: observations,
         settings: settings,
+        ledger: ledger,
         guardiansForProfile: (_) async => [_ownerRow()],
         signedInUserId: () => _ownerId,
         now: () => clock,
@@ -1234,6 +1242,7 @@ void main() {
         dayEntries: dayEntries,
         observations: observations,
         settings: settings,
+        ledger: ledger,
         guardiansForProfile: (_) async => [_ownerRow()],
         signedInUserId: () => signedInUserId,
         now: () => clock,
@@ -1324,6 +1333,161 @@ void main() {
       await service.syncNow();
       expect(platform.deleteCalls, hasLength(1),
           reason: 'a repeated save of the same state must not re-delete');
+    });
+  });
+
+  group('issue #936: the ledger survives a relaunch', () {
+    final grant = DateTime.utc(2026, 6, 1, 12);
+
+    test('a symptom removed by an edit made in a later session is deleted '
+        'after the service is rebuilt from scratch', () async {
+      await seedGranted(grant);
+      final first = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await first.syncNow();
+      expect(platform.deleteCalls, isEmpty);
+
+      // A relaunch: a brand new service, same persisted ledger. Before
+      // #936 the remembered set started empty here, so `removed` was empty
+      // and the cramp sample was never deleted.
+      final relaunched = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      final report = await relaunched.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        [healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps')],
+      ]);
+    });
+
+    test('a BBT reading cleared in a later session is deleted after a '
+        'relaunch', () async {
+      await seedGranted(grant);
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1))),
+      ];
+      observations.observations = [
+        _bbt('2026-06-02', 36.5, grant.add(const Duration(hours: 1))),
+      ];
+      final first = buildService();
+      expect((await first.syncNow()).basalBodyTemperatureSamplesWritten, 1);
+      expect(platform.deleteCalls, isEmpty);
+
+      // Relaunch, then the operator clears the reading: the observation is
+      // gone while the day (and its flow sample) remain.
+      final relaunched = buildService();
+      observations.observations = const [];
+      final report = await relaunched.syncNow();
+
+      expect(report.blocked, isNull);
+      expect(platform.deleteCalls, [
+        [healthBbtRecordId('obs-bbt-2026-06-02')],
+      ]);
+    });
+
+    test('ledger rows advance with the write and are dropped once their '
+        'record is deleted from the store', () async {
+      await seedGranted(grant);
+      final first = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await first.syncNow();
+
+      final entryRows = [
+        for (final row in ledger.rows)
+          if (row.kind == HealthExportLedgerKind.entry) row.recordId,
+      ];
+      expect(
+        entryRows,
+        containsAll([
+          'entry-2026-06-02',
+          healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps'),
+          healthSymptomRecordId('entry-2026-06-02', 'headache'),
+        ]),
+      );
+
+      // The edit removes the cramp: its ledger row is dropped once the
+      // store deletion succeeds, and the remaining set stays.
+      final relaunched = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      await relaunched.syncNow();
+
+      final remaining = {
+        for (final row in ledger.rows)
+          if (row.kind == HealthExportLedgerKind.entry) row.recordId,
+      };
+      expect(
+        remaining,
+        isNot(contains(
+          healthSymptomRecordId('entry-2026-06-02', 'abdominalCramps'),
+        )),
+      );
+      expect(
+        remaining,
+        contains(healthSymptomRecordId('entry-2026-06-02', 'headache')),
+      );
+    });
+
+    test('onUnbound clears the persisted ledger with the cursor', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps']),
+      ];
+      await service.syncNow();
+      expect(ledger.rows, isNotEmpty);
+
+      await service.onUnbound();
+
+      expect(ledger.rows, isEmpty);
+      expect(await settings.get(_cursorKey), '');
+    });
+
+    test('in-session reconcile is unchanged by the persisted ledger '
+        '(same repeated-save behaviour, no extra deletes)', () async {
+      await seedGranted(grant);
+      final service = buildService();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 1)),
+            tags: const ['cramps', 'headache']),
+      ];
+      await service.syncNow();
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 3)),
+            tags: const ['headache']),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls, hasLength(1));
+
+      dayEntries.entries = [
+        _entry('2026-06-02', FlowLevel.medium,
+            grant.add(const Duration(hours: 4)),
+            tags: const ['headache']),
+      ];
+      await service.syncNow();
+      expect(platform.deleteCalls, hasLength(1),
+          reason: 'the ledger seeds the same state the in-memory set held, '
+              'so a repeated save is still a no-op');
     });
   });
 

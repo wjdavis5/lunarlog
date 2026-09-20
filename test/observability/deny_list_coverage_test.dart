@@ -134,6 +134,18 @@ const Map<String, String> _waivedKeys = {
   'observed_at': 'observation timestamp, not content by itself',
   'exported_to_platform_at':
       'health-platform export bookkeeping timestamp, not content',
+  // Issue #936 (health_export_ledger): ids/provenance only, by design.
+  'record_id':
+      'opaque health-platform external record id (an entry/observation ULID '
+          'or a derived id), not content (issue #936)',
+  'source_row_id':
+      'opaque day-entry/observation ULID reference, not content (issue #936)',
+  'kind':
+      'closed-set export-kind code (entry|spotting|bbt), not content '
+          '(issue #936)',
+  'exported_at':
+      'device-local health-platform export bookkeeping timestamp, not '
+          'content (issue #936)',
   'is_checked': 'checklist boolean state, not content',
   'field':
       'merge-event discriminator over the closed set flow|note, not content (issue #130)',

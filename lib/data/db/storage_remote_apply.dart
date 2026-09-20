@@ -1171,6 +1171,14 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           // [_applyProfile]'s bypass and this method's doc comment.
           accessRevokedAt: Value(stamp),
         ));
+    // Issue #936: the device-local export ledger for this profile is
+    // hard-deleted, not tombstoned (the table has no tombstone and never
+    // syncs). Leaving it behind would describe a health store this device
+    // may no longer have permission to touch — the same reason every other
+    // profile-scoped table is wiped here. Not dirty, never pushed back.
+    await (db.delete(db.healthExportLedger)
+          ..where((t) => t.profileId.equals(profileId)))
+        .go();
   }
 
   /// Issue #522: applies a `deleted_profiles` row — the narrow tombstone a

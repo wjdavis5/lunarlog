@@ -2477,6 +2477,10 @@ void main() {
       'profile_tag_registry',
       'day_entry_history',
       'guardian_notes',
+      // Issue #936: the device-local health-store export ledger is
+      // profile-scoped too — a removed guardian's device must forget which
+      // samples it exported for a profile it can no longer touch.
+      'health_export_ledger',
     };
 
     test('tables.dart\'s profile_id-bearing tables match the set this '
@@ -2581,6 +2585,19 @@ void main() {
               changedFields: const ['local_date', 'note'],
             ),
           );
+      // Issue #936: a device-local export-ledger row (ids/provenance only)
+      // must be hard-deleted with everything else, so the removed guardian's
+      // device stops describing a health store it can no longer touch.
+      await storage.upsertHealthExportLedgerRows([
+        HealthExportLedgerRowData(
+          recordId: 'ledger-record-1',
+          profileId: p.id,
+          sourceRowId: entry.id,
+          kind: 'entry',
+          localDate: '2026-01-15',
+          exportedAt: t0,
+        ),
+      ]);
 
       // Sanity: every table actually holds live content before revocation.
       expect((await storage.getDayEntries(profileId: p.id)), isNotEmpty);
@@ -2642,6 +2659,15 @@ void main() {
       // server's own tombstone_profile_content step.
       expect(
         await (db.select(db.dayEntryHistory)
+              ..where((t) => t.profileId.equals(p.id)))
+            .get(),
+        isEmpty,
+      );
+      // Issue #936: the profile's device-local export-ledger rows are
+      // hard-deleted (no tombstone; never synced) — the removed guardian's
+      // device forgets what it exported for a profile it can no longer see.
+      expect(
+        await (db.select(db.healthExportLedger)
               ..where((t) => t.profileId.equals(p.id)))
             .get(),
         isEmpty,

@@ -855,6 +855,15 @@ mixin LunarLogStorageQueries {
     return row;
   }
 
+  /// Every device-local `health_export_ledger` row for [profileId] (Issue
+  /// #936 — never synced to the server).
+  Future<List<HealthExportLedgerRowData>> readHealthExportLedger(
+    String profileId,
+  ) =>
+      (db.select(db.healthExportLedger)
+            ..where((t) => t.profileId.equals(profileId)))
+          .get();
+
   Future<List<ProfileGuardianData>> getGuardiansForProfile(String profileId) =>
       (db.select(db.profileGuardians)..where((t) => t.profileId.equals(profileId)))
           .get();
