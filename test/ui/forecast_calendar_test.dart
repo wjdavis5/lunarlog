@@ -595,7 +595,9 @@ void main() {
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      // A numeral-only day inside the first predicted cycle.
+      // A numeral-only day inside the first predicted cycle. The fixed date
+      // is future relative to this test's injected `kToday`, never the real
+      // clock (issue #949).
       await tester.tap(find.byKey(const ValueKey('day-cell-2026-09-20')));
       await tester.pumpAndSettle();
       expect(
@@ -929,6 +931,8 @@ void main() {
       );
       expect(
         dayCellSemanticLabel(
+          // Fixed future date against this test's injected `today` (Aug 30),
+          // never the real clock (issue #949).
           date: LocalDate(2026, 9, 20),
           entry: null,
           today: today,

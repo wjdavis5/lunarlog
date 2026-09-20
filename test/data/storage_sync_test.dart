@@ -1232,6 +1232,9 @@ void main() {
         'saving a note edit while pms rides along at its stale default)',
         () async {
       final p = await storage.upsertProfile(displayName: 'P', isMinor: false);
+      // Fixed past fixture dates (issue #949): issue #848's real-clock
+      // future-date bounds never reject a date that has already passed, so
+      // these do not need to be derived from `now`.
       final e = await storage.upsertDayEntry(
         profileId: p.id,
         localDate: '2026-09-20',
