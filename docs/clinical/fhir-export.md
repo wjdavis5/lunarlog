@@ -193,10 +193,26 @@ excluded `observations` row (and its `valueText`) never does either.
 ## Versioning
 
 `Bundle.meta.tag` carries one entry: `system`
-`https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/export-version`,
+`https://lunarlog.app/fhir/CodeSystem/export-version`,
 `code` the current `kFhirExportBundleVersion` (`1` as of this writing). A
 future change to this file's mapping bumps that constant so a downstream
 consumer (or a person comparing two exports) can tell the shapes apart.
+
+## Code-system URIs are permanent (frozen from the first shipped build)
+
+Every lunarlog-local `Coding.system` this export emits is built from a
+single constant, `kFhirCodeSystemBase`
+(`https://lunarlog.app/fhir/CodeSystem`, issue #961), plus a short path
+segment: `/tag` (`kSystemLunarlogLocal`, the tag taxonomy), `/flow`
+(`kSystemLunarlogLocalFlow`), and `/export-version`
+(`kFhirExportVersionSystem`). #961 moved the base here from
+`https://github.com/wjdavis5/lunarlog/fhir/...` before the first store
+build shipped an export, and collapsed three separately-repeated
+full-literal bases onto the one constant. **These URIs are frozen from
+the first shipped build and must never change** — a Bundle already handed
+to a clinician cannot be recalled, so the URI is an identity, not a link.
+Nothing needs to resolve at it for FHIR validity (hosting is issue #450's
+separate concern).
 
 ## Coding discipline: no guessed codes
 
@@ -204,7 +220,7 @@ Every `Observation.code` / `valueCodeableConcept` coding comes from
 [`clinical_terminology.dart`](../../lib/domain/export/clinical_terminology.dart)'s
 verified table (issue #152) or an explicit local coding on lunarlog's own
 system (`kSystemLunarlogLocal`,
-`https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag`) with a
+`https://lunarlog.app/fhir/CodeSystem/tag`) with a
 documented reason — never a code typed from memory. `fhir_bundle.dart`
 itself adds three more verified LOINC codes and one verified HL7
 terminology code that `clinical_terminology.dart` does not carry, because
@@ -231,7 +247,7 @@ when no verified SNOMED match exists for that tag.
 Concepts this file codes locally that `clinical_terminology.dart` does not
 already cover. **#157 review fix:** flow levels moved to their own local
 system, `kSystemLunarlogLocalFlow`
-(`https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/flow`) — distinct
+(`https://lunarlog.app/fhir/CodeSystem/flow`) — distinct
 from `kSystemLunarlogLocal` (`.../CodeSystem/tag`), which
 `clinical_terminology.dart` documents as specifically the 17-tag system.
 A flow level is not a tag, so it no longer shares that system's URI; see

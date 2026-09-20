@@ -187,9 +187,7 @@ void main() {
     test('matches the full expected (system, code, display) triple for all '
         '113 tags', () {
       const snomed = 'http://snomed.info/sct';
-      const local =
-          'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/'
-          'tag';
+      const local = 'https://lunarlog.app/fhir/CodeSystem/tag';
       // (system, code, display) as literals for every taxonomy tag - a
       // re-verified copy of each mapping decision, not derived from the
       // source module.
@@ -424,10 +422,15 @@ void main() {
     test('constants match the FHIR-registered / lunarlog-controlled URIs', () {
       expect(kSystemLoinc, 'http://loinc.org');
       expect(kSystemSnomed, 'http://snomed.info/sct');
-      expect(
-        kSystemLunarlogLocal,
-        'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag',
-      );
+      expect(kSystemLunarlogLocal, 'https://lunarlog.app/fhir/CodeSystem/tag');
+    });
+
+    test('the lunarlog code systems share one frozen base constant (#961)', () {
+      // #961: the base is one constant, never repeated literals. It is
+      // frozen from the first shipped build (a Bundle already handed to a
+      // clinician cannot be recalled), so this pin is deliberately exact.
+      expect(kFhirCodeSystemBase, 'https://lunarlog.app/fhir/CodeSystem');
+      expect(kSystemLunarlogLocal, '$kFhirCodeSystemBase/tag');
     });
 
     test('every kTagClinicalCodes row uses one of the three known systems', () {
