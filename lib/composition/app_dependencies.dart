@@ -103,6 +103,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
 import 'package:lunarlog/domain/health/health_export_ledger.dart';
 import 'package:lunarlog/domain/health/health_sync_state_repository.dart';
@@ -672,6 +673,30 @@ HealthImportRunner? buildHealthImportRunner({
     observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+  );
+}
+
+/// Constructs the OS-permission probe the Health sync screen reads (Issue
+/// #959), or null when the feature is gated off. Unlike the write
+/// coordinator this is wired on **both** native platforms: the screen shows
+/// the OS permission state for the store each platform actually uses (Apple
+/// Health / Health Connect), whether or not writes are wired there.
+///
+/// It is the same `MethodChannelHealthPlatform` the write and import paths
+/// build, typed down to [HealthPermissionProbe] so the screen can read the
+/// OS consent without gaining a write surface.
+HealthPermissionProbe? buildHealthPermissionProbe({
+  required SettingsStore settings,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  if (kIsWeb || !_healthImportPlatforms.containsKey(defaultTargetPlatform)) {
+    return null;
+  }
+  return createHealthPlatform(
+    defaultTargetPlatform,
+    binding: HealthSyncBinding(settings),
+    minorBindingAllowed: minorBindingAllowed,
   );
 }
 

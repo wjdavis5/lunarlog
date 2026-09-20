@@ -167,6 +167,22 @@ class _FakePlatform implements HealthPlatformStore {
   @override
   Future<bool> isAvailable() async => true;
 
+  /// Issue #959: the OS write-permission state the sync pass re-checks each
+  /// pass. Granted by default so every pre-#959 test keeps passing; a test
+  /// sets this to [HealthPermissionStatus.denied] to prove a revoked
+  /// permission stops the pass.
+  HealthPermissionStatus permission = HealthPermissionStatus.granted;
+  int permissionStatusCalls = 0;
+
+  @override
+  Future<HealthPermissionStatus> permissionStatus() async {
+    permissionStatusCalls++;
+    return permission;
+  }
+
+  @override
+  Future<void> openPermissionSettings() async {}
+
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async {
     bindCalls++;
@@ -403,6 +419,51 @@ void main() {
       expect(platform.authCalls, 0);
       expect(platform.flowWrites, isEmpty);
       expect(platform.markerWrites, isEmpty);
+    });
+
+    // Issue #959: the OS write permission is re-checked on every pass, not
+    // only on the first write, so a revocation in OS settings stops the very
+    // next pass — before the native bind mirror, before any write, and with
+    // no health content or exception text in the report.
+    test('a revoked OS write permission stops the pass before any port call',
+        () async {
+      await seedGranted(clock.subtract(const Duration(hours: 1)));
+      platform.permission = HealthPermissionStatus.denied;
+
+      final report = await buildService().syncNow();
+
+      expect(report.bound, isTrue);
+      expect(report.blocked, isA<HealthPlatformPermissionDenied>());
+      expect(platform.permissionStatusCalls, 1);
+      expect(platform.bindCalls, 0,
+          reason: 'the permission re-check precedes the native bind mirror');
+      expect(platform.authCalls, 0);
+      expect(platform.flowWrites, isEmpty);
+      expect(platform.markerWrites, isEmpty);
+      expect(platform.deleteCalls, isEmpty);
+    });
+
+    test('a not-yet-asked permission does not block — the grant stage asks',
+        () async {
+      await settings.set(_bindingKey, _profileId);
+      platform.permission = HealthPermissionStatus.notAsked;
+
+      await buildService().syncNow();
+
+      expect(platform.permissionStatusCalls, 1);
+      expect(platform.authCalls, 1,
+          reason: 'notAsked is the first-pass grant moment, not a revocation');
+    });
+
+    test('an unavailable permission surface does not block the pass',
+        () async {
+      await seedGranted(clock.subtract(const Duration(hours: 1)));
+      platform.permission = HealthPermissionStatus.unavailable;
+
+      final report = await buildService().syncNow();
+
+      expect(report.blocked, isNull,
+          reason: 'unavailable is a platform state, not a revocation');
     });
   });
 
