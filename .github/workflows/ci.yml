@@ -783,23 +783,37 @@ jobs:
 
       - name: Pick and boot a simulator
         id: sim
+        # Issue #952: CoreSimulator on the self-hosted Mac can transiently
+        # report zero available devices (observed run 35509921134: the list
+        # came back empty, the job went red, the next run was clean). A
+        # single cold read turns that blip into a failed CI run, so the
+        # acquisition retries with a simulator-service restart between
+        # attempts -- bounded at 3, well inside the step's own budget --
+        # and only then reports the hard failure.
         run: |
           set -euo pipefail
-          devices="$(xcrun simctl list devices available -j)"
           pick() {
             jq -r --arg re "$1" '
               [ .devices | to_entries[] | select(.key | test("iOS"))
                 | .value[] | select(.isAvailable) | select(.name | test($re)) ]
-              | sort_by(.name) | last | .udid // empty' <<<"$devices"
+              | sort_by(.name) | last | .udid // empty'               <<<"$(xcrun simctl list devices available -j)"
           }
-          udid="$(pick '^iPhone [0-9]+$')"
-          [ -n "$udid" ] || udid="$(pick '^iPhone')"
+          udid=""
+          for attempt in 1 2 3; do
+            udid="$(pick '^iPhone [0-9]+$')"
+            [ -n "$udid" ] || udid="$(pick '^iPhone')"
+            [ -n "$udid" ] && break
+            echo "::warning::attempt $attempt: no available iPhone simulator yet -- restarting the simulator service and retrying in 20s"
+            [ "$attempt" -lt 3 ] || break
+            xcrun simctl shutdown all >/dev/null 2>&1 || true
+            sleep 20
+          done
           if [ -z "$udid" ]; then
-            echo "::error::No available iPhone simulator on this image:"
+            echo "::error::No available iPhone simulator on this image after 3 attempts:"
             xcrun simctl list devices available
             exit 1
           fi
-          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$devices")"
+          name="$(jq -r --arg u "$udid" '.devices[][] | select(.udid==$u) | .name' <<<"$(xcrun simctl list devices available -j)")"
           echo "Using simulator: $name ($udid)"
           xcrun simctl boot "$udid" || true
           xcrun simctl bootstatus "$udid" -b
