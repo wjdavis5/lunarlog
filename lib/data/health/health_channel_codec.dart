@@ -21,6 +21,8 @@
 /// | `writeOvulationTest` | guard + day + `healthKitResult` + `healthConnectResult` + `recordId` + `recordVersionMs` | result string |
 /// | `writeBasalBodyTemperature` | guard + BBT instant args + `celsius` + `healthConnectMeasurementLocation` + `recordId` + `recordVersionMs` | result string |
 /// | `deleteRecords` | guard + `recordIds` | result string |
+/// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
+/// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
 ///
 /// *Sample maps* (`readMenstrualFlow`): `recordId`, `startMs`, `endMs`, and
@@ -114,6 +116,13 @@ abstract final class HealthChannelMethods {
   static const writeBasalBodyTemperature = 'writeBasalBodyTemperature';
 
   static const deleteRecords = 'deleteRecords';
+
+  /// The two OS-permission methods (Issue #959). Unguarded: they read the
+  /// OS consent state for the types this app writes and open the platform
+  /// settings screen, neither of which touches user health data.
+  static const permissionStatus = 'permissionStatus';
+  static const openPermissionSettings = 'openPermissionSettings';
+
 
   /// The read/import method (Issue #217). Its success result is a `List` of
   /// sample maps rather than a result string — see
@@ -214,6 +223,21 @@ HealthSyncCheck? _checkFromWire(String raw) {
   }
   return null;
 }
+
+/// Parses a `permissionStatus` result into the typed [HealthPermissionStatus]
+/// (Issue #959). The native halves send exactly one of the
+/// [HealthPermissionStatus] wire strings; anything else — a non-string, an
+/// unknown string from a newer native side, or corruption — degrades to
+/// [HealthPermissionStatus.unavailable] rather than inventing a status.
+/// This is deliberately not a `failed` state because the status is advisory
+/// UI state, not a health-store operation, and "we can't tell" must render
+/// as unavailable rather than as a denial.
+HealthPermissionStatus decodeHealthPermissionStatus(Object? raw) =>
+    raw is String
+        ? HealthPermissionStatus.fromWire(raw) ??
+            HealthPermissionStatus.unavailable
+        : HealthPermissionStatus.unavailable;
+
 
 /// Parses a `readMenstrualFlow` result into the typed [HealthReadResult].
 /// Two wire shapes are accepted: a `List` of sample maps (success) and a

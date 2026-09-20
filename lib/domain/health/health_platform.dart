@@ -118,6 +118,83 @@ enum HealthFlowValue {
       };
 }
 
+/// The OS-level permission state for the types lunarlog writes to this
+/// device's health store, as reported by the `lunarlog/health` channel
+/// (Issue #959). This is the *OS* consent — distinct from the app's own
+/// one-profile-per-device binding ([HealthSyncBinding]) — and it is what the
+/// Health sync screen renders and what the write pass re-checks before each
+/// pass so a revocation in OS settings stops the next write.
+///
+/// **Platform honesty (the property the status line must never break):**
+///
+/// * **iOS** derives this from `HKHealthStore.authorizationStatus(for:)`
+///   over the *write* (share) sample types only. Read authorization is
+///   opaque by Apple's design — a denied read is indistinguishable from "no
+///   data" — so there is deliberately no read dimension here and no state
+///   that could report a read denial as [denied]. The status line must
+///   never claim to know read access.
+/// * **Android** derives it from `PermissionController.getGrantedPermissions()`
+///   over the requested permission set, plus the Health Connect SDK-status
+///   check (an unavailable SDK is [unavailable], never [denied]). Android's
+///   runtime permission model cannot distinguish "never asked" from
+///   "denied" from the granted set alone, so a non-granted result is
+///   reported as [denied] (the actionable state that offers the settings
+///   deep link).
+enum HealthPermissionStatus {
+  /// The write types are authorized.
+  granted,
+
+  /// The OS permission sheet has not been answered yet — the first sync
+  /// pass is what asks.
+  notAsked,
+
+  /// The OS permission was denied (or partially denied): writes will fail
+  /// until the operator changes it in the platform's settings.
+  denied,
+
+  /// No health store / permission surface exists on this device (HealthKit
+  /// absent, or Health Connect not installed or not available).
+  unavailable;
+
+  /// The wire string this status is reported as on the `lunarlog/health`
+  /// channel. Both native halves send exactly this closed set; the Dart
+  /// codec recognizes nothing else.
+  String toWire() => switch (this) {
+        granted => 'granted',
+        notAsked => 'notAsked',
+        denied => 'denied',
+        unavailable => 'unavailable',
+      };
+
+  /// Parses the wire string; null when [raw] is not in the closed set (a
+  /// newer native side than this Dart side, or corruption). The channel
+  /// adapter degrades a null to [unavailable] rather than inventing a
+  /// status.
+  static HealthPermissionStatus? fromWire(String? raw) => switch (raw) {
+        'granted' => granted,
+        'notAsked' => notAsked,
+        'denied' => denied,
+        'unavailable' => unavailable,
+        _ => null,
+      };
+}
+
+/// The narrow seam `lib/ui` and the write pass read for the OS permission
+/// state (Issue #959): the OS consent plus the platform settings deep link,
+/// with none of [HealthPlatformStore]'s write surface. [HealthPlatformStore]
+/// implements it, so the concrete adapter and the production factory remain
+/// one object.
+abstract interface class HealthPermissionProbe {
+  /// The current OS permission state for the types this app writes. Never
+  /// touches user data; safe to call before any binding exists.
+  Future<HealthPermissionStatus> permissionStatus();
+
+  /// Opens this platform's settings screen where the operator can change
+  /// the health permission: the iOS Settings app for this app, or Health
+  /// Connect's permission activity on Android. Best effort.
+  Future<void> openPermissionSettings();
+}
+
 /// The transport vocabulary for a HealthKit symptom sample's severity
 /// (Issue #238): the closed subset of `HKCategoryValueSeverity` this port
 /// can write. Health Connect has **no** symptom category types at all, so
@@ -540,10 +617,17 @@ class HealthBasalBodyTemperatureWrite {
 /// is the one deliberately unguarded method: it is a static capability
 /// probe (no health store access, no user data), and the Settings UI
 /// needs it before any binding exists.
-abstract interface class HealthPlatformStore {
+abstract interface class HealthPlatformStore implements HealthPermissionProbe {
   /// Whether this device has a health store at all (HealthKit present /
   /// Health Connect installed and available). Never touches user data.
   Future<bool> isAvailable();
+
+  // [permissionStatus] and [openPermissionSettings] are declared by
+  // [HealthPermissionProbe] (Issue #959): the OS consent state and the
+  // platform settings deep link. They are deliberately unguarded like
+  // [isAvailable] — they read no health content and the Settings screen
+  // needs them before any binding exists — and the write pass re-checks
+  // [permissionStatus] before each pass.
 
   /// Records the native-side copy of the device-owner binding after the
   /// Dart-side `HealthSyncBinding.bind` succeeded — the value the

@@ -42,6 +42,11 @@ abstract final class AppTheme {
     return ThemeData(
       brightness: brightness,
       colorScheme: colorScheme,
+      // Issue #808: the default family for any text that is not an explicit
+      // `LLType` slot (Material components, `displayLarge`/`headlineLarge`,
+      // and the `DefaultTextStyle` a bare `Text` inherits). The ramp's own
+      // slots override this per-slot — the display tier with Fraunces.
+      fontFamily: LLFonts.text,
       textTheme: textTheme,
       chipTheme: _chipTheme(colorScheme, textTheme),
       cardTheme: _cardTheme(colorScheme),

@@ -197,6 +197,39 @@ class MethodChannelHealthPlatform
     }
   }
 
+  /// The OS permission state (Issue #959) — unguarded, like [isAvailable]:
+  /// it reads the OS consent for the write types and no user health data,
+  /// and the Settings screen needs it before any binding exists. A missing
+  /// handler or a platform error degrades to
+  /// [HealthPermissionStatus.unavailable] rather than guessing.
+  @override
+  Future<HealthPermissionStatus> permissionStatus() async {
+    try {
+      final raw = await channel
+          .invokeMethod<Object?>(HealthChannelMethods.permissionStatus);
+      return decodeHealthPermissionStatus(raw);
+    } on PlatformException {
+      return HealthPermissionStatus.unavailable;
+    } on MissingPluginException {
+      return HealthPermissionStatus.unavailable;
+    }
+  }
+
+  /// Opens the platform's settings screen for the health permission
+  /// (Issue #959) — the actionable deep link offered when status is
+  /// [HealthPermissionStatus.denied]. Best effort: a missing handler or a
+  /// platform error never escapes.
+  @override
+  Future<void> openPermissionSettings() async {
+    try {
+      await channel
+          .invokeMethod<Object?>(HealthChannelMethods.openPermissionSettings);
+    } on PlatformException {
+      // Best effort, as documented.
+    } on MissingPluginException {
+      // No native settings surface on this platform.
+    }
+  }
   @override
   Future<HealthPlatformResult> requestWriteAuthorization(
     HealthGuardFacts facts,
@@ -401,6 +434,13 @@ class UnsupportedHealthPlatform
 
   @override
   Future<bool> isAvailable() async => false;
+
+  @override
+  Future<HealthPermissionStatus> permissionStatus() async =>
+      HealthPermissionStatus.unavailable;
+
+  @override
+  Future<void> openPermissionSettings() async {}
 
   @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async =>

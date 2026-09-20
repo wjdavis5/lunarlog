@@ -200,13 +200,14 @@ class _PerimenopauseCardState extends State<PerimenopauseCard> {
       key: const ValueKey('perimenopause-change-summary'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Bold, not colour, carries the "this changed" emphasis — the
-        // a11y rule that status is never colour-only (#204's precedent).
+        // Weight (the ramp's semibold), not colour, carries the "this
+        // changed" emphasis — the a11y rule that status is never
+        // colour-only (#204's precedent).
         Text(
           _lengthChangeText(l10n, data),
           key: const ValueKey('perimenopause-length-change'),
           style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: LLSpace.space1),

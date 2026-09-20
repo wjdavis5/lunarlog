@@ -2013,6 +2013,13 @@ void main() {
             engine,
       );
 
+      // Issue #778: the coordinator opens no channel while signed out, so
+      // this wiring test signs in before unlock — what it pins (client ->
+      // coordinator -> one subscribed channel per profile -> disposal
+      // before the database closes) needs an authorized identity to
+      // observe.
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
       harness.gate.grantNext = true;
       await harness.unlockViaButton();
       await harness.drainIsolateTraffic(tester);
@@ -2103,6 +2110,11 @@ void main() {
             engine,
       );
 
+      // Issue #778: signed out, no channel is ever opened — sign in before
+      // unlock so the incremental-discovery behavior under test is
+      // observable at all.
+      auth.emit(AuthSessionState.signedIn,
+          user: const AuthUser(id: 'guardian-a'));
       harness.gate.grantNext = true;
       await harness.unlockViaButton();
       await harness.drainIsolateTraffic(tester);
@@ -2150,9 +2162,11 @@ void main() {
       harness.gate.grantNext = true;
       await harness.unlockViaButton();
       await harness.drainIsolateTraffic(tester);
-      expect(client.createdChannels, hasLength(2),
-          reason: 'signed out (R9-style: configured but no session) still '
-              'subscribes from the local profile set');
+      // Issue #778: while signed out (R9-style: configured but no session)
+      // no channel is opened at all — there is no authorized identity to
+      // bind one to, so the server would only reject it under RLS.
+      expect(client.createdChannels, isEmpty,
+          reason: 'signed out opens no channel (issue #778)');
       expect(client.removedChannels, isEmpty);
 
       auth.emit(AuthSessionState.signedIn,
@@ -2160,11 +2174,12 @@ void main() {
       await tester.pump();
       await harness.drainIsolateTraffic(tester);
 
-      expect(client.removedChannels, hasLength(2),
-          reason: 'the pre-sign-in channels are torn down (R4)');
+      expect(client.removedChannels, isEmpty,
+          reason: 'no pre-sign-in channel exists, so there is nothing to '
+              'tear down');
       expect(client.createdChannels, hasLength(2),
-          reason: 'and re-created under the signed-in identity, with no '
-              'app restart');
+          reason: 'the local profile set is subscribed under the signed-in '
+              'identity, with no app restart');
 
       await harness.dispose();
     });
