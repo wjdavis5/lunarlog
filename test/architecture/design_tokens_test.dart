@@ -11,6 +11,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 void main() {
@@ -73,6 +74,67 @@ void main() {
         ),
       );
       expect(resolved, Duration.zero);
+    });
+  });
+
+  group('LLType contract (issue #808)', () {
+    test('display slots use the Fraunces display face at w600 with tabular '
+        'figures', () {
+      for (final slot in [LLType.displayMedium, LLType.displaySmall]) {
+        expect(slot.fontFamily, LLFonts.display);
+        expect(slot.fontWeight, FontWeight.w600);
+        expect(slot.toTextStyle().fontFamily, LLFonts.display);
+        expect(
+          slot.fontFeatures,
+          contains(const FontFeature.tabularFigures()),
+        );
+      }
+      expect(LLType.displayMedium.fontSize, 45);
+      expect(LLType.displayMedium.lineHeight, 52);
+      expect(LLType.displaySmall.fontSize, 36);
+      expect(LLType.displaySmall.lineHeight, 44);
+    });
+
+    test('headline slots join the display face at w600 with -0.2 tracking',
+        () {
+      for (final slot in [LLType.headlineMedium, LLType.headlineSmall]) {
+        expect(slot.fontFamily, LLFonts.display);
+        expect(slot.fontWeight, FontWeight.w600);
+        expect(slot.letterSpacing, -0.2);
+      }
+      expect(LLType.headlineMedium.fontSize, 28);
+      expect(LLType.headlineSmall.fontSize, 24);
+    });
+
+    test('text slots use Inter and labels carry positive tracking', () {
+      for (final slot in [
+        LLType.titleLarge,
+        LLType.titleMedium,
+        LLType.titleSmall,
+        LLType.bodyLarge,
+        LLType.bodyMedium,
+        LLType.bodySmall,
+        LLType.labelLarge,
+        LLType.labelMedium,
+        LLType.labelSmall,
+      ]) {
+        expect(slot.fontFamily, LLFonts.text);
+        expect(slot.toTextStyle().fontFamily, LLFonts.text);
+      }
+      expect(LLType.labelLarge.letterSpacing, 0.1);
+      expect(LLType.labelMedium.letterSpacing, 0.4);
+      expect(LLType.labelSmall.letterSpacing, 0.4);
+    });
+
+    test('the built theme wires Inter for text and Fraunces for display', () {
+      final textTheme = AppTheme.lightTheme.textTheme;
+      expect(textTheme.bodyMedium?.fontFamily, LLFonts.text);
+      expect(textTheme.titleSmall?.fontFamily, LLFonts.text);
+      expect(textTheme.labelLarge?.fontFamily, LLFonts.text);
+      expect(textTheme.displayMedium?.fontFamily, LLFonts.display);
+      expect(textTheme.displaySmall?.fontFamily, LLFonts.display);
+      expect(textTheme.headlineMedium?.fontFamily, LLFonts.display);
+      expect(textTheme.headlineSmall?.fontFamily, LLFonts.display);
     });
   });
 

@@ -148,22 +148,29 @@ flutter:
   # For details regarding adding assets from package dependencies, see
   # https://flutter.dev/to/asset-from-package
 
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
-  # fonts:
-  #   - family: Schyler
-  #     fonts:
-  #       - asset: fonts/Schyler-Regular.ttf
-  #       - asset: fonts/Schyler-Italic.ttf
-  #         style: italic
-  #   - family: Trajan Pro
-  #     fonts:
-  #       - asset: fonts/TrajanPro.ttf
-  #       - asset: fonts/TrajanPro_Bold.ttf
-  #         weight: 700
-  #
+  # Issue #808: the bundled typefaces, replacing the untouched template
+  # block that used to sit here. Inter (SIL OFL) is the default text
+  # family; Fraunces (SIL OFL) is the display face the ramp's display and
+  # headline slots reach for. Both are static instances built from the
+  # upstream variable fonts with fonttools, committed under assets/fonts/
+  # next to their OFL licence text — deliberately NOT a runtime-download
+  # dependency (no google_fonts), so the app never fetches a face at
+  # launch and works offline. Only the weights the ramp actually uses are
+  # bundled (see `LLType` in lib/ui/theme/tokens.dart): Inter 400/500/600
+  # and Fraunces 600.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces-SemiBold.ttf
+          weight: 600
+
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package

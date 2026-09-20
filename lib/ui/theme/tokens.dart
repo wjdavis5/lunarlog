@@ -60,15 +60,29 @@ abstract final class LLMotion {
   }
 }
 
-/// One slot in the type ramp: an explicit size/line-height/weight so the
-/// ramp is auditable against issue #176's table, independent of whatever
-/// Flutter's default M3 [Typography] happens to ship.
+/// The two bundled families (issue #808). [text] is Inter, the default for
+/// every title/body/label slot; [display] is Fraunces, reserved for the
+/// display and headline slots so the hero numbers, month names, and section
+/// headings read as a human, editorial face rather than a UI sans at w400.
+/// Both ship as static instances under `assets/fonts/` (see `pubspec.yaml`);
+/// nothing is fetched at runtime.
+abstract final class LLFonts {
+  static const String text = 'Inter';
+  static const String display = 'Fraunces';
+}
+
+/// One slot in the type ramp: an explicit size/line-height/weight/family so
+/// the ramp is auditable against issue #176's table and #808, independent of
+/// whatever Flutter's default M3 [Typography] happens to ship.
 @immutable
 class LLTypeSlot {
   const LLTypeSlot({
     required this.fontSize,
     required this.lineHeight,
     this.fontWeight,
+    this.fontFamily = LLFonts.text,
+    this.letterSpacing,
+    this.fontFeatures,
   });
 
   /// Font size in logical pixels.
@@ -80,29 +94,65 @@ class LLTypeSlot {
 
   final FontWeight? fontWeight;
 
+  /// The bundled family this slot renders in — [LLFonts.text] unless the slot
+  /// is part of the display tier ([LLFonts.display]).
+  final String fontFamily;
+
+  /// Optional tracking. Labels get positive tracking so 11–12px uppercase-ish
+  /// text does not read cramped; the headline tier gets a slight negative
+  /// tracking so large display type does not sit loose.
+  final double? letterSpacing;
+
+  /// Optional OpenType features — the display slots carry
+  /// [FontFeature.tabularFigures] so calendar-grid and hero numerals line up.
+  final List<FontFeature>? fontFeatures;
+
   TextStyle toTextStyle() => TextStyle(
+        fontFamily: fontFamily,
         fontSize: fontSize,
         height: lineHeight / fontSize,
         fontWeight: fontWeight,
+        letterSpacing: letterSpacing,
+        fontFeatures: fontFeatures,
       );
 }
 
 /// The type ramp (B-4): explicit M3 slot sizes/weights, auditable against
-/// issue #176's table and #807. `displayLarge` and the unused `headlineLarge`
-/// slot are unconfigured — `app_theme.dart` leaves them at Flutter's default.
+/// issue #176's table, #807, and #808. `displayLarge` and the unused
+/// `headlineLarge` slot are unconfigured — `app_theme.dart` leaves them at
+/// Flutter's default.
+///
+/// The display and headline slots use [LLFonts.display] (Fraunces); every
+/// title/body/label slot uses [LLFonts.text] (Inter).
 abstract final class LLType {
   static const displayMedium = LLTypeSlot(
     fontSize: 45,
     lineHeight: 52,
     fontWeight: FontWeight.w600,
+    fontFamily: LLFonts.display,
+    fontFeatures: [FontFeature.tabularFigures()],
   );
   static const displaySmall = LLTypeSlot(
     fontSize: 36,
     lineHeight: 44,
     fontWeight: FontWeight.w600,
+    fontFamily: LLFonts.display,
+    fontFeatures: [FontFeature.tabularFigures()],
   );
-  static const headlineMedium = LLTypeSlot(fontSize: 28, lineHeight: 36);
-  static const headlineSmall = LLTypeSlot(fontSize: 24, lineHeight: 32);
+  static const headlineMedium = LLTypeSlot(
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: FontWeight.w600,
+    fontFamily: LLFonts.display,
+    letterSpacing: -0.2,
+  );
+  static const headlineSmall = LLTypeSlot(
+    fontSize: 24,
+    lineHeight: 32,
+    fontWeight: FontWeight.w600,
+    fontFamily: LLFonts.display,
+    letterSpacing: -0.2,
+  );
   static const titleLarge = LLTypeSlot(
     fontSize: 22,
     lineHeight: 28,
@@ -125,15 +175,18 @@ abstract final class LLType {
     fontSize: 14,
     lineHeight: 20,
     fontWeight: FontWeight.w500,
+    letterSpacing: 0.1,
   );
   static const labelMedium = LLTypeSlot(
     fontSize: 12,
     lineHeight: 16,
     fontWeight: FontWeight.w500,
+    letterSpacing: 0.4,
   );
   static const labelSmall = LLTypeSlot(
     fontSize: 11,
     lineHeight: 16,
     fontWeight: FontWeight.w500,
+    letterSpacing: 0.4,
   );
 }
