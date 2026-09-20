@@ -66,6 +66,7 @@ class _FakeModesRepository implements ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   }) async {}
 }
@@ -166,10 +167,15 @@ Widget _app({
   );
 }
 
-ProfileLifecycleMode _postpartumRow({String? startedOn = '2026-01-24'}) => (
+ProfileLifecycleMode _postpartumRow({
+  String? startedOn = '2026-01-24',
+  String? birthDate,
+}) =>
+    (
       mode: LifecycleMode.postpartum,
       modeStartedOn: startedOn,
       estimatedDueDate: null,
+      postpartumBirthDate: birthDate,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,
@@ -185,6 +191,19 @@ void main() {
     expect(find.byKey(const ValueKey('postpartum-day')), findsOneWidget);
     expect(find.text('Day 12 of postpartum'), findsOneWidget);
     expect(find.byKey(const ValueKey('postpartum-start-missing')), findsNothing);
+  });
+
+  testWidgets('Issue #861: a birth-date count says "since birth", never '
+      '"of postpartum"', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: const Scaffold(
+        body: PostpartumCard(daysSinceStart: 12, sinceBirth: true),
+      ),
+    ));
+    expect(find.text('Day 12 since birth'), findsOneWidget);
+    expect(find.text('Day 12 of postpartum'), findsNothing);
   });
 
   testWidgets('PostpartumCard with no start renders the honest '
@@ -280,12 +299,51 @@ void main() {
     expect(find.byKey(const ValueKey('postpartum-return-offer')), findsNothing);
   });
 
+  testWidgets('Issue #861: a supplied birth date moves the count and the '
+      'copy to "since birth"', (tester) async {
+    final modes = _FakeModesRepository(
+      _postpartumRow(startedOn: '2026-01-24', birthDate: '2026-01-01'),
+    );
+    await tester.pumpWidget(_app(
+      modes: modes,
+      entries: _StubDayEntriesRepository(const []),
+      child: OverviewPanel(
+        profileId: 'p',
+        // 2026-03-25 is 83 days after the 2026-01-01 birth (and only 60
+        // after the 2026-01-24 mode start) — the count must use the birth.
+        todayProvider: () => d(2026, 3, 25),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Day 83 since birth'), findsOneWidget);
+    expect(find.text('Day 60 of postpartum'), findsNothing);
+  });
+
+  testWidgets('Issue #861: no birth date keeps the mode-start count and '
+      'the "of postpartum" copy', (tester) async {
+    final modes = _FakeModesRepository(_postpartumRow());
+    await tester.pumpWidget(_app(
+      modes: modes,
+      entries: _StubDayEntriesRepository(const []),
+      child: OverviewPanel(
+        profileId: 'p',
+        todayProvider: () => d(2026, 3, 25),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Day 60 of postpartum'), findsOneWidget);
+    expect(find.textContaining('since birth'), findsNothing);
+  });
+
   testWidgets('OverviewPanel outside Postpartum mode renders no day card',
       (tester) async {
     final modes = _FakeModesRepository((
       mode: LifecycleMode.tracking,
       modeStartedOn: null,
       estimatedDueDate: null,
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,

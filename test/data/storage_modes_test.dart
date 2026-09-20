@@ -44,6 +44,8 @@ void main() {
     String profileId, {
     String mode = 'perimenopause',
     String? modeStartedOn = '2026-09-01',
+    String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod = 'pill',
     bool healthSyncConsent = false,
     required DateTime updatedAt,
@@ -53,6 +55,8 @@ void main() {
         profileId: profileId,
         mode: mode,
         modeStartedOn: modeStartedOn,
+        estimatedDueDate: estimatedDueDate,
+        postpartumBirthDate: postpartumBirthDate,
         birthControlMethod: birthControlMethod,
         birthControlStartedOn: '2026-01-01',
         birthControlStoppedOn: null,
@@ -133,6 +137,13 @@ void main() {
       await expectLater(
         storage.upsertProfileMode(
             profileId: 'p1', mode: 'tracking', modeStartedOn: '09/02/2026'),
+        throwsArgumentError,
+      );
+      await expectLater(
+        storage.upsertProfileMode(
+            profileId: 'p1',
+            mode: 'tracking',
+            postpartumBirthDate: '09/01/2026'),
         throwsArgumentError,
       );
       await expectLater(
@@ -238,6 +249,28 @@ void main() {
       expect(row!.mode, 'tracking');
       expect(row.dirty, isFalse);
       expect(row.localRev, 0);
+    });
+
+    test('Issue #861: postpartum_birth_date round-trips through a local '
+        'write and a remote apply', () async {
+      final written = await storage.upsertProfileMode(
+          profileId: 'p1',
+          mode: 'postpartum',
+          modeStartedOn: '2026-09-10',
+          postpartumBirthDate: '2026-09-01',
+          updatedAt: t0);
+      expect(written.postpartumBirthDate, '2026-09-01');
+
+      final later = t0.add(const Duration(minutes: 5));
+      expect(
+          await storage.applyRemoteProfileMode(remoteMode('p1',
+              mode: 'postpartum',
+              modeStartedOn: '2026-09-10',
+              postpartumBirthDate: '2026-09-02',
+              updatedAt: later)),
+          isTrue);
+      expect((await storage.getProfileMode('p1'))!.postpartumBirthDate,
+          '2026-09-02');
     });
 
     test('applyRemoteProfileMode throws RetryableSyncApplyError for a '

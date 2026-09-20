@@ -24,6 +24,7 @@ ProfileModeData modeRow({
   String? birthControlStartedOn = '2026-01-10',
   String? birthControlStoppedOn,
   String? estimatedDueDate,
+  String? postpartumBirthDate,
   bool healthSyncConsent = true,
   DateTime? updatedAt,
 }) =>
@@ -32,6 +33,7 @@ ProfileModeData modeRow({
       mode: mode,
       modeStartedOn: modeStartedOn,
       estimatedDueDate: estimatedDueDate,
+      postpartumBirthDate: postpartumBirthDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: birthControlStartedOn,
       birthControlStoppedOn: birthControlStoppedOn,
@@ -65,17 +67,23 @@ CycleOverrideData overrideRow({
 void main() {
   group('encodeProfileMode', () {
     test('emits exactly the p_profile_modes shape', () {
-      expect(encodeProfileMode(modeRow(estimatedDueDate: '2027-06-21')), {
-        'profile_id': profileId,
-        'mode': 'perimenopause',
-        'mode_started_on': '2026-09-02',
-        'estimated_due_date': '2027-06-21',
-        'birth_control_method': 'copper_iud',
-        'birth_control_started_on': '2026-01-10',
-        'birth_control_stopped_on': null,
-        'health_sync_consent': true,
-        'updated_at': '2026-09-02T10:00:00.000Z',
-      });
+      expect(
+          encodeProfileMode(modeRow(
+            estimatedDueDate: '2027-06-21',
+            postpartumBirthDate: '2026-09-01',
+          )),
+          {
+            'profile_id': profileId,
+            'mode': 'perimenopause',
+            'mode_started_on': '2026-09-02',
+            'estimated_due_date': '2027-06-21',
+            'postpartum_birth_date': '2026-09-01',
+            'birth_control_method': 'copper_iud',
+            'birth_control_started_on': '2026-01-10',
+            'birth_control_stopped_on': null,
+            'health_sync_consent': true,
+            'updated_at': '2026-09-02T10:00:00.000Z',
+          });
     });
 
     test('a non-ULID profile_id is a typed invalidId, never sent', () {
@@ -95,6 +103,7 @@ void main() {
         'mode': 'conceive',
         'mode_started_on': '2026-09-02',
         'estimated_due_date': '2027-06-21',
+        'postpartum_birth_date': '2026-09-01',
         'birth_control_method': 'pill',
         'birth_control_started_on': '2026-01-01',
         'birth_control_stopped_on': '2026-06-01',
@@ -107,6 +116,7 @@ void main() {
       expect(row.mode, 'conceive');
       expect(row.modeStartedOn, '2026-09-02');
       expect(row.estimatedDueDate, '2027-06-21');
+      expect(row.postpartumBirthDate, '2026-09-01');
       expect(row.birthControlMethod, 'pill');
       expect(row.birthControlStartedOn, '2026-01-01');
       expect(row.birthControlStoppedOn, '2026-06-01');
@@ -137,6 +147,7 @@ void main() {
         'updated_at': '2026-09-02T10:00:00+00:00',
       });
       expect(row.modeStartedOn, isNull);
+      expect(row.postpartumBirthDate, isNull);
       expect(row.birthControlMethod, isNull);
       expect(row.healthSyncConsent, isFalse);
 

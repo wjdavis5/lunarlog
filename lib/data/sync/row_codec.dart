@@ -352,6 +352,7 @@ JsonRow encodeProfileMode(ProfileModeData row) {
     'mode': row.mode,
     'mode_started_on': row.modeStartedOn,
     'estimated_due_date': row.estimatedDueDate,
+    'postpartum_birth_date': row.postpartumBirthDate,
     'birth_control_method': row.birthControlMethod,
     'birth_control_started_on': row.birthControlStartedOn,
     'birth_control_stopped_on': row.birthControlStoppedOn,
@@ -753,6 +754,8 @@ RemoteProfileModeRow decodeProfileMode(JsonRow json) {
     modeStartedOn: _decodeIsoDate(r.stringOrNull('mode_started_on'), r, 'mode_started_on'),
     estimatedDueDate:
         _decodeIsoDate(r.stringOrNull('estimated_due_date'), r, 'estimated_due_date'),
+    postpartumBirthDate: _decodeIsoDate(
+        r.stringOrNull('postpartum_birth_date'), r, 'postpartum_birth_date'),
     birthControlMethod: r.stringOrNull('birth_control_method'),
     birthControlStartedOn:
         _decodeIsoDate(r.stringOrNull('birth_control_started_on'), r, 'birth_control_started_on'),

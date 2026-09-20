@@ -72,6 +72,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   }) async {
     final existing = await _storage.getProfileMode(profileId);
@@ -85,6 +86,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
       mode: mode.toDb(),
       modeStartedOn: modeStartedOn,
       estimatedDueDate: estimatedDueDate,
+      postpartumBirthDate: postpartumBirthDate,
       birthControlMethod: birthControlMethod,
       birthControlStartedOn: startedOn,
       birthControlStoppedOn: stoppedOn,
@@ -107,6 +109,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
           mode: LifecycleMode.fromDb(row.mode),
           modeStartedOn: row.modeStartedOn,
           estimatedDueDate: row.estimatedDueDate,
+          postpartumBirthDate: row.postpartumBirthDate,
           birthControlMethod: row.birthControlMethod,
           birthControlStartedOn: row.birthControlStartedOn,
           birthControlStoppedOn: row.birthControlStoppedOn,

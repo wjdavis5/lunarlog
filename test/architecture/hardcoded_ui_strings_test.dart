@@ -48,7 +48,7 @@ import 'hardcoded_ui_strings_scanner.dart';
 /// The backlog this guard landed with (issue #460). Decrement it with
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
-const int _initialAllowlistSize = 369;
+const int _initialAllowlistSize = 368;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -88,7 +88,7 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/overview/late_resolver.dart': 2,
   'lib/ui/profiles/profile_detail_screen.dart': 4,
   'lib/ui/profiles/profile_dialogs.dart': 9,
-  'lib/ui/profiles/profile_picker_screen.dart': 6,
+  'lib/ui/profiles/profile_picker_screen.dart': 5,
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,

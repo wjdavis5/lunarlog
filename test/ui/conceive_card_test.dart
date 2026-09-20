@@ -86,6 +86,7 @@ class _FakeModesRepository implements ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   }) async {}
 }
@@ -103,6 +104,7 @@ ProfileLifecycleMode _modeRow(LifecycleMode mode) => (
       mode: mode,
       modeStartedOn: null,
       estimatedDueDate: null,
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,

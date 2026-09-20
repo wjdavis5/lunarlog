@@ -666,11 +666,20 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// offer's action switches the mode and offers the interval exclusion.
   Widget _postpartumCard(BuildContext context) {
     final startedOn = LocalDate.tryParseIso(_modeRow?.modeStartedOn);
+    // Issue #861: a supplied birth date is the anchor the count runs from;
+    // absent, the mode start remains the surrogate (#455).
+    final birthDate = LocalDate.tryParseIso(_modeRow?.postpartumBirthDate);
+    final anchor = birthDate ?? startedOn;
     final today = widget.todayProvider();
     return PostpartumCard(
-      daysSinceStart: startedOn == null
+      daysSinceStart: anchor == null
           ? null
-          : daysSincePostpartumStart(modeStartedOn: startedOn, today: today),
+          : daysSincePostpartumStart(
+              modeStartedOn: anchor,
+              today: today,
+              birthDate: birthDate,
+            ),
+      sinceBirth: birthDate != null,
       showReturnOffer: _postpartumBleedLogged,
       canSwitch: !_effectiveReadOnly,
       onSwitchToTracking: _switchPostpartumToTracking,

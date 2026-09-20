@@ -251,8 +251,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   date-bound AND author-scoped sibling of `care_notes`) with its
   ///   `sync_state.cursor_guardian_notes` pull cursor and a
   ///   `(profile_id, local_date)` index.
+  /// * 26 — `profile_modes.postpartum_birth_date` (Issue #861, Postpartum
+  ///   mode: the optional birth date the day counter counts from when
+  ///   supplied; null keeps the counter on the `mode_started_on`
+  ///   surrogate).
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -552,6 +556,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV24(m, from);
     // Issue #801's v25 step, same shape again.
     await _upgradeToV25(m, from);
+    // Issue #861's v26 step, same shape again.
+    await _upgradeToV26(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1117,6 +1123,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await customStatement(kGuardianNotesProfileDateIndexSql);
       await migrationStepHook?.call('guardian_notes.profile_date_index');
       await _advanceSchemaVersion(25);
+    });
+  }
+
+  /// The v26 upgrade step (Issue #861): the optional Postpartum-mode birth
+  /// date on `profile_modes`. Same standalone-method shape as
+  /// [_upgradeToV24]; `profile_modes` has existed since v9 on every real
+  /// device, so the addColumn is always safe regardless of `from`. Null is
+  /// the meaningful "not supplied" state — a device that never collects one
+  /// keeps the existing mode-start day-count surrogate, so no backfill.
+  Future<void> _upgradeToV26(Migrator m, int from) async {
+    if (from >= 26) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the due-date sibling
+      // uses, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('profile_modes', 'postpartum_birth_date')) {
+        await m.addColumn(profileModes, profileModes.postpartumBirthDate);
+        await migrationStepHook?.call('profile_modes.postpartum_birth_date');
+      }
+      await _advanceSchemaVersion(26);
     });
   }
 }

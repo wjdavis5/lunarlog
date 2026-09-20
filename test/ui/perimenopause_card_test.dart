@@ -102,6 +102,7 @@ class _FakeModesRepository implements ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   }) async {}
 }
@@ -110,6 +111,7 @@ ProfileLifecycleMode _modeRow(LifecycleMode mode) => (
       mode: mode,
       modeStartedOn: null,
       estimatedDueDate: null,
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,
@@ -205,6 +207,16 @@ void main() {
       find.byKey(const ValueKey('perimenopause-length-change')),
     );
     expect(lengthText.style?.fontWeight, FontWeight.bold);
+    // Issue #862: the copy names the completed cycles the card actually
+    // compares, never "this cycle" (which every other surface uses for the
+    // still-open one).
+    expect(lengthText.data, contains('last completed cycle'));
+    expect(lengthText.data, isNot(contains('This cycle')));
+    expect(
+      find.textContaining('the one before it'),
+      findsWidgets,
+      reason: 'both the length line and the bleed-day line name the pair',
+    );
   });
 
   testWidgets('stays honest with fewer than two cycles', (tester) async {

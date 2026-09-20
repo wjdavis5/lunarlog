@@ -347,6 +347,7 @@ final class RemoteProfileModeRow extends RemoteRow {
     required this.mode,
     this.modeStartedOn,
     this.estimatedDueDate,
+    this.postpartumBirthDate,
     this.birthControlMethod,
     this.birthControlStartedOn,
     this.birthControlStoppedOn,
@@ -373,6 +374,11 @@ final class RemoteProfileModeRow extends RemoteRow {
   /// days or manually supplied, synced like every other profile_modes
   /// column and read by the Pregnancy-mode week counter.
   final String? estimatedDueDate;
+
+  /// Issue #861: the optional Postpartum-mode birth date (`yyyy-MM-dd`, or
+  /// null) — synced like every other profile_modes column and read by the
+  /// Postpartum day counter when present.
+  final String? postpartumBirthDate;
   final String? birthControlMethod;
   final String? birthControlStartedOn;
   final String? birthControlStoppedOn;

@@ -41,6 +41,40 @@ void main() {
         0,
       );
     });
+
+    test('Issue #861: a supplied birth date is the anchor, not the mode '
+        'start', () {
+      // The operator flips the switch 23 days after the birth; the count
+      // must run from the birth date the issue collects, not the later
+      // mode start.
+      expect(
+        daysSincePostpartumStart(
+          modeStartedOn: d(2026, 1, 24),
+          today: d(2026, 1, 31),
+          birthDate: d(2026, 1, 1),
+        ),
+        30,
+      );
+    });
+
+    test('Issue #861: no birth date keeps the mode-start surrogate', () {
+      expect(
+        daysSincePostpartumStart(
+            modeStartedOn: start, today: start.addDays(5)),
+        5,
+      );
+    });
+
+    test('Issue #861: a today before a supplied birth date clamps at 0', () {
+      expect(
+        daysSincePostpartumStart(
+          modeStartedOn: start,
+          today: d(2025, 12, 31),
+          birthDate: d(2026, 1, 1),
+        ),
+        0,
+      );
+    });
   });
 
   group('hasLoggedBleedSince', () {

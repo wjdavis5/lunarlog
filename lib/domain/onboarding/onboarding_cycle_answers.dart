@@ -43,6 +43,7 @@ class OnboardingCycleAnswers {
     this.birthControlMethod,
     this.lifecycleMode = LifecycleMode.tracking,
     this.estimatedDueDate,
+    this.postpartumBirthDate,
   });
 
   /// Civil date the last period started on, or null when skipped.
@@ -74,15 +75,27 @@ class OnboardingCycleAnswers {
   /// drift recorder's preservation rules).
   final String? estimatedDueDate;
 
+  /// Issue #861: the optional birth date (`yyyy-MM-dd`) collected when the
+  /// goal answer is `postpartum` — the date the day counter counts from
+  /// when supplied. Null when skipped; the recorder then leaves the column
+  /// unset and the counter falls back to the mode-start surrogate. Written
+  /// only on entry into Postpartum mode and preserved verbatim otherwise
+  /// (see the drift recorder's preservation rules), mirroring
+  /// [estimatedDueDate].
+  final String? postpartumBirthDate;
+
   /// Whether [record] has anything at all to persist: a non-default
   /// life-stage mode, a birth-control answer, or (Issue #192) a due
-  /// date alongside a `pregnancy` goal. With everything skipped/default
+  /// date alongside a `pregnancy` goal, or (Issue #861) a birth date
+  /// alongside a `postpartum` goal. With everything skipped/default
   /// this is false and the recorder must not create a `profile_modes`
   /// row (the server's lazy-default contract).
   bool get hasPersistableAnswers =>
       lifecycleMode != LifecycleMode.tracking ||
       birthControlMethod != null ||
-      (lifecycleMode == LifecycleMode.pregnancy && estimatedDueDate != null);
+      (lifecycleMode == LifecycleMode.pregnancy && estimatedDueDate != null) ||
+      (lifecycleMode == LifecycleMode.postpartum &&
+          postpartumBirthDate != null);
 }
 
 /// The seam #216 leaves for #218: the first-run flow (and the profile

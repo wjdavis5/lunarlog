@@ -234,7 +234,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.byType(BottomSheet), findsOneWidget);
-      expect(find.text('Rename profile'), findsOneWidget);
+      expect(find.text('Edit profile'), findsOneWidget);
       expect(find.text('Alex'), findsOneWidget);
       expect(find.text('Save'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);

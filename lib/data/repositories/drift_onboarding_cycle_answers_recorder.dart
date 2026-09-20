@@ -12,6 +12,8 @@
 ///   *enter* Pregnancy mode and preserved verbatim otherwise — an
 ///   unchanged-pregnancy edit never rewrites it, and leaving Pregnancy
 ///   mode keeps the record of the pregnancy that was.
+/// * `postpartum_birth_date` (Issue #861) rides the identical rule for the
+///   Postpartum mode — written on entry, preserved otherwise.
 /// * The birth-control effective dates ride `birthControlEffectiveDates`'s
 ///   shared rules (issue #183, in `drift_profile_modes_repository.dart`):
 ///   re-recording the same method keeps whatever anchor is stored, a
@@ -65,6 +67,9 @@ class DriftOnboardingCycleAnswersRecorder
       // pregnancy that was (the mode column says whether one is current;
       // a later re-entry overwrites with the newly collected date).
       estimatedDueDate: _dueDateFor(existing: existing, answers: answers),
+      // Issue #861: mirrors the due-date rule for the Postpartum birth date.
+      postpartumBirthDate:
+          _postpartumBirthDateFor(existing: existing, answers: answers),
       birthControlMethod: answers.birthControlMethod,
       birthControlStartedOn: bcStartedOn,
       birthControlStoppedOn: bcStoppedOn,
@@ -88,6 +93,25 @@ class DriftOnboardingCycleAnswersRecorder
         (existing?.mode ?? 'tracking') != 'pregnancy' &&
             answers.lifecycleMode == LifecycleMode.pregnancy;
     return enteringPregnancy ? answers.estimatedDueDate : existing?.estimatedDueDate;
+  }
+
+  /// The `postpartum_birth_date` value this record writes (Issue #861): the
+  /// collected [OnboardingCycleAnswers.postpartumBirthDate] when the
+  /// answers enter Postpartum mode (prior row absent or not postpartum),
+  /// and whatever is already stored otherwise (including null when the
+  /// entering answer carried none — the counter then falls back to the
+  /// mode-start surrogate rather than fabricating a date). The due-date
+  /// rule's exact shape, for the mode that mirrors it.
+  String? _postpartumBirthDateFor({
+    required ProfileModeData? existing,
+    required OnboardingCycleAnswers answers,
+  }) {
+    final enteringPostpartum =
+        (existing?.mode ?? 'tracking') != 'postpartum' &&
+            answers.lifecycleMode == LifecycleMode.postpartum;
+    return enteringPostpartum
+        ? answers.postpartumBirthDate
+        : existing?.postpartumBirthDate;
   }
 
   /// Whether a write is needed at all: no row plus default answers is the

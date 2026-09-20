@@ -56,6 +56,7 @@ class _FakeModesRepository implements ProfileModesRepository {
     required LifecycleMode mode,
     String? modeStartedOn,
     String? estimatedDueDate,
+    String? postpartumBirthDate,
     String? birthControlMethod,
   }) async {}
 }
@@ -140,6 +141,7 @@ void main() {
       mode: LifecycleMode.pregnancy,
       modeStartedOn: '2026-09-14',
       estimatedDueDate: '2027-06-21',
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,
@@ -167,6 +169,7 @@ void main() {
       mode: LifecycleMode.pregnancy,
       modeStartedOn: '2026-09-14',
       estimatedDueDate: null,
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,
@@ -192,6 +195,7 @@ void main() {
       mode: LifecycleMode.tracking,
       modeStartedOn: null,
       estimatedDueDate: null,
+      postpartumBirthDate: null,
       birthControlMethod: null,
       birthControlStartedOn: null,
       birthControlStoppedOn: null,

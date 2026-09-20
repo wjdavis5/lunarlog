@@ -143,6 +143,7 @@ class DriftAccountImporter implements AccountImporter {
       mode: mode.mode.toDb(),
       modeStartedOn: mode.modeStartedOn,
       estimatedDueDate: mode.estimatedDueDate,
+      postpartumBirthDate: mode.postpartumBirthDate,
       birthControlMethod: mode.birthControlMethod,
       birthControlStartedOn: mode.birthControlStartedOn,
       birthControlStoppedOn: mode.birthControlStoppedOn,
