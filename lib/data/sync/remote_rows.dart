@@ -230,6 +230,7 @@ final class RemoteProfileGuardianRow extends RemoteRow {
     required this.createdAt,
     required this.updatedAt,
     this.serverVersion = 0,
+    this.isSubject = false,
   });
 
   @override
@@ -247,6 +248,11 @@ final class RemoteProfileGuardianRow extends RemoteRow {
   final DateTime? deletedAt = null;
   @override
   final int serverVersion;
+
+  /// Issue #802: this member is the profile's subject. Decodes a
+  /// missing/null key as false (a pre-#802 server, or a helper row) —
+  /// identity metadata, never a field a pull should fail over.
+  final bool isSubject;
 
   @override
   SyncTable get table => SyncTable.profileGuardians;

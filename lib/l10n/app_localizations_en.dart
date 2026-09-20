@@ -2090,4 +2090,57 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianNotesUpdate => 'Update note';
+
+  @override
+  String inviteSubjectOption(String name) {
+    return 'Invite $name to log her own profile';
+  }
+
+  @override
+  String inviteSubjectOptionDetail(String name) {
+    return 'Caregiver access - this is $name\'s own profile, listed as hers on her device';
+  }
+
+  @override
+  String inviteCreatedShareGuardian(String profile) {
+    return 'Share this single-use link with the guardian for $profile:';
+  }
+
+  @override
+  String inviteCreatedShareSubject(String name) {
+    return 'Share this single-use link with $name - she\'ll use it to join and log her own profile:';
+  }
+
+  @override
+  String acceptInviteSubjectIntro(String profile) {
+    return 'This is your profile. $profile\'s cycle calendar and health logs will sync to this device - the guardians already sharing it can see and log it too.';
+  }
+
+  @override
+  String get profilePickerSubjectSubtitle => 'This is your profile';
+
+  @override
+  String get manageGuardiansSubjectBadge => '(her profile)';
+
+  @override
+  String get manageGuardiansPendingSubjectLabel => 'Her own profile';
+
+  @override
+  String subjectTeenModeDialogTitle(String name) {
+    return 'Switch $name to Teen mode?';
+  }
+
+  @override
+  String subjectTeenModeDialogBody(String name) {
+    return '$name is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.';
+  }
+
+  @override
+  String get subjectTeenModeDialogAccept => 'Switch to Teen';
+
+  @override
+  String get subjectTeenModeDialogDecline => 'Keep Standard';
+
+  @override
+  String get subjectTeenModeDoneSnack => 'Switched to Teen mode';
 }

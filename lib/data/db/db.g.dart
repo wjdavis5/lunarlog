@@ -2634,6 +2634,21 @@ class $ProfileGuardiansTable extends ProfileGuardians
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _isSubjectMeta = const VerificationMeta(
+    'isSubject',
+  );
+  @override
+  late final GeneratedColumn<bool> isSubject = GeneratedColumn<bool>(
+    'is_subject',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_subject" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2646,6 +2661,7 @@ class $ProfileGuardiansTable extends ProfileGuardians
     createdAt,
     updatedAt,
     serverVersion,
+    isSubject,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2734,6 +2750,12 @@ class $ProfileGuardiansTable extends ProfileGuardians
         ),
       );
     }
+    if (data.containsKey('is_subject')) {
+      context.handle(
+        _isSubjectMeta,
+        isSubject.isAcceptableOrUnknown(data['is_subject']!, _isSubjectMeta),
+      );
+    }
     return context;
   }
 
@@ -2783,6 +2805,10 @@ class $ProfileGuardiansTable extends ProfileGuardians
         DriftSqlType.int,
         data['${effectivePrefix}server_version'],
       )!,
+      isSubject: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_subject'],
+      )!,
     );
   }
 
@@ -2819,6 +2845,18 @@ class ProfileGuardianData extends DataClass
   /// ordinary per-id rule. Membership convergence is ordered by this
   /// column instead — see `conflict_rules.dart`'s `remoteWinsByVersion`.
   final int serverVersion;
+
+  /// Issue #802: this member is the person the profile is about (the
+  /// subject). Server-stamped by the subject invitation path or
+  /// `accept_ownership_transfer` only — never client-writable on either
+  /// side — and synced with the row (durable, unlike #518's client-side
+  /// flag). Membership identity, orthogonal to both [role] (the only
+  /// capability model) and the profile's own `is_minor`/`birth_year`
+  /// (#295). NOT NULL DEFAULT FALSE locally so the v28 `addColumn`
+  /// backfills every pre-#802 row as a plain helper membership in one
+  /// catalog-only step; a pulled null (a server row never re-stamped since
+  /// the column landed) decodes to false before it reaches storage.
+  final bool isSubject;
   const ProfileGuardianData({
     required this.id,
     required this.profileId,
@@ -2830,6 +2868,7 @@ class ProfileGuardianData extends DataClass
     required this.createdAt,
     required this.updatedAt,
     required this.serverVersion,
+    required this.isSubject,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2848,6 +2887,7 @@ class ProfileGuardianData extends DataClass
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['server_version'] = Variable<int>(serverVersion);
+    map['is_subject'] = Variable<bool>(isSubject);
     return map;
   }
 
@@ -2867,6 +2907,7 @@ class ProfileGuardianData extends DataClass
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       serverVersion: Value(serverVersion),
+      isSubject: Value(isSubject),
     );
   }
 
@@ -2886,6 +2927,7 @@ class ProfileGuardianData extends DataClass
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       serverVersion: serializer.fromJson<int>(json['serverVersion']),
+      isSubject: serializer.fromJson<bool>(json['isSubject']),
     );
   }
   @override
@@ -2902,6 +2944,7 @@ class ProfileGuardianData extends DataClass
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'serverVersion': serializer.toJson<int>(serverVersion),
+      'isSubject': serializer.toJson<bool>(isSubject),
     };
   }
 
@@ -2916,6 +2959,7 @@ class ProfileGuardianData extends DataClass
     DateTime? createdAt,
     DateTime? updatedAt,
     int? serverVersion,
+    bool? isSubject,
   }) => ProfileGuardianData(
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
@@ -2927,6 +2971,7 @@ class ProfileGuardianData extends DataClass
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     serverVersion: serverVersion ?? this.serverVersion,
+    isSubject: isSubject ?? this.isSubject,
   );
   ProfileGuardianData copyWithCompanion(ProfileGuardiansCompanion data) {
     return ProfileGuardianData(
@@ -2944,6 +2989,7 @@ class ProfileGuardianData extends DataClass
       serverVersion: data.serverVersion.present
           ? data.serverVersion.value
           : this.serverVersion,
+      isSubject: data.isSubject.present ? data.isSubject.value : this.isSubject,
     );
   }
 
@@ -2959,7 +3005,8 @@ class ProfileGuardianData extends DataClass
           ..write('invitedBy: $invitedBy, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('serverVersion: $serverVersion')
+          ..write('serverVersion: $serverVersion, ')
+          ..write('isSubject: $isSubject')
           ..write(')'))
         .toString();
   }
@@ -2976,6 +3023,7 @@ class ProfileGuardianData extends DataClass
     createdAt,
     updatedAt,
     serverVersion,
+    isSubject,
   );
   @override
   bool operator ==(Object other) =>
@@ -2990,7 +3038,8 @@ class ProfileGuardianData extends DataClass
           other.invitedBy == this.invitedBy &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
-          other.serverVersion == this.serverVersion);
+          other.serverVersion == this.serverVersion &&
+          other.isSubject == this.isSubject);
 }
 
 class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
@@ -3004,6 +3053,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> serverVersion;
+  final Value<bool> isSubject;
   final Value<int> rowid;
   const ProfileGuardiansCompanion({
     this.id = const Value.absent(),
@@ -3016,6 +3066,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.serverVersion = const Value.absent(),
+    this.isSubject = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfileGuardiansCompanion.insert({
@@ -3029,6 +3080,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     required DateTime createdAt,
     required DateTime updatedAt,
     this.serverVersion = const Value.absent(),
+    this.isSubject = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        profileId = Value(profileId),
@@ -3047,6 +3099,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? serverVersion,
+    Expression<bool>? isSubject,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3060,6 +3113,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (serverVersion != null) 'server_version': serverVersion,
+      if (isSubject != null) 'is_subject': isSubject,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3075,6 +3129,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? serverVersion,
+    Value<bool>? isSubject,
     Value<int>? rowid,
   }) {
     return ProfileGuardiansCompanion(
@@ -3088,6 +3143,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       serverVersion: serverVersion ?? this.serverVersion,
+      isSubject: isSubject ?? this.isSubject,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3125,6 +3181,9 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
     if (serverVersion.present) {
       map['server_version'] = Variable<int>(serverVersion.value);
     }
+    if (isSubject.present) {
+      map['is_subject'] = Variable<bool>(isSubject.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3144,6 +3203,7 @@ class ProfileGuardiansCompanion extends UpdateCompanion<ProfileGuardianData> {
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('serverVersion: $serverVersion, ')
+          ..write('isSubject: $isSubject, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -14791,6 +14851,7 @@ typedef $$ProfileGuardiansTableCreateCompanionBuilder =
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> serverVersion,
+      Value<bool> isSubject,
       Value<int> rowid,
     });
 typedef $$ProfileGuardiansTableUpdateCompanionBuilder =
@@ -14805,6 +14866,7 @@ typedef $$ProfileGuardiansTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> serverVersion,
+      Value<bool> isSubject,
       Value<int> rowid,
     });
 
@@ -14893,6 +14955,11 @@ class $$ProfileGuardiansTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<bool> get isSubject => $composableBuilder(
+    column: $table.isSubject,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$ProfilesTableFilterComposer get profileId {
     final $$ProfilesTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -14971,6 +15038,11 @@ class $$ProfileGuardiansTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isSubject => $composableBuilder(
+    column: $table.isSubject,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$ProfilesTableOrderingComposer get profileId {
     final $$ProfilesTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -15034,6 +15106,9 @@ class $$ProfileGuardiansTableAnnotationComposer
     column: $table.serverVersion,
     builder: (column) => column,
   );
+
+  GeneratedColumn<bool> get isSubject =>
+      $composableBuilder(column: $table.isSubject, builder: (column) => column);
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -15099,6 +15174,7 @@ class $$ProfileGuardiansTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> serverVersion = const Value.absent(),
+                Value<bool> isSubject = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfileGuardiansCompanion(
                 id: id,
@@ -15111,6 +15187,7 @@ class $$ProfileGuardiansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 serverVersion: serverVersion,
+                isSubject: isSubject,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -15125,6 +15202,7 @@ class $$ProfileGuardiansTableTableManager
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> serverVersion = const Value.absent(),
+                Value<bool> isSubject = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ProfileGuardiansCompanion.insert(
                 id: id,
@@ -15137,6 +15215,7 @@ class $$ProfileGuardiansTableTableManager
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 serverVersion: serverVersion,
+                isSubject: isSubject,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

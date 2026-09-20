@@ -3457,6 +3457,84 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update note'**
   String get guardianNotesUpdate;
+
+  /// Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite {name} to log her own profile'**
+  String inviteSubjectOption(String name);
+
+  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver access - this is {name}\'s own profile, listed as hers on her device'**
+  String inviteSubjectOptionDetail(String name);
+
+  /// Invite dialog, generated state: what to do with a helper invitation link.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this single-use link with the guardian for {profile}:'**
+  String inviteCreatedShareGuardian(String profile);
+
+  /// Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this single-use link with {name} - she\'ll use it to join and log her own profile:'**
+  String inviteCreatedShareSubject(String name);
+
+  /// Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.
+  ///
+  /// In en, this message translates to:
+  /// **'This is your profile. {profile}\'s cycle calendar and health logs will sync to this device - the guardians already sharing it can see and log it too.'**
+  String acceptInviteSubjectIntro(String profile);
+
+  /// Profile picker / sharing subtitle (Issue #802): the operator's own profile held via a subject membership - never the caregiver role label the preset granted.
+  ///
+  /// In en, this message translates to:
+  /// **'This is your profile'**
+  String get profilePickerSubjectSubtitle;
+
+  /// Manage guardians row (Issue #802): badge marking the member who is the profile's subject, distinguishing her row from every guardian's without reading a uuid.
+  ///
+  /// In en, this message translates to:
+  /// **'(her profile)'**
+  String get manageGuardiansSubjectBadge;
+
+  /// Manage guardians pending-invitation row (Issue #802): replaces the role label for an invitation created with the 'her own profile' preset.
+  ///
+  /// In en, this message translates to:
+  /// **'Her own profile'**
+  String get manageGuardiansPendingSubjectLabel;
+
+  /// Manage guardians (Issue #802): title of the one-time suggestion shown when a minor subject joins a profile still in Standard care mode. Suggested, never forced.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch {name} to Teen mode?'**
+  String subjectTeenModeDialogTitle(String name);
+
+  /// Manage guardians (Issue #802): body of the Teen-mode suggestion dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.'**
+  String subjectTeenModeDialogBody(String name);
+
+  /// Manage guardians (Issue #802): accepting button of the Teen-mode suggestion dialog - writes the profile's care mode to teen.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to Teen'**
+  String get subjectTeenModeDialogAccept;
+
+  /// Manage guardians (Issue #802): declining button of the Teen-mode suggestion dialog - leaves the care mode untouched.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Standard'**
+  String get subjectTeenModeDialogDecline;
+
+  /// Manage guardians (Issue #802): confirmation snackbar after accepting the Teen-mode suggestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched to Teen mode'**
+  String get subjectTeenModeDoneSnack;
 }
 
 class _AppLocalizationsDelegate

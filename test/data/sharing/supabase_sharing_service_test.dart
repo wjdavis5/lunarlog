@@ -495,8 +495,8 @@ void main() {
       expect(selectParam, isNot(contains('token_hash')));
       expect(
         selectParam!.split(','),
-        unorderedEquals(
-            ['id', 'profile_id', 'role', 'recipient_label', 'created_at', 'expires_at']),
+        unorderedEquals(['id', 'profile_id', 'role', 'recipient_label',
+            'created_at', 'expires_at', 'is_subject']),
       );
     });
 

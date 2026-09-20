@@ -936,6 +936,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     // Issue #42: insertReturning + DoUpdate is exactly insertOnConflictUpdate
     // (see drift's own doc on the latter) while also yielding the written
     // row for the page cache at no extra statement cost.
+    // Issue #802: is_subject rides the same authoritative upsert — the
+    // server-stamped subject marker converges with the membership row it
+    // belongs to (a server null decodes to false before it gets here).
     final written = await db
         .into(db.profileGuardians)
         .insertReturning(
@@ -950,6 +953,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             createdAt: remote.createdAt.toUtc(),
             updatedAt: remote.updatedAt.toUtc(),
             serverVersion: Value(remote.serverVersion),
+            isSubject: Value(remote.isSubject),
           ),
           onConflict: DoUpdate(
             (_) => ProfileGuardiansCompanion.insert(
@@ -963,6 +967,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
               createdAt: remote.createdAt.toUtc(),
               updatedAt: remote.updatedAt.toUtc(),
               serverVersion: Value(remote.serverVersion),
+              isSubject: Value(remote.isSubject),
             ),
           ),
         );

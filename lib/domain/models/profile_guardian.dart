@@ -72,6 +72,7 @@ class ProfileGuardian {
     this.invitedBy,
     required this.createdAt,
     required this.updatedAt,
+    this.isSubject = false,
   });
 
   final String id;
@@ -84,16 +85,27 @@ class ProfileGuardian {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// Issue #802: this member is the person the profile is about (the
+  /// subject) — a membership-identity fact, deliberately NOT a permission
+  /// (the role ladder above stays the only capability model) and NOT a
+  /// profile fact (that is [Profile.isMinor]/birth year, issue #295 —
+  /// the two never derive from each other). Server-stamped by the subject
+  /// invitation path or `accept_ownership_transfer` only, and synced with
+  /// the row; false covers both a helper membership and a pre-#802 server
+  /// row (the pull decodes a missing/null `is_subject` as false).
+  final bool isSubject;
+
   ProfileGuardian copyWith({
     String? id,
     String? profileId,
     String? userId,
     GuardianRole? role,
     GuardianStatus? status,
-    String? displayName,
-    String? invitedBy,
+    Object? displayName = _unset,
+    Object? invitedBy = _unset,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isSubject,
   }) =>
       ProfileGuardian(
         id: id ?? this.id,
@@ -101,11 +113,23 @@ class ProfileGuardian {
         userId: userId ?? this.userId,
         role: role ?? this.role,
         status: status ?? this.status,
-        displayName: displayName ?? this.displayName,
-        invitedBy: invitedBy ?? this.invitedBy,
+        // The nullable fields resolve through [_keep] (an explicit null
+        // clears, an unpassed argument keeps) so each stays a single
+        // expression here — the same complexity discipline as
+        // `Profile.copyWith`'s `_resolveNullable`.
+        displayName: _keep(displayName, this.displayName),
+        invitedBy: _keep(invitedBy, this.invitedBy),
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        isSubject: isSubject ?? this.isSubject,
       );
+
+  /// The copyWith sentinel: an unpassed argument (still [_unset]) keeps
+  /// [current]; anything else — including an explicit null — overrides it.
+  static const Object _unset = Object();
+
+  static T? _keep<T>(Object? value, T? current) =>
+      identical(value, _unset) ? current : value as T?;
 
   @override
   bool operator ==(Object other) =>
@@ -125,7 +149,8 @@ class ProfileGuardian {
       other.displayName == displayName &&
       other.invitedBy == invitedBy &&
       other.createdAt == createdAt &&
-      other.updatedAt == updatedAt;
+      other.updatedAt == updatedAt &&
+      other.isSubject == isSubject;
 
   @override
   int get hashCode => Object.hash(
@@ -138,12 +163,14 @@ class ProfileGuardian {
         invitedBy,
         createdAt,
         updatedAt,
+        isSubject,
       );
 
   @override
   String toString() =>
       'ProfileGuardian($profileId $userId ${role.name} ${status.name}'
-      '${displayName == null ? '' : ' $displayName'})';
+      '${displayName == null ? '' : ' $displayName'}'
+      '${isSubject ? ' subject' : ''})';
 }
 
 /// The accepted guardian row for [currentUserId] among [guardians], or null

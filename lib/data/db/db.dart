@@ -270,8 +270,15 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   — the `health_sync_state` posture. No backfill: a device upgrading
   ///   into this version starts with an empty ledger, so its already-exported
   ///   samples remain the documented pre-#936 gap until re-exported.
+  /// * 28 — `profile_guardians.is_subject` (Issue #802, the "her own
+  ///   profile" subject marker: this member is the person the profile is
+  ///   about — server-stamped by the subject invitation path or
+  ///   `accept_ownership_transfer` only, pulled with the membership row,
+  ///   never pushed). NOT NULL DEFAULT FALSE, so the one `addColumn` is
+  ///   also the whole backfill: every pre-#802 membership (helper or
+  ///   owner-creator) reads as a plain non-subject row.
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -576,6 +583,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV26(m, from);
     // Issue #936's v27 step, same shape again.
     await _upgradeToV27(m, from);
+    // Issue #802's v28 step, same shape again.
+    await _upgradeToV28(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1187,6 +1196,30 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await customStatement(kHealthExportLedgerProfileIndexSql);
       await migrationStepHook?.call('health_export_ledger.profile_id_index');
       await _advanceSchemaVersion(27);
+    });
+  }
+
+  /// The v28 upgrade step (Issue #802): `profile_guardians.is_subject`, the
+  /// "her own profile" subject marker. Same standalone-method shape as
+  /// [_upgradeToV24]; `profile_guardians` has existed since v3 on every
+  /// real device, so the addColumn is always safe regardless of `from`.
+  /// The column is NOT NULL DEFAULT FALSE locally, so the `addColumn` is
+  /// also the whole backfill — every existing membership (helper or
+  /// owner-creator) becomes a plain non-subject row in the same
+  /// catalog-only step, and the server's own nullable column decodes to
+  /// false client-side for any row it has not re-stamped since the column
+  /// landed there.
+  Future<void> _upgradeToV28(Migrator m, int from) async {
+    if (from >= 28) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the v24 sibling
+      // uses, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('profile_guardians', 'is_subject')) {
+        await m.addColumn(profileGuardians, profileGuardians.isSubject);
+        await migrationStepHook?.call('profile_guardians.is_subject');
+      }
+      await _advanceSchemaVersion(28);
     });
   }
 }

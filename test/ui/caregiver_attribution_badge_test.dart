@@ -63,6 +63,42 @@ void main() {
     expect(find.text('Logged by you'), findsOneWidget);
   });
 
+  // Issue #802 (AC4): the subject member is an ordinary accepted guardian
+  // for attribution — a day she logs reads "Logged by <her name>", never a
+  // role label, in the day sheet (and the same _formatUser resolution
+  // feeds the activity feed's rows).
+  final guardianSubject = ProfileGuardian(
+    id: 'g-3',
+    profileId: 'p-1',
+    userId: 'user-daughter',
+    role: GuardianRole.caregiver,
+    status: GuardianStatus.accepted,
+    displayName: 'Riley',
+    createdAt: DateTime.utc(2026, 1, 1),
+    updatedAt: DateTime.utc(2026, 1, 1),
+    isSubject: true,
+  );
+
+  testWidgets('renders the subject member display name when she logs the day '
+      '(Issue #802, AC4)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: CaregiverAttributionBadge(
+            loggedByUserId: 'user-daughter',
+            currentUserId: 'user-mom',
+            guardians: [guardianDad, guardianMom, guardianSubject],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Logged by Riley'), findsOneWidget);
+    expect(find.textContaining('Caregiver'), findsNothing);
+  });
+
   testWidgets('renders guardian display name when available', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

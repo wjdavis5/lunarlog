@@ -378,6 +378,19 @@ class ProfileGuardians extends Table {
   IntColumn get serverVersion =>
       integer().named('server_version').withDefault(const Constant(0))();
 
+  /// Issue #802: this member is the person the profile is about (the
+  /// subject). Server-stamped by the subject invitation path or
+  /// `accept_ownership_transfer` only — never client-writable on either
+  /// side — and synced with the row (durable, unlike #518's client-side
+  /// flag). Membership identity, orthogonal to both [role] (the only
+  /// capability model) and the profile's own `is_minor`/`birth_year`
+  /// (#295). NOT NULL DEFAULT FALSE locally so the v28 `addColumn`
+  /// backfills every pre-#802 row as a plain helper membership in one
+  /// catalog-only step; a pulled null (a server row never re-stamped since
+  /// the column landed) decodes to false before it reaches storage.
+  BoolColumn get isSubject =>
+      boolean().named('is_subject').withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
