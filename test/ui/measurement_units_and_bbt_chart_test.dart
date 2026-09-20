@@ -709,5 +709,45 @@ void main() {
 
       await h.dispose();
     });
+
+    testWidgets('swapping the observations seam re-reads it (#574 path)',
+        (tester) async {
+      final h = Harness(tester);
+      final profile =
+          await h.profiles.create(displayName: 'Alice', isMinor: false);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+
+      final first = GatedObservationsRepository();
+      final second = GatedObservationsRepository();
+      LocalDate today() => LocalDate(2026, 1, 10);
+
+      await tester.pumpWidget(
+        h.appFor(
+          home: AnalysisTab(
+            profileId: profile.id,
+            todayProvider: today,
+            observationsRepository: first,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(first.reads, greaterThan(0));
+
+      final beforeSecond = second.reads;
+      await tester.pumpWidget(
+        h.appFor(
+          home: AnalysisTab(
+            profileId: profile.id,
+            todayProvider: today,
+            observationsRepository: second,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(second.reads, greaterThan(beforeSecond),
+          reason: 'a changed observations seam is re-read on update');
+
+      await h.dispose();
+    });
   });
 }
