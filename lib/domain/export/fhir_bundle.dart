@@ -122,7 +122,7 @@ const int kFhirExportBundleVersion = 1;
 /// `identifier.system` — #157 review fix: that is `urn:ietf:rfc:3986`,
 /// since `identifier.value` is itself a URI; see [buildFhirDocumentBundle].)
 const String kFhirExportVersionSystem =
-    'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/export-version';
+    '$kFhirCodeSystemBase/export-version';
 
 /// lunarlog's own code system for flow-level codings (#157 review fix,
 /// `docs/clinical/terminology.md`'s "FlowLevel — stays fully local"
@@ -133,8 +133,7 @@ const String kFhirExportVersionSystem =
 /// `lib/domain/tags.dart` codes") exact, rather than overloading it with
 /// an unrelated five-value scale. **Permanent once emitted**, the same as
 /// [kSystemLunarlogLocal] itself — do not change this value casually.
-const String kSystemLunarlogLocalFlow =
-    'https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/flow';
+const String kSystemLunarlogLocalFlow = '$kFhirCodeSystemBase/flow';
 
 /// Where the local codings this file (as opposed to
 /// clinical_terminology.dart's tag codings) introduces are documented:
