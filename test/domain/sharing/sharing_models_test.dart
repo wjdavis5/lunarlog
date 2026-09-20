@@ -90,6 +90,8 @@ void main() {
   });
 
   group('InvitePreview equality and hashCode (Issue #594)', () {
+    // Issue #949: fixed fixture expiry for equality/hashCode only, never
+    // measured against the real clock.
     final expiresAt = DateTime.utc(2026, 9, 20);
     final preview1 = InvitePreview(
       profileDisplayName: 'Riley',

@@ -1,4 +1,15 @@
 /// Tests for reminder scheduling timezone and permission handling.
+///
+/// **Rule (issue #949): never pin a scheduled fire date to a wall-clock
+/// literal.** `rescheduleAll`'s past-due comparison is driven by the
+/// injectable [ReminderNowProvider], but `flutter_local_notifications`'s
+/// `zonedSchedule` rejects a `scheduledDate` already in the real past
+/// independently of that seam. A literal near "today" is therefore a time
+/// bomb: on 2026-09-20 a `LocalDate(2026, 9, 20)` fire date stopped being
+/// "future" mid-morning and six tests in this file began failing on every
+/// PR. Derive every fire date from [schedulerTestDay] (a few days ahead of
+/// the real clock) instead, and pin the scheduler's own clock with [nowAt]
+/// wherever a test asserts past-due behavior.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +27,20 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../support/fake_settings_store.dart';
+
+/// Issue #949: the base date every scheduled-reminder test fires on — a few
+/// days ahead of the real wall clock, so the mock platform never rejects the
+/// slot as past-due (the plugin validates against the real clock
+/// independently of the injected [ReminderNowProvider]; see this file's
+/// library doc). Lazy `final`, so every test in a run shares one value.
+final LocalDate schedulerTestDay = LocalDate.fromDateTime(
+  DateTime.now().add(const Duration(days: 3)),
+);
+
+/// A [ReminderNowProvider] pinned to [hour]:[minute] on [day], in UTC — the
+/// clock seam every scheduling test below compares its fire times against.
+ReminderNowProvider nowAt(LocalDate day, int hour, [int minute = 0]) =>
+    (_) => tz.TZDateTime.utc(day.year, day.month, day.day, hour, minute);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -617,7 +642,7 @@ void main() {
       await scheduler.rescheduleAll([
         PlannedReminder(
           profileId: 'profile-1',
-          fireOn: LocalDate(2026, 9, 20),
+          fireOn: schedulerTestDay,
           kind: ReminderKind.upcoming,
         ),
       ]);
@@ -648,7 +673,7 @@ void main() {
       await scheduler.rescheduleAll([
         PlannedReminder(
           profileId: 'profile-1',
-          fireOn: LocalDate(2026, 9, 20),
+          fireOn: schedulerTestDay,
           kind: ReminderKind.log,
         ),
       ]);
@@ -671,7 +696,7 @@ void main() {
       await scheduler.rescheduleAll([
         PlannedReminder(
           profileId: 'profile-1',
-          fireOn: LocalDate(2026, 9, 20),
+          fireOn: schedulerTestDay,
           kind: ReminderKind.upcoming,
           title: 'Tea time',
           body: 'Bring the blue bottle.',
@@ -696,7 +721,7 @@ void main() {
       await scheduler.rescheduleAll([
         PlannedReminder(
           profileId: 'profile-1',
-          fireOn: LocalDate(2026, 9, 20),
+          fireOn: schedulerTestDay,
           kind: ReminderKind.log,
         ),
       ]);
@@ -730,20 +755,21 @@ void main() {
         'a replan after the fire hour skips the past-dated slot and still '
         'arms every later reminder', () async {
       final log = BreadcrumbLog();
+      final day = schedulerTestDay;
       final scheduler = schedulerFor(
         TargetPlatform.android,
         localTimeZoneProvider: () async => 'UTC',
         locationProvider: () => tz.getLocation('UTC'),
-        // 12:00 UTC — after today's 09:00 slot, before its 15:00 one.
-        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 12),
+        // 12:00 UTC — after the day's 09:00 slot, before its 15:00 one.
+        nowProvider: nowAt(day, 12),
         breadcrumbLog: log,
       );
       await scheduler.initialize();
       calls.clear();
 
-      final past = lateOn(LocalDate(2026, 9, 20), 9 * 60);
-      final thisAfternoon = lateOn(LocalDate(2026, 9, 20), 15 * 60);
-      final tomorrow = lateOn(LocalDate(2026, 9, 21), 9 * 60);
+      final past = lateOn(day, 9 * 60);
+      final thisAfternoon = lateOn(day, 15 * 60);
+      final tomorrow = lateOn(day.addDays(1), 9 * 60);
 
       await scheduler.rescheduleAll([past, thisAfternoon, tomorrow]);
 
@@ -760,18 +786,20 @@ void main() {
 
     test('a replan before the fire hour skips nothing', () async {
       final log = BreadcrumbLog();
+      final day = schedulerTestDay;
       final scheduler = schedulerFor(
         TargetPlatform.android,
         localTimeZoneProvider: () async => 'UTC',
         locationProvider: () => tz.getLocation('UTC'),
-        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 8),
+        // 08:00 UTC — before the day's 09:00 slot.
+        nowProvider: nowAt(day, 8),
         breadcrumbLog: log,
       );
       await scheduler.initialize();
       calls.clear();
 
-      final today = lateOn(LocalDate(2026, 9, 20), 9 * 60);
-      final tomorrow = lateOn(LocalDate(2026, 9, 21), 9 * 60);
+      final today = lateOn(day, 9 * 60);
+      final tomorrow = lateOn(day.addDays(1), 9 * 60);
 
       await scheduler.rescheduleAll([today, tomorrow]);
 
@@ -783,19 +811,21 @@ void main() {
         'a throwing zonedSchedule for one reminder leaves every other '
         'reminder scheduled and is recorded through the seam', () async {
       final log = BreadcrumbLog();
+      final day = schedulerTestDay;
       final scheduler = schedulerFor(
         TargetPlatform.android,
         localTimeZoneProvider: () async => 'UTC',
         locationProvider: () => tz.getLocation('UTC'),
-        nowProvider: (_) => tz.TZDateTime.utc(2026, 9, 20, 0),
+        // 00:00 UTC — every one of the day's slots is still ahead.
+        nowProvider: nowAt(day, 0),
         breadcrumbLog: log,
       );
       await scheduler.initialize();
       calls.clear();
 
-      final first = lateOn(LocalDate(2026, 9, 20), 9 * 60, profile: 'p1');
-      final failing = lateOn(LocalDate(2026, 9, 20), 10 * 60, profile: 'p2');
-      final third = lateOn(LocalDate(2026, 9, 20), 11 * 60, profile: 'p3');
+      final first = lateOn(day, 9 * 60, profile: 'p1');
+      final failing = lateOn(day, 10 * 60, profile: 'p2');
+      final third = lateOn(day, 11 * 60, profile: 'p3');
 
       // Replace the default handler with one that rejects exactly the middle
       // reminder's call — the OS notification cap / invalid-date failure

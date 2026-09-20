@@ -44,6 +44,8 @@ void main() {
       birthYear: 2015,
       dayEntries: [
         _entry('01ARZ3NDEKTSV4RRFFQ69G5FA1', '2026-09-15'), // valid
+        // Issue #949: "today + 1" relative to the injected [_today], never
+        // the real clock; no time bomb.
         _entry('01ARZ3NDEKTSV4RRFFQ69G5FA2', '2026-09-20'), // today + 1
         _entry('01ARZ3NDEKTSV4RRFFQ69G5FA3', '2026-12-31'), // future
         _entry('01ARZ3NDEKTSV4RRFFQ69G5FA4', '2010-06-01'), // pre-birth

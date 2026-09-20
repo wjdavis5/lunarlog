@@ -244,6 +244,8 @@ void main() {
           jsonEncode({
             'profile_display_name': 'Riley',
             'role': 'caregiver',
+            // Fixed fixture expiry (issue #949): parsed and compared, never
+            // measured against the real clock.
             'expires_at': '2026-09-20T12:00:00.000Z',
           }),
           200,
@@ -256,6 +258,7 @@ void main() {
       expect(preview, isNotNull);
       expect(preview!.profileDisplayName, 'Riley');
       expect(preview.role, GuardianRole.caregiver);
+      // Issue #949: fixed fixture expiry, decoded verbatim.
       expect(preview.expiresAt, DateTime.utc(2026, 9, 20, 12));
       expect(syncEngine.fullReconcileCount, 0,
           reason: 'a preview never triggers a reconcile - it commits nothing');
@@ -280,6 +283,7 @@ void main() {
           jsonEncode({
             'profile_display_name': 'Riley',
             'role': 'some_future_role',
+            // Issue #949: fixed fixture expiry, never measured against now.
             'expires_at': '2026-09-20T12:00:00.000Z',
           }),
           200,

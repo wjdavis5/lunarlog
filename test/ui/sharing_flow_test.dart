@@ -571,6 +571,8 @@ void main() {
             ..scriptedPreview = InvitePreview(
               profileDisplayName: 'Riley',
               role: GuardianRole.caregiver,
+              // Issue #949: fixed fixture expiry; this sheet renders the name
+              // and role, never the expiry against the real clock.
               expiresAt: DateTime.utc(2026, 9, 20),
             );
 
