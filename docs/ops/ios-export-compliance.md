@@ -13,9 +13,11 @@ been obtained.
 ## What lunarlog encrypts (post-SQLCipher)
 
 - **At-rest database encryption is now the OS's responsibility** — iOS Data
-  Protection (native) / Android's platform encryption. The app no longer
-  bundles a third-party cipher or manages its own database key; there is no
-  `PRAGMA key`, no per-install key in `flutter_secure_storage` for the
+  Protection (native `FileProtectionType.completeUntilFirstUserAuthentication`,
+  unreadable until first device unlock after restart, matching the session
+  Keychain class — issue #906) / Android's platform encryption. The app no
+  longer bundles a third-party cipher or manages its own database key; there is
+  no `PRAGMA key`, no per-install key in `flutter_secure_storage` for the
   database, and no cipher-availability preflight at startup. See
   `lib/data/db/native_db.dart` and `lib/data/db/db_factory.dart`.
 - **The device-credential gate is unrelated and unaffected** — `local_auth`

@@ -34,10 +34,10 @@ import UserNotifications
     // calls "setFlagSecure" on this platform, so there's nothing to
     // implement here for it). Excludes the local database file (and its
     // sqlite -wal/-shm/-journal siblings, whichever exist at call time)
-    // from iCloud/device backup and marks them NSFileProtectionComplete.
+    // from iCloud/device backup and marks them
+    // NSFileProtectionCompleteUntilFirstUserAuthentication (Issue #906).
     // See lib/startup/startup_native.dart's protectDatabaseFile() doc
-    // comment for why Complete (not CompleteUntilFirstUserAuthentication)
-    // is the right class here.
+    // comment for why CompleteUntilFirstUserAuthentication is the right class.
     FlutterMethodChannel(
       name: "lunarlog/privacy",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
@@ -77,15 +77,15 @@ import UserNotifications
 
     // Round 2: protect the containing directory itself, not just the
     // files that exist at call time. A child inherits its parent
-    // directory's NSFileProtectionComplete class, and
-    // NSURLIsExcludedFromBackupKey on a directory excludes its current
+    // directory's NSFileProtectionCompleteUntilFirstUserAuthentication class,
+    // and NSURLIsExcludedFromBackupKey on a directory excludes its current
     // *and future* contents — so a sqlite `-journal` sidecar created
     // after this method has already run once (this call only iterates
     // siblings that already exist below) is covered anyway.
     if fileManager.fileExists(atPath: directoryPath) {
       do {
         try fileManager.setAttributes(
-          [.protectionKey: FileProtectionType.complete],
+          [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
           ofItemAtPath: directoryPath
         )
       } catch {
@@ -107,10 +107,13 @@ import UserNotifications
       let siblingPath = path + suffix
       guard fileManager.fileExists(atPath: siblingPath) else { continue }
 
-      // NSFileProtectionComplete: unreadable while the device is locked.
+      // NSFileProtectionCompleteUntilFirstUserAuthentication: readable after
+      // first unlock (Issue #906: avoids SIGBUS in SQLite WAL index when
+      // background sync or push arrivals touch the database while the device
+      // is locked).
       do {
         try fileManager.setAttributes(
-          [.protectionKey: FileProtectionType.complete],
+          [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
           ofItemAtPath: siblingPath
         )
       } catch {

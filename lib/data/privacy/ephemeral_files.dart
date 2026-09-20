@@ -22,11 +22,9 @@
 /// successful export. The startup sweep ([sweepPluginCachesAtStartup]) in
 /// particular must never block or fail a launch.
 ///
-/// On iOS these files otherwise get `CompleteUntilFirstUserAuthentication`,
-/// weaker than the `FileProtectionType.complete` the database gets — moving
-/// the export temps into Application Support ([exportDirectoryIn]) is what
-/// gets them the same class (a child inherits its parent directory's
-/// protection, set by `AppDelegate.protectDatabaseFile`). On Android
+/// On iOS export temps in Application Support ([exportDirectoryIn]) inherit the
+/// parent directory's protection class and backup exclusion, set by
+/// `AppDelegate.protectDatabaseFile` (issue #244, issue #906). On Android
 /// `android/app/src/main/res/xml/data_extraction_rules.xml` lists these paths
 /// so they are never copied by backup or device-to-device transfer.
 library;
@@ -59,7 +57,7 @@ const List<String> kEphemeralCacheFilePrefixes = [
 
 /// The subdirectory of the protected Application Support directory that holds
 /// export temp files (issue #843). A child of Application Support inherits
-/// its `NSFileProtectionComplete` class and backup exclusion on iOS; on
+/// its file-protection class and backup exclusion on iOS; on
 /// Android it lives under `getFilesDir()` and is listed in
 /// `data_extraction_rules.xml`.
 const String kExportTempDirectoryName = 'export-tmp';
@@ -163,8 +161,8 @@ Future<void> sweepPluginCachesAtStartup({
 }
 
 /// The protected directory export temp files are written to: a child of the
-/// Application Support directory, which on iOS carries the database's own
-/// `NSFileProtectionComplete` class and backup exclusion (issue #843).
+/// Application Support directory, which on iOS carries the database directory's
+/// file-protection class and backup exclusion (issue #843, issue #906).
 Future<Directory> protectedExportDirectory() async =>
     exportDirectoryIn(await getApplicationSupportDirectory());
 
