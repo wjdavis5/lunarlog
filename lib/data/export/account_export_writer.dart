@@ -1,10 +1,10 @@
 /// Platform adapter for account export (Issue #17, Unit U5; KTD5, KTD6).
 /// The only untestable-under-`flutter test` part of export: everything
 /// content-shaped lives in the pure `lib/domain/export/account_export.dart`
-/// builder this wraps. Writes the built document to a temp file (via
-/// `path_provider`) and hands it to the platform share sheet (via
-/// `share_plus`), then deletes the temp file once sharing completes -
-/// successfully or not.
+/// builder this wraps. Writes the built document to the protected Application
+/// Support directory (issue #843) and hands it to the platform share sheet
+/// (via `share_plus`), then deletes the temp file and the share-cache copy
+/// once sharing completes - successfully or not.
 ///
 /// Excluded from the coverage/CRAP gate in `tool/quality/exclusions.dart`,
 /// the same treatment as `lib/data/auth/google_sign_in_client.dart`; its
@@ -19,9 +19,8 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../domain/export/account_export.dart';
@@ -38,6 +37,8 @@ import '../../domain/models/profile.dart';
 import '../../domain/models/visit_prep_item.dart';
 import '../../domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
+import '../privacy/ephemeral_files.dart';
+import 'export_file_share.dart';
 
 class PlatformAccountExportWriter implements AccountExportWriter {
   const PlatformAccountExportWriter({this.remoteSource});
@@ -46,8 +47,8 @@ class PlatformAccountExportWriter implements AccountExportWriter {
   final AccountExportRemoteSource? remoteSource;
 
   /// Builds the export (see [buildMergedAccountExport]), writes it to
-  /// `lunarlog-export-<yyyyMMdd-HHmmss>.json` under the temp directory, and
-  /// hands that file to the platform share sheet.
+  /// `lunarlog-export-<yyyyMMdd-HHmmss>.json` under the protected export
+  /// directory, and hands that file to the platform share sheet.
   @override
   Future<void> exportAndShare({
     required List<Profile> profiles,
@@ -80,22 +81,23 @@ class PlatformAccountExportWriter implements AccountExportWriter {
     );
     final encoded = const JsonEncoder.withIndent('  ').convert(document);
 
-    final tempDir = await getTemporaryDirectory();
     final fileName = 'lunarlog-export-${_fileTimestamp(exportedAt)}.json';
-    final file = File('${tempDir.path}${Platform.pathSeparator}$fileName');
-    await file.writeAsString(encoded);
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'application/json')],
-          fileNameOverrides: [fileName],
+    // Issue #843: write under the protected Application Support directory and
+    // clean the share-cache copy plus this original once sharing completes.
+    await writeShareExportAndCleanup(
+      directory: await protectedExportDirectory(),
+      files: [
+        ExportShareFile(
+          fileName: fileName,
+          bytes: Uint8List.fromList(utf8.encode(encoded)),
+          mimeType: 'application/json',
         ),
-      );
-    } finally {
-      if (await file.exists()) {
-        await file.delete();
-      }
-    }
+      ],
+      cacheDirectory: await temporaryCacheDirectory(),
+      share: (files, names) => SharePlus.instance.share(
+        ShareParams(files: files, fileNameOverrides: names),
+      ),
+    );
   }
 
   static String _fileTimestamp(DateTime utcInstant) {

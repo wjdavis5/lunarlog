@@ -354,7 +354,7 @@ AppDependencies buildAppDependencies({
       tagRegistryRepository: tagRegistry,
       guardianNotesRepository: guardianNotes,
     ),
-    importFileReader: const PickImportFileReader(),
+    importFileReader: PickImportFileReader(),
     accountImportCoordinator: DriftAccountImportCoordinator(
       profilesRepository: profiles,
       dayEntriesRepository: dayEntries,

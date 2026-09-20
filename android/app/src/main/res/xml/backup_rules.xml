@@ -38,4 +38,13 @@
     <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
     <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
     <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
+    <!--
+      Round 5 (issue #843): the plaintext export/share/picker copies, kept
+      consistent with data_extraction_rules.xml's own round-5 addition; see
+      that file's comment and lib/data/privacy/ephemeral_files.dart.
+    -->
+    <exclude domain="file" path="export-tmp"/>
+    <exclude domain="cache" path="share_plus"/>
+    <exclude domain="cache" path="image_picker"/>
+    <exclude domain="cache" path="file_picker"/>
 </full-backup-content>

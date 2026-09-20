@@ -15,8 +15,9 @@
 ///
 /// The payload carries only the profile id, the reminder kind, and the
 /// action id — never a profile name, date, or any health detail (KTD7):
-/// on Android the payload is not rendered, and on iOS the generic
-/// `kReminderTitle`/`kReminderBody` are the only rendered strings.
+/// on Android the payload is not rendered, and the only strings a lock
+/// screen ever renders are the generic `kReminderTitle`/`kReminderBody`
+/// plus the neutral action labels below (issue #844).
 library;
 
 import 'dart:convert';
@@ -32,12 +33,18 @@ const String kReminderActionStarted = 'started';
 const String kReminderActionSpotting = 'spotting';
 const String kReminderActionNotYet = 'not_yet';
 
-/// The button labels the actions render — generic words only (KTD7):
-/// nothing here names a profile, a date, or any health detail. The exact
-/// strings must match `kReminderActionIds`' order so the scheduler and
-/// the executor agree on what a returned action id means.
-const String kReminderActionStartedLabel = 'Started';
-const String kReminderActionSpottingLabel = 'Spotting';
+/// The button labels the actions render — neutral words only (KTD7; issue
+/// #844): nothing here names a profile, a date, or any health detail, and
+/// the old `Started`/`Spotting` labels did leak one (`Spotting`) onto the
+/// expanded lock-screen notification. The meaning rides the action ids
+/// ([kReminderActionStarted] etc.), never these strings, so "A little" still
+/// logs spotting and "Yes" still starts a period — only the displayed text
+/// changed. The exact strings must match `kReminderActionIds`' order so the
+/// scheduler and the executor agree on what a returned action id means.
+/// `test/release/reminder_action_label_privacy_test.dart` pins both the
+/// neutral copy and the ids, and fails if a health word is reintroduced.
+const String kReminderActionStartedLabel = 'Yes';
+const String kReminderActionSpottingLabel = 'A little';
 const String kReminderActionNotYetLabel = 'Not yet';
 
 /// Every action id the app attaches, for the scheduler and tests.

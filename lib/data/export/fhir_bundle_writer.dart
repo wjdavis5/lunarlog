@@ -16,12 +16,14 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:lunarlog/domain/export/fhir_bundle_writer.dart';
+
+import '../privacy/ephemeral_files.dart';
+import 'export_file_share.dart';
 
 /// `application/fhir+json` — the FHIR JSON media type (FHIR R4 spec §1.8,
 /// distinct from the plain `application/json` `AccountExportWriter` uses
@@ -73,29 +75,28 @@ class PlatformFhirBundleWriter implements FhirBundleWriter {
         mimeType: kFhirBundleMimeType,
       );
 
-  /// The real platform call: temp file (via `path_provider`) handed to the
-  /// share sheet (via `share_plus`), deleted once sharing completes —
-  /// successfully or not. Cannot run under `flutter test` (no plugin
-  /// registration); see this file's doc comment.
+  /// The real platform call: protected export temp file (issue #843) handed
+  /// to the share sheet (via `share_plus`), cleaned up (original + share
+  /// cache) once sharing completes — successfully or not. Cannot run under
+  /// `flutter test` (no plugin registration); see this file's doc comment.
   static Future<void> _platformShare({
     required String fileName,
     required String jsonContent,
     required String mimeType,
   }) async {
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}${Platform.pathSeparator}$fileName');
-    await file.writeAsString(jsonContent);
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: mimeType)],
-          fileNameOverrides: [fileName],
+    await writeShareExportAndCleanup(
+      directory: await protectedExportDirectory(),
+      files: [
+        ExportShareFile(
+          fileName: fileName,
+          bytes: Uint8List.fromList(utf8.encode(jsonContent)),
+          mimeType: mimeType,
         ),
-      );
-    } finally {
-      if (await file.exists()) {
-        await file.delete();
-      }
-    }
+      ],
+      cacheDirectory: await temporaryCacheDirectory(),
+      share: (files, names) => SharePlus.instance.share(
+        ShareParams(files: files, fileNameOverrides: names),
+      ),
+    );
   }
 }

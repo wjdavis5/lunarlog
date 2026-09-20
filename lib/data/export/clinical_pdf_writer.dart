@@ -11,13 +11,14 @@
 /// and `share_plus` (the same boundary `FhirBundleWriter` documents).
 library;
 
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:lunarlog/domain/export/clinical_pdf_writer.dart';
+
+import '../privacy/ephemeral_files.dart';
+import 'export_file_share.dart';
 
 /// The PDF media type.
 const String kClinicalPdfMimeType = 'application/pdf';
@@ -54,28 +55,24 @@ class PlatformClinicalPdfWriter implements ClinicalPdfWriter {
     mimeType: kClinicalPdfMimeType,
   );
 
-  /// The real platform call: temp file (via `path_provider`) handed to the
-  /// share sheet (via `share_plus`), deleted once sharing completes —
-  /// successfully or not. Cannot run under `flutter test`.
+  /// The real platform call: protected export temp file handed to the share
+  /// sheet (via `share_plus`), cleaned up (original + share cache) once
+  /// sharing completes — successfully or not (issue #843). Cannot run under
+  /// `flutter test`.
   static Future<void> _platformShare({
     required String fileName,
     required Uint8List bytes,
     required String mimeType,
   }) async {
-    final tempDir = await getTemporaryDirectory();
-    final file = File('${tempDir.path}${Platform.pathSeparator}$fileName');
-    await file.writeAsBytes(bytes, flush: true);
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: mimeType)],
-          fileNameOverrides: [fileName],
-        ),
-      );
-    } finally {
-      if (await file.exists()) {
-        await file.delete();
-      }
-    }
+    await writeShareExportAndCleanup(
+      directory: await protectedExportDirectory(),
+      files: [
+        ExportShareFile(fileName: fileName, bytes: bytes, mimeType: mimeType),
+      ],
+      cacheDirectory: await temporaryCacheDirectory(),
+      share: (files, names) => SharePlus.instance.share(
+        ShareParams(files: files, fileNameOverrides: names),
+      ),
+    );
   }
 }

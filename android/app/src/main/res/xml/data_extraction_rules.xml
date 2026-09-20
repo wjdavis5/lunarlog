@@ -65,6 +65,21 @@
         <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
         <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
         <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
+        <!--
+          Round 5 (issue #843): the plaintext copies an export or a picked
+          screenshot/backup leaves outside the database's protection. Export
+          temp files now live in a dedicated `export-tmp` directory under
+          getFilesDir() (path_provider's Application Support on Android), and
+          the share/picker plugins keep their copies under getCacheDir().
+          Cache is not normally backed up, but these are listed belt-and-
+          suspenders so a future change to that assumption cannot copy a
+          household's full export to a new device. See
+          lib/data/privacy/ephemeral_files.dart.
+        -->
+        <exclude domain="file" path="export-tmp"/>
+        <exclude domain="cache" path="share_plus"/>
+        <exclude domain="cache" path="image_picker"/>
+        <exclude domain="cache" path="file_picker"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="lunarlog.db"/>
@@ -80,5 +95,10 @@
         <exclude domain="root" path="app_flutter/lunarlog.db-wal"/>
         <exclude domain="root" path="app_flutter/lunarlog.db-shm"/>
         <exclude domain="root" path="app_flutter/lunarlog.db-journal"/>
+        <!-- Round 5 (issue #843): see the <cloud-backup> comment above. -->
+        <exclude domain="file" path="export-tmp"/>
+        <exclude domain="cache" path="share_plus"/>
+        <exclude domain="cache" path="image_picker"/>
+        <exclude domain="cache" path="file_picker"/>
     </device-transfer>
 </data-extraction-rules>

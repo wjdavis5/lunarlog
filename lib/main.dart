@@ -8,6 +8,8 @@
 /// and every Sentry call in the app is a no-op.
 library;
 
+import 'dart:async';
+
 import 'package:app_links/app_links.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 import 'app_lifecycle.dart';
 import 'config.dart';
 import 'data/gate/pin_credential_store.dart';
+import 'data/privacy/ephemeral_files.dart';
 import 'startup/gate/gate.dart';
 import 'domain/sharing/invite_links.dart';
 import 'data/notifications/notification_scheduler.dart';
@@ -48,6 +51,11 @@ Future<void> _runLunarlog() async {
   try {
     await resolveCurrentTimeZone();
   } catch (_) {}
+  // Issue #843: best-effort sweep of the plugin cache copies (share_plus,
+  // image_picker, file_picker) an export or a pick could have left behind if
+  // the process was killed before its own cleanup ran. Fire-and-forget: the
+  // sweep never throws and must never block or fail a launch.
+  unawaited(sweepPluginCachesAtStartup());
   // Supabase auth (U4): initialized before the first frame so a cold-start
   // recovery link is latched in the service before any widget exists
   // (KTD8). Null when the build has no Supabase configuration (KTD11).
