@@ -694,6 +694,10 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// alone; it never reads a logged ovulation test or BBT reading.
   Widget? _conceiveCard(BuildContext context, CyclePrediction prediction) {
     if (prediction is! ActivePrediction) return null;
+    // Issue #859: a stale history has no meaningful fertile window — the
+    // domain helper already returns null for it, but short-circuiting here
+    // keeps the stale card the single thing on screen (see _activeCard).
+    if (prediction.staleHistory) return null;
     final estimate = currentConceptionEstimate(prediction);
     if (estimate == null) return null;
     return ConceiveCard(
@@ -776,6 +780,16 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// headline). The tier caption, late resolver/status line, and
   /// long-cycle prompt are unchanged.
   Widget _activeCard(BuildContext context, ActivePrediction prediction) {
+    // Issue #859: when the history is stale, the rolled estimate, the
+    // days-late hero number, and any fertile window would all read as
+    // broken. Replace the whole active surface with a calm, non-alarming
+    // explanation and a way forward — never a silent screen (#221's
+    // posture still holds: it says something useful). The long-cycle
+    // state between kMaxOpenCycleDays and the stale threshold is
+    // deliberately untouched (stale is a strictly further step).
+    if (prediction.staleHistory) {
+      return _staleHistoryCard(context);
+    }
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final aboutSection = _aboutEstimateSection(
@@ -825,6 +839,66 @@ class _OverviewPanelState extends State<OverviewPanel>
             if (prediction.unusuallyLongCycle) ...[
               const SizedBox(height: LLSpace.space2),
               _longCycleSection(context, prediction, theme),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Issue #859: the stale-history replacement for the whole active
+  /// estimate surface. A calm, non-alarming card — no days-late count, no
+  /// rolled next-period date, no confidence chip, no fertile window — that
+  /// says the history is old and offers the two ways forward the issue
+  /// names: log a period start, or turn predictions off. It keeps #221's
+  /// "never go silent" posture (the screen still explains the situation)
+  /// without rendering numbers the roll-forward machinery can no longer
+  /// justify. Actions are hidden for a read-only (viewer/archived) tree,
+  /// matching the long-cycle prompt's own rule.
+  Widget _staleHistoryCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    return Card(
+      key: const ValueKey('overview-stale-history'),
+      child: Padding(
+        padding: const EdgeInsets.all(LLSpace.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.overviewStaleHistoryTitle,
+              key: const ValueKey('overview-stale-history-title'),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            Text(
+              l10n.overviewStaleHistoryBody,
+              key: const ValueKey('overview-stale-history-body'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (!_effectiveReadOnly) ...[
+              const SizedBox(height: LLSpace.space3),
+              Wrap(
+                spacing: LLSpace.space2,
+                runSpacing: LLSpace.space1,
+                children: [
+                  FilledButton.icon(
+                    key: const ValueKey('stale-history-log'),
+                    onPressed: _logPeriodStartedToday,
+                    icon: const Icon(Icons.water_drop_outlined, size: 18),
+                    label: Text(l10n.overviewStaleHistoryLog),
+                  ),
+                  // Issue #225: profile-level "turn predictions off" in
+                  // Settings — the same affordance the long-cycle prompt and
+                  // the late resolver offer when an estimate stops helping.
+                  OutlinedButton(
+                    key: const ValueKey('stale-history-predictions-off'),
+                    onPressed: () =>
+                        pushNamedScreen<void>(context, kRouteSettingsScreen),
+                    child: Text(l10n.overviewLongCyclePredictionsOff),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
