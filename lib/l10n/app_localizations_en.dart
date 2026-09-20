@@ -358,6 +358,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetUndo => 'Undo';
 
   @override
+  String get daySheetCycleStartDialogTitle => 'Start a new cycle?';
+
+  @override
+  String daySheetCycleStartDialogBody(
+    int cycleDay,
+    String flow,
+    int cycleLength,
+  ) {
+    return 'This looks early — you\'re on cycle day $cycleDay. Logging $flow flow starts a new cycle, closes the current one after $cycleLength days, and updates your averages and estimates. Spotting never starts a cycle.';
+  }
+
+  @override
+  String get daySheetCycleStartConfirm => 'Start new cycle';
+
+  @override
+  String get daySheetCycleStartSpotting => 'Log spotting instead';
+
+  @override
+  String get daySheetCycleStartSnackbar =>
+      'New cycle started — history and estimates updated.';
+
+  @override
+  String get daySheetCycleHistorySnackbar => 'Cycle history updated.';
+
+  @override
   String get daySheetSave => 'Save';
 
   @override

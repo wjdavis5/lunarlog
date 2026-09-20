@@ -682,6 +682,46 @@ abstract class AppLocalizations {
   /// **'Undo'**
   String get daySheetUndo;
 
+  /// Issue #887: title of the confirmation shown when a flow-chip tap would start a new cycle earlier than the profile's history expects.
+  ///
+  /// In en, this message translates to:
+  /// **'Start a new cycle?'**
+  String get daySheetCycleStartDialogTitle;
+
+  /// Issue #887: body of the early-cycle-start confirmation. {cycleDay} is the 1-based day in the cycle being closed ('cycle day 17'), {flow} the tapped bleed level's label, {cycleLength} the length the closed cycle would end up with (16 for a day-17 start).
+  ///
+  /// In en, this message translates to:
+  /// **'This looks early — you\'re on cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates your averages and estimates. Spotting never starts a cycle.'**
+  String daySheetCycleStartDialogBody(
+    int cycleDay,
+    String flow,
+    int cycleLength,
+  );
+
+  /// Issue #887: the confirmation action — proceed with the flow log that starts the new cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start new cycle'**
+  String get daySheetCycleStartConfirm;
+
+  /// Issue #887: the alternative action — record the day as spotting (its own observation row), the mid-cycle bleed that never starts a cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Log spotting instead'**
+  String get daySheetCycleStartSpotting;
+
+  /// Issue #887: snackbar shown when a day-sheet session changed the cycle-start set by starting a new cycle at the logged day; carries an Undo action restoring the pre-session entry.
+  ///
+  /// In en, this message translates to:
+  /// **'New cycle started — history and estimates updated.'**
+  String get daySheetCycleStartSnackbar;
+
+  /// Issue #887: snackbar shown when a day-sheet session changed the cycle-start set without starting a cycle at the logged day (a cleared cycle-starting bleed, or a bridging edit); carries an Undo action restoring the pre-session entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle history updated.'**
+  String get daySheetCycleHistorySnackbar;
+
   /// The day sheet's save button label.
   ///
   /// In en, this message translates to:
