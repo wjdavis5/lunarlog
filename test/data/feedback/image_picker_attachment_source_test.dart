@@ -96,8 +96,14 @@ class RecordingPicker {
   }
 }
 
-ImagePickerAttachmentSource sourceWith(RecordingPicker picker) =>
-    ImagePickerAttachmentSource(pickGalleryImage: picker.call);
+ImagePickerAttachmentSource sourceWith(
+  RecordingPicker picker, {
+  DeletePickedFile? deletePickedFile,
+}) =>
+    ImagePickerAttachmentSource(
+      pickGalleryImage: picker.call,
+      deletePickedFile: deletePickedFile,
+    );
 
 const int kCap = kMaxAttachmentBytes;
 
@@ -229,5 +235,61 @@ void main() {
 
     expect(attachment, isNull);
     expect(picker.calls, 1);
+  });
+
+  test('the picked file is deleted after its bytes are read (issue #843)',
+      () async {
+    final deleted = <String>[];
+    final picker = RecordingPicker(FakePickedFile(
+      name: 'IMG_0042.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 16,
+      payload: Uint8List(16),
+    ));
+
+    final attachment = await sourceWith(
+      picker,
+      deletePickedFile: (path) async => deleted.add(path),
+    ).pickImage();
+
+    expect(attachment, isNotNull);
+    expect(deleted, ['IMG_0042.jpg'],
+        reason: 'the plugin copy in the cache/tmp directory must be deleted');
+  });
+
+  test('an oversized pick is still deleted even though its bytes are never '
+      'read (issue #843)', () async {
+    final deleted = <String>[];
+    final picker = RecordingPicker(FakePickedFile(
+      name: 'huge.png',
+      mimeType: 'image/png',
+      sizeBytes: kCap + 1,
+    ));
+
+    await expectLater(
+      sourceWith(picker, deletePickedFile: (path) async => deleted.add(path))
+          .pickImage(),
+      throwsA(isA<AttachmentTooLargeException>()),
+    );
+
+    expect((picker.file! as FakePickedFile).readCalls, 0);
+    expect(deleted, ['huge.png']);
+  });
+
+  test('a cleanup failure never surfaces and the attachment still returns '
+      '(issue #843)', () async {
+    final picker = RecordingPicker(FakePickedFile(
+      name: 'IMG_0043.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 16,
+      payload: Uint8List(16),
+    ));
+
+    final attachment = await sourceWith(
+      picker,
+      deletePickedFile: (_) async => throw StateError('unlink denied'),
+    ).pickImage();
+
+    expect(attachment, isNotNull);
   });
 }

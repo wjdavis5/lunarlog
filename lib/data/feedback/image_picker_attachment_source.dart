@@ -10,9 +10,13 @@
 /// tests (#215).
 library;
 
+import 'dart:io';
+
 import 'package:image_picker/image_picker.dart';
 import 'package:lunarlog/domain/feedback/attachment_mime.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+
+import '../privacy/ephemeral_files.dart';
 
 /// Longest edge the plugin downscales a pick to before the bytes cross into
 /// Dart (#207). A typical modern 12 MP photo (4032x3024) becomes 2048x1536,
@@ -38,11 +42,19 @@ typedef PickGalleryImage = Future<XFile?> Function({
   int? imageQuality,
 });
 
+/// Deletes the picked file once its bytes are read (issue #843). Injectable
+/// so a test can observe the path deletion without touching the filesystem.
+typedef DeletePickedFile = Future<void> Function(String path);
+
 class ImagePickerAttachmentSource implements AttachmentSource {
-  ImagePickerAttachmentSource({PickGalleryImage? pickGalleryImage})
-      : _pickGalleryImage = pickGalleryImage ?? _pickFromPlugin;
+  ImagePickerAttachmentSource({
+    PickGalleryImage? pickGalleryImage,
+    DeletePickedFile? deletePickedFile,
+  })  : _pickGalleryImage = pickGalleryImage ?? _pickFromPlugin,
+        _deletePickedFile = deletePickedFile ?? _deleteFromDisk;
 
   final PickGalleryImage _pickGalleryImage;
+  final DeletePickedFile _deletePickedFile;
 
   /// The real plugin path. Never executed under `flutter test`.
   static Future<XFile?> _pickFromPlugin({
@@ -58,6 +70,12 @@ class ImagePickerAttachmentSource implements AttachmentSource {
         imageQuality: imageQuality,
       );
 
+  /// The real deletion path (issue #843): the plugin left a re-encoded copy in
+  /// the Android cache / iOS `NSTemporaryDirectory()`, so it is unlinked after
+  /// the bytes are read — best-effort, never surfaced.
+  static Future<void> _deleteFromDisk(String path) =>
+      deleteFileBestEffort(File(path));
+
   @override
   Future<FeedbackAttachment?> pickImage() async {
     // maxWidth/maxHeight/imageQuality make the plugin downscale and
@@ -70,21 +88,31 @@ class ImagePickerAttachmentSource implements AttachmentSource {
       imageQuality: kAttachmentJpegQuality,
     );
     if (file == null) return null;
-    // Reject an oversized pick *before* reading it (#207): `length()` stats
-    // the file; the old code ran `readAsBytes()` unconditionally, so the
-    // UI's too-large rejection had already cost the full read it exists to
-    // avoid.
-    if (await file.length() > kMaxAttachmentBytes) {
-      throw const AttachmentTooLargeException();
+    try {
+      // Reject an oversized pick *before* reading it (#207): `length()` stats
+      // the file; the old code ran `readAsBytes()` unconditionally, so the
+      // UI's too-large rejection had already cost the full read it exists to
+      // avoid.
+      if (await file.length() > kMaxAttachmentBytes) {
+        throw const AttachmentTooLargeException();
+      }
+      final bytes = await file.readAsBytes();
+      return FeedbackAttachment(
+        bytes: bytes,
+        // Issue #215: the name-based fallback mapping lives in
+        // lib/domain/feedback/attachment_mime.dart
+        // (attachmentMimeTypeFromFilename), directly unit-tested there.
+        mimeType: file.mimeType ?? attachmentMimeTypeFromFilename(file.name),
+        filename: file.name,
+      );
+    } finally {
+      // Issue #843: the picked copy (accepted or rejected) is deleted here,
+      // best-effort — a cleanup failure must never surface.
+      try {
+        await _deletePickedFile(file.path);
+      } catch (_) {
+        // Best effort only.
+      }
     }
-    final bytes = await file.readAsBytes();
-    return FeedbackAttachment(
-      bytes: bytes,
-      // Issue #215: the name-based fallback mapping lives in
-      // lib/domain/feedback/attachment_mime.dart
-      // (attachmentMimeTypeFromFilename), directly unit-tested there.
-      mimeType: file.mimeType ?? attachmentMimeTypeFromFilename(file.name),
-      filename: file.name,
-    );
   }
 }

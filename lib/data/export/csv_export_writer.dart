@@ -6,13 +6,16 @@
 /// real device plugins.
 library;
 
-import 'dart:io';
+import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'package:lunarlog/domain/export/csv_export.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
+
+import '../privacy/ephemeral_files.dart';
+import 'export_file_share.dart';
 
 /// Delivers a list of files to the platform (temp file write + share sheet).
 typedef CsvShareCollaborator = Future<void> Function({
@@ -41,28 +44,22 @@ class PlatformCsvExportWriter implements CsvExportWriter {
   static Future<void> _platformShare({
     required List<({String fileName, String content})> files,
   }) async {
-    final tempDir = await getTemporaryDirectory();
-    final tempFiles = <File>[];
-    for (final f in files) {
-      final file = File('${tempDir.path}${Platform.pathSeparator}${f.fileName}');
-      await file.writeAsString(f.content);
-      tempFiles.add(file);
-    }
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [
-            for (final f in tempFiles) XFile(f.path, mimeType: 'text/csv'),
-          ],
-          fileNameOverrides: [for (final f in files) f.fileName],
-        ),
-      );
-    } finally {
-      for (final f in tempFiles) {
-        if (await f.exists()) {
-          await f.delete();
-        }
-      }
-    }
+    // Issue #843: write under the protected export directory, then clean the
+    // originals and the share-cache copy once sharing completes.
+    await writeShareExportAndCleanup(
+      directory: await protectedExportDirectory(),
+      files: [
+        for (final f in files)
+          ExportShareFile(
+            fileName: f.fileName,
+            bytes: Uint8List.fromList(utf8.encode(f.content)),
+            mimeType: 'text/csv',
+          ),
+      ],
+      cacheDirectory: await temporaryCacheDirectory(),
+      share: (shared, names) => SharePlus.instance.share(
+        ShareParams(files: shared, fileNameOverrides: names),
+      ),
+    );
   }
 }
