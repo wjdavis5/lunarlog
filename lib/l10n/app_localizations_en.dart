@@ -574,6 +574,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewLongCyclePredictionsOff => 'Turn off predictions';
 
   @override
+  String get overviewStaleHistoryTitle => 'Your history is out of date';
+
+  @override
+  String get overviewStaleHistoryBody =>
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+
+  @override
+  String get overviewStaleHistoryLog => 'Log a period';
+
+  @override
   String get overviewReminderHint =>
       'Reminders unavailable — notifications are off';
 
@@ -781,6 +791,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
       'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
+
+  @override
+  String healthSyncPermissionGranted(String source) {
+    return '$source access: granted';
+  }
+
+  @override
+  String healthSyncPermissionNotAsked(String source) {
+    return '$source access: not yet asked';
+  }
+
+  @override
+  String healthSyncPermissionDenied(String source) {
+    return '$source access: denied — open Settings to change';
+  }
+
+  @override
+  String healthSyncPermissionUnavailable(String source) {
+    return '$source access is not available on this device.';
+  }
+
+  @override
+  String get healthSyncPermissionOpenSettings => 'Open Settings';
 
   @override
   String healthSyncImportUpdatedDays(int count, String source) {

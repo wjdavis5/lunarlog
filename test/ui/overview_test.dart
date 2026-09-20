@@ -200,6 +200,28 @@ final List<LocalDate> kRegularLongOpenStarts = [
 ];
 final LocalDate kRegularLongOpenToday = LocalDate(2026, 6, 1);
 
+/// Issue #859: the issue's own 2½-year-stale shape — mean 29.33, last logged
+/// start 2024-04-27. Paired with [kStaleToday] (2026-10-13) the open cycle
+/// is 899 days, far past `staleHistoryThresholdDays` (~120 for this mean).
+final List<LocalDate> kStaleStarts = [
+  LocalDate(2024, 1, 30),
+  LocalDate(2024, 2, 28),
+  LocalDate(2024, 3, 28),
+  LocalDate(2024, 4, 27),
+];
+final LocalDate kStaleToday = LocalDate(2026, 10, 13);
+
+/// Issue #859 regression fixture: mean 30, last start 2026-06-21 → 70 days
+/// open on `kToday` (2026-08-30). Past `kMaxOpenCycleDays` (60) but well
+/// under `staleHistoryThresholdDays(30)` (~120), so it must keep rendering
+/// today's long-cycle prompt unchanged.
+final List<LocalDate> kLongOpen70Starts = [
+  LocalDate(2026, 3, 23),
+  LocalDate(2026, 4, 22),
+  LocalDate(2026, 5, 23),
+  LocalDate(2026, 6, 21),
+];
+
 class Harness {
   Harness(this.db, this.profile, this.profiles, this.entries, this._settings);
 
@@ -681,6 +703,68 @@ void main() {
         reason: 'exclude feeds the same exclusion list as manual omit / '
             'the resolver\'s skip',
       );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #859: a 70-day open cycle (past kMaxOpenCycleDays, '
+        'under the stale threshold) still renders the long-cycle prompt '
+        'unchanged', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLongOpen70Starts),
+      );
+
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'the ordinary active card, not the stale replacement');
+      expect(find.byKey(const ValueKey('overview-stale-history')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
+      expect(find.text('This cycle is unusually long'), findsOneWidget);
+      expect(find.text('Exclude this cycle'), findsOneWidget);
+      expect(find.text('Turn off predictions'), findsOneWidget);
+      // The rolled estimate, the late resolver, and the days-late count all
+      // stay exactly as they were before #859.
+      expect(find.byKey(const ValueKey('overview-next-period')), findsOneWidget);
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.text('40 days late'), findsOneWidget);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #859: a years-stale history shows the calm stale '
+        'card — no days-late count, no rolled estimate, no long-cycle '
+        'prompt, and an actionable next step', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        today: kStaleToday,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kStaleStarts),
+      );
+
+      expect(find.byKey(const ValueKey('overview-stale-history')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-active')), findsNothing);
+      // Nothing derived from the 2½-year-old date survives.
+      expect(find.byKey(const ValueKey('overview-days-until')), findsNothing,
+          reason: 'no days-late hero number');
+      expect(find.byKey(const ValueKey('overview-next-period')), findsNothing,
+          reason: 'no rolled-forward next-period estimate');
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
+          reason: 'no red late resolver / "Remind me in 3 days"');
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsNothing,
+          reason: 'the stale state replaces the long-cycle prompt entirely');
+      expect(find.textContaining('days late'), findsNothing);
+      // Never silent (#221): the screen explains the situation and offers a
+      // way forward.
+      expect(find.text('Your history is out of date'), findsOneWidget);
+      expect(find.byKey(const ValueKey('stale-history-log')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('stale-history-predictions-off')),
+        findsOneWidget,
+      );
+      expectNoFertilityVocabulary(tester, 'stale history');
       await disposeOverview(tester, h);
     });
 

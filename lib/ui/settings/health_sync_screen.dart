@@ -114,12 +114,20 @@ class HealthSyncScreen extends StatefulWidget {
     required this.binding,
     required this.signedInUserId,
     this.importer,
+    this.permissionProbe,
     this.writeEnabled = true,
   });
 
   final ProfilesRepository profilesRepository;
   final GuardiansForProfile guardiansForProfile;
   final HealthSyncBinding binding;
+
+  /// The OS-permission seam (Issue #959). Null on a build with no native
+  /// permission surface (web/desktop, or a harness that does not wire one),
+  /// in which case no status line or settings link is rendered. The screen
+  /// reads only [HealthPermissionProbe] — never the write port — so it can
+  /// display the OS consent without gaining the ability to write.
+  final HealthPermissionProbe? permissionProbe;
 
   /// The user-initiated import seam (Issues #217/#458). Null on a build
   /// where the import runner is absent (tests, an unconfigured build, a
@@ -157,6 +165,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   bool _importing = false;
   bool _importFailed = false;
   HealthImportSummary? _importSummary;
+
+  /// Issue #959: the OS permission state read from [permissionProbe] — null
+  /// when no probe is wired (nothing is rendered then). Re-read on every
+  /// load and after each user-initiated import, so a revocation made in OS
+  /// settings while the app was backgrounded is reflected when this screen
+  /// is (re-)opened or used.
+  HealthPermissionStatus? _permissionStatus;
 
   /// The platform the runner reads — drives the copy below. Defaults to
   /// Apple Health only for the (never-shown) case where the importer is
@@ -198,14 +213,78 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       final guardians = await widget.guardiansForProfile(profile.id);
       owners[profile.id] = ownerUserIdFor(guardians);
     }
+    final permissionStatus = await _readPermissionStatus();
     if (!mounted) return;
     setState(() {
       _boundProfileId = bound;
       _profiles = profiles;
       _ownerUserIdByProfile = owners;
+      _permissionStatus = permissionStatus;
       _loading = false;
       _loadFailed = false;
     });
+  }
+
+  /// Issue #959: reads the OS permission state through the probe, best
+  /// effort — a probe that throws (or is absent) must not fail the load or
+  /// crash the screen. Absent is null (render nothing); a throw is
+  /// [HealthPermissionStatus.unavailable] (we genuinely cannot tell).
+  Future<HealthPermissionStatus?> _readPermissionStatus() async {
+    final probe = widget.permissionProbe;
+    if (probe == null) return null;
+    try {
+      return await probe.permissionStatus();
+    } catch (_) {
+      return HealthPermissionStatus.unavailable;
+    }
+  }
+
+  /// Issue #959: the status line copy. The source name is the store this
+  /// platform actually uses. Note there is deliberately no read dimension:
+  /// HealthKit's read authorization is opaque, so the line never claims to
+  /// know (or denies) read access — it reports the write/access state only.
+  String _permissionStatusText(
+    AppLocalizations l10n,
+    HealthPermissionStatus status,
+  ) {
+    final source = _sourceName(_importPlatform);
+    return switch (status) {
+      HealthPermissionStatus.granted =>
+        l10n.healthSyncPermissionGranted(source),
+      HealthPermissionStatus.notAsked =>
+        l10n.healthSyncPermissionNotAsked(source),
+      HealthPermissionStatus.denied =>
+        l10n.healthSyncPermissionDenied(source),
+      HealthPermissionStatus.unavailable =>
+        l10n.healthSyncPermissionUnavailable(source),
+    };
+  }
+
+  /// The status line plus — only in the denied state — the platform
+  /// settings deep link (Issue #959). Null when no probe is wired, so an
+  /// unconfigured build shows exactly what it showed before.
+  Widget? _permissionStatusSection(AppLocalizations l10n) {
+    final status = _permissionStatus;
+    if (status == null) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          key: const ValueKey('health-sync-permission-status'),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(_permissionStatusText(l10n, status)),
+        ),
+        // The settings link is offered only when it is actionable: a denied
+        // permission is the one state the operator can fix in OS settings.
+        if (status == HealthPermissionStatus.denied)
+          ListTile(
+            key: const ValueKey('health-sync-open-settings'),
+            leading: const Icon(Icons.settings_outlined),
+            title: Text(l10n.healthSyncPermissionOpenSettings),
+            onTap: () => widget.permissionProbe?.openPermissionSettings(),
+          ),
+      ],
+    );
   }
 
   /// Whether binding [profile] right now would be allowed — evaluated
@@ -385,10 +464,15 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     });
     try {
       final summary = await importer.importNow();
+      final permissionStatus = await _readPermissionStatus();
       if (!mounted) return;
       setState(() {
         _importing = false;
         _importSummary = summary;
+        // Issue #959: re-read the OS permission after the pass, so an
+        // import that hit a revoked permission updates the status line
+        // (and offers the settings link) without leaving the screen.
+        _permissionStatus = permissionStatus;
       });
     } catch (_) {
       if (!mounted) return;
@@ -516,6 +600,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
       );
     }
+    final permissionSection =
+        _permissionStatusSection(AppLocalizations.of(context));
     return Scaffold(
       appBar: AppBar(title: const Text('Health app sync')),
       body: ListView(
@@ -528,6 +614,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
                   : kHealthSyncImportIntro,
             ),
           ),
+          // Issue #959: the OS permission state, shown per platform, with
+          // the settings deep link only when it is denied.
+          ?permissionSection,
           if (widget.writeEnabled) ...[
             // Issue #193: document the write surface the way Clue documents
             // its own — one-way, forward-only, and the one lossy mapping

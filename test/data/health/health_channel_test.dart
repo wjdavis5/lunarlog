@@ -638,4 +638,63 @@ void main() {
       expect(build(TargetPlatform.windows), isA<UnsupportedHealthPlatform>());
     });
   });
+
+  // Issue #959: the OS permission methods and their exact wire vocabulary.
+  // The native halves cannot run here, so these pin the method names and
+  // result strings the Swift/Kotlin handlers must mirror.
+  group('OS permission state (Issue #959)', () {
+    test('permissionStatus sends the pinned method name and decodes every '
+        'wire value', () async {
+      for (final status in HealthPermissionStatus.values) {
+        calls.clear();
+        nextResult = status.toWire();
+        expect(await makePlatform().permissionStatus(), status);
+        expect(calls.single.method, 'permissionStatus');
+      }
+    });
+
+    test('an unknown native string degrades to unavailable, never denied',
+        () async {
+      nextResult = 'readDenied';
+      expect(
+        await makePlatform().permissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+    });
+
+    test('a platform error or a missing handler is unavailable, never a crash',
+        () async {
+      nextError = PlatformException(code: 'anything');
+      expect(
+        await makePlatform().permissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+      nextError = MissingPluginException();
+      expect(
+        await makePlatform().permissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+    });
+
+    test('openPermissionSettings sends the pinned method name and is '
+        'best-effort', () async {
+      await makePlatform().openPermissionSettings();
+      expect(calls.single.method, 'openPermissionSettings');
+
+      nextError = PlatformException(code: 'anything');
+      await makePlatform().openPermissionSettings();
+      expect(calls.last.method, 'openPermissionSettings');
+    });
+
+    test('the unsupported platform reports unavailable and opens nothing',
+        () async {
+      const platform = UnsupportedHealthPlatform();
+      expect(
+        await platform.permissionStatus(),
+        HealthPermissionStatus.unavailable,
+      );
+      await platform.openPermissionSettings();
+      expect(calls, isEmpty, reason: 'no channel exists to call');
+    });
+  });
 }
