@@ -33,6 +33,7 @@ Profile _profile(
   String displayName = 'Riley',
   bool isMinor = true,
   ProfileMode mode = ProfileMode.standard,
+  bool? irregularFraming,
   BbtUnit bbtUnit = BbtUnit.celsius,
   WeightUnit weightUnit = WeightUnit.kg,
   int sortOrder = 0,
@@ -49,6 +50,7 @@ Profile _profile(
       displayName: displayName,
       isMinor: isMinor,
       mode: mode,
+      irregularFraming: irregularFraming,
       bbtUnit: bbtUnit,
       weightUnit: weightUnit,
       sortOrder: sortOrder,
@@ -175,6 +177,35 @@ void main() {
         (sum, p) => sum + ((p as Map)['dayEntries'] as List).length,
       );
       expect(totalEntries, 5);
+    });
+
+    test('issue #853 (export v14): the composed framing flag exports as '
+        'the tri-state it carries, next to the mode', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-on', mode: ProfileMode.teen, irregularFraming: true),
+          _profile('p-off', mode: ProfileMode.standard,
+              irregularFraming: false),
+          _profile('p-unset', mode: ProfileMode.teen),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final profiles = doc['profiles'] as List;
+      final on = profiles[0] as Map;
+      final off = profiles[1] as Map;
+      final unset = profiles[2] as Map;
+      expect(on['irregularFraming'], isTrue);
+      expect(off['irregularFraming'], isFalse);
+      expect(unset['irregularFraming'], isNull,
+          reason: 'null is the meaningful "engine default" state, carried '
+              'as an explicit JSON null');
+      // The mode key itself never carries the legacy rival value from a
+      // v14 export (stored rows were folded at v28/read time upstream).
+      for (final p in profiles) {
+        expect((p as Map)['mode'], isNot('irregular'));
+      }
     });
   });
 

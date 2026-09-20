@@ -1118,6 +1118,23 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{day late} other{days late}}'**
   String cycleWheelDaysLateUnit(int count);
 
+  /// Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{day past estimate} other{days past estimate}}'**
+  String cycleWheelDaysPastEstimateUnit(int count);
+
+  /// Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.
+  ///
+  /// In en, this message translates to:
+  /// **'{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsPastEstimate(
+    int daysPast,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
+
   /// Top line in the cycle wheel centre during a bleed episode.
   ///
   /// In en, this message translates to:
@@ -3497,6 +3514,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update note'**
   String get guardianNotesUpdate;
+
+  /// Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form.
+  ///
+  /// In en, this message translates to:
+  /// **'Irregular cycles'**
+  String get profileIrregularFramingLabel;
+
+  /// Issue #853: the composed irregular-framing toggle's hint, shown under the label.
+  ///
+  /// In en, this message translates to:
+  /// **'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.'**
+  String get profileIrregularFramingHint;
 }
 
 class _AppLocalizationsDelegate

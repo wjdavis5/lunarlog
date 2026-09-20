@@ -761,6 +761,23 @@
       "count": {"type": "int"}
     }
   },
+  "cycleWheelDaysPastEstimateUnit": "{count, plural, =1{day past estimate} other{days past estimate}}",
+  "@cycleWheelDaysPastEstimateUnit": {
+    "description": "Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsPastEstimate": "{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsPastEstimate": {
+    "description": "Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.",
+    "placeholders": {
+      "daysPast": {"type": "int"},
+      "cycleDay": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
+    }
+  },
   "cycleWheelBleedDayHero": "Day {day}",
   "@cycleWheelBleedDayHero": {
     "description": "Top line in the cycle wheel centre during a bleed episode.",
@@ -2608,6 +2625,14 @@
   "guardianNotesUpdate": "Update note",
   "@guardianNotesUpdate": {
     "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
+  },
+  "profileIrregularFramingLabel": "Irregular cycles",
+  "@profileIrregularFramingLabel": {
+    "description": "Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form."
+  },
+  "profileIrregularFramingHint": "Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.",
+  "@profileIrregularFramingHint": {
+    "description": "Issue #853: the composed irregular-framing toggle's hint, shown under the label."
   }
 
 }

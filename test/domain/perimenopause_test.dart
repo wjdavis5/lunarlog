@@ -79,7 +79,7 @@ void main() {
         'taxonomy carries the code', () {
       for (final mode in ProfileMode.values) {
         expect(
-          careModeCopyFor(mode).categoriesInOrder,
+          careModeCopyFor(mode, irregularFraming: false).categoriesInOrder,
           contains(TagCategory.hotFlashes),
           reason: mode.name,
         );

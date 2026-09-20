@@ -24,6 +24,7 @@ void main() {
     DateTime? deletedAt,
     DateTime? archivedAt,
     String mode = 'standard',
+    bool? irregularFraming,
     String bbtUnit = 'celsius',
     String weightUnit = 'kg',
     bool? unitsUnconfirmed,
@@ -40,6 +41,7 @@ void main() {
         displayName: deletedAt == null ? 'Kid' : '',
         isMinor: true,
         mode: mode,
+        irregularFraming: irregularFraming,
         bbtUnit: bbtUnit,
         weightUnit: weightUnit,
         unitsUnconfirmed: unitsUnconfirmed,
@@ -58,6 +60,23 @@ void main() {
         typicalPeriodLengthDays: typicalPeriodLengthDays,
         trackingPreferences: trackingPreferences,
       );
+
+  /// A raw wire payload for a profile, so decode tests can vary exactly
+  /// which keys the JSON carries (Issue #853: `irregular_framing` absent
+  /// vs. explicitly null are different payloads).
+  Map<String, Object?> makeProfileJson({
+    String mode = 'standard',
+    bool? irregularFraming,
+    bool carryFramingKey = false,
+  }) {
+    final row = <String, Object?>{
+      ...encodeProfile(makeProfile(mode: mode)),
+    };
+    if (irregularFraming != null || carryFramingKey) {
+      row['irregular_framing'] = irregularFraming;
+    }
+    return row;
+  }
 
   DayEntry makeEntry({
     List<String> tags = const ['cramps', 'headache'],
@@ -420,11 +439,51 @@ void main() {
       expect(decoded.relationship, isNull);
     });
 
-    test('every care mode round-trips through the codec (Issue #131)', () {
-      for (final mode in ['teen', 'caregiver', 'irregular', 'standard']) {
+    test('every choosable care mode round-trips through the codec '
+        '(Issue #131/#853)', () {
+      for (final mode in ['teen', 'caregiver', 'standard']) {
         final decoded = decodeProfile(encodeProfile(makeProfile(mode: mode)));
         expect(decoded.mode, mode, reason: 'mode $mode must round-trip');
+        expect(decoded.irregularFraming, isNull,
+            reason: 'mode $mode carries no framing key');
       }
+    });
+
+    test('Issue #853: the legacy irregular mode folds to standard + flag '
+        'on decode', () {
+      final decoded = decodeProfile(makeProfileJson(mode: 'irregular'));
+      expect(decoded.mode, 'standard');
+      expect(decoded.irregularFraming, isTrue);
+    });
+
+    test('Issue #853: an explicit irregular_framing key wins over the '
+        'legacy mode fold', () {
+      final decoded = decodeProfile(
+          makeProfileJson(mode: 'irregular', irregularFraming: false));
+      expect(decoded.mode, 'standard');
+      expect(decoded.irregularFraming, isFalse);
+    });
+
+    test('Issue #853: irregular_framing decodes true/false/null and is '
+        'emitted only when non-null', () {
+      final explicitTrue = decodeProfile(
+          makeProfileJson(mode: 'teen', irregularFraming: true));
+      expect(explicitTrue.irregularFraming, isTrue);
+      final explicitFalse = decodeProfile(
+          makeProfileJson(mode: 'teen', irregularFraming: false));
+      expect(explicitFalse.irregularFraming, isFalse);
+      final absent = decodeProfile(makeProfileJson(mode: 'teen'));
+      expect(absent.irregularFraming, isNull);
+      final jsonNull = decodeProfile(
+          makeProfileJson(mode: 'teen', carryFramingKey: true));
+      expect(jsonNull.irregularFraming, isNull);
+
+      expect(encodeProfile(makeProfile(irregularFraming: true)),
+          containsPair('irregular_framing', true));
+      expect(encodeProfile(makeProfile(irregularFraming: false)),
+          containsPair('irregular_framing', false));
+      expect(encodeProfile(makeProfile()),
+          isNot(contains('irregular_framing')));
     });
 
     test('decode of an unknown or absent mode yields standard rather than '

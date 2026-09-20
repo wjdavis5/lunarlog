@@ -99,11 +99,21 @@ class DriftAccountImporter implements AccountImporter {
       }
       return plan.fileProfileId;
     }
+    // Issue #853: a legacy file (any export made before the composed flag)
+    // can still carry `mode: 'irregular'` — validated against the closed
+    // set at parse time, accepted here, and folded to the composed axis
+    // exactly like the sync codec and both data migrations do:
+    // `standard` + an explicit `irregular_framing = true`. An explicit
+    // `irregularFraming` key in the file wins over the legacy fold.
+    final legacyIrregularMode = plan.mode == 'irregular';
     final created = await _storage.upsertProfile(
       id: plan.fileProfileId,
       displayName: plan.displayName,
       isMinor: plan.isMinor,
-      mode: plan.mode ?? 'standard',
+      mode: legacyIrregularMode ? 'standard' : (plan.mode ?? 'standard'),
+      irregularFraming: legacyIrregularMode && plan.irregularFraming == null
+          ? true
+          : plan.irregularFraming,
       // Issue #255: a v8 export always carries both keys; an older
       // export's absent keys fall back to the column defaults, exactly
       // like `mode` above.
