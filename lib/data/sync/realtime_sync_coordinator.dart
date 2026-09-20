@@ -40,7 +40,7 @@ const Duration kRealtimeRetryBase = Duration(seconds: 2);
 /// Cap for the retry delay: retries stay spaced, never a tight loop.
 const Duration kRealtimeRetryCap = Duration(minutes: 2);
 
-class RealtimeSyncCoordinator {
+class RealtimeSyncCoordinator with WidgetsBindingObserver {
   RealtimeSyncCoordinator({
     required this.client,
     required this.syncEngine,
@@ -84,6 +84,12 @@ class RealtimeSyncCoordinator {
   Timer? _debounceTimer;
   bool _disposed = false;
 
+  /// Issue #842: whether channels are currently paused because the app is
+  /// backgrounded. While true, no channel is (re)subscribed — the profile
+  /// watch still tracks ids and removes channels for vanished profiles, but
+  /// the "add newly discovered profile" step is deferred until resume.
+  bool _lifecyclePaused = false;
+
   /// The profile ids from the most recent [storage] emission, kept so a
   /// sign-in/sign-out identity change can rebuild channels without waiting
   /// for another watch emission.
@@ -110,12 +116,69 @@ class RealtimeSyncCoordinator {
   /// Starts watching local profiles and subscribes to Realtime channels.
   void start() {
     if (_disposed) return;
+    WidgetsBinding.instance.addObserver(this);
     final auth = this.auth;
     if (auth != null) {
       _boundUserId = auth.confirmedUserId;
       _authSubscription = auth.states.listen((_) => _onAuthStateChanged());
     }
     _profilesSubscription = storage.watchProfiles().listen(_onProfilesUpdated);
+  }
+
+  /// Issue #842: pause the Realtime channels (and the signup websocket's
+  /// heartbeat) while backgrounded, and re-subscribe on resume. One
+  /// lifecycle mechanism, the same `resumed`/`paused`/`hidden` states the
+  /// sync engine and prediction ticker key off.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_disposed) return;
+    if (state == AppLifecycleState.resumed) {
+      _onResumed();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _onPaused();
+    }
+  }
+
+  /// Issue #842: whether Realtime currently has a live subscription that can
+  /// deliver changes — at least one channel, and every channel reporting
+  /// `subscribed`. Deliberately stricter than [isLive], which is vacuously
+  /// true with no channels: the engine's resume-skip must not treat a set of
+  /// channels torn down for backgrounding as "connected", or a remote change
+  /// made while backgrounded could be missed until the next trigger.
+  bool get isSubscribed =>
+      _channels.isNotEmpty &&
+      _statuses.length == _channels.length &&
+      isLive;
+
+  void _onPaused() {
+    if (_lifecyclePaused) return;
+    _lifecyclePaused = true;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    for (final removal in _clearChannels()) {
+      unawaited(removal);
+    }
+  }
+
+  void _onResumed() {
+    if (!_lifecyclePaused) return;
+    _lifecyclePaused = false;
+    _resubscribeAll();
+  }
+
+  /// Re-opens a channel for every known profile under the current identity.
+  /// Mirrors [_rebuildChannels]'s identity guard but is safe for the
+  /// no-auth coordinator too (which has no `_boundUserId` and subscribes
+  /// unconditionally), so resume restores exactly the channels pause removed.
+  void _resubscribeAll() {
+    if (_disposed || _lifecyclePaused) return;
+    if (auth != null && _boundUserId == null) return;
+    for (final id in _lastProfileIds) {
+      if (!_channels.containsKey(id)) {
+        _subscribeToProfile(id);
+      }
+    }
   }
 
   void _onAuthStateChanged() {
@@ -138,6 +201,9 @@ class RealtimeSyncCoordinator {
       unawaited(removal);
     }
     if (_boundUserId == null) return;
+    // Issue #842: while backgrounded, defer re-subscription to [_onResumed]
+    // rather than opening channels the pause just removed.
+    if (_lifecyclePaused) return;
     for (final id in _lastProfileIds) {
       _subscribeToProfile(id);
     }
@@ -160,7 +226,9 @@ class RealtimeSyncCoordinator {
       }
     }
 
-    // 2. Add channels for newly discovered profiles.
+    // 2. Add channels for newly discovered profiles, unless backgrounded
+    // (issue #842) — [_onResumed] picks them up from [_lastProfileIds].
+    if (_lifecyclePaused) return;
     for (final id in currentIds) {
       if (!_channels.containsKey(id)) {
         _subscribeToProfile(id);
@@ -360,6 +428,7 @@ class RealtimeSyncCoordinator {
   /// leftover in-flight event on either stream is a no-op.
   Future<void> dispose() async {
     _disposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _debounceTimer?.cancel();
     _debounceTimer = null;
     unawaited(_authSubscription?.cancel());

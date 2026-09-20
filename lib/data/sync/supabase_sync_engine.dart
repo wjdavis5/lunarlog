@@ -86,6 +86,16 @@ const Duration kSyncBackoffCap = Duration(minutes: 10);
 /// (KTD2).
 const Duration kSyncFullPullInterval = Duration(hours: 24);
 
+/// Issue #842: the minimum age of the last successful cycle for a
+/// *lifecycle-triggered* sync (app resume, gate unlock) to be skipped. A
+/// resume that lands within this window, with nothing dirty locally and
+/// Realtime actually subscribed, is almost always redundant — Realtime
+/// already delivers the "something changed" signal, and a cycle costs 13+
+/// HTTP requests even when every page comes back empty. The skip never
+/// applies to a user-initiated [SyncEngine.requestSync], to a cycle with
+/// dirty rows, or when Realtime is down (then the pull is the only signal).
+const Duration kLifecycleSyncMinInterval = Duration(seconds: 60);
+
 /// Maximum consecutive sync cycles that may retry reconciliation due to
 /// un-appliable remote rows before advancing lastFullPullAt to avoid an
 /// unbounded reconcile loop. Also bounds [_consecutiveGuardianPullRetries]
@@ -351,6 +361,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     this.writeDebounce = const Duration(milliseconds: 250),
     UlidGenerator? ulid,
     SupabaseSyncApply? apply,
+    bool Function()? realtimeSubscribed,
   })  : _storage = storage,
         _transport = transport,
         _auth = auth,
@@ -364,6 +375,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
         _batchSize = batchSize,
         _pageSize = pageSize,
         _apply = apply ?? SupabaseSyncApply(storage),
+        // Issue #842: nullable Realtime liveness probe. A null probe reports
+        // "not subscribed", which is the safe default — it disables the
+        // lifecycle skip entirely so a build that never wires one behaves
+        // exactly as before. (The file-level ignore covers the named
+        // parameter.)
+        _realtimeSubscribed = realtimeSubscribed,
         _ulid = ulid ?? UlidGenerator() {
     if (batchSize < 1 || batchSize > PushBatch.maxRows) {
       throw ArgumentError.value(
@@ -388,6 +405,21 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   final int _pageSize;
   final SupabaseSyncApply _apply;
   final UlidGenerator _ulid;
+
+  /// Issue #842: whether Realtime currently has a live subscription that can
+  /// deliver remote-change signals. Null means "not subscribed" (see the
+  /// constructor comment), so the lifecycle skip is off unless a probe is
+  /// wired. The realtime coordinator is built *after* the engine (it needs
+  /// the engine), so production wires this through
+  /// [attachRealtimeSubscribedProbe] rather than the constructor.
+  bool Function()? _realtimeSubscribed;
+
+  /// Issue #842: attaches (or replaces) the Realtime liveness probe. The
+  /// composition root calls this right after building the coordinator, with
+  /// `() => coordinator.isSubscribed`.
+  void attachRealtimeSubscribedProbe(bool Function() probe) {
+    _realtimeSubscribed = probe;
+  }
 
   /// Quiet time after the last local write before a sync is requested.
   @visibleForTesting
@@ -467,6 +499,24 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     requestSync();
   }
 
+  /// Issue #842: (re)starts the 15-minute periodic sync timer. Idempotent —
+  /// a resume while the timer is already armed does nothing, and a resume
+  /// before [start]/after [dispose] never creates one.
+  void _startPeriodicTimer() {
+    if (_disposed || !_started || _periodicTimer != null) return;
+    _periodicTimer = _periodicTimerFactory(_periodicInterval, () {
+      _apply.clearRejected();
+      requestSync();
+    });
+  }
+
+  /// Issue #842: cancels the periodic sync timer while backgrounded. The
+  /// engine keeps its local-write/realtime triggers; only the timer stops.
+  void _stopPeriodicTimer() {
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+  }
+
   bool _forceFullReconcile = false;
 
   @override
@@ -541,7 +591,57 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) requestSync();
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // Issue #842: restore the periodic timer, then request a sync
+        // through the lifecycle gate (which may skip it).
+        _startPeriodicTimer();
+        _requestLifecycleSync();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // Issue #842: the screen is off / the app is in the background; stop
+        // the 15-minute timer so a backgrounded Android process does not
+        // keep waking the radio. `inactive` is deliberately ignored — it is
+        // a transient pre-`paused` state (a system dialog, the app switcher)
+        // and cancelling the timer on it would churn on every notification.
+        _stopPeriodicTimer();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
+  }
+
+  /// Issue #842: a sync requested by a lifecycle edge (resume or gate
+  /// unlock). It is skipped only when all three hold: Realtime is
+  /// subscribed, the last completed cycle was under
+  /// [kLifecycleSyncMinInterval] ago, and nothing is dirty. Any one of them
+  /// failing runs the sync. When no Realtime probe is wired (the default)
+  /// the check is synchronous and falls straight through to
+  /// [requestSync] — no behavior change.
+  void _requestLifecycleSync() {
+    if (_disposed || !_started) return;
+    if (!(_realtimeSubscribed?.call() ?? false)) {
+      requestSync();
+      return;
+    }
+    unawaited(_skipOrRequestLifecycleSync());
+  }
+
+  Future<void> _skipOrRequestLifecycleSync() async {
+    if (await _shouldSkipLifecycleSync()) return;
+    requestSync();
+  }
+
+  /// The three-part skip predicate; see [_requestLifecycleSync].
+  Future<bool> _shouldSkipLifecycleSync() async {
+    final lastSyncAt = _snapshot.lastSyncAt;
+    if (lastSyncAt == null) return false;
+    if (_clock().toUtc().difference(lastSyncAt) >= kLifecycleSyncMinInterval) {
+      return false;
+    }
+    // A rejected row counts as dirty here: erring toward syncing can only
+    // cost a redundant cycle, never a lost write.
+    return await _storage.dirtyCount() == 0;
   }
 
   // ---------------------------------------------------------------- triggers
@@ -551,7 +651,10 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     if (unlocked == _lastGateUnlocked) return;
     _lastGateUnlocked = unlocked;
     if (unlocked) {
-      requestSync();
+      // Issue #842: a gate unlock is a lifecycle edge like resume, so it
+      // goes through the same skip predicate (and, when no Realtime probe is
+      // wired, synchronously calls requestSync exactly as before).
+      _requestLifecycleSync();
     } else if (!_running) {
       _emit(_snapshot.copyWith(phase: SyncPhase.paused));
     }

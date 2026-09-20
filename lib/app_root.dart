@@ -514,6 +514,11 @@ class LunarLogRootState extends State<LunarLogRoot> {
           auth: authService,
         );
         _realtimeCoordinator = coordinator;
+        // Issue #842: the engine was built before the coordinator, so wire
+        // the Realtime liveness probe here — the lifecycle skip needs to
+        // know whether Realtime can deliver the change signal before it
+        // decides a resume pull is redundant.
+        _attachRealtimeSubscribedProbe(engine, coordinator);
         coordinator.start();
 
         // Issue #5, U7/U8: push registration and the Notifications screen.
@@ -554,6 +559,20 @@ class LunarLogRootState extends State<LunarLogRoot> {
       buildDefaultScheduler: widget.buildDefaultScheduler,
       dateTicker: widget.dateTicker,
     );
+  }
+
+  /// Issue #842: attaches the Realtime liveness probe to the concrete engine.
+  /// Split out of [_startSyncEngine] so the `is SupabaseSyncEngine` branch
+  /// does not count against that method's CRAP-gate complexity; a harness
+  /// that injects a recorder engine (every widget test) simply skips the
+  /// attach, exactly as a null probe does.
+  void _attachRealtimeSubscribedProbe(
+    SyncEngine engine,
+    RealtimeSyncCoordinator coordinator,
+  ) {
+    if (engine is SupabaseSyncEngine) {
+      engine.attachRealtimeSubscribedProbe(() => coordinator.isSubscribed);
+    }
   }
 
   /// Resolves (generating and persisting once) this install's stable
