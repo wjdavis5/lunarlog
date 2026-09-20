@@ -92,6 +92,37 @@ void main() {
       expect(await unrelatedDir.exists(), isTrue);
     });
 
+    test(
+      'sweepRootFiles removes unprefixed files (e.g. iOS file_picker copies '
+      'like backup.json) at the cache root while preserving unrelated '
+      'directories (Issue #943)',
+      () async {
+        final backup = File(
+          '${root.path}${Platform.pathSeparator}backup.json',
+        );
+        await backup.writeAsString('{"profiles":[]}');
+        final zedBounds = File(
+          '${root.path}${Platform.pathSeparator}zed-bounds.json',
+        );
+        await zedBounds.writeAsString('{}');
+        final inboxDir = Directory(
+          '${root.path}${Platform.pathSeparator}com.wjdavis5.lunarlog-Inbox',
+        );
+        await inboxDir.create(recursive: true);
+        final fileInInbox = File(
+          '${inboxDir.path}${Platform.pathSeparator}inbox-item.txt',
+        );
+        await fileInInbox.writeAsString('data');
+
+        await sweepEphemeralCachesBestEffort(root, sweepRootFiles: true);
+
+        expect(await backup.exists(), isFalse);
+        expect(await zedBounds.exists(), isFalse);
+        expect(await inboxDir.exists(), isTrue);
+        expect(await fileInInbox.exists(), isTrue);
+      },
+    );
+
     test('tolerates a missing directory', () async {
       await sweepEphemeralCachesBestEffort(
         Directory('${root.path}${Platform.pathSeparator}does-not-exist'),
@@ -120,6 +151,24 @@ void main() {
   group('sweepPluginCachesAtStartup', () {
     test('never throws even with no platform cache directory', () async {
       await sweepPluginCachesAtStartup();
+    });
+
+    test('invokes clearFilePicker and sweeps without throwing', () async {
+      var cleared = false;
+      await sweepPluginCachesAtStartup(
+        clearFilePicker: () async {
+          cleared = true;
+        },
+      );
+      expect(cleared, isTrue);
+    });
+
+    test('swallows failure from clearFilePicker', () async {
+      await sweepPluginCachesAtStartup(
+        clearFilePicker: () async {
+          throw Exception('picker clear failure');
+        },
+      );
     });
   });
 
