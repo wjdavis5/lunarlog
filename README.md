@@ -390,7 +390,8 @@ Part of the home lab; the canonical inventory lives in the lab root's
   same channel Android's FLAG_SECURE handler in `MainActivity.kt` uses):
   it marks the file (and its containing directory, so a `-journal` created
   later is covered too) `NSURLIsExcludedFromBackupKey` and
-  `NSFileProtectionComplete` — best effort, but a failure is reported (a
+  `NSFileProtectionCompleteUntilFirstUserAuthentication` (issue #906) — best
+  effort, but a failure is reported (a
   type-only breadcrumb plus `Sentry.captureException`, never a path) rather
   than swallowed silently. This has not yet been verified on a real
   device/Mac build (tracked as a blocker on issue #244; `flutter

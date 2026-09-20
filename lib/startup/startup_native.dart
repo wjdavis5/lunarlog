@@ -81,34 +81,27 @@ Future<void> deleteLocalDatabase() async => deleteRelocationArtifacts(
       targetFile: await localDatabaseFile(),
     );
 
-/// iOS-only, best-effort file hardening for the database (issue #244):
+/// iOS-only, best-effort file hardening for the database (issue #244, issue #906):
 /// excludes it (and its `-wal`/`-shm`/`-journal` siblings, plus the
 /// containing directory itself — round 2) from iCloud/device backup
-/// (`NSURLIsExcludedFromBackupKey`) and marks them `NSFileProtectionComplete`
-/// (unreadable while the device is locked), via a tiny platform channel to
+/// (`NSURLIsExcludedFromBackupKey`) and marks them
+/// `NSFileProtectionCompleteUntilFirstUserAuthentication` (unreadable until the
+/// first device unlock after boot), via a tiny platform channel to
 /// `AppDelegate.swift` — the same shape as Android's `setFlagSecure`
 /// channel in `MainActivity.kt`. Called after every successful database
 /// open (`main.dart`'s `dbOpener`, including a device-reset reopen — KTD16
 /// — which creates a fresh file that needs the same protection reapplied).
 ///
-/// **Why `Complete`, not `CompleteUntilFirstUserAuthentication`:** the gate
-/// (`lib/startup/gate/`) already keeps the database closed until the operator
-/// unlocks the app (AE4) — nothing opens or writes to this file before that
-/// happens on any code path today, including sync (`SupabaseSyncEngine`
-/// only starts once the database is open). So there is no existing path
-/// that expects to write to this file while the device is locked, and
-/// `Complete`'s stricter class (inaccessible until the *next* unlock, not
-/// just the first one since boot) costs nothing on top of that invariant.
-/// If a future change adds a write path that must run before the operator
-/// has unlocked the app at all this boot (e.g. a background push handler
-/// that touches the database directly, bypassing the gate), that path would
-/// start failing under `Complete` and this choice should be revisited
-/// then — `CompleteUntilFirstUserAuthentication` plus the backup exclusion
-/// above would be the safer pick for that case, since it only weakens
-/// at-rest protection for the stretch between boot and the device's own
-/// first unlock (a window this app's gate never operates in anyway, since
-/// the app's own credential prompt requires the device to already be
-/// unlocked).
+/// **Why `CompleteUntilFirstUserAuthentication` (Issue #906):** Issue #244
+/// originally set `FileProtectionType.complete`. However, SQLite in WAL mode
+/// memory-maps the `-shm` index file on read transactions; when the device
+/// locked with the app process still alive, background sync (the 15-minute
+/// periodic timer), minute tickers, or push arrivals attempting a database
+/// read resulted in a pagein fault (`SIGBUS` in `walIndexTryHdr`). Downgrading
+/// to `CompleteUntilFirstUserAuthentication` matches the class used for the
+/// session Keychain (`flutter_secure_storage`), keeping data protected at rest
+/// until the first unlock while allowing background database access when the
+/// device is locked without crashing.
 ///
 /// Best effort in the sense that a failure here never stops the app from
 /// running — the caller gets no exception either way — but it is no
