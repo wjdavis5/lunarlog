@@ -27,10 +27,11 @@ mucus, ovulation tests, issue #144) that would refine it further does not
 exist yet.
 Targets iOS (iPhone first-class), Android, and
 an installable web PWA used for iteration only. The app holds sensitive health
-data, including minors'; this repo stays private and must never contain real
-personal or health data.
+data, including minors'; this repository is public, open source, and fully auditable,
+and must never contain real personal or health data.
 
 **Privacy Policy:** Read our full [Privacy Policy](PRIVACY.md).  
+**Security Policy:** Read our [Security Policy](SECURITY.md) to report vulnerabilities responsibly.  
 **License:** [PolyForm Noncommercial 1.0.0](LICENSE) (Free for personal/noncommercial use; commercial resale prohibited).
 
 **Status:** dev project, not deployed. Release is gated (see Known limitations).
@@ -390,7 +391,8 @@ Part of the home lab; the canonical inventory lives in the lab root's
   same channel Android's FLAG_SECURE handler in `MainActivity.kt` uses):
   it marks the file (and its containing directory, so a `-journal` created
   later is covered too) `NSURLIsExcludedFromBackupKey` and
-  `NSFileProtectionComplete` — best effort, but a failure is reported (a
+  `NSFileProtectionCompleteUntilFirstUserAuthentication` (issue #906) — best
+  effort, but a failure is reported (a
   type-only breadcrumb plus `Sentry.captureException`, never a path) rather
   than swallowed silently. This has not yet been verified on a real
   device/Mac build (tracked as a blocker on issue #244; `flutter

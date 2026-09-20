@@ -45,8 +45,8 @@ final List<CoverageExclusion> excludedLibFilePaths = [
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
     'lib/startup/startup_native.dart',
-    'protectDatabaseFile (issue #244) is an iOS-only platform-channel call '
-        '(NSFileProtectionComplete/NSURLIsExcludedFromBackupKey via '
+    'protectDatabaseFile (issue #244, issue #906) is an iOS-only platform-channel call '
+        '(NSFileProtectionCompleteUntilFirstUserAuthentication/NSURLIsExcludedFromBackupKey via '
         'AppDelegate.swift) gated on defaultTargetPlatform == '
         'TargetPlatform.iOS, which flutter test never reports on this '
         'suite\'s host platforms — the branch cannot be driven true, so the '

@@ -784,25 +784,24 @@ observation; record the date and build number next to it when it passes.
       addresses. Cross-reference issue #19's own checklist so the two
       documents do not drift on what "done" means here.
 - [ ] **iOS database backup exclusion and at-rest protection (issue #244,
-      round 2 — the one item `flutter test`/`flutter build apk` cannot
+      issue #906 — the one item `flutter test`/`flutter build apk` cannot
       cover, since it's iOS-only platform-channel code).** On a real iPhone
       build with the app foregrounded and unlocked, lock the device, then
       resume and confirm the app is still readable (it should not have
       relocked mid-lock in a way that loses content). Then: with the app
-      foregrounded, lock the device, wait roughly 10 seconds (the
-      `NSFileProtectionComplete` class evicts the encryption key ~10s after
-      lock — Apple does not document an exact figure, so treat 10s as a
-      floor, not a guarantee), unlock, and write a new day entry — it must
-      save successfully with no error, confirming the file is usable again
-      once unlocked and was never silently left unprotected. Separately,
-      confirm the backup exclusion itself took effect: back up the device
-      to a Mac (Finder, unencrypted local backup is fine for this check),
-      then inspect the backup contents (e.g. via a backup browser tool) and
-      confirm no `lunarlog.db*` file is present. If `protectDatabaseFile`
-      ever fails on-device, it now reports (a type-only breadcrumb plus
-      `Sentry.captureException`, per the module doc comment in
-      `lib/startup/startup_native.dart`) rather than swallowing the failure
-      silently — check Sentry for that event type if this item fails.
+      foregrounded, lock the device for 20 minutes (allowing the 15-minute
+      background sync periodic timer to run while locked, verifying no SIGBUS
+      occurs on SQLite WAL index under `completeUntilFirstUserAuthentication`),
+      unlock, and write a new day entry — it must save successfully with no
+      error, confirming the file is usable again once unlocked and was never
+      silently left unprotected. Separately, confirm the backup exclusion
+      itself took effect: back up the device to a Mac (Finder, unencrypted
+      local backup is fine for this check), then inspect the backup contents
+      (e.g. via a backup browser tool) and confirm no `lunarlog.db*` file is
+      present. If `protectDatabaseFile` ever fails on-device, it now reports
+      (a type-only breadcrumb plus `Sentry.captureException`, per the module
+      doc comment in `lib/startup/startup_native.dart`) rather than swallowing
+      the failure silently — check Sentry for that event type if this item fails.
 
 ### Social logins and passwordless (issue #2)
 
@@ -1344,8 +1343,10 @@ pgTAP tests.
   longer deferred as of issue #244**: the database moved to
   `getApplicationSupportDirectory()` (a crash-safe, one-time migration off
   the old `Documents/` path — see `lib/startup/database_relocation.dart`)
-  and is marked `NSURLIsExcludedFromBackupKey`/`NSFileProtectionComplete`
-  via `AppDelegate.swift`. That marking, not the directory move, is the
+  and is marked
+  `NSURLIsExcludedFromBackupKey`/`NSFileProtectionCompleteUntilFirstUserAuthentication`
+  (issue #906) via `AppDelegate.swift`. That marking, not the directory move, is
+  the
   actual control: Application Support is included in iOS device/iCloud
   backup by default the same as `Documents/` — only `tmp/` and
   `Library/Caches/` are excluded automatically. Android gained the
