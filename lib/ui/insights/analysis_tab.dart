@@ -71,6 +71,7 @@ import 'package:provider/provider.dart';
 import '../../domain/episodes/episodes.dart';
 import '../../domain/insights/bbt_chart.dart' as bbt;
 import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/insights/symptom_trends.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/measurement_unit.dart';
 import '../../domain/models/observation.dart';
@@ -105,6 +106,16 @@ import 'cycle_comparison_screen.dart';
 import 'phase_insights_card.dart';
 import 'symptom_trends_section.dart';
 
+/// The pure insights derivation this tab memoises (issue #841) — production
+/// always uses [CycleInsightsCalculator.compute]. Exposed as a widget
+/// parameter only so a test can inject a counting wrapper and prove the
+/// report is derived once per changed input rather than once per rebuild.
+typedef CycleInsightsComputer = CycleInsightsReport Function({
+  required List<DayEntry> entries,
+  required List<Episode> episodes,
+  ActivePrediction? prediction,
+});
+
 class AnalysisTab extends StatefulWidget {
   const AnalysisTab({
     super.key,
@@ -115,6 +126,7 @@ class AnalysisTab extends StatefulWidget {
     this.guardiansRepository,
     this.dayEntriesRepository,
     this.observationsRepository,
+    this.insightsCalculator,
     this.bbtUnit = BbtUnit.celsius,
   });
 
@@ -151,6 +163,10 @@ class AnalysisTab extends StatefulWidget {
   /// local-only use.
   final ProfileGuardiansRepository? guardiansRepository;
 
+  /// Test seam (issue #841): the pure insights derivation this tab caches.
+  /// Null selects [CycleInsightsCalculator.compute] in production.
+  final CycleInsightsComputer? insightsCalculator;
+
   @override
   State<AnalysisTab> createState() => _AnalysisTabState();
 }
@@ -159,21 +175,14 @@ class _AnalysisTabState extends State<AnalysisTab>
     with GuardianWatchMixin<AnalysisTab> {
   late final CyclePredictionService _service = context
       .read<CyclePredictionService>();
-  late Stream<CyclePrediction> _predictions = _service.watch(
-    widget.profileId,
-    today: widget.todayProvider,
-  );
+  StreamSubscription<CyclePrediction>? _predictionSub;
 
-  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
-  /// callback on the top-level `StreamBuilder`.
-  void _retryPredictions() {
-    setState(() {
-      _predictions = _service.watch(
-        widget.profileId,
-        today: widget.todayProvider,
-      );
-    });
-  }
+  /// The latest prediction snapshot, driven by [_predictionSub] rather than
+  /// a `StreamBuilder` (issue #841): the derived report is computed in that
+  /// listener, so it must run once per *emission*, not on every build.
+  AsyncSnapshot<CyclePrediction> _predictionSnapshot =
+      const AsyncSnapshot<CyclePrediction>.nothing();
+  CyclePrediction? _prediction;
 
   StreamSubscription<List<DayEntry>>? _entriesSub;
   AuthController? _auth;
@@ -187,6 +196,25 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// its own.
   List<Observation> _observations = const [];
 
+  /// Monotonic token for the entries-tick coalescing (issue #841): a tick
+  /// snapshots it before the observations read and applies its result only
+  /// if it is still the newest, so a slow read can never clobber a newer
+  /// tick's state (or a different profile's, since [_watchEntries] bumps it
+  /// on reset).
+  int _entriesTick = 0;
+
+  /// Memoised insight derivation (issue #841). [_report] and [_episodes]
+  /// are recomputed only when [_reportEntries]/[_reportPrediction] (and
+  /// [_episodeEntries]) are not `identical` to the current inputs — the
+  /// `identical` guard is deliberate: an unchanged prediction is already
+  /// dropped upstream (#940's `.distinct(identical)`), and the two-setState
+  /// path is what would otherwise recompute the same list twice.
+  List<DayEntry>? _reportEntries;
+  CyclePrediction? _reportPrediction;
+  CycleInsightsReport _report = CycleInsightsReport.empty;
+  List<DayEntry>? _episodeEntries;
+  List<Episode> _episodes = const [];
+
   CareModeCopy get _copy => careModeCopyFor(widget.mode);
 
   @override
@@ -198,6 +226,7 @@ class _AnalysisTabState extends State<AnalysisTab>
       auth.addListener(_onAuthChanged);
       _auth = auth;
     }
+    _subscribePredictions();
     _watchGuardians();
     _watchEntries();
   }
@@ -219,44 +248,140 @@ class _AnalysisTabState extends State<AnalysisTab>
     );
   }
 
-  void _watchEntries() {
-    unawaited(_entriesSub?.cancel());
-    _entries = const [];
-    final repository =
-        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
-    if (repository == null) return;
-    _entriesSub = repository.watchForProfile(widget.profileId).listen((
-      entries,
-    ) {
-      if (!mounted) return;
-      setState(() => _entries = entries);
-      // Issue #245: [ObservationsRepository] has no `watch()` of its own
-      // (Issue #240's read surface is one-shot reads only), but every
-      // BBT/weight autosave also writes this same day's `DayEntry` in the
-      // same atomic call (`saveDayEntryWithObservations`), so refetching
-      // here on every entries tick keeps the BBT chart's data live without
-      // adding a new repository method for this one chart.
-      unawaited(_refetchObservations());
+  /// (Re)subscribes [_predictionSub]. Replacing the old `StreamBuilder`
+  /// (issue #841) is what lets [_onPrediction] do the report computation
+  /// once per emission instead of once per build; the snapshot is still fed
+  /// to the same [AsyncSnapshotView] so loading/error/retry are unchanged.
+  void _subscribePredictions() {
+    unawaited(_predictionSub?.cancel());
+    _predictionSub = _service
+        .watch(widget.profileId, today: widget.todayProvider)
+        .listen(_onPrediction, onError: _onPredictionError);
+  }
+
+  void _onPrediction(CyclePrediction prediction) {
+    if (!mounted) return;
+    setState(() {
+      _prediction = prediction;
+      _predictionSnapshot = AsyncSnapshot<CyclePrediction>.withData(
+        ConnectionState.active,
+        prediction,
+      );
+      _recomputeInsights();
     });
   }
 
-  Future<void> _refetchObservations() async {
+  void _onPredictionError(Object error, StackTrace stackTrace) {
+    if (!mounted) return;
+    setState(() {
+      _predictionSnapshot = AsyncSnapshot<CyclePrediction>.withError(
+        ConnectionState.active,
+        error,
+        stackTrace,
+      );
+    });
+  }
+
+  /// #543: re-subscribes after a stream error — `InlineError`'s Retry
+  /// callback on the top-level [AsyncSnapshotView].
+  void _retryPredictions() {
+    setState(() {
+      _predictionSnapshot = const AsyncSnapshot<CyclePrediction>.nothing();
+    });
+    _subscribePredictions();
+  }
+
+  void _watchEntries() {
+    unawaited(_entriesSub?.cancel());
+    _entries = const [];
+    _observations = const [];
+    _entriesTick++;
+    // A profile switch must never render the previous profile's derived
+    // report or BBT chart; clearing the memo keys forces a fresh
+    // derivation on the next emission.
+    _reportEntries = null;
+    _reportPrediction = null;
+    _report = CycleInsightsReport.empty;
+    _episodeEntries = null;
+    _episodes = const [];
+    final repository =
+        widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
+    if (repository == null) return;
+    _entriesSub = repository.watchForProfile(widget.profileId).listen(
+      _onEntries,
+    );
+  }
+
+  void _onEntries(List<DayEntry> entries) {
+    if (!mounted) return;
+    unawaited(_applyEntriesTick(entries));
+  }
+
+  /// Issue #841: the entries tick coalesces both reads into **one**
+  /// `setState` once the observations read lands — previously `_entries`
+  /// was set immediately and `_observations` in a later turn, so every
+  /// write rebuilt the tab twice and recomputed the report at least three
+  /// times.
+  Future<void> _applyEntriesTick(List<DayEntry> entries) async {
+    final token = ++_entriesTick;
+    final observations = await _readObservations();
+    if (!mounted || token != _entriesTick) return;
+    setState(() {
+      _entries = entries;
+      if (observations != null) _observations = observations;
+      _recomputeInsights();
+    });
+  }
+
+  /// The observations read stays profile-wide (issue #841 deliberately did
+  /// **not** window it): the BBT chart's value-range caption and its
+  /// `maxCycleDay` are computed over every episode-derived series, so a
+  /// date-bounded read would change what the chart renders. Null when no
+  /// repository is in scope (the tick then applies entries alone).
+  Future<List<Observation>?> _readObservations() async {
     final repository = widget.observationsRepository ??
         context.read<ObservationsRepository?>();
-    if (repository == null) return;
-    final observations = await repository.listForProfile(widget.profileId);
-    if (!mounted) return;
+    if (repository == null) return null;
+    return repository.listForProfile(widget.profileId);
+  }
+
+  /// Re-reads observations when the injected seam itself changes
+  /// (`didUpdateWidget`), without disturbing the entries tick.
+  Future<void> _refreshObservations() async {
+    final observations = await _readObservations();
+    if (!mounted || observations == null) return;
     setState(() => _observations = observations);
+  }
+
+  void _recomputeInsights() {
+    if (identical(_reportEntries, _entries) &&
+        identical(_reportPrediction, _prediction)) {
+      return;
+    }
+    _reportEntries = _entries;
+    _reportPrediction = _prediction;
+    final prediction = _prediction;
+    final computer =
+        widget.insightsCalculator ?? CycleInsightsCalculator.compute;
+    _report = computer(
+      entries: _entries,
+      episodes: _episodesFor(_entries),
+      prediction: prediction is ActivePrediction ? prediction : null,
+    );
+  }
+
+  List<Episode> _episodesFor(List<DayEntry> entries) {
+    if (identical(_episodeEntries, entries)) return _episodes;
+    _episodeEntries = entries;
+    _episodes = deriveEpisodes(bleedDatesOf(entries));
+    return _episodes;
   }
 
   @override
   void didUpdateWidget(covariant AnalysisTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profileId != widget.profileId) {
-      _predictions = _service.watch(
-        widget.profileId,
-        today: widget.todayProvider,
-      );
+      _subscribePredictions();
       _watchGuardians();
       _watchEntries();
       return;
@@ -268,19 +393,17 @@ class _AnalysisTabState extends State<AnalysisTab>
       _watchGuardians();
     }
     if (oldWidget.observationsRepository != widget.observationsRepository) {
-      unawaited(_refetchObservations());
+      unawaited(_refreshObservations());
     }
     if (oldWidget.todayProvider != widget.todayProvider) {
-      _predictions = _service.watch(
-        widget.profileId,
-        today: widget.todayProvider,
-      );
+      _subscribePredictions();
     }
   }
 
   @override
   void dispose() {
     disposeGuardianWatch();
+    unawaited(_predictionSub?.cancel());
     unawaited(_entriesSub?.cancel());
     _entriesSub = null;
     _auth?.removeListener(_onAuthChanged);
@@ -298,31 +421,26 @@ class _AnalysisTabState extends State<AnalysisTab>
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<CyclePrediction>(
-      stream: _predictions,
-      builder: (context, snapshot) {
-        return AsyncSnapshotView<CyclePrediction>(
-          snapshot: snapshot,
-          errorMessage: 'Could not load your cycle analysis.',
-          onRetry: _retryPredictions,
-          builder: (context, prediction) => ListView(
-            padding: const EdgeInsets.all(LLSpace.space4),
-            children: _sections(context, prediction),
-          ),
-        );
-      },
+    return AsyncSnapshotView<CyclePrediction>(
+      snapshot: _predictionSnapshot,
+      errorMessage: 'Could not load your cycle analysis.',
+      onRetry: _retryPredictions,
+      builder: (context, prediction) => ListView(
+        padding: const EdgeInsets.all(LLSpace.space4),
+        children: _sections(context, prediction),
+      ),
     );
   }
 
   /// Section list — mounts headline statistics, phase insights (#236),
   /// symptom trends & cramp forecasts (#135/#229), and the cycle history list.
+  ///
+  /// Issue #841: [report] and [episodes] are read from the memoised state
+  /// [_recomputeInsights] maintains, never recomputed here — a build must
+  /// not re-derive them.
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
-    final episodes = deriveEpisodes(bleedDatesOf(_entries));
-    final report = CycleInsightsCalculator.compute(
-      entries: _entries,
-      episodes: episodes,
-      prediction: prediction is ActivePrediction ? prediction : null,
-    );
+    final episodes = _episodes;
+    final report = _report;
 
     return [
       Text(
