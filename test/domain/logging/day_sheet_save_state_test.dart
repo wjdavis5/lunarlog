@@ -14,6 +14,7 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/logging/day_entry_policy.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -464,6 +465,49 @@ void main() {
       ]) {
         daySheetDisposeAction(state);
       }
+    });
+  });
+
+  group('classifyDaySheetWriteError (Issue #923)', () {
+    test('a typed future-date rejection classifies as futureDate', () {
+      expect(
+        classifyDaySheetWriteError(
+          DayEntryDateOutOfBounds(
+            '2999-01-01',
+            DayEntryDateViolation.futureDate,
+          ),
+        ),
+        DaySheetWriteErrorClass.futureDate,
+      );
+    });
+
+    test('a typed before-birth-year rejection classifies as beforeBirthYear',
+        () {
+      expect(
+        classifyDaySheetWriteError(
+          DayEntryDateOutOfBounds(
+            '2010-06-01',
+            DayEntryDateViolation.beforeBirthYear,
+          ),
+        ),
+        DaySheetWriteErrorClass.beforeBirthYear,
+      );
+    });
+
+    test('a plain ArgumentError is a bug (keeps the Sentry-report path)', () {
+      expect(
+        classifyDaySheetWriteError(
+          ArgumentError.value('heavy_flow', 'tags', 'not a known tag code'),
+        ),
+        DaySheetWriteErrorClass.bug,
+      );
+    });
+
+    test('an unrelated error is a bug', () {
+      expect(
+        classifyDaySheetWriteError(Exception('disk full')),
+        DaySheetWriteErrorClass.bug,
+      );
     });
   });
 }

@@ -328,6 +328,14 @@ class _DaySheetState extends State<DaySheet> {
   DaySheetSaveState _saveState = const DaySheetIdle();
   Timer? _saveDebounce;
 
+  /// Issue #923: what the last failed write was — null (and cleared on every
+  /// success) means the generic "Couldn't save" copy. A date-bounds rejection
+  /// class gets rule-specific copy and is never reported to Sentry; a [bug]
+  /// keeps the report-and-generic-copy behaviour. Set in [_writePending]
+  /// before it returns `false`, so the banner [_pinnedBottomArea] renders
+  /// always agrees with the failure that produced the [DaySheetFailed] state.
+  DaySheetWriteErrorClass? _saveErrorClass;
+
   /// Issue #130: the date's undismissed same-date merge disclosures — the
   /// quiet notice list, loaded once when the sheet opens (the events for a
   /// date are fixed once recorded; dismissal updates this list locally).
@@ -840,7 +848,12 @@ class _DaySheetState extends State<DaySheet> {
         // no sheet left to show a retry banner in, so this is
         // observability only, not recovery — captured the same way
         // every other data-layer failure in this codebase is.
-        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+        // Issue #923: a date-bounds rejection is the one exception —
+        // it is user input, not a bug, and must not be reported.
+        if (classifyDaySheetWriteError(error) ==
+            DaySheetWriteErrorClass.bug) {
+          unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+        }
       } finally {
         // Nothing reads `_saveState` again once this State is unreachable
         // (the microtask closure above is the only remaining reference to
@@ -974,18 +987,21 @@ class _DaySheetState extends State<DaySheet> {
         observationIdsToDelete: mutations.toDelete,
       );
       _persistedEntryId = saved.id;
+      _saveErrorClass = null;
       return true;
-    } on ArgumentError catch (error, stackTrace) {
-      // Issue #546: a genuine bug — a chip grid let an unrecognised code
-      // through `_sessionSelectedTags` — never the same "disk full/DB
-      // locked" transient failure the generic catch below covers. Split
-      // out so it is never lost in that same bucket, and captured with
-      // its real type rather than rendering the same generic "save
-      // failed" banner with no way to tell the two apart.
-      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
-      return false;
     } catch (error, stackTrace) {
-      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      // Issue #923: distinguish a date-bounds rejection (#848 — a
+      // user-input condition with rule-specific copy) from a genuine bug
+      // such as a chip grid letting an unrecognised code through
+      // `_sessionSelectedTags`. The classification reads the typed
+      // `DayEntryDateOutOfBounds.violation`, never a message string. A
+      // bounds rejection is NOT reported to Sentry; a real bug still is,
+      // with its real type rather than being lost in the generic bucket.
+      final errorClass = classifyDaySheetWriteError(error);
+      _saveErrorClass = errorClass;
+      if (errorClass == DaySheetWriteErrorClass.bug) {
+        unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+      }
       return false;
     }
   }
@@ -2316,6 +2332,24 @@ class _DaySheetState extends State<DaySheet> {
   /// sheet, exactly like the scrim, the back gesture, or the drag handle;
   /// `PopScope`'s `_onSheetPop` still flushes any debounced change and still
   /// refuses to close a failed-pending sheet without an explicit discard.
+  /// Issue #923: the save-failure banner's copy. A date-bounds rejection
+  /// names the actual cause (and, for a pre-birth-year date, points at the
+  /// profile setting that fixes it) instead of the generic "Couldn't save —
+  /// try again"; only a genuine bug/transient failure keeps the generic
+  /// copy. Reads [_saveErrorClass], set by [_writePending] from the typed
+  /// exception, never from a message string.
+  String _saveErrorMessage(AppLocalizations l10n) {
+    switch (_saveErrorClass) {
+      case DaySheetWriteErrorClass.futureDate:
+        return l10n.daySheetSaveErrorFutureDate;
+      case DaySheetWriteErrorClass.beforeBirthYear:
+        return l10n.daySheetSaveErrorBeforeBirthYear;
+      case null:
+      case DaySheetWriteErrorClass.bug:
+        return l10n.daySheetSaveError;
+    }
+  }
+
   Widget _pinnedBottomArea(ThemeData theme) {
     final l10n = AppLocalizations.of(context);
     return Column(
@@ -2325,7 +2359,7 @@ class _DaySheetState extends State<DaySheet> {
         if (_saveState is DaySheetFailed)
           InlineError(
             key: const ValueKey('save-error'),
-            message: l10n.daySheetSaveError,
+            message: _saveErrorMessage(l10n),
             onRetry: _performAutosave,
           ),
         if (_deleteFailed)

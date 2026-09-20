@@ -52,6 +52,37 @@ class DayEntryDateValidation {
   bool get isValid => violation == null;
 }
 
+/// Issue #923: the typed error a local day-entry write path throws when
+/// [DayEntryPolicy.validateDate] rejects a date.
+///
+/// Extends [ArgumentError] deliberately: every existing caller that catches
+/// `ArgumentError` (or asserts `throwsArgumentError`) keeps working unchanged,
+/// while a caller that needs to react to the *rule* — `DaySheet`'s save
+/// banner, which must name the cause without matching on a message string —
+/// can catch this subtype and read [violation] directly. Carries the rejected
+/// [localDateIso] so the message stays as informative as the
+/// `ArgumentError.value` it replaces.
+class DayEntryDateOutOfBounds extends ArgumentError {
+  DayEntryDateOutOfBounds(this.localDateIso, this.violation)
+      : super(_messageFor(localDateIso, violation));
+
+  /// The rejected civil date, in the stored `yyyy-MM-dd` form.
+  final String localDateIso;
+
+  /// Which date-bounds rule rejected the entry.
+  final DayEntryDateViolation violation;
+
+  static String _messageFor(String iso, DayEntryDateViolation violation) {
+    final rule = switch (violation) {
+      DayEntryDateViolation.futureDate =>
+        'must not be more than one day in the future',
+      DayEntryDateViolation.beforeBirthYear =>
+        'must not be before the profile birth year',
+    };
+    return 'Invalid argument (localDate): $rule: "$iso"';
+  }
+}
+
 /// The shared day-entry date-bounds policy (Issue #848). Stateless; the
 /// private constructor keeps it a namespace rather than an instance.
 abstract final class DayEntryPolicy {

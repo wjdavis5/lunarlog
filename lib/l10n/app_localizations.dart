@@ -646,6 +646,18 @@ abstract class AppLocalizations {
   /// **'Couldn\'t save — try again'**
   String get daySheetSaveError;
 
+  /// Issue #923: the day sheet's save-error copy when the storage layer rejected the date as more than a day in the future (the shared #848 date-bounds policy), distinct from the generic daySheetSaveError so the cause is named and the rejection is never reported as a bug.
+  ///
+  /// In en, this message translates to:
+  /// **'This day is more than a day in the future, so it can\'t be saved.'**
+  String get daySheetSaveErrorFutureDate;
+
+  /// Issue #923: the day sheet's save-error copy when the storage layer rejected the date as before the profile's birth year (the shared #848 date-bounds policy); points at the profile setting that fixes it.
+  ///
+  /// In en, this message translates to:
+  /// **'This day is before the profile\'s birth year, so it can\'t be saved. Update the birth year in the profile\'s settings.'**
+  String get daySheetSaveErrorBeforeBirthYear;
+
   /// Inline retry error shown when a day entry delete fails.
   ///
   /// In en, this message translates to:
@@ -2263,6 +2275,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 entry} other{{count} entries}} from {source}'**
   String purgeImportedDataPreview(int count, String source);
+
+  /// Issue #925: the restore-from-file preview's warning before the user commits, naming how many of the file's day entries are out of bounds and why (reasons). Shown only when count > 0.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day entry falls} other{{count} day entries fall}} outside this profile\'s date range and will be skipped when you import ({reasons}).'**
+  String importEntryDatesRejectedPreview(int count, String reasons);
+
+  /// Issue #925: the restore-from-file result summary's skipped-by-date clause, counted in the same sentence as the other outcomes rather than leaving '0 skipped' misleading. Shown only when count > 0.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day entry} other{{count} day entries}} skipped by date ({reasons})'**
+  String importEntryDatesRejectedResult(int count, String reasons);
+
+  /// Issue #925: the 'future-dated' half of a rejected-entry reason breakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 more than a day in the future} other{{count} more than a day in the future}}'**
+  String importEntryDatesRejectionFuture(int count);
+
+  /// Issue #925: the 'before the birth year' half of a rejected-entry reason breakdown.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 before the birth year} other{{count} before the birth year}}'**
+  String importEntryDatesRejectionBeforeBirthYear(int count);
+
+  /// Issue #925: joins the two non-zero rejected-entry reasons into one phrases, e.g. '1 more than a day in the future and 2 before the birth year'.
+  ///
+  /// In en, this message translates to:
+  /// **'{first} and {second}'**
+  String importEntryDatesRejectionReasonsJoin(String first, String second);
 
   /// InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart).
   ///

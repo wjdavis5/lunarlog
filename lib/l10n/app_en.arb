@@ -438,6 +438,14 @@
   "@daySheetSaveError": {
     "description": "Inline retry error shown when a day entry save fails."
   },
+  "daySheetSaveErrorFutureDate": "This day is more than a day in the future, so it can't be saved.",
+  "@daySheetSaveErrorFutureDate": {
+    "description": "Issue #923: the day sheet's save-error copy when the storage layer rejected the date as more than a day in the future (the shared #848 date-bounds policy), distinct from the generic daySheetSaveError so the cause is named and the rejection is never reported as a bug."
+  },
+  "daySheetSaveErrorBeforeBirthYear": "This day is before the profile's birth year, so it can't be saved. Update the birth year in the profile's settings.",
+  "@daySheetSaveErrorBeforeBirthYear": {
+    "description": "Issue #923: the day sheet's save-error copy when the storage layer rejected the date as before the profile's birth year (the shared #848 date-bounds policy); points at the profile setting that fixes it."
+  },
   "daySheetDeleteError": "Couldn't delete — try again",
   "@daySheetDeleteError": {
     "description": "Inline retry error shown when a day entry delete fails."
@@ -1649,6 +1657,44 @@
     "placeholders": {
       "count": { "type": "int" },
       "source": { "type": "String" }
+    }
+  },
+  "importEntryDatesRejectedPreview": "{count, plural, =1{1 day entry falls} other{{count} day entries fall}} outside this profile's date range and will be skipped when you import ({reasons}).",
+  "@importEntryDatesRejectedPreview": {
+    "description": "Issue #925: the restore-from-file preview's warning before the user commits, naming how many of the file's day entries are out of bounds and why (reasons). Shown only when count > 0.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "reasons": { "type": "String" }
+    }
+  },
+  "importEntryDatesRejectedResult": "{count, plural, =1{1 day entry} other{{count} day entries}} skipped by date ({reasons})",
+  "@importEntryDatesRejectedResult": {
+    "description": "Issue #925: the restore-from-file result summary's skipped-by-date clause, counted in the same sentence as the other outcomes rather than leaving '0 skipped' misleading. Shown only when count > 0.",
+    "placeholders": {
+      "count": { "type": "int" },
+      "reasons": { "type": "String" }
+    }
+  },
+  "importEntryDatesRejectionFuture": "{count, plural, =1{1 more than a day in the future} other{{count} more than a day in the future}}",
+  "@importEntryDatesRejectionFuture": {
+    "description": "Issue #925: the 'future-dated' half of a rejected-entry reason breakdown.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "importEntryDatesRejectionBeforeBirthYear": "{count, plural, =1{1 before the birth year} other{{count} before the birth year}}",
+  "@importEntryDatesRejectionBeforeBirthYear": {
+    "description": "Issue #925: the 'before the birth year' half of a rejected-entry reason breakdown.",
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "importEntryDatesRejectionReasonsJoin": "{first} and {second}",
+  "@importEntryDatesRejectionReasonsJoin": {
+    "description": "Issue #925: joins the two non-zero rejected-entry reasons into one phrases, e.g. '1 more than a day in the future and 2 before the birth year'.",
+    "placeholders": {
+      "first": { "type": "String" },
+      "second": { "type": "String" }
     }
   },
 

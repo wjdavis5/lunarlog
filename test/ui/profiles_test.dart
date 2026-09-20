@@ -650,6 +650,36 @@ void main() {
       expect(find.text('Alicia'), findsNothing);
       await disposeApp(tester, db);
     });
+
+    testWidgets('the editor reads the earliest live entry year through the '
+        'repository and refuses a later birth year (Issue #923)',
+        (tester) async {
+      final db = await pumpApp(tester, seed: (db) async {
+        final alice = await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+        // An entry from 2024 makes 2024 the latest allowed birth year.
+        await DriftDayEntriesRepository(db.storage)
+            .save(entryFor(alice.id, LocalDate(2024, 5, 1)));
+      });
+
+      final aliceTile =
+          find.ancestor(of: find.text('Alice'), matching: find.byType(ListTile));
+      await tester.tap(find.descendant(
+          of: aliceTile, matching: find.byType(PopupMenuButton<String>)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit profile'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const ValueKey('edit-birth-year-field')), '2025');
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('entries from 2024'), findsOneWidget,
+          reason: 'the picker read the earliest entry year via '
+              'DayEntriesRepository and the validator named the conflict');
+      await disposeApp(tester, db);
+    });
   });
 
   group('profile metadata (Issue #4 R1, R2, R3)', () {

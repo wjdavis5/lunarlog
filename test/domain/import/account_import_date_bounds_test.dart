@@ -59,12 +59,16 @@ void main() {
 
     final profilePlan = plan.profiles.single;
     expect(profilePlan.entryDatesRejected, 2);
+    expect(profilePlan.entryDatesRejectedFuture, 1);
+    expect(profilePlan.entryDatesRejectedBeforeBirthYear, 1);
     expect(profilePlan.entries, hasLength(2));
     expect(
       profilePlan.entries.map((e) => e.localDate.iso),
       containsAll(<String>['2026-09-15', '2026-09-20']),
     );
     expect(plan.summary.entryDatesRejected, 2);
+    expect(plan.summary.entryDatesRejectedFuture, 1);
+    expect(plan.summary.entryDatesRejectedBeforeBirthYear, 1);
     expect(plan.summary.entriesAdded, 2);
   });
 

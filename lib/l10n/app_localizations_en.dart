@@ -338,6 +338,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetSaveError => 'Couldn\'t save — try again';
 
   @override
+  String get daySheetSaveErrorFutureDate =>
+      'This day is more than a day in the future, so it can\'t be saved.';
+
+  @override
+  String get daySheetSaveErrorBeforeBirthYear =>
+      'This day is before the profile\'s birth year, so it can\'t be saved. Update the birth year in the profile\'s settings.';
+
+  @override
   String get daySheetDeleteError => 'Couldn\'t delete — try again';
 
   @override
@@ -1350,6 +1358,55 @@ class AppLocalizationsEn extends AppLocalizations {
       one: '1 entry',
     );
     return '$_temp0 from $source';
+  }
+
+  @override
+  String importEntryDatesRejectedPreview(int count, String reasons) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count day entries fall',
+      one: '1 day entry falls',
+    );
+    return '$_temp0 outside this profile\'s date range and will be skipped when you import ($reasons).';
+  }
+
+  @override
+  String importEntryDatesRejectedResult(int count, String reasons) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count day entries',
+      one: '1 day entry',
+    );
+    return '$_temp0 skipped by date ($reasons)';
+  }
+
+  @override
+  String importEntryDatesRejectionFuture(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count more than a day in the future',
+      one: '1 more than a day in the future',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importEntryDatesRejectionBeforeBirthYear(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count before the birth year',
+      one: '1 before the birth year',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importEntryDatesRejectionReasonsJoin(String first, String second) {
+    return '$first and $second';
   }
 
   @override

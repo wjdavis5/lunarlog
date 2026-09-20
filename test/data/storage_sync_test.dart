@@ -3096,6 +3096,134 @@ void main() {
             reason: 'equal timestamp remote wins tie against local non-dirty tombstone');
       },
     );
+
+    test('clears the profile cycle facts the import wrote when the purge '
+        'empties the profile (issue #907)', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'Imported',
+        isMinor: false,
+        lastPeriodStart: '2026-01-01',
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'file_import',
+      );
+
+      await storage.applyLocalImportedDataPurge(
+        profileId: p.id,
+        source: 'file_import',
+      );
+
+      expect(await storage.getDayEntries(profileId: p.id), isEmpty);
+      final after = await storage.getProfile(p.id);
+      expect(after!.lastPeriodStart, isNull);
+      expect(after.typicalCycleLengthDays, isNull);
+      expect(after.typicalPeriodLengthDays, isNull);
+      expect(after.dirty, isTrue,
+          reason: 'the clear is a real profile edit and must sync, or a '
+              'later reconcile would restore the stale server copy');
+    });
+
+    test('leaves the cycle facts alone when a live entry survives the purge '
+        '(issue #907)', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'Mixed',
+        isMinor: false,
+        lastPeriodStart: '2026-01-01',
+        typicalCycleLengthDays: 28,
+        typicalPeriodLengthDays: 5,
+      );
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'file_import',
+      );
+      // A hand-logged entry that survives the scoped purge: the facts may
+      // describe it, so they are never cleared.
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-02-01',
+        tz: 'UTC',
+        flow: FlowLevel.light,
+      );
+
+      await storage.applyLocalImportedDataPurge(
+        profileId: p.id,
+        source: 'file_import',
+      );
+
+      final after = await storage.getProfile(p.id);
+      expect(after!.lastPeriodStart, '2026-01-01');
+      expect(after.typicalCycleLengthDays, 28);
+      expect(after.typicalPeriodLengthDays, 5);
+    });
+
+    test('a hand-edited profile with a surviving entry is not clobbered '
+        '(issue #907)', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'HandEdited',
+        isMinor: false,
+        // Values a person set in the editor, unrelated to the import source.
+        lastPeriodStart: '2025-12-15',
+        typicalCycleLengthDays: 30,
+        typicalPeriodLengthDays: 6,
+      );
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'clue_import',
+      );
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-03-01',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+      );
+
+      await storage.applyLocalImportedDataPurge(
+        profileId: p.id,
+        source: 'clue_import',
+      );
+
+      final after = await storage.getProfile(p.id);
+      expect(after!.lastPeriodStart, '2025-12-15');
+      expect(after.typicalCycleLengthDays, 30);
+      expect(after.typicalPeriodLengthDays, 6);
+    });
+
+    test('a purge that empties a profile with no stored facts writes nothing '
+        '(issue #907)', () async {
+      final p = await storage.upsertProfile(
+        displayName: 'NoFacts',
+        isMinor: false,
+      );
+      final before = await storage.getProfile(p.id);
+      await storage.upsertDayEntry(
+        profileId: p.id,
+        localDate: '2026-01-01',
+        tz: 'UTC',
+        flow: FlowLevel.medium,
+        source: 'file_import',
+      );
+
+      await storage.applyLocalImportedDataPurge(
+        profileId: p.id,
+        source: 'file_import',
+      );
+
+      final after = await storage.getProfile(p.id);
+      expect(after!.localRev, before!.localRev,
+          reason: 'nothing to clear: the profile is not restamped');
+    });
   });
 
   group('liveImportedSourceCounts (issue #883)', () {

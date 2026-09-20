@@ -54,11 +54,11 @@ void _validateDayEntryDate(
   ).violation;
   switch (violation) {
     case DayEntryDateViolation.futureDate:
-      throw ArgumentError.value(date.iso, 'localDate',
-          'must not be more than one day in the future');
+      throw DayEntryDateOutOfBounds(
+          date.iso, DayEntryDateViolation.futureDate);
     case DayEntryDateViolation.beforeBirthYear:
-      throw ArgumentError.value(date.iso, 'localDate',
-          'must not be before the profile birth year');
+      throw DayEntryDateOutOfBounds(
+          date.iso, DayEntryDateViolation.beforeBirthYear);
     case null:
       break;
   }

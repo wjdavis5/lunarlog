@@ -512,6 +512,49 @@ void main() {
       expect(find.textContaining('This profile is archived.'), findsOneWidget);
     });
 
+    testWidgets('out-of-bounds day entries warn before committing, split by '
+        'reason (Issue #925)', (tester) async {
+      final plan = ImportPlan(profiles: [
+        ProfilePlan(
+          fileProfileId: 'created-1',
+          displayName: 'Created 1',
+          outcome: ProfileImportOutcome.created,
+          entryDatesRejected: 2,
+          entryDatesRejectedFuture: 1,
+          entryDatesRejectedBeforeBirthYear: 1,
+        ),
+      ]);
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => _validBytes()),
+        coordinator: _FakeCoordinator(storage, planResult: plan),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+
+      expect(key('import-preview-rejected'), findsOneWidget);
+      final warning = tester
+          .widget<Text>(key('import-preview-rejected'))
+          .data!;
+      expect(warning, contains('2 day entries'));
+      expect(warning, contains('outside this profile'));
+      expect(warning, contains('more than a day in the future'));
+      expect(warning, contains('before the birth year'));
+    });
+
+    testWidgets('no rejected entries means no preview warning (Issue #925)',
+        (tester) async {
+      await _pump(
+        tester,
+        pickFile: _FakeReader(() async => _validBytes()),
+        coordinator: _FakeCoordinator(storage, planResult: _plan()),
+      );
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+
+      expect(key('import-preview-rejected'), findsNothing);
+    });
+
     // Issue #140 review, item 10.
     testWidgets('a matched profile with another accepted guardian shows the '
         'shared-guardian disclosure sentence', (tester) async {
@@ -643,6 +686,8 @@ void main() {
         ],
       );
       await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Navigator(
           onGenerateRoute: (settings) => MaterialPageRoute(
             builder: (context) => ImportScreen(
@@ -670,6 +715,88 @@ void main() {
       await tester.tap(key('import-result-done'));
       await tester.pumpAndSettle();
       expect(key('import-result-summary'), findsNothing);
+    });
+
+    testWidgets('the result counts rejected day entries in the same sentence, '
+        'split by reason (Issue #925)', (tester) async {
+      final summary = ImportPlanSummary(
+        profilesCreated: 1,
+        profilesMatched: 0,
+        entriesAdded: 1,
+        entriesMerged: 0,
+        observationsAdded: 0,
+        observationsSkipped: 0,
+        entryDatesRejected: 2,
+        entryDatesRejectedFuture: 1,
+        entryDatesRejectedBeforeBirthYear: 1,
+        skippedProfiles: const [],
+      );
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Navigator(
+          onGenerateRoute: (settings) => MaterialPageRoute(
+            builder: (context) => ImportScreen(
+              pickFile: _FakeReader(() async => _validBytes()),
+              coordinator: _FakeCoordinator(
+                storage,
+                planResult: _plan(),
+                applyResult: summary,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('import-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      final line = tester.widget<Text>(key('import-result-summary')).data!;
+      expect(line, contains('2 day entries skipped by date'));
+      expect(line, contains('more than a day in the future'));
+      expect(line, contains('before the birth year'));
+    });
+
+    testWidgets('a clean import result reads exactly as before, with no '
+        'skipped-by-date clause (Issue #925)', (tester) async {
+      const summary = ImportPlanSummary(
+        profilesCreated: 1,
+        profilesMatched: 0,
+        entriesAdded: 5,
+        entriesMerged: 0,
+        observationsAdded: 0,
+        observationsSkipped: 0,
+        skippedProfiles: [],
+      );
+      await tester.pumpWidget(MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Navigator(
+          onGenerateRoute: (settings) => MaterialPageRoute(
+            builder: (context) => ImportScreen(
+              pickFile: _FakeReader(() async => _validBytes()),
+              coordinator: _FakeCoordinator(
+                storage,
+                planResult: _plan(),
+                applyResult: summary,
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(key('import-pick-button'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('import-preview-confirm'));
+      await tester.pumpAndSettle();
+
+      final line = tester.widget<Text>(key('import-result-summary')).data!;
+      expect(line, isNot(contains('skipped by date')));
+      expect(line, startsWith('Import complete: 1 profile created'));
     });
   });
 
