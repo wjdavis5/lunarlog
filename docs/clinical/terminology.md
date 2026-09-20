@@ -19,7 +19,7 @@ and says so explicitly. Nothing here is "this is probably right."
 |---|---|---|
 | LOINC | `http://loinc.org` | The *question* — what was measured or asked (menstrual status, cycle length, delivery date…). |
 | SNOMED CT | `http://snomed.info/sct` | The *finding* — the symptom or observation itself (headache, nausea…). |
-| lunarlog local | `https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/tag` | Concepts with no verified external mapping. An `http(s)://` URL under a domain lunarlog controls, not an unregistered `urn:` scheme (this system used `urn:lunarlog:code` until 2026-09-09) — FHIR only requires `Coding.system` to be a URI that uniquely identifies the scheme, but RFC 8141 requires `urn:` namespace identifiers to be formally registered, which `urn:lunarlog:code` never was; FHIR's own guidance for a locally-defined system is an `http(s)://` URL under a domain the publisher controls, which is what this string is even though no document is actually published at that address yet. **This string is permanent once #157 starts emitting FHIR Bundles** — changing it later would break every previously exported `Observation.code`. |
+| lunarlog local | `https://lunarlog.app/fhir/CodeSystem/tag` | Concepts with no verified external mapping. An `http(s)://` URL under a domain lunarlog controls, not an unregistered `urn:` scheme (this system used `urn:lunarlog:code` until 2026-09-09) — FHIR only requires `Coding.system` to be a URI that uniquely identifies the scheme, but RFC 8141 requires `urn:` namespace identifiers to be formally registered, which `urn:lunarlog:code` never was; FHIR's own guidance for a locally-defined system is an `http(s)://` URL under a domain the publisher controls, which is what this string is even though no document is actually published at that address yet. #961 moved the base to `lunarlog.app` from `https://github.com/wjdavis5/lunarlog/fhir/...` before the first store build shipped an export. **This string is frozen from the first shipped build and must never change** — a Bundle already handed to a clinician cannot be recalled, and changing it later would break every previously exported `Observation.code`. |
 
 ## LOINC code set (A3-44)
 
@@ -179,7 +179,7 @@ flow-amount scale and none was found that fits without overreaching:
 
 **System URI (#157 review fix, 2026-09-09):** flow levels are coded on
 their own local system, `kSystemLunarlogLocalFlow`
-(`https://github.com/wjdavis5/lunarlog/fhir/CodeSystem/flow`, defined in
+(`https://lunarlog.app/fhir/CodeSystem/flow`, defined in
 `lib/domain/export/fhir_bundle.dart`) — **not** `kSystemLunarlogLocal`
 (`.../CodeSystem/tag`, this file's own subject above). The two URIs exist
 because they cover genuinely different concept spaces: `kSystemLunarlogLocal`
