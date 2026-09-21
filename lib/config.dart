@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 /// Build-time configuration read from `--dart-define` values.
 ///
@@ -304,6 +304,30 @@ abstract final class AppConfig {
   /// `AboutSection`) or a default-valued parameter (`ensureAal2`) so
   /// widget tests exercise both flag values in one default-off run.
   static const bool qaBuild = bool.fromEnvironment('LUNARLOG_QA_BUILD');
+
+  /// True only when the build was compiled with
+  /// `LUNARLOG_CRASH_SMOKE=true` **and** is a debug build (#973): the
+  /// dev-only crash-report smoke trigger in Settings → About.
+  ///
+  /// The `kDebugMode` conjunct is the gate, not the define. `kDebugMode`
+  /// is a compile-time constant that is `false` in profile and release, so
+  /// a store build's `crashSmokeEnabled` folds to `false` at compile time
+  /// and the entire trigger — the About tiles, both probes, and their
+  /// imports — becomes a dead branch the compiler tree-shakes out. A store
+  /// or QA build therefore cannot contain the trigger even if the define
+  /// were ever passed to a release workflow by mistake; the define alone
+  /// only lets a human opt a *debug* run in, and no workflow passes it.
+  /// `test/architecture/crash_smoke_seam_test.dart` pins the single read of
+  /// the define, `test/config_test.dart` pins the `define && debug` rule,
+  /// and `test/ui/crash_smoke_trigger_test.dart` pins the absent/present
+  /// behaviour for both flag values in one default-off run.
+  ///
+  /// Deliberately beside [qaBuild], the #739 precedent for "a dev-only
+  /// client surface a store build must never carry": same `bool.
+  /// fromEnvironment` seam, same injection-idiom consumers
+  /// (`AboutSection.crashSmoke`), same architecture-test pin.
+  static const bool crashSmokeEnabled =
+      bool.fromEnvironment('LUNARLOG_CRASH_SMOKE') && kDebugMode;
 }
 
 /// Pure decision behind [AppConfig.webSyncEnabled]: the literal `true` only.
@@ -328,6 +352,17 @@ bool computeHasSupabase({
 
 /// Pure decision behind [AppConfig.hasSentry]: any non-empty DSN.
 bool computeHasSentry(String dsn) => dsn.isNotEmpty;
+
+/// Pure decision behind [AppConfig.crashSmokeEnabled] (#973): the define
+/// alone never opts a build in — a debug build is required too, so a
+/// release or profile build can never contain the trigger. Exposed as a
+/// function (mirroring [computeHasSupabase]) so the rule is unit-testable
+/// even though production's input is the compile-time `kDebugMode` constant.
+bool computeCrashSmokeEnabled({
+  required bool define,
+  required bool debugMode,
+}) =>
+    define && debugMode;
 
 /// Pure decision behind [AppConfig.sentryTracesSampleRate] (issue #7 U4;
 /// KTD8). Empty, unparseable, or non-finite input means tracing stays off

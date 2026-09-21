@@ -418,5 +418,28 @@ void main() {
         computeHasUniversalLinks(AppConfig.linkDomain),
       );
     });
+
+    test('crashSmokeEnabled is false here (no define) and agrees with the '
+        'pure rule: the empty define is the only reason, since flutter test '
+        'is a debug run (issue #973)', () {
+      expect(AppConfig.crashSmokeEnabled, isFalse);
+      expect(
+        AppConfig.crashSmokeEnabled,
+        computeCrashSmokeEnabled(define: false, debugMode: true),
+      );
+    });
+  });
+
+  group('computeCrashSmokeEnabled (issue #973)', () {
+    test('requires both the define and a debug build — a release build can '
+        'never carry the trigger, whatever the define says', () {
+      expect(computeCrashSmokeEnabled(define: true, debugMode: true), isTrue);
+      expect(computeCrashSmokeEnabled(define: false, debugMode: true), isFalse);
+      expect(computeCrashSmokeEnabled(define: true, debugMode: false), isFalse);
+      expect(
+        computeCrashSmokeEnabled(define: false, debugMode: false),
+        isFalse,
+      );
+    });
   });
 }

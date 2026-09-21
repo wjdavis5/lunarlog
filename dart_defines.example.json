@@ -8,6 +8,8 @@
   "LUNARLOG_ENABLE_MFA": "false",
   "_LUNARLOG_QA_BUILD_NOTE": "LUNARLOG_QA_BUILD=true compiles a QA build (issue #739): no unlock gate, relock, or re-auth prompts, plus a persistent QA banner - never in a store build; see docs/ops/qa-builds.md",
   "LUNARLOG_QA_BUILD": "false",
+  "_LUNARLOG_CRASH_SMOKE_NOTE": "LUNARLOG_CRASH_SMOKE=true shows the dev-only crash-report smoke trigger in Settings -> About (issue #973); it also requires a debug build and is never present in a store or QA build",
+  "LUNARLOG_CRASH_SMOKE": "false",
   "GOOGLE_IOS_CLIENT_ID": "",
   "GOOGLE_WEB_CLIENT_ID": "",
   "_PASSKEY_RP_ID_NOTE": "PASSKEY_RP_ID is a bare HTTPS domain, immutable once a passkey is enrolled - do not set until docs/ops/supabase-go-live.md's Passkeys checklist is complete",
