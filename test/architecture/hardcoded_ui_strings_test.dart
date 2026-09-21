@@ -76,9 +76,10 @@ const Set<String> _migratedNamedUiArgs = {
 /// `lib/ui/gate/`, `lib/ui/care/` (tranche 3) down to zero, so those entries
 /// are gone and the recorded size dropped by the same amount: 355 (main,
 /// after the widget/health/#1003 work) - 134 (tranche 1) - 113 (tranche 2) -
-/// 56 (tranche 3) = 52. Every remaining entry is another directory's backlog,
-/// owned by a different tranche.
-const int _initialAllowlistSize = 52;
+/// 56 (tranche 3) - 8 (epic #831 moved `lib/ui/web/dev_banner.dart` onto
+/// `AppLocalizations`) = 44. Every remaining entry is another directory's
+/// backlog, owned by a different tranche.
+const int _initialAllowlistSize = 44;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -99,7 +100,6 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/overview/cycle_history_section.dart': 7,
   'lib/ui/overview/late_resolver.dart': 2,
   'lib/ui/startup/fail_closed_screen.dart': 2,
-  'lib/ui/web/dev_banner.dart': 8,
 };
 
 /// Asserts [directory] has no user-facing literals left, under both the
