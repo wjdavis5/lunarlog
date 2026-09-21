@@ -15,6 +15,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lunarlog/domain/models/database_error.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
 class FailClosedApp extends StatelessWidget {
@@ -25,10 +26,16 @@ class FailClosedApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'lunarlog',
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context).failClosedAppTitle,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
+      // Issue #160: same localization scaffolding as the main MaterialApp —
+      // this screen renders above (and independent of) the app content, so
+      // it must carry its own delegates.
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: FailClosedScreen(error: error),
     );
   }
@@ -39,28 +46,26 @@ class FailClosedScreen extends StatelessWidget {
 
   final Object error;
 
-  (String, String) get _copy {
+  (String, String) _copy(AppLocalizations l10n) {
     switch (error) {
       case DatabaseQuarantineError():
         return (
-          'lunarlog could not open your data',
-          'The data saved on this device could not be opened. Nothing was '
-              'changed and nothing was deleted — the data file was left '
-              'exactly as it was, untouched.',
+          l10n.failClosedQuarantineTitle,
+          l10n.failClosedQuarantineBody,
         );
       default:
         return (
-          'lunarlog could not start',
-          'Something went wrong before any data was opened. Nothing on this '
-              'device was changed.',
+          l10n.failClosedStartTitle,
+          l10n.failClosedStartBody,
         );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final (title, body) = _copy;
+    final (title, body) = _copy(l10n);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -88,11 +93,11 @@ class FailClosedScreen extends StatelessWidget {
                 OutlinedButton(
                   key: const ValueKey('fail-closed-close'),
                   onPressed: () => SystemNavigator.pop(),
-                  child: const Text('Close'),
+                  child: Text(l10n.failClosedClose),
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  'Technical detail (for the device owner):',
+                  l10n.failClosedTechnicalDetail,
                   style: theme.textTheme.labelSmall,
                 ),
                 const SizedBox(height: 4),

@@ -31,7 +31,7 @@ class CaregiverAttributionBadge extends StatelessWidget {
 
   String _formatUser(AppLocalizations l10n, String userId) {
     if (currentUserId != null && userId == currentUserId) {
-      return 'you';
+      return l10n.caregiverAttributionYou;
     }
     final match = guardians.cast<ProfileGuardian?>().firstWhere(
           (g) => g?.userId == userId,
@@ -43,20 +43,22 @@ class CaregiverAttributionBadge extends StatelessWidget {
       }
       return guardianRoleLabel(l10n, match.role);
     }
-    return 'Guardian';
+    return l10n.caregiverAttributionGuardianFallback;
   }
 
   /// Issue #159: one label per non-`manual` source, "Imported" as the
   /// generic fallback for a value this build doesn't recognise (a future
   /// addition, a row from a newer client) — mirrors `ObservationSource`'s
   /// degrade-rather-than-throw precedent.
-  String _sourceLabel(String source) => switch (source) {
-        'clue_import' => 'Imported from Clue',
-        'healthkit' || 'apple_health' => 'Imported from Health',
-        'health_connect' => 'Imported from Health Connect',
-        'file_import' => 'Imported from file',
-        'wearable' => 'Imported from wearable',
-        _ => 'Imported',
+  String _sourceLabel(AppLocalizations l10n, String source) =>
+      switch (source) {
+        'clue_import' => l10n.caregiverAttributionImportedClue,
+        'healthkit' || 'apple_health' =>
+          l10n.caregiverAttributionImportedHealth,
+        'health_connect' => l10n.caregiverAttributionImportedHealthConnect,
+        'file_import' => l10n.caregiverAttributionImportedFile,
+        'wearable' => l10n.caregiverAttributionImportedWearable,
+        _ => l10n.caregiverAttributionImportedGeneric,
       };
 
   String _attributionText(AppLocalizations l10n) {
@@ -70,11 +72,11 @@ class CaregiverAttributionBadge extends StatelessWidget {
 
     final text = StringBuffer();
     if (loggedByName != null) {
-      text.write('Logged by $loggedByName');
+      text.write(l10n.caregiverAttributionLoggedBy(loggedByName));
     }
     if (modifiedByName != null) {
       if (text.isNotEmpty) text.write(' • ');
-      text.write('Modified by $modifiedByName');
+      text.write(l10n.caregiverAttributionModifiedBy(modifiedByName));
     }
     return text.toString();
   }
@@ -87,11 +89,12 @@ class CaregiverAttributionBadge extends StatelessWidget {
     }
 
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     // Issue #159 (acceptance criteria): a non-manual row never falls back
     // to "logged by <guardian>" — the import source is the whole story.
     final text = isImported
-        ? _sourceLabel(source)
-        : _attributionText(AppLocalizations.of(context));
+        ? _sourceLabel(l10n, source)
+        : _attributionText(l10n);
 
     return Semantics(
       // #138: the badge is one announcement ("Logged by Dad"), not a
