@@ -101,13 +101,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   @override
   Widget build(BuildContext context) {
     context.watch<ProfileController>();
+    final l10n = AppLocalizations.of(context);
     final guardiansRepository = context.read<ProfileGuardiansRepository?>();
     final activityRepository = context.read<ActivityFeedRepository?>();
     final careContentRepository = context.read<CareContentRepository?>();
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            '${widget.profile.displayName}${widget.readOnly ? ' (archived)' : ''}'),
+            '${widget.profile.displayName}${widget.readOnly ? l10n.profileDetailArchivedSuffix : ''}'),
         actions: [
           // Issue #124: the per-profile Activity feed, reachable from the
           // profile itself. Hidden when no feed repository is wired
@@ -134,7 +135,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           if (widget.readOnly)
             TextButton(
               onPressed: _unarchive,
-              child: const Text('Unarchive'),
+              child: Text(l10n.profileDetailUnarchive),
             )
           else
             IconButton(
@@ -155,14 +156,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: SegmentedButton<_DetailTab>(
               key: const ValueKey('detail-tab-toggle'),
-              segments: const [
+              segments: [
                 ButtonSegment(
                   value: _DetailTab.overview,
-                  label: Text('Overview'),
+                  label: Text(l10n.profileDetailOverviewTab),
                 ),
                 ButtonSegment(
                   value: _DetailTab.calendar,
-                  label: Text('Calendar'),
+                  label: Text(l10n.profileDetailCalendarTab),
                 ),
               ],
               selected: {_tab},
@@ -217,7 +218,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             child: ActionChip(
               key: const ValueKey('profile-shared-chip'),
               avatar: const Icon(Icons.people_outline, size: 18),
-              label: Text('Shared · ${accepted.length} guardians'),
+              label: Text(AppLocalizations.of(context)
+                  .profileDetailSharedGuardians(accepted.length)),
               onPressed: sharing == null
                   ? null
                   : () => openManageGuardians(context, widget.profile),

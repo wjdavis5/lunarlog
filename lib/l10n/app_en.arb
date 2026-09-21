@@ -4387,5 +4387,1244 @@
           "type": "int"
         }
       }
+    },
+    "gateLockScreenAppTitle": "lunarlog",
+    "@gateLockScreenAppTitle": {
+      "description": "Issue #1004 (tranche 3): the lock screen's nested MaterialApp title."
+    },
+    "gateLockScreenTitle": "lunarlog is locked",
+    "@gateLockScreenTitle": {
+      "description": "Issue #1004 (tranche 3): headline on the locked screen."
+    },
+    "gateLockScreenProtectedBody": "Everything logged on this device stays protected. Unlock to continue.",
+    "@gateLockScreenProtectedBody": {
+      "description": "Issue #1004 (tranche 3): body under the locked headline."
+    },
+    "gateLockScreenDeniedBody": "Not unlocked. The profiles on this device stay hidden until the device credential is accepted.",
+    "@gateLockScreenDeniedBody": {
+      "description": "Issue #1004 (tranche 3): shown when the device-credential prompt was declined."
+    },
+    "gateLockScreenUnlockButton": "Unlock",
+    "@gateLockScreenUnlockButton": {
+      "description": "Issue #1004 (tranche 3): primary unlock action on the locked screen."
+    },
+    "gateLockScreenNoCredentialBody": "This device has no screen lock set. lunarlog protects your family's data using your device's own screen lock, so it can't open until you add one — a passcode, PIN, pattern, or biometric lock all work.",
+    "@gateLockScreenNoCredentialBody": {
+      "description": "Issue #1004 (tranche 3): body shown when no device credential is enrolled."
+    },
+    "gateLockScreenOpenDeviceSettings": "Open device settings",
+    "@gateLockScreenOpenDeviceSettings": {
+      "description": "Issue #1004 (tranche 3): action opening the platform device settings."
+    },
+    "gateLockScreenTryAgain": "Try again",
+    "@gateLockScreenTryAgain": {
+      "description": "Issue #1004 (tranche 3): retry action on the locked screen."
+    },
+    "gatePinAuthorizationUseDeviceCredential": "Use device credential instead",
+    "@gatePinAuthorizationUseDeviceCredential": {
+      "description": "Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog."
+    },
+    "gatePinAuthorizationCancel": "Cancel",
+    "@gatePinAuthorizationCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog."
+    },
+    "gatePinSettingsRemoveCancel": "Cancel",
+    "@gatePinSettingsRemoveCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog."
+    },
+    "feedbackAttachmentConsentTitle": "Attach a screenshot?",
+    "@feedbackAttachmentConsentTitle": {
+      "description": "Issue #1004 (tranche 3): title of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentBody": "Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.",
+    "@feedbackAttachmentConsentBody": {
+      "description": "Issue #1004 (tranche 3): body of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentCancel": "Cancel",
+    "@feedbackAttachmentConsentCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentContinue": "Continue",
+    "@feedbackAttachmentConsentContinue": {
+      "description": "Issue #1004 (tranche 3): continue action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentAddScreenshot": "Add screenshot",
+    "@feedbackAttachmentAddScreenshot": {
+      "description": "Issue #1004 (tranche 3): button that opens the screenshot consent flow."
+    },
+    "feedbackScreenTitle": "Send feedback",
+    "@feedbackScreenTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the feedback screen."
+    },
+    "feedbackScreenCategoryLabel": "Category",
+    "@feedbackScreenCategoryLabel": {
+      "description": "Issue #1004 (tranche 3): label above the feedback category chips."
+    },
+    "feedbackScreenMessageLabel": "What happened?",
+    "@feedbackScreenMessageLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback message field."
+    },
+    "feedbackScreenReplyEmailLabel": "Reply email",
+    "@feedbackScreenReplyEmailLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback reply-email field."
+    },
+    "feedbackScreenDiagnosticsTitle": "Include diagnostics",
+    "@feedbackScreenDiagnosticsTitle": {
+      "description": "Issue #1004 (tranche 3): title of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsSubtitle": "App version, OS, device model, and recent activity.",
+    "@feedbackScreenDiagnosticsSubtitle": {
+      "description": "Issue #1004 (tranche 3): subtitle of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsPreview": "See what will be attached",
+    "@feedbackScreenDiagnosticsPreview": {
+      "description": "Issue #1004 (tranche 3): toggle revealing the diagnostics preview."
+    },
+    "feedbackScreenSendButton": "Send feedback",
+    "@feedbackScreenSendButton": {
+      "description": "Issue #1004 (tranche 3): submit button of the feedback screen."
+    },
+    "feedbackScreenMessageTooLong": "Message must be 4000 characters or fewer.",
+    "@feedbackScreenMessageTooLong": {
+      "description": "Issue #1004 (tranche 3): validation error for an over-long feedback message."
+    },
+    "feedbackScreenReplyEmailInvalid": "Enter a valid reply email address.",
+    "@feedbackScreenReplyEmailInvalid": {
+      "description": "Issue #1004 (tranche 3): validation error for an invalid reply email."
+    },
+    "feedbackScreenThanks": "Thanks — we'll get back to you at {email}.",
+    "@feedbackScreenThanks": {
+      "description": "Issue #1004 (tranche 3): confirmation shown after a feedback submission.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "supportHistoryTitle": "Support history",
+    "@supportHistoryTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the support history screen."
+    },
+    "supportHistoryEmptyTitle": "No feedback yet",
+    "@supportHistoryEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the support history screen."
+    },
+    "supportHistoryEmptyBody": "Reports you send from Settings appear here.",
+    "@supportHistoryEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the support history screen."
+    },
+    "supportHistoryRetry": "Retry",
+    "@supportHistoryRetry": {
+      "description": "Issue #1004 (tranche 3): retry action after a support history load failure."
+    },
+    "supportHistoryReplyLabel": "Reply",
+    "@supportHistoryReplyLabel": {
+      "description": "Issue #1004 (tranche 3): label of the reply field on a support ticket."
+    },
+    "supportHistorySend": "Send",
+    "@supportHistorySend": {
+      "description": "Issue #1004 (tranche 3): send action on a support ticket reply."
+    },
+    "profileDetailUnarchive": "Unarchive",
+    "@profileDetailUnarchive": {
+      "description": "Issue #1004 (tranche 3): unarchive action on an archived profile detail."
+    },
+    "profileDetailOverviewTab": "Overview",
+    "@profileDetailOverviewTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail overview tab."
+    },
+    "profileDetailCalendarTab": "Calendar",
+    "@profileDetailCalendarTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail calendar tab."
+    },
+    "profileDetailArchivedSuffix": " (archived)",
+    "@profileDetailArchivedSuffix": {
+      "description": "Issue #1004 (tranche 3): suffix appended to an archived profile's title."
+    },
+    "profileDetailSharedGuardians": "Shared · {count} guardians",
+    "@profileDetailSharedGuardians": {
+      "description": "Issue #1004 (tranche 3): co-managed indicator chip label.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerTitle": "Profiles",
+    "@profilePickerTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the profile picker."
+    },
+    "profilePickerEmptyTitle": "No profiles yet",
+    "@profilePickerEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the profile picker."
+    },
+    "profilePickerEmptyBody": "Add a profile to start tracking.",
+    "@profilePickerEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the profile picker."
+    },
+    "profilePickerEmptyAddAction": "Add profile",
+    "@profilePickerEmptyAddAction": {
+      "description": "Issue #1004 (tranche 3): empty-state primary action of the profile picker."
+    },
+    "profilePickerArchivedHeader": "Archived ({count})",
+    "@profilePickerArchivedHeader": {
+      "description": "Issue #1004 (tranche 3): archived section header on the profile picker.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerCreated": "Created {date}",
+    "@profilePickerCreated": {
+      "description": "Issue #1004 (tranche 3): profile row subtitle naming the creation date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "profilePickerMyProfilesHeader": "My profiles",
+    "@profilePickerMyProfilesHeader": {
+      "description": "Issue #1004 (tranche 3): section header for owned profiles."
+    },
+    "profilePickerSharedWithMeHeader": "Shared with me",
+    "@profilePickerSharedWithMeHeader": {
+      "description": "Issue #1004 (tranche 3): section header for profiles shared with the operator."
+    },
+    "profilePickerMenuGuardians": "Guardians",
+    "@profilePickerMenuGuardians": {
+      "description": "Issue #1004 (tranche 3): profile row menu item opening Manage Guardians."
+    },
+    "profileArchive": "Archive",
+    "@profileArchive": {
+      "description": "Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog."
+    },
+    "profileDialogCountsAsMinor": "Counts as a minor (derived from birth year)",
+    "@profileDialogCountsAsMinor": {
+      "description": "Issue #1004 (tranche 3): derived minor status in the profile edit dialog."
+    },
+    "profileDialogCountsAsAdult": "Counts as an adult (derived from birth year)",
+    "@profileDialogCountsAsAdult": {
+      "description": "Issue #1004 (tranche 3): derived adult status in the profile edit dialog."
+    },
+    "profileDialogAddTitle": "Add profile",
+    "@profileDialogAddTitle": {
+      "description": "Issue #1004 (tranche 3): title of the create-profile dialog."
+    },
+    "profileDialogBirthYearLabel": "Birth year (optional)",
+    "@profileDialogBirthYearLabel": {
+      "description": "Issue #1004 (tranche 3): label of the optional birth-year field."
+    },
+    "profileDialogRelationshipNone": "None",
+    "@profileDialogRelationshipNone": {
+      "description": "Issue #1004 (tranche 3): empty option in the relationship dropdown."
+    },
+    "profileDialogCancel": "Cancel",
+    "@profileDialogCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the profile edit dialog."
+    },
+    "profileDialogCreate": "Create",
+    "@profileDialogCreate": {
+      "description": "Issue #1004 (tranche 3): create action of the profile edit dialog."
+    },
+    "profileDialogSave": "Save",
+    "@profileDialogSave": {
+      "description": "Issue #1004 (tranche 3): save action of the profile edit dialog."
+    },
+    "profileArchiveConfirmTitle": "Archive {name}?",
+    "@profileArchiveConfirmTitle": {
+      "description": "Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "profileArchiveConfirmBody": "The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.",
+    "@profileArchiveConfirmBody": {
+      "description": "Issue #1004 (tranche 3): body of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmCancel": "Cancel",
+    "@profileArchiveConfirmCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmButton": "Archive",
+    "@profileArchiveConfirmButton": {
+      "description": "Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog."
+    },
+    "firstRunCreateError": "Could not create the profile. Please try again.",
+    "@firstRunCreateError": {
+      "description": "Issue #1004 (tranche 3): error shown when first-run profile creation fails."
+    },
+    "careNotesTitle": "{name} Care",
+    "@careNotesTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the care notes screen.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "careNotesReadOnlyArchived": "This profile is archived.",
+    "@careNotesReadOnlyArchived": {
+      "description": "Issue #1004 (tranche 3): read-only reason on an archived profile's care notes."
+    },
+    "careNotesSectionTitle": "Care notes",
+    "@careNotesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the care notes list."
+    },
+    "careNotesEmpty": "No care notes yet.",
+    "@careNotesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the care notes list."
+    },
+    "careNotesAddLabel": "Add a care note",
+    "@careNotesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-care-note field."
+    },
+    "careNotesAddHint": "Standing notes for everyone caring for this profile",
+    "@careNotesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-care-note field."
+    },
+    "careNotesAddButton": "Add note",
+    "@careNotesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-care-note action."
+    },
+    "careNotesDeleteTitle": "Delete this care note?",
+    "@careNotesDeleteTitle": {
+      "description": "Issue #1004 (tranche 3): title of the delete-care-note confirmation."
+    },
+    "careNotesDeleteBody": "Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.",
+    "@careNotesDeleteBody": {
+      "description": "Issue #1004 (tranche 3): body of the delete-care-note confirmation."
+    },
+    "careNotesDeleteCancel": "Cancel",
+    "@careNotesDeleteCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation."
+    },
+    "careNotesDeleteConfirm": "Delete",
+    "@careNotesDeleteConfirm": {
+      "description": "Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation."
+    },
+    "careNotesActorYou": "you",
+    "@careNotesActorYou": {
+      "description": "Issue #1004 (tranche 3): lowercase attribution for the current operator."
+    },
+    "careNotesActorGuardian": "Guardian",
+    "@careNotesActorGuardian": {
+      "description": "Issue #1004 (tranche 3): fallback attribution for an unknown guardian."
+    },
+    "careNotesSaveError": "Could not save the care note.",
+    "@careNotesSaveError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note save."
+    },
+    "careNotesAddPrepError": "Could not add the prep item.",
+    "@careNotesAddPrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item add."
+    },
+    "careNotesAddSupplyError": "Could not add the supply item.",
+    "@careNotesAddSupplyError": {
+      "description": "Issue #1004 (tranche 3): error after a failed supply-item add."
+    },
+    "careNotesUpdatePrepError": "Could not update the prep item.",
+    "@careNotesUpdatePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item update."
+    },
+    "careNotesRemovePrepError": "Could not remove the prep item.",
+    "@careNotesRemovePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item removal."
+    },
+    "careNotesRemoveNoteError": "Could not remove the care note.",
+    "@careNotesRemoveNoteError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note removal."
+    },
+    "careNotesClearCheckedError": "Could not clear the checked items.",
+    "@careNotesClearCheckedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-checked action."
+    },
+    "careNotesClearStockedError": "Could not clear the stocked items.",
+    "@careNotesClearStockedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-stocked action."
+    },
+    "careVisitPrepSectionTitle": "Visit prep",
+    "@careVisitPrepSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the visit-prep checklist."
+    },
+    "careVisitPrepEmpty": "No prep items yet.",
+    "@careVisitPrepEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the visit-prep checklist."
+    },
+    "careVisitPrepClearChecked": "Clear checked ({count})",
+    "@careVisitPrepClearChecked": {
+      "description": "Issue #1004 (tranche 3): action clearing checked visit-prep items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careVisitPrepAddLabel": "Add a prep item",
+    "@careVisitPrepAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-prep-item field."
+    },
+    "careVisitPrepAddHint": "A question or to-bring for the next appointment",
+    "@careVisitPrepAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-prep-item field."
+    },
+    "careVisitPrepAddButton": "Add item",
+    "@careVisitPrepAddButton": {
+      "description": "Issue #1004 (tranche 3): add-prep-item action."
+    },
+    "careVisitPrepCheckedVerb": "Checked by",
+    "@careVisitPrepCheckedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a checked prep item."
+    },
+    "careSuppliesSectionTitle": "Supplies",
+    "@careSuppliesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the household supplies list."
+    },
+    "careSuppliesEmpty": "No supplies tracked yet.",
+    "@careSuppliesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the household supplies list."
+    },
+    "careSuppliesClearStocked": "Clear stocked ({count})",
+    "@careSuppliesClearStocked": {
+      "description": "Issue #1004 (tranche 3): action clearing stocked supply items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careSuppliesAddLabel": "Add a supply item",
+    "@careSuppliesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-supply-item field."
+    },
+    "careSuppliesAddHint": "Something to keep stocked, e.g. liners",
+    "@careSuppliesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-supply-item field."
+    },
+    "careSuppliesAddButton": "Add supply",
+    "@careSuppliesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-supply-item action."
+    },
+    "careSuppliesStockedVerb": "Stocked by",
+    "@careSuppliesStockedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a stocked supply item."
+    },
+    "careRestockBefore": "Restock before {date}",
+    "@careRestockBefore": {
+      "description": "Issue #1004 (tranche 3): restock nudge title naming the due date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "guardianNotesFieldLabel": "Your note for this day",
+    "@guardianNotesFieldLabel": {
+      "description": "Issue #1004 (tranche 3): label of the guardian-note field."
+    },
+    "guardianNotesGuardianFallback": "Guardian",
+    "@guardianNotesGuardianFallback": {
+      "description": "Issue #1004 (tranche 3): fallback author name for a guardian note."
+    },
+  "webBannerDevCopy": "Development build — not for real data.",
+  "@webBannerDevCopy": {
+    "description": "Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831."
+  },
+  "webBannerSyncedCopy": "Browser build — this browser stores a copy of the signed-in profiles' data unencrypted, plus your sign-in. Signing out clears it.",
+  "@webBannerSyncedCopy": {
+    "description": "Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'."
+  },
+  "webBrowserNoticeDismissTooltip": "Dismiss",
+  "@webBrowserNoticeDismissTooltip": {
+    "description": "Tooltip/label on the browser-build notice's per-session dismiss button (epic #831)."
+  },
+  "webWipeAction": "Wipe local data",
+  "@webWipeAction": {
+    "description": "Action on the web banner opening the confirm-guarded local wipe (epic #831)."
+  },
+  "webWipeConfirmTitle": "Erase all local data?",
+  "@webWipeConfirmTitle": {
+    "description": "Title of the web banner's local-wipe confirmation (epic #831)."
+  },
+  "webWipeConfirmDevBody": "Erases all data stored in this browser. This cannot be undone.",
+  "@webWipeConfirmDevBody": {
+    "description": "Local-wipe confirmation body for a sync-off web build (epic #831)."
+  },
+  "webWipeConfirmSyncedBody": "Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.",
+  "@webWipeConfirmSyncedBody": {
+    "description": "Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831)."
+  },
+  "webWipeCancel": "Cancel",
+  "@webWipeCancel": {
+    "description": "Cancel action of the web local-wipe confirmation (epic #831)."
+  },
+  "webWipeConfirmAction": "Erase everything",
+  "@webWipeConfirmAction": {
+    "description": "Confirm action of the web local-wipe confirmation (epic #831)."
+  },
+  "webWipeDone": "All local data erased.",
+  "@webWipeDone": {
+    "description": "Snackbar after the web local wipe completes (epic #831)."
+  },
+  "webFirstRunDevTitle": "Development build",
+  "@webFirstRunDevTitle": {
+    "description": "Title of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
+  },
+  "webFirstRunDevBody": "This is a development build, not for real data. Data in this browser is not encrypted and not backed up.",
+  "@webFirstRunDevBody": {
+    "description": "Body of the one-time web first-run acknowledgement for a sync-off build (epic #831)."
+  },
+  "webFirstRunSyncedTitle": "Using lunarlog in this browser",
+  "@webFirstRunSyncedTitle": {
+    "description": "Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831)."
+  },
+  "webFirstRunSyncedBody": "This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account's data stays in your account and can sync again later.",
+  "@webFirstRunSyncedBody": {
+    "description": "Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831)."
+  },
+  "webFirstRunAcknowledge": "I understand",
+  "@webFirstRunAcknowledge": {
+    "description": "Acknowledge button of the one-time web first-run acknowledgement (epic #831)."
+  },
+    "accountMismatchTitle": "Different account",
+    "@accountMismatchTitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch screen app-bar title."
+    },
+    "accountMismatchBodyNoEmail": "This device holds data that belongs to a different account than the one you just signed in to.",
+    "@accountMismatchBodyNoEmail": {
+      "description": "Issue #1004 (tranche 2): account-mismatch body when no email is known."
+    },
+    "accountMismatchBodyWithEmail": "This device holds data that belongs to a different account than {email}.",
+    "@accountMismatchBodyWithEmail": {
+      "description": "Issue #1004 (tranche 2): account-mismatch body naming the signed-in email.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "accountMismatchExplainer": "This device is set up for a different account. This happens when Apple's Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.",
+    "@accountMismatchExplainer": {
+      "description": "Issue #1004 (tranche 2): account-mismatch explainer paragraph."
+    },
+    "accountMismatchSwitchAccount": "Switch account",
+    "@accountMismatchSwitchAccount": {
+      "description": "Issue #1004 (tranche 2): account-mismatch non-destructive exit button."
+    },
+    "accountMismatchSwitchAccountSubtitle": "Signs out and keeps everything on this device.",
+    "@accountMismatchSwitchAccountSubtitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch switch-account subtitle."
+    },
+    "accountMismatchRemoveData": "Remove this device's data",
+    "@accountMismatchRemoveData": {
+      "description": "Issue #1004 (tranche 2): account-mismatch destructive exit button."
+    },
+    "accountMismatchRemoveDialogTitle": "Remove this device's data?",
+    "@accountMismatchRemoveDialogTitle": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation dialog title."
+    },
+    "accountMismatchRemoveDialogBody": "Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.",
+    "@accountMismatchRemoveDialogBody": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation dialog body."
+    },
+    "accountMismatchCancel": "Cancel",
+    "@accountMismatchCancel": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation cancel button."
+    },
+    "accountMismatchRemoveConfirm": "Remove and sign out",
+    "@accountMismatchRemoveConfirm": {
+      "description": "Issue #1004 (tranche 2): account-mismatch confirmation destructive button."
+    },
+    "accountMismatchSwitchError": "Could not switch accounts. Please try again.",
+    "@accountMismatchSwitchError": {
+      "description": "Issue #1004 (tranche 2): account-mismatch switch-account failure copy."
+    },
+    "accountMismatchRemoveError": "Could not remove this device's data. Please try again.",
+    "@accountMismatchRemoveError": {
+      "description": "Issue #1004 (tranche 2): account-mismatch remove-data failure copy."
+    },
+    "accountUploadConsentTitle": "Upload to your account?",
+    "@accountUploadConsentTitle": {
+      "description": "Issue #1004 (tranche 2): upload-consent screen app-bar title."
+    },
+    "accountUploadConsentBody": "This device holds {profileCount, plural, =1{1 profile} other{{profileCount} profiles}} and {entryCount, plural, =1{1 entry} other{{entryCount} entries}} that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.",
+    "@accountUploadConsentBody": {
+      "description": "Issue #1004 (tranche 2): upload-consent body with counts of this device's rows.",
+      "placeholders": {
+        "profileCount": {
+          "type": "int"
+        },
+        "entryCount": {
+          "type": "int"
+        }
+      }
+    },
+    "accountUploadConsentLoadingBody": "This device holds data that is not in your account yet.",
+    "@accountUploadConsentLoadingBody": {
+      "description": "Issue #1004 (tranche 2): upload-consent body while the row counts load."
+    },
+    "accountUploadConsentDuplicateNote": "If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.",
+    "@accountUploadConsentDuplicateNote": {
+      "description": "Issue #1004 (tranche 2): upload-consent duplicate-profile note."
+    },
+    "accountUploadConsentUploadAction": "Upload to my account",
+    "@accountUploadConsentUploadAction": {
+      "description": "Issue #1004 (tranche 2): upload-consent upload button."
+    },
+    "accountUploadConsentNotNow": "Not now",
+    "@accountUploadConsentNotNow": {
+      "description": "Issue #1004 (tranche 2): upload-consent defer button."
+    },
+    "accountRestoringScreenBody": "Restoring your data…",
+    "@accountRestoringScreenBody": {
+      "description": "Issue #1004 (tranche 2): empty-device restore progress label."
+    },
+    "accountRestoreErrorTitle": "Unable to restore data",
+    "@accountRestoreErrorTitle": {
+      "description": "Issue #1004 (tranche 2): restore-failure screen heading."
+    },
+    "accountRestoreErrorBody": "We could not restore your account data from the cloud. Please check your internet connection and try again.",
+    "@accountRestoreErrorBody": {
+      "description": "Issue #1004 (tranche 2): restore-failure screen default body."
+    },
+    "accountRestoreErrorRetry": "Retry",
+    "@accountRestoreErrorRetry": {
+      "description": "Issue #1004 (tranche 2): restore-failure retry button."
+    },
+    "accountRestoreErrorContinue": "Continue without syncing",
+    "@accountRestoreErrorContinue": {
+      "description": "Issue #1004 (tranche 2): restore-failure continue-without-sync button."
+    },
+    "accountRestoreErrorSignOut": "Sign out",
+    "@accountRestoreErrorSignOut": {
+      "description": "Issue #1004 (tranche 2): restore-failure sign-out button."
+    },
+    "accountPasswordRecoveryTitle": "Set a new password",
+    "@accountPasswordRecoveryTitle": {
+      "description": "Issue #1004 (tranche 2): password-recovery screen app-bar title."
+    },
+    "accountPasswordRecoveryIntro": "You opened a password reset link. Choose a new password for your account.",
+    "@accountPasswordRecoveryIntro": {
+      "description": "Issue #1004 (tranche 2): password-recovery intro paragraph."
+    },
+    "accountPasswordRecoveryNewLabel": "New password",
+    "@accountPasswordRecoveryNewLabel": {
+      "description": "Issue #1004 (tranche 2): password-recovery new-password field label."
+    },
+    "accountPasswordRecoveryLengthHelper": "At least {length} characters",
+    "@accountPasswordRecoveryLengthHelper": {
+      "description": "Issue #1004 (tranche 2): password-recovery length helper text.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountPasswordRecoveryConfirmLabel": "Confirm password",
+    "@accountPasswordRecoveryConfirmLabel": {
+      "description": "Issue #1004 (tranche 2): password-recovery confirm-password field label."
+    },
+    "accountPasswordRecoveryShow": "Show password",
+    "@accountPasswordRecoveryShow": {
+      "description": "Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (shown)."
+    },
+    "accountPasswordRecoveryHide": "Hide password",
+    "@accountPasswordRecoveryHide": {
+      "description": "Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (hidden)."
+    },
+    "accountPasswordRecoveryLengthError": "Use at least {length} characters for the password.",
+    "@accountPasswordRecoveryLengthError": {
+      "description": "Issue #1004 (tranche 2): password-recovery too-short error.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountPasswordRecoveryMismatchError": "Passwords do not match.",
+    "@accountPasswordRecoveryMismatchError": {
+      "description": "Issue #1004 (tranche 2): password-recovery mismatch error."
+    },
+    "accountPasswordRecoverySave": "Save password",
+    "@accountPasswordRecoverySave": {
+      "description": "Issue #1004 (tranche 2): password-recovery save button."
+    },
+    "accountPasswordRecoveryNotNow": "Not now",
+    "@accountPasswordRecoveryNotNow": {
+      "description": "Issue #1004 (tranche 2): password-recovery defer button."
+    },
+    "accountMfaSettingsCancel": "Cancel",
+    "@accountMfaSettingsCancel": {
+      "description": "Issue #1004 (tranche 2): MFA remove-factor confirmation cancel button."
+    },
+    "accountMfaStepUpCancel": "Cancel",
+    "@accountMfaStepUpCancel": {
+      "description": "Issue #1004 (tranche 2): MFA step-up dialog cancel button."
+    },
+    "accountSyncStatusTapToRetry": "Tap to retry",
+    "@accountSyncStatusTapToRetry": {
+      "description": "Issue #1004 (tranche 2): sync-status tile subtitle when entries were rejected."
+    },
+    "accountSyncStatusSettingsAction": "Settings",
+    "@accountSyncStatusSettingsAction": {
+      "description": "Issue #1004 (tranche 2): sync-status snackbar action opening Settings."
+    },
+    "accountSignInEmbeddedIntro": "An account keeps a copy of this device's data so it can be restored on another device. You can also keep everything on this device only.",
+    "@accountSignInEmbeddedIntro": {
+      "description": "Issue #1004 (tranche 2): sign-in screen first-run embedded intro."
+    },
+    "accountSignInPasskeyAction": "Sign in with a passkey",
+    "@accountSignInPasskeyAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen passkey button."
+    },
+    "accountSignInOr": "or",
+    "@accountSignInOr": {
+      "description": "Issue #1004 (tranche 2): sign-in screen provider/passwordless divider label."
+    },
+    "accountSignInEmailLabel": "Email",
+    "@accountSignInEmailLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email field label."
+    },
+    "accountSignInPasswordLabel": "Password",
+    "@accountSignInPasswordLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password field label."
+    },
+    "accountSignInCreateAccountAction": "Create account",
+    "@accountSignInCreateAccountAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-account primary button."
+    },
+    "accountSignInAction": "Sign in",
+    "@accountSignInAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen sign-in primary button."
+    },
+    "accountSignInForgotPasswordAction": "Forgot password",
+    "@accountSignInForgotPasswordAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen forgot-password button."
+    },
+    "accountSignInCodeLabel": "Code from the email",
+    "@accountSignInCodeLabel": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email-code field label."
+    },
+    "accountSignInCodeHint": "6-10 digits",
+    "@accountSignInCodeHint": {
+      "description": "Issue #1004 (tranche 2): sign-in screen email-code field hint."
+    },
+    "accountSignInVerifyCodeAction": "Sign in with code",
+    "@accountSignInVerifyCodeAction": {
+      "description": "Issue #1004 (tranche 2): sign-in screen verify-code button."
+    },
+    "accountSignInNotNow": "Not now",
+    "@accountSignInNotNow": {
+      "description": "Issue #1004 (tranche 2): sign-in screen first-run defer button."
+    },
+    "accountSignInTitle": "Sign in",
+    "@accountSignInTitle": {
+      "description": "Issue #1004 (tranche 2): sign-in screen app-bar title in sign-in mode."
+    },
+    "accountSignInTitleCreate": "Create an account",
+    "@accountSignInTitleCreate": {
+      "description": "Issue #1004 (tranche 2): sign-in screen app-bar title in create mode."
+    },
+    "accountSignInUseAtLeast": "Use at least {length} characters for the password.",
+    "@accountSignInUseAtLeast": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-mode short-password error.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSignInConfirmEmailInfo": "Check your email to confirm the account, then open the link on this device.",
+    "@accountSignInConfirmEmailInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-signup confirmation info."
+    },
+    "accountSignInResetInfo": "If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).",
+    "@accountSignInResetInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-reset-request info."
+    },
+    "accountSignInMagicLinkInfo": "Check your email for a sign-in link or code.",
+    "@accountSignInMagicLinkInfo": {
+      "description": "Issue #1004 (tranche 2): sign-in screen post-magic-link info."
+    },
+    "accountSignInPasswordLengthHelper": "At least {length} characters",
+    "@accountSignInPasswordLengthHelper": {
+      "description": "Issue #1004 (tranche 2): sign-in screen create-mode length helper text.",
+      "placeholders": {
+        "length": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSignInShowPassword": "Show password",
+    "@accountSignInShowPassword": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (shown)."
+    },
+    "accountSignInHidePassword": "Hide password",
+    "@accountSignInHidePassword": {
+      "description": "Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (hidden)."
+    },
+    "accountSignInToggleHaveAccount": "I already have an account",
+    "@accountSignInToggleHaveAccount": {
+      "description": "Issue #1004 (tranche 2): sign-in screen mode toggle (create mode active)."
+    },
+    "accountSignInToggleCreateInstead": "Create an account instead",
+    "@accountSignInToggleCreateInstead": {
+      "description": "Issue #1004 (tranche 2): sign-in screen mode toggle (sign-in mode active)."
+    },
+    "accountSignInMagicLinkCreate": "Email me a link to create my account",
+    "@accountSignInMagicLinkCreate": {
+      "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in create mode."
+    },
+    "accountSignInMagicLinkSignIn": "Email me a sign-in link",
+    "@accountSignInMagicLinkSignIn": {
+      "description": "Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode."
+    },
+    "accountDeleteDialogTitle": "Delete account?",
+    "@accountDeleteDialogTitle": {
+      "description": "Issue #1004 (tranche 2): delete-account confirmation dialog title."
+    },
+    "accountDeleteDialogGuardianNote": "Entries you logged as a guardian on someone else's profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device's own health store - account deletion does not remove them.",
+    "@accountDeleteDialogGuardianNote": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog guardian-entry note."
+    },
+    "accountDeleteDialogAck": "I understand this removes access for other guardians and deletes any minor profiles I own.",
+    "@accountDeleteDialogAck": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog blast-radius acknowledgement checkbox."
+    },
+    "accountDeleteDialogCancel": "Cancel",
+    "@accountDeleteDialogCancel": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog cancel button."
+    },
+    "accountDeleteDialogTransferFirst": "Transfer ownership first",
+    "@accountDeleteDialogTransferFirst": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog transfer-ownership escape hatch."
+    },
+    "accountDeleteDialogExportFirst": "Export first",
+    "@accountDeleteDialogExportFirst": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog export-first button."
+    },
+    "accountDeleteDialogConfirm": "Delete account",
+    "@accountDeleteDialogConfirm": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog destructive confirm button."
+    },
+    "accountDeleteDialogExportError": "Could not export your data. Please try again.",
+    "@accountDeleteDialogExportError": {
+      "description": "Issue #1004 (tranche 2): delete-account dialog export failure copy."
+    },
+    "accountDeleteDialogBlastRadiusProfiles": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).",
+    "@accountDeleteDialogBlastRadiusProfiles": {
+      "description": "Issue #1004 (tranche 2): delete-account blast radius with no other guardians.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "names": {
+          "type": "String"
+        }
+      }
+    },
+    "accountDeleteDialogBlastRadiusGuardians": "This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.",
+    "@accountDeleteDialogBlastRadiusGuardians": {
+      "description": "Issue #1004 (tranche 2): delete-account blast radius naming other guardians.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "names": {
+          "type": "String"
+        },
+        "guardianCount": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSectionTitle": "Account",
+    "@accountSectionTitle": {
+      "description": "Issue #1004 (tranche 2): Settings Account section heading."
+    },
+    "accountSectionSignInMethods": "Sign-in methods: {methods}",
+    "@accountSectionSignInMethods": {
+      "description": "Issue #1004 (tranche 2): account identity tile subtitle listing sign-in methods.",
+      "placeholders": {
+        "methods": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionSignedIn": "Signed in",
+    "@accountSectionSignedIn": {
+      "description": "Issue #1004 (tranche 2): account identity tile title with no known email."
+    },
+    "accountSectionSignedInAs": "Signed in as {email}",
+    "@accountSectionSignedInAs": {
+      "description": "Issue #1004 (tranche 2): account identity tile title naming the email.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionAddApple": "Add Apple",
+    "@accountSectionAddApple": {
+      "description": "Issue #1004 (tranche 2): account add-Apple tile label."
+    },
+    "accountSectionAddGoogle": "Add Google",
+    "@accountSectionAddGoogle": {
+      "description": "Issue #1004 (tranche 2): account add-Google tile label."
+    },
+    "accountSectionAddPasskey": "Add a passkey",
+    "@accountSectionAddPasskey": {
+      "description": "Issue #1004 (tranche 2): account add-passkey tile label."
+    },
+    "accountSectionSyncSubtitle": "Sync this device's data to an account.",
+    "@accountSectionSyncSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile subtitle."
+    },
+    "accountSectionSignInAgain": "Sign in again",
+    "@accountSectionSignInAgain": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile title when the session expired."
+    },
+    "accountSectionSignIn": "Sign in",
+    "@accountSectionSignIn": {
+      "description": "Issue #1004 (tranche 2): account sign-in tile title."
+    },
+    "accountSectionSyncNow": "Sync now",
+    "@accountSectionSyncNow": {
+      "description": "Issue #1004 (tranche 2): account sync-now tile and dialog button."
+    },
+    "accountSectionSignOut": "Sign out",
+    "@accountSectionSignOut": {
+      "description": "Issue #1004 (tranche 2): account sign-out tile and confirm button."
+    },
+    "accountSectionSignOutSubtitle": "Removes the data from this device.",
+    "@accountSectionSignOutSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-out tile subtitle."
+    },
+    "accountSectionSignOutEverywhere": "Sign out everywhere",
+    "@accountSectionSignOutEverywhere": {
+      "description": "Issue #1004 (tranche 2): account sign-out-everywhere tile and confirm button."
+    },
+    "accountSectionSignOutEverywhereSubtitle": "Signs out all devices, though others may take up to an hour to notice.",
+    "@accountSectionSignOutEverywhereSubtitle": {
+      "description": "Issue #1004 (tranche 2): account sign-out-everywhere tile subtitle."
+    },
+    "accountSectionDelete": "Delete account",
+    "@accountSectionDelete": {
+      "description": "Issue #1004 (tranche 2): account delete tile title."
+    },
+    "accountSectionLinkSubtitle": "Sign in to this account another way.",
+    "@accountSectionLinkSubtitle": {
+      "description": "Issue #1004 (tranche 2): account add-method tile subtitle."
+    },
+    "accountSectionRemoveProvider": "Remove {provider}",
+    "@accountSectionRemoveProvider": {
+      "description": "Issue #1004 (tranche 2): account remove-method tile title.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionRemoveSubtitle": "Stop using this to sign in to this account.",
+    "@accountSectionRemoveSubtitle": {
+      "description": "Issue #1004 (tranche 2): account remove-method tile subtitle."
+    },
+    "accountSectionRemoveTitle": "Remove {provider}?",
+    "@accountSectionRemoveTitle": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirmation title.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionRemoveBody": "You will no longer be able to sign in to this account with {provider}. Your data and your other sign-in methods are unchanged.",
+    "@accountSectionRemoveBody": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirmation body.",
+      "placeholders": {
+        "provider": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSectionCancel": "Cancel",
+    "@accountSectionCancel": {
+      "description": "Issue #1004 (tranche 2): account section dialog cancel button."
+    },
+    "accountSectionRemove": "Remove",
+    "@accountSectionRemove": {
+      "description": "Issue #1004 (tranche 2): account remove-method confirm button."
+    },
+    "accountSectionUnsyncedTitle": "Unsynced changes",
+    "@accountSectionUnsyncedTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog title."
+    },
+    "accountSectionUnsyncedBody": "{count, plural, =1{1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.} other{{count} changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.}}",
+    "@accountSectionUnsyncedBody": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog body.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSectionDiscardAndSignOut": "Discard unsynced changes and sign out",
+    "@accountSectionDiscardAndSignOut": {
+      "description": "Issue #1004 (tranche 2): sign-out-with-unsynced-rows discard button."
+    },
+    "accountSectionSignOutTitle": "Sign out?",
+    "@accountSectionSignOutTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out confirmation dialog title."
+    },
+    "accountSectionSignOutEverywhereTitle": "Sign out everywhere?",
+    "@accountSectionSignOutEverywhereTitle": {
+      "description": "Issue #1004 (tranche 2): sign-out-everywhere confirmation dialog title."
+    },
+    "accountSectionSignOutBody": "This removes the data from this device. It stays in your account.",
+    "@accountSectionSignOutBody": {
+      "description": "Issue #1004 (tranche 2): sign-out confirmation dialog body."
+    },
+    "accountSectionOtherDevicesNotSignedOut": "{failureCopy} Other devices were not signed out.",
+    "@accountSectionOtherDevicesNotSignedOut": {
+      "description": "Issue #1004 (tranche 2): sign-out-everywhere partial-failure snackbar suffix.",
+      "placeholders": {
+        "failureCopy": {
+          "type": "String"
+        }
+      }
+    },
+    "settingsExportRangeTitle": "Export range",
+    "@settingsExportRangeTitle": {
+      "description": "Issue #1004 (tranche 2): export-range picker sheet title."
+    },
+    "settingsExportRangeCancel": "Cancel",
+    "@settingsExportRangeCancel": {
+      "description": "Issue #1004 (tranche 2): export-range picker cancel button."
+    },
+    "settingsExportRangeConfirm": "Export",
+    "@settingsExportRangeConfirm": {
+      "description": "Issue #1004 (tranche 2): export-range picker confirm button."
+    },
+    "settingsExportRangeStartDate": "Start date",
+    "@settingsExportRangeStartDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom start-date button."
+    },
+    "settingsExportRangeEndDate": "End date",
+    "@settingsExportRangeEndDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom end-date button."
+    },
+    "settingsClinicalExportFhirTitle": "Export clinical summary (FHIR)",
+    "@settingsClinicalExportFhirTitle": {
+      "description": "Issue #1004 (tranche 2): FHIR clinical-export tile title."
+    },
+    "settingsCsvExportTitle": "Export as CSV",
+    "@settingsCsvExportTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export tile title."
+    },
+    "settingsCsvExportForTitle": "Export CSV data for",
+    "@settingsCsvExportForTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export profile-chooser dialog title."
+    },
+    "healthSyncBindTitle": "Sync {name} to this phone?",
+    "@healthSyncBindTitle": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation dialog title.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindWriteBody": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindImportBody": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindCancel": "Cancel",
+    "@healthSyncBindCancel": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation cancel button."
+    },
+    "healthSyncSyncFailed": "Couldn't sync {name} — try again.",
+    "@healthSyncSyncFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync bind failure snackbar.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncImportFailed": "Couldn't finish the import. Please try again.",
+    "@healthSyncImportFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync import failure line."
+    },
+    "healthSyncLoadFailed": "Couldn't load profiles for health sync.",
+    "@healthSyncLoadFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync profile-load failure line."
+    },
+    "healthSyncRetry": "Retry",
+    "@healthSyncRetry": {
+      "description": "Issue #1004 (tranche 2): health-sync retry button."
+    },
+    "healthSyncImporting": "Importing from {source}…",
+    "@healthSyncImporting": {
+      "description": "Issue #1004 (tranche 2): health-sync import progress line before the first page reports.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncFlowCollapseNote": "Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.",
+    "@healthSyncFlowCollapseNote": {
+      "description": "Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure."
+    },
+    "healthSyncRevocationNote": "Turning sync off, or later revoking this phone's Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.",
+    "@healthSyncRevocationNote": {
+      "description": "Issue #1004 (tranche 2): health-sync revocation/off disclosure."
+    },
+    "healthSyncImportFrom": "Import from {source}",
+    "@healthSyncImportFrom": {
+      "description": "Issue #1004 (tranche 2): health-sync import tile title naming the source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncUnbindAction": "Stop syncing to this phone",
+    "@healthSyncUnbindAction": {
+      "description": "Issue #1004 (tranche 2): health-sync unbind tile title."
+    },
+    "importScreenTitle": "Import from file",
+    "@importScreenTitle": {
+      "description": "Issue #1004 (tranche 2): import screen app-bar title."
+    },
+    "importScreenPickBody": "Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.",
+    "@importScreenPickBody": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick body."
+    },
+    "importScreenChooseFileAction": "Choose file",
+    "@importScreenChooseFileAction": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick button."
+    },
+    "importScreenImportAction": "Import",
+    "@importScreenImportAction": {
+      "description": "Issue #1004 (tranche 2): import screen preview confirm button."
+    },
+    "importScreenCancel": "Cancel",
+    "@importScreenCancel": {
+      "description": "Issue #1004 (tranche 2): import screen preview cancel button."
+    },
+    "importScreenDone": "Done",
+    "@importScreenDone": {
+      "description": "Issue #1004 (tranche 2): import screen result done button."
+    },
+    "reminderNoProfile": "Create a profile to set up reminders.",
+    "@reminderNoProfile": {
+      "description": "Issue #1004 (tranche 2): reminder settings empty state."
+    },
+    "reminderPrivacyNote": "Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.",
+    "@reminderPrivacyNote": {
+      "description": "Issue #1004 (tranche 2): reminder settings lock-screen privacy note."
+    },
+    "reminderProfileLabel": "Profile",
+    "@reminderProfileLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings profile row title."
+    },
+    "reminderCadenceLabel": "Cadence",
+    "@reminderCadenceLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings cadence row title."
+    },
+    "reminderTimeLabel": "Time",
+    "@reminderTimeLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings time row title."
+    },
+    "reminderQuietHoursTitle": "Quiet hours",
+    "@reminderQuietHoursTitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch title."
+    },
+    "reminderQuietHoursSubtitle": "A reminder that lands inside the window waits until it ends",
+    "@reminderQuietHoursSubtitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle."
+    },
+    "reminderQuietStart": "Starts",
+    "@reminderQuietStart": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours start row."
+    },
+    "reminderQuietEnd": "Ends",
+    "@reminderQuietEnd": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours end row."
+    },
+    "yourDataExportTitle": "Export my data",
+    "@yourDataExportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data export tile title."
+    },
+    "yourDataExportSubtitleSignedIn": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account's server data.",
+    "@yourDataExportSubtitleSignedIn": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when signed in."
+    },
+    "yourDataExportSubtitleLocal": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.",
+    "@yourDataExportSubtitleLocal": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when local-only."
+    },
+    "yourDataImportTitle": "Import from file",
+    "@yourDataImportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile title."
+    },
+    "yourDataImportSubtitle": "Restore from a JSON backup, or bring in a Clue export (.zip).",
+    "@yourDataImportSubtitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile subtitle."
+    },
+    "yourDataPurgeTitle": "Purge imported data",
+    "@yourDataPurgeTitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile and dialog title."
+    },
+    "yourDataPurgeSubtitle": "Remove only the entries a specific import brought in — manually logged data is never touched.",
+    "@yourDataPurgeSubtitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile subtitle."
+    },
+    "yourDataPurgedSnack": "Purged {source} data",
+    "@yourDataPurgedSnack": {
+      "description": "Issue #1004 (tranche 2): purge success snackbar naming the import source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "yourDataPurgeDialogBody": "Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.",
+    "@yourDataPurgeDialogBody": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog body."
+    },
+    "yourDataPurgeProfileLabel": "Profile",
+    "@yourDataPurgeProfileLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog profile field label."
+    },
+    "yourDataPurgeCancel": "Cancel",
+    "@yourDataPurgeCancel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog cancel button."
+    },
+    "yourDataPurgeConfirm": "Purge",
+    "@yourDataPurgeConfirm": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog confirm button."
+    },
+    "yourDataImportSourceLabel": "Import source",
+    "@yourDataImportSourceLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog import-source field label."
     }
 }

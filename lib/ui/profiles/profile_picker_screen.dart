@@ -124,7 +124,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
     final household = active.length >= 2;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profiles'),
+        title: Text(l10n.profilePickerTitle),
         actions: [
           if (hasSync) SyncStatusGlyph(onPressed: openSettings),
           const SharedWithMeAction(),
@@ -143,9 +143,9 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       body: active.isEmpty && archived.isEmpty
           ? EmptyState(
               key: const ValueKey('profile-picker-empty'),
-              title: 'No profiles yet',
-              body: 'Add a profile to start tracking.',
-              primaryActionLabel: 'Add profile',
+              title: l10n.profilePickerEmptyTitle,
+              body: l10n.profilePickerEmptyBody,
+              primaryActionLabel: l10n.profilePickerEmptyAddAction,
               onPrimaryAction: () => _addProfile(context),
             )
           : ListView(
@@ -154,13 +154,14 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
                 if (archived.isNotEmpty)
                   ExpansionTile(
                     key: const Key('archived-section'),
-                    title: Text('Archived (${archived.length})'),
+                    title: Text(l10n.profilePickerArchivedHeader(archived.length)),
                     children: [
                       for (final profile in archived)
                         ListTile(
                           title: Text(profile.displayName),
-                          subtitle: Text(
-                              'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}'),
+                          subtitle: Text(l10n.profilePickerCreated(
+                              formatCreatedDate(profile.createdAt,
+                                  locale: dates.calendarLocale(context)))),
                           onTap: () => Navigator.of(context).push(
                             buildNamedRoute<void>(
                               name: kRouteProfileDetailScreen,
@@ -222,15 +223,15 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       ];
     }
     return [
-      const ListSectionHeader(
-        key: ValueKey('my-profiles-header'),
-        title: 'My profiles',
+      ListSectionHeader(
+        key: const ValueKey('my-profiles-header'),
+        title: AppLocalizations.of(context).profilePickerMyProfilesHeader,
       ),
       for (final profile in owned)
         _row(context, overview, sharing, profile, household),
-      const ListSectionHeader(
-        key: ValueKey('shared-with-me-header'),
-        title: 'Shared with me',
+      ListSectionHeader(
+        key: const ValueKey('shared-with-me-header'),
+        title: AppLocalizations.of(context).profilePickerSharedWithMeHeader,
       ),
       for (final profile in shared)
         _row(context, overview, sharing, profile, household),
@@ -283,7 +284,8 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       sharingService: sharing,
       refreshToken: overview?.badgeEpoch ?? 0,
       subtitle: roleSubtitle ??
-          'Created ${formatCreatedDate(profile.createdAt, locale: dates.calendarLocale(context))}',
+          l10n.profilePickerCreated(formatCreatedDate(profile.createdAt,
+              locale: dates.calendarLocale(context))),
       onTap: () => context.read<ProfileController>().selectProfile(profile.id),
       trailing: household && canLog
           ? Row(
@@ -324,12 +326,13 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
         final canEdit = role == null || role.canEditProfile;
         final canDelete = role == null || role.canDeleteProfile;
         return [
-          const PopupMenuItem(value: 'caregivers', child: Text('Guardians')),
+          PopupMenuItem(
+              value: 'caregivers', child: Text(l10n.profilePickerMenuGuardians)),
           if (canEdit)
             PopupMenuItem(
                 value: 'rename', child: Text(l10n.editProfileAction)),
           if (canDelete)
-            const PopupMenuItem(value: 'archive', child: Text('Archive')),
+            PopupMenuItem(value: 'archive', child: Text(l10n.profileArchive)),
         ];
       },
     );

@@ -1,5 +1,7 @@
-/// U8 web guardrail tests (KTD9): non-dismissible banner, confirmation-
-/// guarded wipe, one-time blocking first-profile acknowledgment.
+/// U8 web guardrail tests (KTD9), updated by epic #831 (Option A): the web
+/// build is a first-class client when `LUNARLOG_WEB_SYNC=true`, so the
+/// banner and the one-time first-run acknowledgement are selected by that
+/// flag through the injectable `webSyncEnabled` seam.
 ///
 /// Also Issue #17 R11 (KTD9's own rule extended): "Delete account" never
 /// ships on web, regardless of `LUNARLOG_WEB_SYNC` ("Export my data" moved
@@ -27,8 +29,19 @@ import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
 
-const String kSyncedBannerCopy = 'Development build — this browser holds '
-    'your synced family data unencrypted. Not for real data.';
+const String kDevBannerCopy = 'Development build — not for real data.';
+const String kSyncedBannerCopy = 'Browser build — this browser stores a copy '
+    "of the signed-in profiles' data unencrypted, plus your sign-in. "
+    'Signing out clears it.';
+
+/// Mounts [child] under a `MaterialApp` that carries the app's real
+/// localization delegates, since the banner reads its copy through
+/// `AppLocalizations`.
+Widget _localizedApp(Widget child) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: child,
+    );
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -56,22 +69,60 @@ void main() {
     await db.close();
   });
 
-  testWidgets('banner copy: sync off (the default) never mentions sync; '
-      'sync on names the exposure', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: WebGuardrails(
+  testWidgets('banner copy: sync off keeps the dev warning and offers no '
+      'dismiss; sync on is an honest browser notice that never says "not for '
+      'real data"', (tester) async {
+    await tester.pumpWidget(_localizedApp(
+      WebGuardrails(
         showBanner: true,
         onWipe: () async {},
         child: const Scaffold(body: Text('content')),
       ),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Development build — not for real data.'),
-        findsOneWidget);
+    expect(find.text(kDevBannerCopy), findsOneWidget);
     expect(find.textContaining('sync'), findsNothing);
+    expect(find.byKey(WebDevBanner.dismissButtonKey), findsNothing);
 
-    await tester.pumpWidget(MaterialApp(
-      home: WebGuardrails(
+    await tester.pumpWidget(_localizedApp(
+      WebGuardrails(
+        showBanner: true,
+        webSyncEnabled: true,
+        onWipe: () async {},
+        child: const Scaffold(body: Text('content')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text(kSyncedBannerCopy), findsOneWidget);
+    expect(find.textContaining('not for real data'), findsNothing,
+        reason: 'a sync-enabled build is for real data');
+    expect(find.byKey(WebDevBanner.dismissButtonKey), findsOneWidget);
+  });
+
+  testWidgets('sync-on browser notice is dismissible for the session only',
+      (tester) async {
+    await tester.pumpWidget(_localizedApp(
+      WebGuardrails(
+        key: const ValueKey('first-mount'),
+        showBanner: true,
+        webSyncEnabled: true,
+        onWipe: () async {},
+        child: const Scaffold(body: Text('content')),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text(kSyncedBannerCopy), findsOneWidget);
+
+    await tester.tap(find.byKey(WebDevBanner.dismissButtonKey));
+    await tester.pumpAndSettle();
+    expect(find.text(kSyncedBannerCopy), findsNothing);
+    expect(find.text('content'), findsOneWidget);
+
+    // A fresh mount (a reload) brings the notice back — the dismissal was
+    // never persisted.
+    await tester.pumpWidget(_localizedApp(
+      WebGuardrails(
+        key: const ValueKey('second-mount'),
         showBanner: true,
         webSyncEnabled: true,
         onWipe: () async {},
@@ -85,29 +136,27 @@ void main() {
   testWidgets('banner renders when shown, absent when not', (tester) async {
     var wipes = 0;
     await tester.pumpWidget(
-      MaterialApp(
-        home: WebGuardrails(
+      _localizedApp(
+        WebGuardrails(
           showBanner: true,
           onWipe: () async => wipes++,
           child: const Scaffold(body: Text('content')),
         ),
       ),
     );
-    expect(find.text('Development build — not for real data.'),
-        findsOneWidget);
+    expect(find.text(kDevBannerCopy), findsOneWidget);
     expect(find.text('content'), findsOneWidget);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: WebGuardrails(
+      _localizedApp(
+        WebGuardrails(
           showBanner: false,
           onWipe: () async => wipes++,
           child: const Scaffold(body: Text('content')),
         ),
       ),
     );
-    expect(find.text('Development build — not for real data.'),
-        findsNothing);
+    expect(find.text(kDevBannerCopy), findsNothing);
     expect(wipes, 0);
   });
 
@@ -115,8 +164,8 @@ void main() {
       (tester) async {
     var wipes = 0;
     await tester.pumpWidget(
-      MaterialApp(
-        home: WebGuardrails(
+      _localizedApp(
+        WebGuardrails(
           showBanner: true,
           onWipe: () async => wipes++,
           child: const Scaffold(body: Text('content')),
@@ -152,8 +201,8 @@ void main() {
     var acknowledged = 0;
     var persisted = false;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
+      _localizedApp(
+        Scaffold(
           body: Builder(
             builder: (context) => Center(
               child: FilledButton(
@@ -191,11 +240,40 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
   });
 
+  testWidgets('first-run acknowledgment for a sync-enabled build tells the '
+      'browser-storage story, not "not for real data"', (tester) async {
+    await tester.pumpWidget(
+      _localizedApp(
+        Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: FilledButton(
+                onPressed: () => showWebFirstRunAcknowledgment(
+                  context,
+                  alreadyAcknowledged: false,
+                  webSyncEnabled: true,
+                  onAcknowledged: () async {},
+                ),
+                child: const Text('start'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('start'));
+    await tester.pumpAndSettle();
+    expect(find.text('Using lunarlog in this browser'), findsOneWidget);
+    expect(find.textContaining('unencrypted copy'), findsOneWidget);
+    expect(find.textContaining('Signing out removes the copy'), findsOneWidget);
+    expect(find.textContaining('not for real data'), findsNothing);
+  });
+
   testWidgets('already-acknowledged install skips the dialog', (tester) async {
     var acknowledged = 0;
     await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
+      _localizedApp(
+        Scaffold(
           body: Builder(
             builder: (context) => Center(
               child: FilledButton(

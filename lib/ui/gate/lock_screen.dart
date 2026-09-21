@@ -49,7 +49,8 @@ class LockScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'lunarlog',
+      onGenerateTitle: (context) =>
+          AppLocalizations.of(context).gateLockScreenAppTitle,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
@@ -69,6 +70,7 @@ class LockScreen extends StatelessWidget {
       home: Builder(
         builder: (context) {
           final theme = Theme.of(context);
+          final l10n = AppLocalizations.of(context);
           return Scaffold(
             key: const ValueKey('lock-screen'),
             body: Center(
@@ -81,7 +83,7 @@ class LockScreen extends StatelessWidget {
                     Icon(Icons.lock_outline,
                         size: 56, color: theme.colorScheme.primary),
                     const SizedBox(height: 16),
-                    Text('lunarlog is locked',
+                    Text(l10n.gateLockScreenTitle,
                         style: theme.textTheme.headlineSmall),
                     const SizedBox(height: 8),
                     // #271 D-6: once the PIN step is reached — after a granted
@@ -91,9 +93,9 @@ class LockScreen extends StatelessWidget {
                       PinUnlockSection(controller: controller)
                     else if (controller.denialReason ==
                         GateDenialReason.noCredentialEnrolled)
-                      ..._noCredentialContent(theme)
+                      ..._noCredentialContent(theme, l10n)
                     else
-                      ..._normalContent(theme),
+                      ..._normalContent(theme, l10n),
                   ],
                 ),
               ),
@@ -107,23 +109,21 @@ class LockScreen extends StatelessWidget {
   /// [GateDenialReason.none] (never attempted, or last attempt succeeded)
   /// and [GateDenialReason.deniedByUser]: the OS did present a prompt, so
   /// "try again" is the primary action.
-  List<Widget> _normalContent(ThemeData theme) => [
+  List<Widget> _normalContent(ThemeData theme, AppLocalizations l10n) => [
         // Issue #258: "Your data is protected" assumed the reader owns the
         // record — this screen may be guarding someone else's (a minor's)
         // profile. Name the device as the thing that is protected; see
         // docs/product/voice-and-copy.md ("second person for the reader").
-        const Text(
-          'Everything logged on this device stays protected. Unlock to '
-          'continue.',
+        Text(
+          l10n.gateLockScreenProtectedBody,
           textAlign: TextAlign.center,
         ),
         if (controller.denialReason == GateDenialReason.deniedByUser &&
             !controller.authenticating) ...[
           const SizedBox(height: 12),
-          const Text(
-            key: ValueKey('lock-denied-message'),
-            'Not unlocked. The profiles on this device stay hidden until '
-            'the device credential is accepted.',
+          Text(
+            key: const ValueKey('lock-denied-message'),
+            l10n.gateLockScreenDeniedBody,
             textAlign: TextAlign.center,
           ),
         ],
@@ -138,7 +138,7 @@ class LockScreen extends StatelessWidget {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Unlock'),
+              : Text(l10n.gateLockScreenUnlockButton),
         ),
       ];
 
@@ -150,13 +150,10 @@ class LockScreen extends StatelessWidget {
   /// re-checks this automatically when the app resumes from background
   /// (issue #534), so an operator who adds a passcode and comes back
   /// unlocks without tapping anything here.
-  List<Widget> _noCredentialContent(ThemeData theme) => [
+  List<Widget> _noCredentialContent(ThemeData theme, AppLocalizations l10n) => [
         Text(
           key: const ValueKey('no-credential-message'),
-          'This device has no screen lock set. lunarlog protects your '
-          "family's data using your device's own screen lock, so it can't "
-          'open until you add one — a passcode, PIN, pattern, or biometric '
-          'lock all work.',
+          l10n.gateLockScreenNoCredentialBody,
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyLarge,
         ),
@@ -165,7 +162,7 @@ class LockScreen extends StatelessWidget {
           key: const ValueKey('open-device-settings-button'),
           onPressed: () => openDeviceSettings(),
           icon: const Icon(Icons.settings),
-          label: const Text('Open device settings'),
+          label: Text(l10n.gateLockScreenOpenDeviceSettings),
         ),
         const SizedBox(height: 16),
         TextButton(
@@ -178,7 +175,7 @@ class LockScreen extends StatelessWidget {
                   height: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Try again'),
+              : Text(l10n.gateLockScreenTryAgain),
         ),
       ];
 }

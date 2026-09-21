@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../../domain/export/fhir_export_range.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/local_date.dart';
+import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
 
 /// Human label for [preset], shared between the picker's own radio list and
@@ -96,6 +97,7 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final viewInsets = MediaQuery.viewInsetsOf(context);
     return Padding(
       padding: EdgeInsets.only(bottom: viewInsets.bottom),
@@ -110,7 +112,7 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
-                'Export range',
+                l10n.settingsExportRangeTitle,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
             ),
@@ -140,13 +142,13 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
                   TextButton(
                     key: const ValueKey('export-range-cancel'),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.settingsExportRangeCancel),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     key: const ValueKey('export-range-confirm'),
                     onPressed: _canConfirm ? _confirm : null,
-                    child: const Text('Export'),
+                    child: Text(l10n.settingsExportRangeConfirm),
                   ),
                 ],
               ),
@@ -175,7 +177,10 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
           child: OutlinedButton(
             key: const ValueKey('export-range-custom-start'),
             onPressed: () => _pickCustomDate(context, isStart: true),
-            child: Text(_customStart?.iso ?? 'Start date'),
+            child: Text(
+              _customStart?.iso ??
+                  AppLocalizations.of(context).settingsExportRangeStartDate,
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -183,7 +188,10 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
           child: OutlinedButton(
             key: const ValueKey('export-range-custom-end'),
             onPressed: () => _pickCustomDate(context, isStart: false),
-            child: Text(_customEnd?.iso ?? 'End date'),
+            child: Text(
+              _customEnd?.iso ??
+                  AppLocalizations.of(context).settingsExportRangeEndDate,
+            ),
           ),
         ),
       ],

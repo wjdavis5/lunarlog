@@ -510,7 +510,9 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Scaffold _scaffold(Widget body) => Scaffold(
-        appBar: AppBar(title: const Text('Import from file')),
+        appBar: AppBar(
+          title: Text(AppLocalizations.of(context).importScreenTitle),
+        ),
         body: SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: body)),
       );
 
@@ -536,19 +538,16 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Scaffold _pickScaffold(BuildContext context) {
     final error = _error;
+    final l10n = AppLocalizations.of(context);
     return _scaffold(Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'Choose a file: a JSON backup this app exported (Settings > Your '
-          'data > Export my data), or the .zip Clue emailed you. Your data '
-          'is added to this device — nothing already here is ever deleted.',
-        ),
+        Text(l10n.importScreenPickBody),
         const SizedBox(height: 16),
         ElevatedButton(
           key: const ValueKey('import-pick-button'),
           onPressed: _busy ? null : _pickAndPlan,
-          child: _busyOrLabel('Choose file'),
+          child: _busyOrLabel(l10n.importScreenChooseFileAction),
         ),
         if (error != null) ...[
           const SizedBox(height: 8),
@@ -806,13 +805,15 @@ class _ImportScreenState extends State<ImportScreen> {
               TextButton(
                 key: const ValueKey('import-preview-cancel'),
                 onPressed: _busy ? null : _reset,
-                child: const Text('Cancel'),
+                child: Text(AppLocalizations.of(context).importScreenCancel),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
                 key: const ValueKey('import-preview-confirm'),
                 onPressed: _busy ? null : _confirm,
-                child: _busyOrLabel('Import'),
+                child: _busyOrLabel(
+                  AppLocalizations.of(context).importScreenImportAction,
+                ),
               ),
             ],
           ),
@@ -868,7 +869,7 @@ class _ImportScreenState extends State<ImportScreen> {
         ElevatedButton(
           key: const ValueKey('import-result-done'),
           onPressed: () => Navigator.of(context).pop(summary),
-          child: const Text('Done'),
+          child: Text(AppLocalizations.of(context).importScreenDone),
         ),
       ],
     ));

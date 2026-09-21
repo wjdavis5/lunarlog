@@ -5403,6 +5403,1618 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
   String sharingPendingInviteBadgeExpiredCount(int count);
+
+  /// Issue #1004 (tranche 3): the lock screen's nested MaterialApp title.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog'**
+  String get gateLockScreenAppTitle;
+
+  /// Issue #1004 (tranche 3): headline on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog is locked'**
+  String get gateLockScreenTitle;
+
+  /// Issue #1004 (tranche 3): body under the locked headline.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything logged on this device stays protected. Unlock to continue.'**
+  String get gateLockScreenProtectedBody;
+
+  /// Issue #1004 (tranche 3): shown when the device-credential prompt was declined.
+  ///
+  /// In en, this message translates to:
+  /// **'Not unlocked. The profiles on this device stay hidden until the device credential is accepted.'**
+  String get gateLockScreenDeniedBody;
+
+  /// Issue #1004 (tranche 3): primary unlock action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get gateLockScreenUnlockButton;
+
+  /// Issue #1004 (tranche 3): body shown when no device credential is enrolled.
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no screen lock set. lunarlog protects your family\'s data using your device\'s own screen lock, so it can\'t open until you add one — a passcode, PIN, pattern, or biometric lock all work.'**
+  String get gateLockScreenNoCredentialBody;
+
+  /// Issue #1004 (tranche 3): action opening the platform device settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open device settings'**
+  String get gateLockScreenOpenDeviceSettings;
+
+  /// Issue #1004 (tranche 3): retry action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get gateLockScreenTryAgain;
+
+  /// Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Use device credential instead'**
+  String get gatePinAuthorizationUseDeviceCredential;
+
+  /// Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinAuthorizationCancel;
+
+  /// Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinSettingsRemoveCancel;
+
+  /// Issue #1004 (tranche 3): title of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a screenshot?'**
+  String get feedbackAttachmentConsentTitle;
+
+  /// Issue #1004 (tranche 3): body of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.'**
+  String get feedbackAttachmentConsentBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get feedbackAttachmentConsentCancel;
+
+  /// Issue #1004 (tranche 3): continue action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get feedbackAttachmentConsentContinue;
+
+  /// Issue #1004 (tranche 3): button that opens the screenshot consent flow.
+  ///
+  /// In en, this message translates to:
+  /// **'Add screenshot'**
+  String get feedbackAttachmentAddScreenshot;
+
+  /// Issue #1004 (tranche 3): app-bar title of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenTitle;
+
+  /// Issue #1004 (tranche 3): label above the feedback category chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Category'**
+  String get feedbackScreenCategoryLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback message field.
+  ///
+  /// In en, this message translates to:
+  /// **'What happened?'**
+  String get feedbackScreenMessageLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback reply-email field.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply email'**
+  String get feedbackScreenReplyEmailLabel;
+
+  /// Issue #1004 (tranche 3): title of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Include diagnostics'**
+  String get feedbackScreenDiagnosticsTitle;
+
+  /// Issue #1004 (tranche 3): subtitle of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'App version, OS, device model, and recent activity.'**
+  String get feedbackScreenDiagnosticsSubtitle;
+
+  /// Issue #1004 (tranche 3): toggle revealing the diagnostics preview.
+  ///
+  /// In en, this message translates to:
+  /// **'See what will be attached'**
+  String get feedbackScreenDiagnosticsPreview;
+
+  /// Issue #1004 (tranche 3): submit button of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenSendButton;
+
+  /// Issue #1004 (tranche 3): validation error for an over-long feedback message.
+  ///
+  /// In en, this message translates to:
+  /// **'Message must be 4000 characters or fewer.'**
+  String get feedbackScreenMessageTooLong;
+
+  /// Issue #1004 (tranche 3): validation error for an invalid reply email.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid reply email address.'**
+  String get feedbackScreenReplyEmailInvalid;
+
+  /// Issue #1004 (tranche 3): confirmation shown after a feedback submission.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks — we\'ll get back to you at {email}.'**
+  String feedbackScreenThanks(String email);
+
+  /// Issue #1004 (tranche 3): app-bar title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Support history'**
+  String get supportHistoryTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'No feedback yet'**
+  String get supportHistoryEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports you send from Settings appear here.'**
+  String get supportHistoryEmptyBody;
+
+  /// Issue #1004 (tranche 3): retry action after a support history load failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get supportHistoryRetry;
+
+  /// Issue #1004 (tranche 3): label of the reply field on a support ticket.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get supportHistoryReplyLabel;
+
+  /// Issue #1004 (tranche 3): send action on a support ticket reply.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get supportHistorySend;
+
+  /// Issue #1004 (tranche 3): unarchive action on an archived profile detail.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get profileDetailUnarchive;
+
+  /// Issue #1004 (tranche 3): label of the profile detail overview tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get profileDetailOverviewTab;
+
+  /// Issue #1004 (tranche 3): label of the profile detail calendar tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get profileDetailCalendarTab;
+
+  /// Issue #1004 (tranche 3): suffix appended to an archived profile's title.
+  ///
+  /// In en, this message translates to:
+  /// **' (archived)'**
+  String get profileDetailArchivedSuffix;
+
+  /// Issue #1004 (tranche 3): co-managed indicator chip label.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String profileDetailSharedGuardians(int count);
+
+  /// Issue #1004 (tranche 3): app-bar title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Profiles'**
+  String get profilePickerTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'No profiles yet'**
+  String get profilePickerEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a profile to start tracking.'**
+  String get profilePickerEmptyBody;
+
+  /// Issue #1004 (tranche 3): empty-state primary action of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profilePickerEmptyAddAction;
+
+  /// Issue #1004 (tranche 3): archived section header on the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived ({count})'**
+  String profilePickerArchivedHeader(int count);
+
+  /// Issue #1004 (tranche 3): profile row subtitle naming the creation date.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {date}'**
+  String profilePickerCreated(String date);
+
+  /// Issue #1004 (tranche 3): section header for owned profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'My profiles'**
+  String get profilePickerMyProfilesHeader;
+
+  /// Issue #1004 (tranche 3): section header for profiles shared with the operator.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get profilePickerSharedWithMeHeader;
+
+  /// Issue #1004 (tranche 3): profile row menu item opening Manage Guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardians'**
+  String get profilePickerMenuGuardians;
+
+  /// Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchive;
+
+  /// Issue #1004 (tranche 3): derived minor status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as a minor (derived from birth year)'**
+  String get profileDialogCountsAsMinor;
+
+  /// Issue #1004 (tranche 3): derived adult status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as an adult (derived from birth year)'**
+  String get profileDialogCountsAsAdult;
+
+  /// Issue #1004 (tranche 3): title of the create-profile dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profileDialogAddTitle;
+
+  /// Issue #1004 (tranche 3): label of the optional birth-year field.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year (optional)'**
+  String get profileDialogBirthYearLabel;
+
+  /// Issue #1004 (tranche 3): empty option in the relationship dropdown.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get profileDialogRelationshipNone;
+
+  /// Issue #1004 (tranche 3): cancel action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileDialogCancel;
+
+  /// Issue #1004 (tranche 3): create action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get profileDialogCreate;
+
+  /// Issue #1004 (tranche 3): save action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileDialogSave;
+
+  /// Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String profileArchiveConfirmTitle(String name);
+
+  /// Issue #1004 (tranche 3): body of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.'**
+  String get profileArchiveConfirmBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileArchiveConfirmCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchiveConfirmButton;
+
+  /// Issue #1004 (tranche 3): error shown when first-run profile creation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create the profile. Please try again.'**
+  String get firstRunCreateError;
+
+  /// Issue #1004 (tranche 3): app-bar title of the care notes screen.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} Care'**
+  String careNotesTitle(String name);
+
+  /// Issue #1004 (tranche 3): read-only reason on an archived profile's care notes.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile is archived.'**
+  String get careNotesReadOnlyArchived;
+
+  /// Issue #1004 (tranche 3): section header of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'Care notes'**
+  String get careNotesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'No care notes yet.'**
+  String get careNotesEmpty;
+
+  /// Issue #1004 (tranche 3): label of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a care note'**
+  String get careNotesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Standing notes for everyone caring for this profile'**
+  String get careNotesAddHint;
+
+  /// Issue #1004 (tranche 3): add-care-note action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add note'**
+  String get careNotesAddButton;
+
+  /// Issue #1004 (tranche 3): title of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this care note?'**
+  String get careNotesDeleteTitle;
+
+  /// Issue #1004 (tranche 3): body of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.'**
+  String get careNotesDeleteBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get careNotesDeleteCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get careNotesDeleteConfirm;
+
+  /// Issue #1004 (tranche 3): lowercase attribution for the current operator.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get careNotesActorYou;
+
+  /// Issue #1004 (tranche 3): fallback attribution for an unknown guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get careNotesActorGuardian;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note save.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the care note.'**
+  String get careNotesSaveError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the prep item.'**
+  String get careNotesAddPrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed supply-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the supply item.'**
+  String get careNotesAddSupplyError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item update.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the prep item.'**
+  String get careNotesUpdatePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the prep item.'**
+  String get careNotesRemovePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the care note.'**
+  String get careNotesRemoveNoteError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-checked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the checked items.'**
+  String get careNotesClearCheckedError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-stocked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the stocked items.'**
+  String get careNotesClearStockedError;
+
+  /// Issue #1004 (tranche 3): section header of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit prep'**
+  String get careVisitPrepSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'No prep items yet.'**
+  String get careVisitPrepEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing checked visit-prep items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear checked ({count})'**
+  String careVisitPrepClearChecked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a prep item'**
+  String get careVisitPrepAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'A question or to-bring for the next appointment'**
+  String get careVisitPrepAddHint;
+
+  /// Issue #1004 (tranche 3): add-prep-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add item'**
+  String get careVisitPrepAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a checked prep item.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked by'**
+  String get careVisitPrepCheckedVerb;
+
+  /// Issue #1004 (tranche 3): section header of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplies'**
+  String get careSuppliesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'No supplies tracked yet.'**
+  String get careSuppliesEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing stocked supply items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear stocked ({count})'**
+  String careSuppliesClearStocked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a supply item'**
+  String get careSuppliesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Something to keep stocked, e.g. liners'**
+  String get careSuppliesAddHint;
+
+  /// Issue #1004 (tranche 3): add-supply-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add supply'**
+  String get careSuppliesAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a stocked supply item.
+  ///
+  /// In en, this message translates to:
+  /// **'Stocked by'**
+  String get careSuppliesStockedVerb;
+
+  /// Issue #1004 (tranche 3): restock nudge title naming the due date.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock before {date}'**
+  String careRestockBefore(String date);
+
+  /// Issue #1004 (tranche 3): label of the guardian-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Your note for this day'**
+  String get guardianNotesFieldLabel;
+
+  /// Issue #1004 (tranche 3): fallback author name for a guardian note.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get guardianNotesGuardianFallback;
+
+  /// Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831.
+  ///
+  /// In en, this message translates to:
+  /// **'Development build — not for real data.'**
+  String get webBannerDevCopy;
+
+  /// Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'.
+  ///
+  /// In en, this message translates to:
+  /// **'Browser build — this browser stores a copy of the signed-in profiles\' data unencrypted, plus your sign-in. Signing out clears it.'**
+  String get webBannerSyncedCopy;
+
+  /// Tooltip/label on the browser-build notice's per-session dismiss button (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get webBrowserNoticeDismissTooltip;
+
+  /// Action on the web banner opening the confirm-guarded local wipe (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Wipe local data'**
+  String get webWipeAction;
+
+  /// Title of the web banner's local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase all local data?'**
+  String get webWipeConfirmTitle;
+
+  /// Local-wipe confirmation body for a sync-off web build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser. This cannot be undone.'**
+  String get webWipeConfirmDevBody;
+
+  /// Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.'**
+  String get webWipeConfirmSyncedBody;
+
+  /// Cancel action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get webWipeCancel;
+
+  /// Confirm action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase everything'**
+  String get webWipeConfirmAction;
+
+  /// Snackbar after the web local wipe completes (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'All local data erased.'**
+  String get webWipeDone;
+
+  /// Title of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Development build'**
+  String get webFirstRunDevTitle;
+
+  /// Body of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This is a development build, not for real data. Data in this browser is not encrypted and not backed up.'**
+  String get webFirstRunDevBody;
+
+  /// Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Using lunarlog in this browser'**
+  String get webFirstRunSyncedTitle;
+
+  /// Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account\'s data stays in your account and can sync again later.'**
+  String get webFirstRunSyncedBody;
+
+  /// Acknowledge button of the one-time web first-run acknowledgement (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'I understand'**
+  String get webFirstRunAcknowledge;
+
+  /// Issue #1004 (tranche 2): account-mismatch screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Different account'**
+  String get accountMismatchTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch body when no email is known.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than the one you just signed in to.'**
+  String get accountMismatchBodyNoEmail;
+
+  /// Issue #1004 (tranche 2): account-mismatch body naming the signed-in email.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than {email}.'**
+  String accountMismatchBodyWithEmail(String email);
+
+  /// Issue #1004 (tranche 2): account-mismatch explainer paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is set up for a different account. This happens when Apple\'s Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.'**
+  String get accountMismatchExplainer;
+
+  /// Issue #1004 (tranche 2): account-mismatch non-destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch account'**
+  String get accountMismatchSwitchAccount;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out and keeps everything on this device.'**
+  String get accountMismatchSwitchAccountSubtitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data'**
+  String get accountMismatchRemoveData;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data?'**
+  String get accountMismatchRemoveDialogTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.'**
+  String get accountMismatchRemoveDialogBody;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMismatchCancel;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove and sign out'**
+  String get accountMismatchRemoveConfirm;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch accounts. Please try again.'**
+  String get accountMismatchSwitchError;
+
+  /// Issue #1004 (tranche 2): account-mismatch remove-data failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove this device\'s data. Please try again.'**
+  String get accountMismatchRemoveError;
+
+  /// Issue #1004 (tranche 2): upload-consent screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to your account?'**
+  String get accountUploadConsentTitle;
+
+  /// Issue #1004 (tranche 2): upload-consent body with counts of this device's rows.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds {profileCount, plural, =1{1 profile} other{{profileCount} profiles}} and {entryCount, plural, =1{1 entry} other{{entryCount} entries}} that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.'**
+  String accountUploadConsentBody(int profileCount, int entryCount);
+
+  /// Issue #1004 (tranche 2): upload-consent body while the row counts load.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that is not in your account yet.'**
+  String get accountUploadConsentLoadingBody;
+
+  /// Issue #1004 (tranche 2): upload-consent duplicate-profile note.
+  ///
+  /// In en, this message translates to:
+  /// **'If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.'**
+  String get accountUploadConsentDuplicateNote;
+
+  /// Issue #1004 (tranche 2): upload-consent upload button.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to my account'**
+  String get accountUploadConsentUploadAction;
+
+  /// Issue #1004 (tranche 2): upload-consent defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountUploadConsentNotNow;
+
+  /// Issue #1004 (tranche 2): empty-device restore progress label.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring your data…'**
+  String get accountRestoringScreenBody;
+
+  /// Issue #1004 (tranche 2): restore-failure screen heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to restore data'**
+  String get accountRestoreErrorTitle;
+
+  /// Issue #1004 (tranche 2): restore-failure screen default body.
+  ///
+  /// In en, this message translates to:
+  /// **'We could not restore your account data from the cloud. Please check your internet connection and try again.'**
+  String get accountRestoreErrorBody;
+
+  /// Issue #1004 (tranche 2): restore-failure retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get accountRestoreErrorRetry;
+
+  /// Issue #1004 (tranche 2): restore-failure continue-without-sync button.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue without syncing'**
+  String get accountRestoreErrorContinue;
+
+  /// Issue #1004 (tranche 2): restore-failure sign-out button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountRestoreErrorSignOut;
+
+  /// Issue #1004 (tranche 2): password-recovery screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a new password'**
+  String get accountPasswordRecoveryTitle;
+
+  /// Issue #1004 (tranche 2): password-recovery intro paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'You opened a password reset link. Choose a new password for your account.'**
+  String get accountPasswordRecoveryIntro;
+
+  /// Issue #1004 (tranche 2): password-recovery new-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get accountPasswordRecoveryNewLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountPasswordRecoveryLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery confirm-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password'**
+  String get accountPasswordRecoveryConfirmLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountPasswordRecoveryShow;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountPasswordRecoveryHide;
+
+  /// Issue #1004 (tranche 2): password-recovery too-short error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountPasswordRecoveryLengthError(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery mismatch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match.'**
+  String get accountPasswordRecoveryMismatchError;
+
+  /// Issue #1004 (tranche 2): password-recovery save button.
+  ///
+  /// In en, this message translates to:
+  /// **'Save password'**
+  String get accountPasswordRecoverySave;
+
+  /// Issue #1004 (tranche 2): password-recovery defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountPasswordRecoveryNotNow;
+
+  /// Issue #1004 (tranche 2): MFA remove-factor confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaSettingsCancel;
+
+  /// Issue #1004 (tranche 2): MFA step-up dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaStepUpCancel;
+
+  /// Issue #1004 (tranche 2): sync-status tile subtitle when entries were rejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to retry'**
+  String get accountSyncStatusTapToRetry;
+
+  /// Issue #1004 (tranche 2): sync-status snackbar action opening Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get accountSyncStatusSettingsAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run embedded intro.
+  ///
+  /// In en, this message translates to:
+  /// **'An account keeps a copy of this device\'s data so it can be restored on another device. You can also keep everything on this device only.'**
+  String get accountSignInEmbeddedIntro;
+
+  /// Issue #1004 (tranche 2): sign-in screen passkey button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with a passkey'**
+  String get accountSignInPasskeyAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen provider/passwordless divider label.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get accountSignInOr;
+
+  /// Issue #1004 (tranche 2): sign-in screen email field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountSignInEmailLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get accountSignInPasswordLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-account primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get accountSignInCreateAccountAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen sign-in primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen forgot-password button.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot password'**
+  String get accountSignInForgotPasswordAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Code from the email'**
+  String get accountSignInCodeLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'6-10 digits'**
+  String get accountSignInCodeHint;
+
+  /// Issue #1004 (tranche 2): sign-in screen verify-code button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with code'**
+  String get accountSignInVerifyCodeAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountSignInNotNow;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInTitle;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account'**
+  String get accountSignInTitleCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode short-password error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountSignInUseAtLeast(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen post-signup confirmation info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email to confirm the account, then open the link on this device.'**
+  String get accountSignInConfirmEmailInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-reset-request info.
+  ///
+  /// In en, this message translates to:
+  /// **'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).'**
+  String get accountSignInResetInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-magic-link info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email for a sign-in link or code.'**
+  String get accountSignInMagicLinkInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountSignInPasswordLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountSignInShowPassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountSignInHidePassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (create mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'I already have an account'**
+  String get accountSignInToggleHaveAccount;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (sign-in mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account instead'**
+  String get accountSignInToggleCreateInstead;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a link to create my account'**
+  String get accountSignInMagicLinkCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a sign-in link'**
+  String get accountSignInMagicLinkSignIn;
+
+  /// Issue #1004 (tranche 2): delete-account confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get accountDeleteDialogTitle;
+
+  /// Issue #1004 (tranche 2): delete-account dialog guardian-entry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Entries you logged as a guardian on someone else\'s profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device\'s own health store - account deletion does not remove them.'**
+  String get accountDeleteDialogGuardianNote;
+
+  /// Issue #1004 (tranche 2): delete-account dialog blast-radius acknowledgement checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand this removes access for other guardians and deletes any minor profiles I own.'**
+  String get accountDeleteDialogAck;
+
+  /// Issue #1004 (tranche 2): delete-account dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountDeleteDialogCancel;
+
+  /// Issue #1004 (tranche 2): delete-account dialog transfer-ownership escape hatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership first'**
+  String get accountDeleteDialogTransferFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export-first button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export first'**
+  String get accountDeleteDialogExportFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog destructive confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountDeleteDialogConfirm;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountDeleteDialogExportError;
+
+  /// Issue #1004 (tranche 2): delete-account blast radius with no other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).'**
+  String accountDeleteDialogBlastRadiusProfiles(int count, String names);
+
+  /// Issue #1004 (tranche 2): delete-account blast radius naming other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.'**
+  String accountDeleteDialogBlastRadiusGuardians(
+    int count,
+    String names,
+    int guardianCount,
+  );
+
+  /// Issue #1004 (tranche 2): Settings Account section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// Issue #1004 (tranche 2): account identity tile subtitle listing sign-in methods.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in methods: {methods}'**
+  String accountSectionSignInMethods(String methods);
+
+  /// Issue #1004 (tranche 2): account identity tile title with no known email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in'**
+  String get accountSectionSignedIn;
+
+  /// Issue #1004 (tranche 2): account identity tile title naming the email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as {email}'**
+  String accountSectionSignedInAs(String email);
+
+  /// Issue #1004 (tranche 2): account add-Apple tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Apple'**
+  String get accountSectionAddApple;
+
+  /// Issue #1004 (tranche 2): account add-Google tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Google'**
+  String get accountSectionAddGoogle;
+
+  /// Issue #1004 (tranche 2): account add-passkey tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a passkey'**
+  String get accountSectionAddPasskey;
+
+  /// Issue #1004 (tranche 2): account sign-in tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync this device\'s data to an account.'**
+  String get accountSectionSyncSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title when the session expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again'**
+  String get accountSectionSignInAgain;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSectionSignIn;
+
+  /// Issue #1004 (tranche 2): account sync-now tile and dialog button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync now'**
+  String get accountSectionSyncNow;
+
+  /// Issue #1004 (tranche 2): account sign-out tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountSectionSignOut;
+
+  /// Issue #1004 (tranche 2): account sign-out tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes the data from this device.'**
+  String get accountSectionSignOutSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get accountSectionSignOutEverywhere;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out all devices, though others may take up to an hour to notice.'**
+  String get accountSectionSignOutEverywhereSubtitle;
+
+  /// Issue #1004 (tranche 2): account delete tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountSectionDelete;
+
+  /// Issue #1004 (tranche 2): account add-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to this account another way.'**
+  String get accountSectionLinkSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}'**
+  String accountSectionRemoveProvider(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop using this to sign in to this account.'**
+  String get accountSectionRemoveSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}?'**
+  String accountSectionRemoveTitle(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'You will no longer be able to sign in to this account with {provider}. Your data and your other sign-in methods are unchanged.'**
+  String accountSectionRemoveBody(String provider);
+
+  /// Issue #1004 (tranche 2): account section dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountSectionCancel;
+
+  /// Issue #1004 (tranche 2): account remove-method confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get accountSectionRemove;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsynced changes'**
+  String get accountSectionUnsyncedTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.} other{{count} changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.}}'**
+  String accountSectionUnsyncedBody(int count);
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows discard button.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsynced changes and sign out'**
+  String get accountSectionDiscardAndSignOut;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get accountSectionSignOutTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere?'**
+  String get accountSectionSignOutEverywhereTitle;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the data from this device. It stays in your account.'**
+  String get accountSectionSignOutBody;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere partial-failure snackbar suffix.
+  ///
+  /// In en, this message translates to:
+  /// **'{failureCopy} Other devices were not signed out.'**
+  String accountSectionOtherDevicesNotSignedOut(String failureCopy);
+
+  /// Issue #1004 (tranche 2): export-range picker sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export range'**
+  String get settingsExportRangeTitle;
+
+  /// Issue #1004 (tranche 2): export-range picker cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get settingsExportRangeCancel;
+
+  /// Issue #1004 (tranche 2): export-range picker confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get settingsExportRangeConfirm;
+
+  /// Issue #1004 (tranche 2): export-range custom start-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'Start date'**
+  String get settingsExportRangeStartDate;
+
+  /// Issue #1004 (tranche 2): export-range custom end-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'End date'**
+  String get settingsExportRangeEndDate;
+
+  /// Issue #1004 (tranche 2): FHIR clinical-export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export clinical summary (FHIR)'**
+  String get settingsClinicalExportFhirTitle;
+
+  /// Issue #1004 (tranche 2): CSV export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as CSV'**
+  String get settingsCsvExportTitle;
+
+  /// Issue #1004 (tranche 2): CSV export profile-chooser dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export CSV data for'**
+  String get settingsCsvExportForTitle;
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync {name} to this phone?'**
+  String healthSyncBindTitle(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get healthSyncBindCancel;
+
+  /// Issue #1004 (tranche 2): health-sync bind failure snackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sync {name} — try again.'**
+  String healthSyncSyncFailed(String name);
+
+  /// Issue #1004 (tranche 2): health-sync import failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportFailed;
+
+  /// Issue #1004 (tranche 2): health-sync profile-load failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load profiles for health sync.'**
+  String get healthSyncLoadFailed;
+
+  /// Issue #1004 (tranche 2): health-sync retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get healthSyncRetry;
+
+  /// Issue #1004 (tranche 2): health-sync import progress line before the first page reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing from {source}…'**
+  String healthSyncImporting(String source);
+
+  /// Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.'**
+  String get healthSyncFlowCollapseNote;
+
+  /// Issue #1004 (tranche 2): health-sync revocation/off disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning sync off, or later revoking this phone\'s Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.'**
+  String get healthSyncRevocationNote;
+
+  /// Issue #1004 (tranche 2): health-sync import tile title naming the source.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from {source}'**
+  String healthSyncImportFrom(String source);
+
+  /// Issue #1004 (tranche 2): health-sync unbind tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop syncing to this phone'**
+  String get healthSyncUnbindAction;
+
+  /// Issue #1004 (tranche 2): import screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get importScreenTitle;
+
+  /// Issue #1004 (tranche 2): import screen file-pick body.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.'**
+  String get importScreenPickBody;
+
+  /// Issue #1004 (tranche 2): import screen file-pick button.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get importScreenChooseFileAction;
+
+  /// Issue #1004 (tranche 2): import screen preview confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importScreenImportAction;
+
+  /// Issue #1004 (tranche 2): import screen preview cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get importScreenCancel;
+
+  /// Issue #1004 (tranche 2): import screen result done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get importScreenDone;
+
+  /// Issue #1004 (tranche 2): reminder settings empty state.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a profile to set up reminders.'**
+  String get reminderNoProfile;
+
+  /// Issue #1004 (tranche 2): reminder settings lock-screen privacy note.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.'**
+  String get reminderPrivacyNote;
+
+  /// Issue #1004 (tranche 2): reminder settings profile row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get reminderProfileLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings cadence row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Cadence'**
+  String get reminderCadenceLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings time row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get reminderTimeLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours'**
+  String get reminderQuietHoursTitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A reminder that lands inside the window waits until it ends'**
+  String get reminderQuietHoursSubtitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours start row.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts'**
+  String get reminderQuietStart;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours end row.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends'**
+  String get reminderQuietEnd;
+
+  /// Issue #1004 (tranche 2): Your data export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export my data'**
+  String get yourDataExportTitle;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account\'s server data.'**
+  String get yourDataExportSubtitleSignedIn;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when local-only.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.'**
+  String get yourDataExportSubtitleLocal;
+
+  /// Issue #1004 (tranche 2): Your data import tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get yourDataImportTitle;
+
+  /// Issue #1004 (tranche 2): Your data import tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore from a JSON backup, or bring in a Clue export (.zip).'**
+  String get yourDataImportSubtitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile and dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge imported data'**
+  String get yourDataPurgeTitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove only the entries a specific import brought in — manually logged data is never touched.'**
+  String get yourDataPurgeSubtitle;
+
+  /// Issue #1004 (tranche 2): purge success snackbar naming the import source.
+  ///
+  /// In en, this message translates to:
+  /// **'Purged {source} data'**
+  String yourDataPurgedSnack(String source);
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.'**
+  String get yourDataPurgeDialogBody;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get yourDataPurgeProfileLabel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get yourDataPurgeCancel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge'**
+  String get yourDataPurgeConfirm;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog import-source field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Import source'**
+  String get yourDataImportSourceLabel;
 }
 
 class _AppLocalizationsDelegate

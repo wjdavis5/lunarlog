@@ -32,6 +32,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           theme: ThemeData.light(),
           home: RestoreErrorScreen(
             onRetry: () => retried = true,
@@ -67,6 +69,8 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: RestoreErrorScreen(
             onRetry: () {},
           ),
@@ -93,6 +97,8 @@ void main() {
         ChangeNotifierProvider<AuthController>.value(
           value: authController,
           child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: RestoreErrorScreen(
               onRetry: () {},
             ),
@@ -118,6 +124,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: RestoreErrorScreen(
             onRetry: () {},
             onContinueWithoutSyncing: () {},

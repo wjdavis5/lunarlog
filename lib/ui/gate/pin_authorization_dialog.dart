@@ -92,11 +92,11 @@ class _PinAuthorizationDialogState extends State<_PinAuthorizationDialog> {
         TextButton(
           key: const ValueKey('pin-auth-device-credential'),
           onPressed: _busy ? null : _useDeviceCredential,
-          child: const Text('Use device credential instead'),
+          child: Text(l10n.gatePinAuthorizationUseDeviceCredential),
         ),
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          child: Text(l10n.gatePinAuthorizationCancel),
         ),
         FilledButton(
           key: const ValueKey('pin-auth-verify'),

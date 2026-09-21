@@ -139,20 +139,21 @@ Future<_DeleteAccountBlastRadius> _loadBlastRadius(BuildContext context) async {
 /// the lines the issue itself suggests, e.g. "This will also permanently
 /// delete 2 profiles you own (Maya, Ada) and remove access for 1 other
 /// guardian."
-String _blastRadiusCopy(_DeleteAccountBlastRadius radius) {
+String _blastRadiusCopy(
+  AppLocalizations l10n,
+  _DeleteAccountBlastRadius radius,
+) {
   final names = [for (final p in radius.ownedProfiles) p.profile.displayName];
-  final profileWord = names.length == 1 ? 'profile' : 'profiles';
-  final buffer = StringBuffer(
-    'This will also permanently delete ${names.length} $profileWord you '
-    'own (${names.join(', ')})',
-  );
+  final namesJoined = names.join(', ');
   final otherGuardians = radius.totalOtherGuardians;
   if (otherGuardians > 0) {
-    final guardianWord = otherGuardians == 1 ? 'guardian' : 'guardians';
-    buffer.write(' and remove access for $otherGuardians other $guardianWord');
+    return l10n.accountDeleteDialogBlastRadiusGuardians(
+      names.length,
+      namesJoined,
+      otherGuardians,
+    );
   }
-  buffer.write('.');
-  return buffer.toString();
+  return l10n.accountDeleteDialogBlastRadiusProfiles(names.length, namesJoined);
 }
 
 class DeleteAccountDialog extends StatefulWidget {
@@ -185,6 +186,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
 
   Future<void> _handleExport() async {
     if (_exporting) return;
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _exporting = true;
       _exportError = null;
@@ -194,7 +196,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
     } catch (error) {
       if (mounted) {
         setState(
-          () => _exportError = 'Could not export your data. Please try again.',
+          () => _exportError = l10n.accountDeleteDialogExportError,
         );
       }
     } finally {
@@ -253,7 +255,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
         builder: (context, snapshot) {
           final blastRadius = snapshot.data;
           return AlertDialog(
-            title: const Text('Delete account?'),
+            title: Text(l10n.accountDeleteDialogTitle),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -261,18 +263,12 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 children: [
                   Text(l10n.accountDeleteDialogBody),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Entries you logged as a guardian on someone else\'s '
-                    'profile are kept and re-attributed to its owner, not '
-                    'deleted. Apple Health / Health Connect writes this '
-                    'device already made stay in the device\'s own health '
-                    'store - account deletion does not remove them.',
-                  ),
+                  Text(l10n.accountDeleteDialogGuardianNote),
                   if (blastRadius != null &&
                       blastRadius.ownedProfiles.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Text(
-                      _blastRadiusCopy(blastRadius),
+                      _blastRadiusCopy(l10n, blastRadius),
                       key: const ValueKey('account-delete-blast-radius'),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
@@ -290,10 +286,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                             ),
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'I understand this removes access for other '
-                        'guardians and deletes any minor profiles I own.',
-                      ),
+                      title: Text(l10n.accountDeleteDialogAck),
                     ),
                   ],
                   if (exportError != null) ...[
@@ -327,7 +320,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
       onPressed: _exporting
           ? null
           : () => Navigator.of(context).pop(DeleteAccountDecision.cancel),
-      child: const Text('Cancel'),
+      child: Text(AppLocalizations.of(context).accountDeleteDialogCancel),
     ),
     if (blastRadius != null && blastRadius.hasSharedOwnedProfile)
       TextButton(
@@ -335,7 +328,8 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
         onPressed: _exporting
             ? null
             : () => _handleTransferOwnership(blastRadius),
-        child: const Text('Transfer ownership first'),
+        child:
+            Text(AppLocalizations.of(context).accountDeleteDialogTransferFirst),
       ),
     TextButton(
       key: const ValueKey('account-delete-export-first'),
@@ -346,7 +340,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
               height: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             )
-          : const Text('Export first'),
+          : Text(AppLocalizations.of(context).accountDeleteDialogExportFirst),
     ),
     FilledButton(
       key: const ValueKey('account-delete-confirm'),
@@ -363,7 +357,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
       onPressed: _confirmEnabled(blastRadius)
           ? () => Navigator.of(context).pop(DeleteAccountDecision.delete)
           : null,
-      child: const Text('Delete account'),
+      child: Text(AppLocalizations.of(context).accountDeleteDialogConfirm),
     ),
   ];
 }
