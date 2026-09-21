@@ -141,6 +141,21 @@ class Profile {
   /// never read here, so the boundary stays deterministic under test.
   bool isMinorAsOf(DateTime today) => isMinorAsOfYear(today.year);
 
+  /// Whether the "her own profile" subject-invite preset (issue #802)
+  /// applies to this profile: the subject's relation to the creator is
+  /// daughter/son/child, or the profile is a minor's by the shared
+  /// [isMinorAsOf] rule. Pure display gating — the server enforces the
+  /// preset's own rules independently. Shared by Manage Guardians and the
+  /// first-run invite step (issue #804) so both surfaces answer it
+  /// identically.
+  bool subjectInviteAvailableAt(DateTime today) {
+    final relationship = this.relationship;
+    final childRelationship = relationship == ProfileRelationship.daughter ||
+        relationship == ProfileRelationship.son ||
+        relationship == ProfileRelationship.child;
+    return childRelationship || isMinorAsOf(today);
+  }
+
   /// Optional closed-set relationship of the subject to the profile creator
   /// (R3), or null when unset or when the stored value is not one this
   /// build recognises.

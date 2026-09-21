@@ -1859,6 +1859,108 @@ abstract class AppLocalizations {
   /// **'Create profile'**
   String get firstRunCreateButton;
 
+  /// The household-setup question at the top of the first-run name form (issue #804). 'Me' is preselected, so today's single-profile path never answers it.
+  ///
+  /// In en, this message translates to:
+  /// **'Who is this profile for?'**
+  String get firstRunWhoLabel;
+
+  /// Household-setup answer: the operator's own profile (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Me'**
+  String get firstRunWhoMe;
+
+  /// Household-setup answer: a profile for a family member (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Someone I care for'**
+  String get firstRunWhoSomeone;
+
+  /// Household-setup answer: the operator's own profile plus family members (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Both'**
+  String get firstRunWhoBoth;
+
+  /// Label above the relationship dropdown on a first-run card for someone other than the operator (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Relationship'**
+  String get firstRunRelationshipLabel;
+
+  /// Hint under the care-mode dropdown when Teen was preselected as a suggestion for a minor (issue #804; suggested, never forced — #131).
+  ///
+  /// In en, this message translates to:
+  /// **'Teen mode is suggested for a minor — change it any time.'**
+  String get firstRunTeenSuggestedHint;
+
+  /// Caption on the shortened cycle step for a family member's profile: the last-period question only, visibly skippable (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Optional: if you know when her last period started, add it below. Not sure? Just continue.'**
+  String get firstRunCycleShortCaption;
+
+  /// Title of the household wrap-up step after a profile was created (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Add another person?'**
+  String get firstRunWrapUpTitle;
+
+  /// Body of the household wrap-up step; states that the loop is optional (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you set up now is ready to log. You can also add profiles later from the profile picker.'**
+  String get firstRunWrapUpBody;
+
+  /// Button looping back to a fresh person card on the household wrap-up step (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Add another person'**
+  String get firstRunWrapUpAddAnother;
+
+  /// Title of the first-run invite step (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Does someone else help?'**
+  String get firstRunInviteTitle;
+
+  /// Body of the first-run invite step; states skippability and the later path (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.'**
+  String get firstRunInviteBody;
+
+  /// Shown on the invite step when there is no session: why an account is required here and only here (issue #804 AC3).
+  ///
+  /// In en, this message translates to:
+  /// **'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.'**
+  String get firstRunInviteWhyAccount;
+
+  /// Button on the invite step opening the embedded sign-in screen (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in or create account'**
+  String get firstRunInviteSignInAction;
+
+  /// Per-profile button opening the invite dialog with the guardian presets (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Invite a co-parent'**
+  String get firstRunInviteCoParent;
+
+  /// Button ending the household flow without any invite (issue #804; always available).
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get firstRunInviteSkip;
+
+  /// Button ending the household flow after (possibly zero) invites (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get firstRunInviteDone;
+
   /// Label above the life-stage-mode dropdown in the profile edit dialog.
   ///
   /// In en, this message translates to:
