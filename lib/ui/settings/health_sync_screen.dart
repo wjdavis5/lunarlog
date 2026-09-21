@@ -361,7 +361,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         SnackBar(
           content: Text(
             reason.isEmpty
-                ? "Couldn't sync ${profile.displayName} — try again."
+                ? AppLocalizations.of(context)
+                    .healthSyncSyncFailed(profile.displayName)
                 : reason,
           ),
         ),
@@ -375,22 +376,21 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       context: context,
       routeSettings: const RouteSettings(name: kRouteHealthSyncBindDialog),
       builder: (dialogContext) => AlertDialog(
-        title: Text('Sync ${profile.displayName} to this phone?'),
+        title: Text(
+          AppLocalizations.of(dialogContext)
+              .healthSyncBindTitle(profile.displayName),
+        ),
         content: Text(
           widget.writeEnabled
-              ? "Only ${profile.displayName}'s data will ever be written to "
-                  "this phone's Health app. This phone can sync one profile at "
-                  'a time — choosing a different profile later replaces this '
-                  'one.'
-              : "Only ${profile.displayName}'s data will ever be imported "
-                  "from this phone's Health app. This phone can sync one "
-                  'profile at a time — choosing a different profile later '
-                  'replaces this one.',
+              ? AppLocalizations.of(dialogContext)
+                  .healthSyncBindWriteBody(profile.displayName)
+              : AppLocalizations.of(dialogContext)
+                  .healthSyncBindImportBody(profile.displayName),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(AppLocalizations.of(dialogContext).healthSyncBindCancel),
           ),
           FilledButton(
             key: const ValueKey('health-sync-confirm-bind'),
@@ -575,7 +575,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       children.add(Text(_importingCopy(l10n)));
     } else if (_importFailed) {
       children.add(
-        const Text("Couldn't finish the import. Please try again."),
+        Text(l10n.healthSyncImportFailed),
       );
     } else if (_importSummary != null) {
       children.addAll(_importSummaryChildren(l10n, _importSummary!));
@@ -595,7 +595,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   String _importingCopy(AppLocalizations l10n) {
     final progress = _importProgress;
     if (progress == null) {
-      return 'Importing from ${_sourceName(_importPlatform)}…';
+      return l10n.healthSyncImporting(_sourceName(_importPlatform));
     }
     return l10n.healthSyncImportProgress(progress.samplesRead);
   }
@@ -633,16 +633,18 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     }
     if (_loadFailed) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Health app sync')),
+        appBar: AppBar(
+          title: Text(AppLocalizations.of(context).settingsHealthSyncTitle),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  key: ValueKey('health-sync-load-error'),
-                  "Couldn't load profiles for health sync.",
+                Text(
+                  key: const ValueKey('health-sync-load-error'),
+                  AppLocalizations.of(context).healthSyncLoadFailed,
                 ),
                 const SizedBox(height: 12),
                 FilledButton(
@@ -650,7 +652,8 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
                     setState(() => _loading = true);
                     unawaited(_load());
                   },
-                  child: const Text('Retry'),
+                  child:
+                      Text(AppLocalizations.of(context).healthSyncRetry),
                 ),
               ],
             ),
@@ -661,7 +664,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     final permissionSection =
         _permissionStatusSection(AppLocalizations.of(context));
     return Scaffold(
-      appBar: AppBar(title: const Text('Health app sync')),
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context).settingsHealthSyncTitle),
+      ),
       body: ListView(
         children: [
           Padding(
@@ -687,14 +692,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(kHealthSyncWriteForwardOnly),
             ),
-            const Padding(
-              key: ValueKey('health-sync-flow-collapse-copy'),
-              padding: EdgeInsets.all(16),
+            Padding(
+              key: const ValueKey('health-sync-flow-collapse-copy'),
+              padding: const EdgeInsets.all(16),
               child: Text(
-                'Super heavy days are written to the Health app as Heavy. '
-                'Spotting logged inside a period is written as Light '
-                'bleeding; spotting between periods is written as '
-                'intermenstrual bleeding.',
+                AppLocalizations.of(context).healthSyncFlowCollapseNote,
               ),
             ),
             // Issue #238 / #918: disclosure of symptom and mood writes.
@@ -707,14 +709,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             // sync or revoking this phone's Health app permission never deletes
             // what was already written — the samples stay in the Health app,
             // which may consider them theirs.
-            const Padding(
-              key: ValueKey('health-sync-revocation-copy'),
-              padding: EdgeInsets.all(16),
+            Padding(
+              key: const ValueKey('health-sync-revocation-copy'),
+              padding: const EdgeInsets.all(16),
               child: Text(
-                'Turning sync off, or later revoking this phone\'s Health app '
-                'permission, leaves everything already written in the Health '
-                'app in place. To remove it, delete it in the Health app '
-                'itself.',
+                AppLocalizations.of(context).healthSyncRevocationNote,
               ),
             ),
           ] else ...[
@@ -756,7 +755,10 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             ListTile(
               key: const ValueKey('health-sync-import-tile'),
               leading: const Icon(Icons.download_outlined),
-              title: Text('Import from ${_sourceName(_importPlatform)}'),
+              title: Text(
+                AppLocalizations.of(context)
+                    .healthSyncImportFrom(_sourceName(_importPlatform)),
+              ),
               subtitle: Text(
                 AppLocalizations.of(context).healthSyncImportTileSubtitle,
               ),
@@ -777,7 +779,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
             ListTile(
               key: const ValueKey('health-sync-unbind-tile'),
               leading: const Icon(Icons.link_off),
-              title: const Text('Stop syncing to this phone'),
+              title: Text(
+                AppLocalizations.of(context).healthSyncUnbindAction,
+              ),
               onTap: _unbind,
             ),
         ],

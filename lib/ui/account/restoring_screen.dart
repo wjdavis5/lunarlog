@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
 class RestoringScreen extends StatelessWidget {
@@ -20,7 +21,7 @@ class RestoringScreen extends StatelessWidget {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-              'Restoring your data…',
+              AppLocalizations.of(context).accountRestoringScreenBody,
               style: LLType.titleMedium.toTextStyle(),
             ),
           ],

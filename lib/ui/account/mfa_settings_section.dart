@@ -80,7 +80,7 @@ class _MfaSettingsSectionState extends State<MfaSettingsSection> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.accountMfaSettingsCancel),
           ),
           FilledButton(
             key: const ValueKey('mfa-remove-confirm'),
