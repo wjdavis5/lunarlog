@@ -32,6 +32,16 @@
 /// known `viewer`). A stale container value can therefore never widen who
 /// can write. The target profile is also re-resolved live: an intent for a
 /// since-archived or deleted profile is dropped, never silently rerouted.
+///
+/// ## Outcome channel (issue #1016)
+///
+/// A write is now *visible*: [outcomes] emits exactly one
+/// [WidgetQuickLogOutcome] per execution that resolved against the gate —
+/// `logged` (with the pre-write entry, so the app shell's Undo restores
+/// exactly what it overwrote), `alreadyLogged` (today was already at or
+/// above the quick-log flow, so nothing was written), or `dropped` (role
+/// re-verification failed, the profile is gone/archived, or the write
+/// threw). A latched intent still waiting on the device gate emits nothing.
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -48,6 +58,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/widget/widget_quick_log_intent.dart';
+import 'package:lunarlog/domain/widget/widget_quick_log_outcome.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 
 /// Executes (or latches) the widget's quick-log intent. Constructed by the
@@ -95,6 +106,18 @@ class WidgetQuickLogExecutor {
 
   /// The tail of the serialized execution queue; null when idle.
   Future<void>? _draining;
+
+  /// One value per execution that reached the write stage (issue #1016):
+  /// the app shell subscribes and acknowledges the tap the way the in-app
+  /// today card does. Broadcast: a listener attaching after an execution
+  /// has already finished simply misses it (the tap is not replayed).
+  final StreamController<WidgetQuickLogOutcome> _outcomes =
+      StreamController<WidgetQuickLogOutcome>.broadcast();
+
+  /// The outcome channel — see the library doc. Never emits for a latched
+  /// intent still waiting on the gate, a non-quick-log URI, or an intent
+  /// that re-latched because the gate closed before its turn.
+  Stream<WidgetQuickLogOutcome> get outcomes => _outcomes.stream;
 
   /// Resolves once every enqueued execution has finished — test seam.
   @visibleForTesting
@@ -149,30 +172,57 @@ class WidgetQuickLogExecutor {
     try {
       // Role re-check against live rows, at write time: the widget
       // container's flag is render-only (see the library doc).
-      if (!await _canQuickLogNow(profileId)) return;
+      if (!await _canQuickLogNow(profileId)) {
+        _emitDrop(profileId);
+        return;
+      }
       // The profile must still be live and non-archived: an intent for a
       // since-archived profile is dropped, never rerouted.
       final profile = await _profiles.findById(profileId);
-      if (profile == null || profile.archivedAt != null) return;
+      if (profile == null || profile.archivedAt != null) {
+        _emitDrop(profileId);
+        return;
+      }
       await _logStartedToday(profileId);
     } catch (error) {
       // Best effort by design: the tap has no UI of its own to surface a
       // failure into, and a failed write must never crash an unawaited
       // future. Logged by type only (details could carry profile or
-      // database specifics), matching the reminder executor's posture.
+      // database specifics), matching the reminder executor's posture. The
+      // outcome channel still lets the shell say the tap did not land.
+      _emitDrop(profileId);
       debugPrint('lunarlog widget: quick-log failed (${error.runtimeType})');
     }
+  }
+
+  void _emitDrop(String profileId) =>
+      _emit(WidgetQuickLogDropped(profileId: profileId));
+
+  /// Publishes one outcome, unless this executor already tore down (its
+  /// controller is then closed, and a queued write that only just resumed
+  /// must not resurrect it).
+  void _emit(WidgetQuickLogOutcome outcome) {
+    if (_disposed || _outcomes.isClosed) return;
+    _outcomes.add(outcome);
   }
 
   /// "Period started today": upserts today's entry with the quick-log flow
   /// rule — the identical write the overview's "Period started today" card
   /// and the reminder action use, including never downgrading a flow the
   /// operator already recorded.
+  ///
+  /// When today already sits at or above [kQuickLogFlowLevel] this writes
+  /// nothing and emits [WidgetQuickLogAlreadyLogged]: a hand-logged heavier
+  /// value is left exactly as it was, so there is nothing to undo.
   Future<void> _logStartedToday(String profileId) async {
     final date = _today();
-    final tzName = _timezone();
     final previous = await _dayEntries.find(profileId, date);
     final flow = quickLogFlowLevel(previous?.flow);
+    if (previous != null && flow == previous.flow) {
+      _emit(WidgetQuickLogAlreadyLogged(profileId: profileId));
+      return;
+    }
+    final tzName = _timezone();
     final entry = previous?.copyWith(flow: flow, tz: tzName) ??
         DayEntry(
           id: '',
@@ -183,6 +233,11 @@ class WidgetQuickLogExecutor {
           updatedAt: DateTime.now().toUtc(),
         );
     await _dayEntries.save(entry);
+    _emit(WidgetQuickLogLogged(
+      profileId: profileId,
+      date: date,
+      previous: previous,
+    ));
   }
 
   /// Detaches the gate listener and stops executing. Call when the owning
@@ -193,5 +248,6 @@ class WidgetQuickLogExecutor {
     _removeUnlockListener?.call(_onGateChanged);
     _removeUnlockListener = null;
     _pending = null;
+    unawaited(_outcomes.close());
   }
 }
