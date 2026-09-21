@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/help/help_cards.dart';
+import '../../l10n/app_localizations.dart';
 import 'help_card_view.dart';
 
 /// Lists all bundled help cards; tapping one presents it in a sheet.
@@ -19,7 +20,9 @@ class HelpLibraryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = HelpCards.all;
     return Scaffold(
-      appBar: AppBar(title: const Text('Help & explanations')),
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context).settingsHelpTitle),
+      ),
       body: ListView.separated(
         key: const ValueKey('help-library-list'),
         itemCount: cards.length,
