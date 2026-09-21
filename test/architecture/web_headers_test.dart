@@ -48,6 +48,32 @@ Map<String, List<String>> parseCsp(String value) {
   return directives;
 }
 
+/// One parsed Cloudflare/Netlify `_redirects` rule. `status` defaults to 302
+/// when the file omits it, matching the platform's own default.
+typedef RedirectRule = ({String source, String destination, int status});
+
+/// Parses a `_redirects` document into its rules. Blank lines and `#`
+/// comments are ignored; a rule is a whitespace-separated
+/// `source destination [status]` triple. The `!` ("force") marker some
+/// platforms support is not used here and is deliberately not accepted, so a
+/// typo cannot silently become a rule.
+List<RedirectRule> parseRedirects(String contents) {
+  final rules = <RedirectRule>[];
+  for (final raw in contents.split('\n')) {
+    final line = raw.trim();
+    if (line.isEmpty || line.startsWith('#')) continue;
+    final tokens = line.split(RegExp(r'\s+'));
+    if (tokens.length < 2 || tokens.length > 3) continue;
+    if (tokens.contains('!')) continue;
+    rules.add((
+      source: tokens[0],
+      destination: tokens[1],
+      status: tokens.length == 3 ? int.parse(tokens[2]) : 302,
+    ));
+  }
+  return rules;
+}
+
 /// The same-binary check the header file must pass: the script source list
 /// may carry `'wasm-unsafe-eval'` but never the much broader `'unsafe-eval'`
 /// or an inline-script allowance.
@@ -142,6 +168,39 @@ void main() {
     });
   });
 
+  // Slice 3: the SPA fallback is what makes `/auth/callback` (slice 2) and
+  // any deep link resolve on the deployed origin instead of 404ing.
+  group('web/_redirects SPA fallback', () {
+    late List<RedirectRule> rules;
+
+    setUp(() {
+      final redirects = File('web/_redirects');
+      expect(redirects.existsSync(), isTrue,
+          reason: 'the web build ships web/_redirects for SPA routing');
+      rules = parseRedirects(redirects.readAsStringSync());
+    });
+
+    test('carries a status-200 catch-all to index.html', () {
+      final spa = rules
+          .where((r) => r.source == '/*' && r.destination == '/index.html')
+          .toList();
+      expect(spa, isNotEmpty,
+          reason: 'every unrouted path must serve the app entry point');
+      expect(spa.first.status, 200,
+          reason: 'the fallback must be a 200 rewrite, not a redirect');
+    });
+
+    test('the auth callback path falls through the catch-all', () {
+      // There is no `/auth/callback`-specific rule: the single catch-all is
+      // the guarantee, so a rule added for one path can never leave another
+      // deep link 404ing.
+      expect(rules.where((r) => r.source == '/*').length, 1);
+      expect(rules.any((r) => r.source.startsWith('/auth')), isFalse,
+          reason: 'the catch-all covers /auth/callback; a narrower rule '
+              'would mean the catch-all was lost');
+    });
+  });
+
   // Falsification: a detector that stopped rejecting the broad script
   // allowances would leave the script-src pin vacuously green.
   group('detects the regressions the pins exist to catch', () {
@@ -159,6 +218,13 @@ void main() {
       expect(loosened['base-uri'], isNot(["'self'"]));
       expect(parseCsp("default-src 'self'").containsKey('frame-ancestors'),
           isFalse);
+    });
+
+    test('a non-200 or malformed _redirects fallback fails the pins', () {
+      expect(parseRedirects('/* /index.html 302').single.status, isNot(200));
+      expect(parseRedirects('# just a comment\n').isEmpty, isTrue);
+      expect(parseRedirects('/* /index.html 200 extra').isEmpty, isTrue,
+          reason: 'a malformed rule must not silently become a rule');
     });
 
     test('selector and comment lines never become headers', () {
