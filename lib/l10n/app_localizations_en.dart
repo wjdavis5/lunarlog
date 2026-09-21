@@ -2431,4 +2431,7 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0 since you last looked';
   }
+
+  @override
+  String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
 }

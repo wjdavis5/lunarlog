@@ -11,12 +11,13 @@
 /// build has Google and the method is absent) and "Add Apple"
 /// (`account-add-apple`, iOS only, same rule) first run
 /// [GateController.reauthenticate] — a declined or unavailable device
-/// credential cancels silently with no provider call and no copy, like a
-/// dismissed picker — then link through the controller with the tapped
-/// tile disabled behind a spinner. Both steps run inside one
+/// credential calls no provider and renders the issue #984 line
+/// (`accountReauthFailed`) rather than returning silently, which on a Face ID
+/// loop was indistinguishable from a hang — then link through the controller
+/// with the tapped tile disabled behind a spinner. Both steps run inside one
 /// [GateController.duringSystemUi] window (#65 U2; KTD4, KTD6), so
 /// neither the credential prompt nor the provider picker re-locks the app
-/// on the way through. A failure renders its generic copy in
+/// on the way through. A link failure renders its generic copy in
 /// `account-link-error` beneath the identity tile (R14).
 ///
 /// Removing one (#31 U4; KTD6, KTD7, KTD8): "Remove Google"
@@ -629,8 +630,9 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   /// F5: device credential first (KTD5), then the provider picker through
-  /// the controller. A declined credential cancels with no provider call
-  /// and no copy.
+  /// the controller. A declined credential calls no provider and renders one
+  /// "Couldn't confirm it's you" line (issue #984) rather than ending the
+  /// action silently.
   ///
   /// Both ceremonies run inside one system-UI window (#65 U2; KTD6) — the
   /// credential prompt nests its own inside it, which the window's depth
@@ -651,8 +653,8 @@ class _AccountSectionState extends State<AccountSection> {
 
   Future<void> _reauthenticateAndLink(GateController gate, String provider,
       Future<AuthUser> Function() link) async {
-    final granted = await gate.reauthenticate();
-    if (!granted || !mounted) return;
+    if (!await _reauthenticate(gate)) return;
+    if (!mounted) return;
     setState(() => _busyProvider = provider);
     try {
       // The controller adopts the returned user into `currentUser` itself
@@ -675,11 +677,23 @@ class _AccountSectionState extends State<AccountSection> {
     }
   }
 
+  /// Issue #984: a failed re-auth used to end the action silently, which on a
+  /// Face ID loop was indistinguishable from a hang. Surface one line instead.
+  /// The copy is resolved before the await (the action may unmount this
+  /// widget, and `context` must not be touched across the gap).
+  Future<bool> _reauthenticate(GateController gate) async {
+    final copy = AppLocalizations.of(context).accountReauthFailed;
+    final granted = await gate.reauthenticate();
+    if (!granted && mounted) setState(() => _linkError = copy);
+    return granted;
+  }
+
   /// F1/F2/F3: confirmation dialog first (#31 KTD7) — before the
   /// system-UI window, since it is Flutter UI, not system UI — then the
   /// same device-credential-plus-provider-call ceremony as adding (KTD8).
-  /// Cancelling ends the action with no credential prompt, no service
-  /// call, and no copy (R4).
+  /// Cancelling the confirmation ends the action with no credential prompt,
+  /// no service call, and no copy (R4); a failed *credential* renders the
+  /// issue #984 line instead of returning silently.
   Future<void> _removeMethod(String provider) async {
     if (_busyProvider != null) return;
     final gate = context.read<GateController?>();
@@ -719,8 +733,8 @@ class _AccountSectionState extends State<AccountSection> {
 
   Future<void> _reauthenticateAndRemove(
       GateController gate, AuthController auth, String provider) async {
-    final granted = await gate.reauthenticate();
-    if (!granted || !mounted) return;
+    if (!await _reauthenticate(gate)) return;
+    if (!mounted) return;
     setState(() => _busyProvider = provider);
     try {
       // Same as adding: the controller adopts and notifies itself (#31

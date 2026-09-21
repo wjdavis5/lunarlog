@@ -1390,7 +1390,7 @@ void main() {
     });
 
     testWidgets('AE6: a declined re-auth never calls linkGoogle and shows '
-        'no copy', (tester) async {
+        'the issue #984 line (not a silent return)', (tester) async {
       final s = await pumpSection(
         tester,
         providers: ['email'],
@@ -1401,7 +1401,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(s.gate.requests, 1);
       expect(s.auth.linkCalls, isEmpty);
-      expect(key('account-link-error'), findsNothing);
+      // Issue #984: the failing action used to return with no copy at all,
+      // which read as an endless credential loop rather than an error.
+      expect(key('account-link-error'), findsOneWidget);
+      expect(find.text("Couldn't confirm it's you — try again"), findsOneWidget);
       expect(find.text('Sign-in methods: Email'), findsOneWidget);
       expect(key('account-add-google'), findsOneWidget);
     });
@@ -1560,7 +1563,8 @@ void main() {
       expect(find.text('Sign-in methods: Email'), findsOneWidget);
       expect(key('account-add-passkey'), findsOneWidget);
 
-      // A declined re-auth on a fresh pump never reaches the service.
+      // A declined re-auth on a fresh pump never reaches the service, and
+      // (issue #984) surfaces the re-auth line rather than returning silently.
       final declined = await pumpSection(
         tester,
         providers: ['email'],
@@ -1571,7 +1575,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(declined.gate.requests, 1);
       expect(declined.auth.registerPasskeyCalls, 0);
-      expect(key('account-link-error'), findsNothing);
+      expect(find.text("Couldn't confirm it's you — try again"), findsOneWidget);
     });
 
     testWidgets('AE4: providerUnavailable surfaces the generic copy naming '
@@ -1688,7 +1692,7 @@ void main() {
     });
 
     testWidgets('AE3: confirming with a declined credential never calls '
-        'unlinkProvider and shows no copy', (tester) async {
+        'unlinkProvider and shows the issue #984 line', (tester) async {
       final s = await pumpSection(
         tester,
         providers: ['email', 'google'],
@@ -1702,7 +1706,10 @@ void main() {
 
       expect(s.gate.requests, 1);
       expect(s.auth.unlinkCalls, isEmpty);
-      expect(key('account-link-error'), findsNothing);
+      // Issue #984: the remove ceremony shares the add ceremony's re-auth, so
+      // it gets the same copy instead of a silent return.
+      expect(key('account-link-error'), findsOneWidget);
+      expect(find.text("Couldn't confirm it's you — try again"), findsOneWidget);
       expect(key('account-remove-google'), findsOneWidget);
     });
 
