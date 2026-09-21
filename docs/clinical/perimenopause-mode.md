@@ -110,3 +110,9 @@ must be **identical** (HealthKit rejects a save where they differ, unlike the
 interval samples the registry otherwise names), and
 `.bleedingAfterMenopause` is an interval sample carrying
 `HKCategoryValueVaginalBleeding`.
+
+Issue #246 has since documented both mappings in pure code — see
+`lib/data/health/health_mode_interval_mapping.dart` (the `menopausalState`
+sample's start == end constraint is enforced structurally there) — but no
+write path exists: the Health Platform Sync adapter still has no platform
+plugin, so both entries remain `futureCandidate` in the registry.
