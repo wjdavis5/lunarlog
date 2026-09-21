@@ -2115,4 +2115,78 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianNotesUpdate => 'Update note';
+
+  @override
+  String cycleRecapTitle(int cycleNumber) {
+    return 'Cycle $cycleNumber wrapped up';
+  }
+
+  @override
+  String cycleRecapLength(String days) {
+    return 'This cycle lasted $days.';
+  }
+
+  @override
+  String cycleRecapUsualRange(String range) {
+    return 'Your usual range is $range.';
+  }
+
+  @override
+  String cycleRecapLongerThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days longer than the cycle before it.',
+      one: 'One day longer than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleRecapShorterThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days shorter than the cycle before it.',
+      one: 'One day shorter than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cycleRecapSameAsPrevious =>
+      'About the same length as the cycle before it.';
+
+  @override
+  String get cycleRecapEstimatesMoreConfident =>
+      'Your estimates are now more confident.';
+
+  @override
+  String get cycleRecapEstimatesLessConfident =>
+      'Your estimates are a little less certain now.';
+
+  @override
+  String cycleRecapAverageMoved(String days) {
+    return 'Your average cycle length moved by $days.';
+  }
+
+  @override
+  String cycleRecapRecurringSymptom(String symptom, String days) {
+    return '$symptom: most often around cycle day $days.';
+  }
+
+  @override
+  String cycleRecapCrampDays(String days) {
+    return 'Cramps most often land around cycle day $days.';
+  }
+
+  @override
+  String get cycleRecapStillLearning =>
+      'Still learning — estimates appear once a few cycles are recorded.';
+
+  @override
+  String get cycleRecapCompareAction => 'Compare with the cycle before';
+
+  @override
+  String get cycleRecapDismissLabel => 'Dismiss';
 }
