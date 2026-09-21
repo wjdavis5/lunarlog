@@ -60,8 +60,10 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
   final void Function(DayEntryMergeEvent event) onRestoreFlow;
 
   String _formatUser(AppLocalizations l10n, String? userId) {
-    if (userId == null) return 'another guardian';
-    if (currentUserId != null && userId == currentUserId) return 'you';
+    if (userId == null) return l10n.mergeNoticeAnotherGuardian;
+    if (currentUserId != null && userId == currentUserId) {
+      return l10n.mergeNoticeYou;
+    }
     final match = guardians.cast<ProfileGuardian?>().firstWhere(
           (g) => g?.userId == userId,
           orElse: () => null,
@@ -72,15 +74,17 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
       }
       return guardianRoleLabel(l10n, match.role);
     }
-    return 'another guardian';
+    return l10n.mergeNoticeAnotherGuardian;
   }
 
   /// The possessive form for a notice sentence: "your" for the signed-in
   /// user (never "you's"), `` '<name>'s `` otherwise.
   String _possessive(AppLocalizations l10n, String? userId) {
     final user = _formatUser(l10n, userId);
-    if (currentUserId != null && userId == currentUserId) return 'your';
-    if (userId == null) return 'another guardian\'s';
+    if (currentUserId != null && userId == currentUserId) {
+      return l10n.mergeNoticeYour;
+    }
+    if (userId == null) return l10n.mergeNoticeAnotherGuardianPossessive;
     return '$user\'s';
   }
 
@@ -90,17 +94,12 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
     final winner = _possessive(l10n, event.winningAuthorUserId);
     final loser = _possessive(l10n, event.losingAuthorUserId);
     return switch (event.field) {
-      DayEntryMergeEventField.note =>
-        'Two entries for this date were merged; $winner note was kept and '
-            '$loser note was discarded.',
-      DayEntryMergeEventField.flow =>
-        'Two entries for this date were merged; $winner flow level was kept '
-            'and $loser was discarded.',
+      DayEntryMergeEventField.note => l10n.mergeNoticeNoteBody(winner, loser),
+      DayEntryMergeEventField.flow => l10n.mergeNoticeFlowBody(winner, loser),
       // Issue #871: never reaches this section (filtered out of the day
       // sheet's read — a guardian-note convergence is not a day-entry
       // merge), but the closed enum keeps the switch exhaustive.
-      DayEntryMergeEventField.guardianNote =>
-        'A guardian note for this date was replaced on sync.',
+      DayEntryMergeEventField.guardianNote => l10n.mergeNoticeGuardianNoteBody,
     };
   }
 
@@ -132,9 +131,10 @@ class DayEntryMergeNoticeSection extends StatelessWidget {
                   : null,
               canRestore: _isLosingAuthor(event),
               restoreLabel: switch (event.field) {
-                DayEntryMergeEventField.note => 'Restore my note',
-                DayEntryMergeEventField.flow => 'Restore my flow level',
-                DayEntryMergeEventField.guardianNote => 'Restore my note',
+                DayEntryMergeEventField.note => l10n.mergeNoticeRestoreNote,
+                DayEntryMergeEventField.flow => l10n.mergeNoticeRestoreFlow,
+                DayEntryMergeEventField.guardianNote =>
+                  l10n.mergeNoticeRestoreNote,
               },
               onDismiss: () => onDismiss(event),
               onRestore: () => switch (event.field) {
@@ -225,7 +225,7 @@ class _MergeNoticeRow extends StatelessWidget {
             key: const ValueKey('merge-notice-dismiss'),
             onPressed: onDismiss,
             icon: const Icon(Icons.close, size: 16),
-            tooltip: 'Dismiss',
+            tooltip: AppLocalizations.of(context).mergeNoticeDismissTooltip,
             visualDensity: VisualDensity.compact,
           ),
         ],
