@@ -20,6 +20,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
 import 'package:lunarlog/data/health/ios_health_channel.dart';
 import 'package:lunarlog/data/health/android_health_channel.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -636,6 +637,105 @@ void main() {
       expect(build(TargetPlatform.iOS), isA<IOSHealthChannel>());
       expect(build(TargetPlatform.android), isA<AndroidHealthChannel>());
       expect(build(TargetPlatform.windows), isA<UnsupportedHealthPlatform>());
+    });
+  });
+
+  // Issue #799: the computed cycle-deviation read — the same guard ordering
+  // as the flow read, and the one place the Dart side proves the exact
+  // identifier strings it sends (matched to the Swift table by
+  // `test/release/health_deviation_read_types_test.dart`).
+  group('readCycleDeviations (Issue #799)', () {
+    final start = DateTime.utc(2026, 1, 1);
+    final end = DateTime.utc(2026, 6, 30);
+
+    test('a denied read refuses with zero channel invocations', () async {
+      final result = await makePlatform(seed: {}).readCycleDeviations(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthDeviationRefused>());
+      expect((result as HealthDeviationRefused).check, HealthSyncCheck.noBinding);
+      expect(calls, isEmpty);
+    });
+
+    test('an allowed read crosses the channel with the guard, window, and '
+        'every canonical identifier', () async {
+      nextResult = <Object?>[
+        {
+          'kind': 'irregularMenstrualCycles',
+          'recordId': 'dev-1',
+          'startMs': 1000,
+          'endMs': 2000,
+          'zoneOffsetSeconds': -14400,
+          'zoneOffsetInferred': true,
+        },
+      ];
+      final result = await makePlatform().readCycleDeviations(
+        _facts(),
+        start: start,
+        end: end,
+      );
+
+      expect(calls, hasLength(1));
+      final call = calls.single;
+      expect(call.method, 'readCycleDeviations');
+      final args = call.arguments as Map<Object?, Object?>;
+      expect(args['profileId'], 'p1');
+      expect(args['startMs'], start.millisecondsSinceEpoch);
+      expect(args['endMs'], end.millisecondsSinceEpoch);
+      expect(args['kinds'], [
+        for (final kind in HealthDeviationKind.values) kind.healthKitIdentifier,
+      ]);
+      final sample =
+          (result as HealthDeviationSamples).samples.single;
+      expect(sample.kind, HealthDeviationKind.irregularMenstrualCycles);
+      expect(sample.offset, const Duration(hours: -4));
+      expect(sample.offsetInferred, isTrue);
+    });
+
+    test('an unknown wire field is a failed result, never a silent skip',
+        () async {
+      nextResult = <Object?>[
+        {'kind': 'bogus', 'recordId': 'x', 'startMs': 1, 'endMs': 2},
+      ];
+      final result = await makePlatform().readCycleDeviations(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthDeviationFailed>());
+    });
+
+    test('platform outcomes map to their typed variants', () async {
+      nextError = PlatformException(code: 'unavailable');
+      expect(
+        await makePlatform().readCycleDeviations(_facts(),
+            start: start, end: end),
+        isA<HealthDeviationUnavailable>(),
+      );
+      nextError = PlatformException(code: 'permissionDenied');
+      expect(
+        await makePlatform().readCycleDeviations(_facts(),
+            start: start, end: end),
+        isA<HealthDeviationPermissionDenied>(),
+      );
+      nextError = MissingPluginException();
+      expect(
+        await makePlatform().readCycleDeviations(_facts(),
+            start: start, end: end),
+        isA<HealthDeviationUnavailable>(),
+      );
+    });
+
+    test('the unsupported platform reads as unavailable', () async {
+      const platform = UnsupportedHealthPlatform();
+      final result = await platform.readCycleDeviations(
+        _facts(),
+        start: start,
+        end: end,
+      );
+      expect(result, isA<HealthDeviationUnavailable>());
     });
   });
 
