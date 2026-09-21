@@ -88,16 +88,19 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
       Provider.of<GuardianNotesRepository?>(context, listen: false);
 
   String _authorName(String? userId) {
-    if (userId == null) return 'Guardian';
+    final l10n = AppLocalizations.of(context);
+    if (userId == null) return l10n.guardianNotesGuardianFallback;
     if (widget.currentUserId != null && userId == widget.currentUserId) {
-      return 'You';
+      return l10n.guardianNotesYou;
     }
     final match = widget.guardians.cast<ProfileGuardian?>().firstWhere(
           (g) => g?.userId == userId,
           orElse: () => null,
         );
     final name = match?.displayName;
-    return (name != null && name.isNotEmpty) ? name : 'Guardian';
+    return (name != null && name.isNotEmpty)
+        ? name
+        : l10n.guardianNotesGuardianFallback;
   }
 
   /// Adopts the author's own existing note into the editor the first time it
@@ -242,8 +245,8 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
           key: const ValueKey('guardian-note-field'),
           controller: _controller,
           enabled: !_saving,
-          decoration: const InputDecoration(
-            labelText: 'Your note for this day',
+          decoration: InputDecoration(
+            labelText: l10n.guardianNotesFieldLabel,
             alignLabelWithHint: true,
           ),
           maxLines: 3,
