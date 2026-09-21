@@ -45,18 +45,46 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'hardcoded_ui_strings_scanner.dart';
 
+/// The named-argument identifiers the `lib/ui/sharing` tranche check
+/// (issue #1004) treats as user-facing copy. The global backlog scan leaves
+/// this empty; the directory-specific test opts in so `labelText:`,
+/// `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
+/// `semanticLabel:` and friends cannot hide a literal the positional
+/// `Text(`/`Tooltip(` scanner never looks at.
+const Set<String> _sharingNamedUiArgs = {
+  'labelText',
+  'hintText',
+  'helperText',
+  'errorText',
+  'semanticLabel',
+  'semanticsLabel',
+  'label',
+  'title',
+  'subtitle',
+  'message',
+  'tooltip',
+  'header',
+  'hint',
+};
+
 /// The backlog this guard landed with (issue #460). Decrement it with
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
-const int _initialAllowlistSize = 367;
+///
+/// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero, so those
+/// entries are gone and the recorded size dropped by the same amount:
+/// 355 (main, after the widget/health/#1003 work) - 134 = 221. Every
+/// remaining entry is another directory's backlog, owned by a different
+/// tranche.
+const int _initialAllowlistSize = 221;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 29,
-  'lib/ui/account/delete_account_dialog.dart': 8,
+  'lib/ui/account/account_section.dart': 27,
+  'lib/ui/account/delete_account_dialog.dart': 7,
   'lib/ui/account/mfa_settings_section.dart': 1,
   'lib/ui/account/mfa_step_up_dialog.dart': 1,
   'lib/ui/account/password_recovery_screen.dart': 4,
@@ -92,21 +120,10 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 11,
+  'lib/ui/settings/health_sync_screen.dart': 10,
   'lib/ui/settings/import_screen.dart': 4,
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
-  'lib/ui/sharing/accept_invite_sheet.dart': 5,
-  'lib/ui/sharing/accept_prediction_connection_sheet.dart': 4,
-  'lib/ui/sharing/activity_feed_screen.dart': 3,
-  'lib/ui/sharing/claim_profile_sheet.dart': 4,
-  'lib/ui/sharing/invite_guardian_dialog.dart': 13,
-  'lib/ui/sharing/manage_guardians_screen.dart': 46,
-  'lib/ui/sharing/notification_preferences_screen.dart': 20,
-  'lib/ui/sharing/prediction_connection_calendar_screen.dart': 1,
-  'lib/ui/sharing/prediction_connections_screen.dart': 15,
-  'lib/ui/sharing/share_predictions_dialog.dart': 10,
-  'lib/ui/sharing/transfer_ownership_screen.dart': 21,
   'lib/ui/startup/fail_closed_screen.dart': 2,
   'lib/ui/web/dev_banner.dart': 8,
 };
@@ -186,6 +203,51 @@ void main() {
     );
   });
 
+  // Issue #1004 (tranche 1): `lib/ui/sharing/` is fully migrated, so it is
+  // held to a stricter bar than the rest of `lib/ui/`. The global scan
+  // above only sees positional `Text(`/`Tooltip(` literals; this one also
+  // catches named-argument copy the scanner's default mode ignores
+  // (`labelText:`, `hintText:`, `title:`, `subtitle:`, `label:`,
+  // `message:`, `semanticLabel:`), and it forbids the directory from
+  // reappearing in the allowlist at all — so a new literal fails even if
+  // someone tries to re-allowlist the file instead of adding an ARB key.
+  test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)', () {
+    final files = Directory('lib/ui/sharing')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .toList();
+    expect(files, isNotEmpty, reason: 'scanned zero files under lib/ui/sharing');
+
+    final problems = <String>[];
+    for (final file in files) {
+      final path = file.path.replaceAll('\\', '/');
+      final found = scanHardcodedUiStrings(
+        file.readAsStringSync(),
+        namedArgs: _sharingNamedUiArgs,
+      );
+      problems.addAll(found.map((h) => '$path:${h.line}: ${h.value}'));
+    }
+
+    final sharingAllowlistEntries = _allowedHardcodedUiLiterals.keys
+        .where((k) => k.startsWith('lib/ui/sharing/'))
+        .toList();
+    expect(
+      problems,
+      isEmpty,
+      reason: 'lib/ui/sharing must read every user-facing literal from '
+          'AppLocalizations (lib/l10n/app_en.arb + `flutter gen-l10n`). '
+          'Problems:\n${problems.join('\n')}',
+    );
+    expect(
+      sharingAllowlistEntries,
+      isEmpty,
+      reason: 'lib/ui/sharing is fully migrated — do not re-allowlist a '
+          'sharing file; add an ARB key instead. Entries:\n'
+          '${sharingAllowlistEntries.join('\n')}',
+    );
+  });
+
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
   // can take": without this, a scanner that silently stopped matching
@@ -260,6 +322,45 @@ Widget build(BuildContext context) {
       expect(found, hasLength(1));
       expect(found.single.line, 1);
       expect(found.single.value, 'line one\nline two');
+    });
+
+    test('namedArgs records named-argument and map-entry literals', () {
+      const source = '''
+TextField(decoration: InputDecoration(labelText: 'Name', hintText: 'e.g. Sam'));
+Column(children: [Text('already covered')]);
+final map = {label: 'Note'};
+''';
+      final found = scanHardcodedUiStrings(
+        source,
+        namedArgs: {'labelText', 'hintText', 'label', 'title'},
+      );
+      final values = found.map((h) => h.value).toList();
+      expect(values, contains('Name'));
+      expect(values, contains('e.g. Sam'));
+      expect(values, contains('Note'));
+      expect(values, contains('already covered'));
+      expect(values, hasLength(4));
+    });
+
+    test('namedArgs is off by default and ignores dynamic values', () {
+      const source = '''
+InputDecoration(labelText: 'Name', hintText: someVariable);
+ListTile(title: l10n.somethingLocalized, subtitle: 'literal');
+''';
+      expect(
+        scanHardcodedUiStrings(source),
+        isEmpty,
+        reason: 'the global backlog scan must not start seeing named args',
+      );
+      final found = scanHardcodedUiStrings(
+        source,
+        namedArgs: {'labelText', 'hintText', 'title', 'subtitle'},
+      );
+      final values = found.map((h) => h.value).toList();
+      expect(values, contains('Name'));
+      expect(values, contains('literal'));
+      expect(values, hasLength(2),
+          reason: 'a dynamic value is not copy; only literals count');
     });
   });
 }

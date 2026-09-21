@@ -34,6 +34,7 @@ import '../../domain/prediction/prediction.dart' show CycleConfidence;
 import '../../domain/sharing/prediction_connection_service.dart';
 import '../../domain/sharing/prediction_projection.dart';
 import '../components/inline_error.dart';
+import '../l10n/dates.dart' as dates;
 import '../overview/estimate_copy.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
 
@@ -143,7 +144,7 @@ class _PredictionConnectionCalendarScreenState
             return Center(
               child: InlineError(
                 key: const ValueKey('prediction-calendar-error'),
-                message: 'Could not load the shared predictions.',
+                message: l10n.sharingPredictionCalendarLoadError,
                 onRetry: _reload,
               ),
             );
@@ -155,18 +156,17 @@ class _PredictionConnectionCalendarScreenState
               return _EmptyState(
                 key: const ValueKey('prediction-calendar-waiting'),
                 icon: Icons.hourglass_top,
-                title: 'Waiting for the first update',
-                body: "You're connected, but ${widget.profileName}'s app "
-                    "hasn't shared its first predictions yet. They appear "
-                    'here automatically once it does - tap refresh to check '
-                    'again.',
+                title: l10n.sharingPredictionCalendarWaitingTitle,
+                body: l10n.sharingPredictionCalendarWaitingBody(
+                  widget.profileName,
+                ),
               );
             case _ConnectionStatus.ended:
               return _EmptyState(
                 key: const ValueKey('prediction-calendar-ended'),
                 icon: Icons.link_off,
-                title: 'Connection ended',
-                body: 'This prediction connection is no longer active.',
+                title: l10n.sharingPredictionCalendarEndedTitle,
+                body: l10n.sharingPredictionCalendarEndedBody,
               );
             case _ConnectionStatus.projected:
               break;
@@ -193,7 +193,8 @@ class _PredictionConnectionCalendarScreenState
                       icon: const Icon(Icons.chevron_left),
                       onPressed: () => _shiftMonth(-1),
                     ),
-                    Text(_monthLabel(_month), style: theme.textTheme.titleMedium),
+                    Text(_monthLabel(context, _month),
+                        style: theme.textTheme.titleMedium),
                     IconButton(
                       tooltip: l10n.calendarNextMonthTooltip,
                       icon: const Icon(Icons.chevron_right),
@@ -277,8 +278,7 @@ class _DisclaimerBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final tier = confidenceTier;
-    return Container(
-      key: const ValueKey('prediction-disclaimer-banner'),
+    return Container(      key: const ValueKey('prediction-disclaimer-banner'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
@@ -301,7 +301,8 @@ class _DisclaimerBanner extends StatelessWidget {
           if (tier != null) ...[
             const SizedBox(height: 8),
             Text(
-              'Estimate confidence: ${tier.label}',
+              AppLocalizations.of(context)
+                  .sharingPredictionCalendarConfidence(tier.label),
               key: const ValueKey('prediction-confidence-tier'),
               style: theme.textTheme.bodySmall
                   ?.copyWith(fontWeight: FontWeight.w600),
@@ -335,7 +336,9 @@ class _PhaseMonthGrid extends StatelessWidget {
         (DateTime(month.year, month.month, 1).weekday - DateTime.sunday) % 7;
     final daysInMonth = _daysInMonth(month);
     final cells = <Widget>[
-      for (final label in _weekdayHeaderLabels)
+      for (final label in dates.narrowWeekdayInitials(
+        locale: dates.calendarLocale(context),
+      ))
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Text(
@@ -421,6 +424,7 @@ class _PhaseLegend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     Widget entry(Color swatch, String label, {bool ring = false}) => Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -442,24 +446,27 @@ class _PhaseLegend extends StatelessWidget {
       spacing: 16,
       runSpacing: 8,
       children: [
-        entry(theme.colorScheme.errorContainer, 'Period'),
-        entry(theme.colorScheme.tertiaryContainer, 'Fertile'),
-        entry(theme.colorScheme.primary, 'Ovulation', ring: true),
-        entry(theme.colorScheme.secondaryContainer, 'PMS'),
+        entry(
+          theme.colorScheme.errorContainer,
+          l10n.sharingPredictionCalendarLegendPeriod,
+        ),
+        entry(
+          theme.colorScheme.tertiaryContainer,
+          l10n.sharingPredictionCalendarLegendFertile,
+        ),
+        entry(
+          theme.colorScheme.primary,
+          l10n.sharingPredictionCalendarLegendOvulation,
+          ring: true,
+        ),
+        entry(
+          theme.colorScheme.secondaryContainer,
+          l10n.sharingPredictionCalendarLegendPms,
+        ),
       ],
     );
   }
 }
-
-const List<String> _weekdayHeaderLabels = [
-  'S',
-  'M',
-  'T',
-  'W',
-  'T',
-  'F',
-  'S',
-];
 
 int _daysInMonth(LocalDate month) {
   final nextMonth = month.month == 12
@@ -468,10 +475,7 @@ int _daysInMonth(LocalDate month) {
   return nextMonth.addDays(-1).day;
 }
 
-String _monthLabel(LocalDate month) {
-  const names = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
+String _monthLabel(BuildContext context, LocalDate month) {
+  final names = dates.monthNames(locale: dates.calendarLocale(context));
   return '${names[month.month - 1]} ${month.year}';
 }

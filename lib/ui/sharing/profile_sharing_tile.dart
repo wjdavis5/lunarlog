@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/sharing/sharing_overview.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/sharing/pending_invite_badge.dart';
 
 class ProfileSharingTile extends StatelessWidget {
@@ -59,7 +60,8 @@ class ProfileSharingTile extends StatelessWidget {
               children: [
                 if (showIndicator)
                   Tooltip(
-                    message: 'Shared · ${info.acceptedCount} guardians',
+                    message: AppLocalizations.of(context)
+                        .sharingProfileSharingSharedTooltip(info.acceptedCount),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [

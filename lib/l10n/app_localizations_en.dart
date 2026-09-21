@@ -1785,7 +1785,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authFailureSignUpClosed =>
-      'New accounts for this app are set up by the account owner.';
+      'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.';
 
   @override
   String get authFailureLastSignInMethod =>
@@ -2303,12 +2303,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteSubjectOption(String name) {
-    return 'Invite $name to log her own profile';
+    return 'Invite $name to log their own profile';
   }
 
   @override
   String inviteSubjectOptionDetail(String name) {
-    return 'Caregiver access - this is $name\'s own profile, listed as hers on her device';
+    return 'Caregiver access - this is $name\'s own profile, listed as theirs on their device';
   }
 
   @override
@@ -2318,7 +2318,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteCreatedShareSubject(String name) {
-    return 'Share this single-use link with $name - she\'ll use it to join and log her own profile:';
+    return 'Share this single-use link with $name - they\'ll use it to join and log their own profile:';
   }
 
   @override
@@ -2540,5 +2540,896 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String healthDeviationRangeSingle(String date) {
     return '$date';
+  }
+
+  @override
+  String get accountDeleteDialogBody =>
+      'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.';
+
+  @override
+  String get accountDeleteTileSubtitle =>
+      'Deletes the account, everything in it, and this device\'s copy.';
+
+  @override
+  String get accountSignOutEverywhereBody =>
+      'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.';
+
+  @override
+  String transferOwnershipConfirmBody(String name, String role) {
+    return '$name will become the Primary Guardian of this profile. You\'ll keep access as $role, and they can remove that access at any time.';
+  }
+
+  @override
+  String transferOwnershipBecomesGuardian(String name) {
+    return '$name becomes this profile\'s Primary Guardian.';
+  }
+
+  @override
+  String get transferOwnershipRoleCoParent =>
+      'Co-Parent: keep logging entries and managing this profile.';
+
+  @override
+  String get transferOwnershipRoleViewer =>
+      'Viewer: read-only access to their calendar and entries.';
+
+  @override
+  String manageGuardiansLeaveProfileDialogTitle(String profile) {
+    return 'Leave $profile\'s profile?';
+  }
+
+  @override
+  String get manageGuardiansLeaveProfileConfirm => 'Leave';
+
+  @override
+  String get manageGuardiansWaitingForRedemption =>
+      'Waiting for them to open the link';
+
+  @override
+  String get healthSyncConfirmSyncAction => 'Sync';
+
+  @override
+  String get predictionEnterLinkTitle => 'Enter a connection link';
+
+  @override
+  String get predictionEnterLinkHint => 'Paste the link you received';
+
+  @override
+  String get predictionEnterLinkAction => 'Enter link';
+
+  @override
+  String get sharePredictionsCopyLink => 'Copy link';
+
+  @override
+  String get sharePredictionsLinkExpiry =>
+      'The link expires in 72 hours and can be used once.';
+
+  @override
+  String get claimProfileBecomeGuardianAction => 'Become Primary Guardian';
+
+  @override
+  String get claimProfileBody =>
+      'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.';
+
+  @override
+  String get sharingUnexpectedError => 'An unexpected error occurred.';
+
+  @override
+  String sharingAcceptInvitePreviewIntro(String profileName, String roleLabel) {
+    return 'You\'ve been invited to join $profileName\'s shared profile as $roleLabel. Accepting will sync its cycle calendar and health logs to this device.';
+  }
+
+  @override
+  String get sharingAcceptInviteNeutralIntro =>
+      'You\'ve been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.';
+
+  @override
+  String get sharingAcceptInvitePreviewLoading => 'Loading invite details…';
+
+  @override
+  String get sharingAcceptInvitePreviewError =>
+      'Couldn\'t load invite details, but you can still continue.';
+
+  @override
+  String get sharingAcceptInvitePreviewUnavailable =>
+      'This invite link may have expired or already been used.';
+
+  @override
+  String get sharingAcceptInviteTitle => 'Join Shared Profile';
+
+  @override
+  String get sharingAcceptInviteDecline => 'Decline';
+
+  @override
+  String get sharingAcceptInviteAccept => 'Accept & Sync';
+
+  @override
+  String get sharingAcceptInviteNameLabel =>
+      'Your display name (e.g. Dad, Mom, Grandma)';
+
+  @override
+  String get sharingAcceptInviteNameHint => 'Shows when you log entries';
+
+  @override
+  String get sharingAcceptPredictionTitle => 'Connect to cycle predictions';
+
+  @override
+  String get sharingAcceptPredictionBody =>
+      'Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.';
+
+  @override
+  String get sharingAcceptPredictionDecline => 'Decline';
+
+  @override
+  String get sharingAcceptPredictionConnect => 'Connect';
+
+  @override
+  String get sharingClaimProfileTitle => 'Become the Owner';
+
+  @override
+  String get sharingClaimProfileDecline => 'Decline';
+
+  @override
+  String get sharingClaimProfileChildNameLabel =>
+      'Child\'s display name (optional)';
+
+  @override
+  String get sharingClaimProfileChildNameHint => 'Shows on the profile';
+
+  @override
+  String get sharingClaimProfileParentLabelLabel =>
+      'Label for the parent (optional)';
+
+  @override
+  String get sharingClaimProfileParentLabelHint =>
+      'Shows when they log entries';
+
+  @override
+  String get sharingInviteGuardianGenerateFailed =>
+      'Failed to generate invite. Please check your connection and try again.';
+
+  @override
+  String get sharingInviteGuardianRoleLabel => 'Role:';
+
+  @override
+  String get sharingInviteGuardianPresetCoParent =>
+      'Co-Parent (Can log, edit profile & invite)';
+
+  @override
+  String get sharingInviteGuardianPresetCaregiver =>
+      'Caregiver (Can log symptoms & periods)';
+
+  @override
+  String get sharingInviteGuardianPresetViewer => 'Viewer (Read-only access)';
+
+  @override
+  String get sharingInviteGuardianCreatedTitle => 'Invitation Created';
+
+  @override
+  String get sharingInviteGuardianExpiry =>
+      'Expires in 48 hours. Can be redeemed once.';
+
+  @override
+  String get sharingInviteGuardianCopied => 'Copied to clipboard';
+
+  @override
+  String get sharingInviteGuardianDone => 'Done';
+
+  @override
+  String get sharingInviteGuardianCopyLink => 'Copy Link';
+
+  @override
+  String get sharingInviteGuardianShare => 'Share';
+
+  @override
+  String sharingInviteGuardianTitle(String profileName) {
+    return 'Invite guardian to $profileName';
+  }
+
+  @override
+  String get sharingInviteGuardianNicknameLabel =>
+      'Nickname / Label (Optional)';
+
+  @override
+  String get sharingInviteGuardianNicknameHint =>
+      'e.g. Dad, Grandma, School Nurse';
+
+  @override
+  String get sharingInviteGuardianHelpLabel => 'How do invitations work?';
+
+  @override
+  String get sharingInviteGuardianCancel => 'Cancel';
+
+  @override
+  String get sharingInviteGuardianCreateLink => 'Create Link';
+
+  @override
+  String get sharingManageGuardiansCancel => 'Cancel';
+
+  @override
+  String get sharingManageGuardiansEndPredictionTitle =>
+      'End prediction sharing?';
+
+  @override
+  String get sharingManageGuardiansEndPredictionBody =>
+      'They will immediately lose the shared predictions calendar. You can create a new connection any time.';
+
+  @override
+  String get sharingManageGuardiansEndSharing => 'End sharing';
+
+  @override
+  String get sharingManageGuardiansPredictionSharingEnded =>
+      'Prediction sharing ended';
+
+  @override
+  String get sharingManageGuardiansEndSharingFailed =>
+      'Failed to end sharing. Check connection.';
+
+  @override
+  String sharingManageGuardiansDeleteProfileTitle(String profileName) {
+    return 'Delete $profileName permanently?';
+  }
+
+  @override
+  String get sharingManageGuardiansDeleteProfileStep1Body =>
+      'This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian\'s access to it — including your own. Synced copies on every device are erased too.';
+
+  @override
+  String get sharingManageGuardiansContinue => 'Continue';
+
+  @override
+  String get sharingManageGuardiansDeleteProfileStep2Title =>
+      'Are you absolutely sure?';
+
+  @override
+  String sharingManageGuardiansDeleteProfileStep2Body(String profileName) {
+    return '$profileName\'s history will be gone permanently, for every guardian on this profile. There is no undo.';
+  }
+
+  @override
+  String get sharingManageGuardiansDeletePermanently => 'Delete permanently';
+
+  @override
+  String get sharingManageGuardiansDeleteOffline =>
+      'Can\'t delete while offline. Check your connection and try again.';
+
+  @override
+  String get sharingManageGuardiansDeleteFailed =>
+      'Failed to delete profile. Check connection and try again.';
+
+  @override
+  String get sharingManageGuardiansSolePrimaryLeave =>
+      'You\'re now the only primary guardian, so you can\'t leave. Add another primary guardian first, then try again.';
+
+  @override
+  String get sharingManageGuardiansRemoveFailed =>
+      'Failed to remove guardian. Check connection.';
+
+  @override
+  String sharingManageGuardiansRemoveTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get sharingManageGuardiansLeaveBody =>
+      'You will leave this profile and no longer receive updates or sync its entries.';
+
+  @override
+  String sharingManageGuardiansRemoveBody(String profileName) {
+    return 'This guardian will lose access to $profileName\'s calendar and entries.';
+  }
+
+  @override
+  String get sharingManageGuardiansRemove => 'Remove';
+
+  @override
+  String sharingManageGuardiansRemoved(String name) {
+    return 'Removed $name';
+  }
+
+  @override
+  String sharingManageGuardiansCancelInviteTitle(String name) {
+    return 'Cancel invitation for $name?';
+  }
+
+  @override
+  String get sharingManageGuardiansCancelInviteBody =>
+      'The invite link will stop working immediately. You can send a new one any time.';
+
+  @override
+  String get sharingManageGuardiansKeepInvitation => 'Keep Invitation';
+
+  @override
+  String get sharingManageGuardiansCancelInvitation => 'Cancel Invitation';
+
+  @override
+  String get sharingManageGuardiansCancelInviteFailed =>
+      'Failed to cancel invitation. Check connection.';
+
+  @override
+  String get sharingManageGuardiansPendingLoadError =>
+      'Could not load pending invitations.';
+
+  @override
+  String get sharingManageGuardiansNoPending => 'No pending invitations';
+
+  @override
+  String get sharingManageGuardiansPendingTitle => 'Pending invitations';
+
+  @override
+  String sharingManageGuardiansPendingSubtitleExpired(String kindLabel) {
+    return '$kindLabel • Expired';
+  }
+
+  @override
+  String sharingManageGuardiansPendingSubtitle(
+    String kindLabel,
+    String expiry,
+  ) {
+    return '$kindLabel • $expiry';
+  }
+
+  @override
+  String get sharingManageGuardiansResend => 'Resend';
+
+  @override
+  String get sharingManageGuardiansExpiryExpired => 'expired';
+
+  @override
+  String sharingManageGuardiansExpiryHours(int hours) {
+    return 'expires in ${hours}h';
+  }
+
+  @override
+  String sharingManageGuardiansExpiryMinutes(int minutes) {
+    return 'expires in ${minutes}m';
+  }
+
+  @override
+  String sharingManageGuardiansScreenTitle(String profileName) {
+    return '$profileName Guardians';
+  }
+
+  @override
+  String get sharingManageGuardiansInviteAction => 'Invite guardian';
+
+  @override
+  String get sharingManageGuardiansNoGuardiansTitle =>
+      'No guardians linked yet';
+
+  @override
+  String get sharingManageGuardiansNoGuardiansBody =>
+      'Invite another guardian to sync and share tracking.';
+
+  @override
+  String get sharingManageGuardiansPredictionsSectionTitle =>
+      'Predictions-only sharing';
+
+  @override
+  String get sharingManageGuardiansPredictionsSectionBody =>
+      'Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.';
+
+  @override
+  String get sharingManageGuardiansPredictionsMinor =>
+      'Prediction sharing is not available for a minor\'s profile.';
+
+  @override
+  String get sharingManageGuardiansSharePredictionsAction =>
+      'Share predictions only...';
+
+  @override
+  String get sharingManageGuardiansPredictionsPrimaryOnly =>
+      'Only the primary guardian can share predictions.';
+
+  @override
+  String get sharingManageGuardiansSharingPredictions => 'Sharing predictions';
+
+  @override
+  String get sharingManageGuardiansPendingBadge => 'pending';
+
+  @override
+  String get sharingManageGuardiansPhasesOnlyCalendar =>
+      'Phases-only calendar • not a guardian';
+
+  @override
+  String get sharingManageGuardiansDangerZoneTitle => 'Danger zone';
+
+  @override
+  String get sharingManageGuardiansDangerZoneBody =>
+      'Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.';
+
+  @override
+  String get sharingManageGuardiansDeleteProfileAction =>
+      'Delete profile permanently';
+
+  @override
+  String get sharingManageGuardiansRoleUpdateFailed =>
+      'Failed to update role. Check connection.';
+
+  @override
+  String sharingManageGuardiansChangeRoleTitle(String newRoleLabel) {
+    return 'Change role to $newRoleLabel?';
+  }
+
+  @override
+  String sharingManageGuardiansChangeRoleBody(
+    String name,
+    String currentRoleLabel,
+    String consequence,
+  ) {
+    return '$name currently has $currentRoleLabel access. $consequence No new invitation is needed — the new role applies on their next sync.';
+  }
+
+  @override
+  String get sharingManageGuardiansChangeRoleAction => 'Change role';
+
+  @override
+  String sharingManageGuardiansRoleUpdated(String newRoleLabel) {
+    return 'Role updated to $newRoleLabel';
+  }
+
+  @override
+  String get sharingManageGuardiansYouSuffix => '(you)';
+
+  @override
+  String get sharingNotificationPreferencesTitle => 'Notifications';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTzTitle =>
+      'Save without time zone?';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTzBody =>
+      'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?';
+
+  @override
+  String get sharingNotificationPreferencesCancel => 'Cancel';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTz =>
+      'Save without time zone';
+
+  @override
+  String get sharingNotificationPreferencesLogDeliveryTitle =>
+      'Log alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesLogDeliverySubtitle =>
+      'Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest';
+
+  @override
+  String get sharingNotificationPreferencesCycleStartDelivery =>
+      'Cycle-start alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesHighSeverityDelivery =>
+      'High-severity alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesDigestTimeTitle => 'Digest time';
+
+  @override
+  String get sharingNotificationPreferencesDigestTimeSubtitle =>
+      'When daily digests are delivered in your time zone';
+
+  @override
+  String get sharingNotificationPreferencesLoadError =>
+      'Could not load your notification settings.';
+
+  @override
+  String get sharingNotificationPreferencesDiscretion =>
+      'Alerts never show what was logged - just a generic reminder to open lunarlog.';
+
+  @override
+  String sharingNotificationPreferencesNotifyOnLog(String profileName) {
+    return 'Notify me when $profileName logs an entry';
+  }
+
+  @override
+  String get sharingNotificationPreferencesCycleStartOnly =>
+      'Only notify on cycle start';
+
+  @override
+  String get sharingNotificationPreferencesHighSeverity =>
+      'Notify on high-severity days';
+
+  @override
+  String get sharingNotificationPreferencesMissedEntryTitle =>
+      'Missed-entry reminder';
+
+  @override
+  String get sharingNotificationPreferencesMissedEntrySubtitle =>
+      'Check in when no entry has been logged for a while';
+
+  @override
+  String get sharingNotificationPreferencesOff => 'Off';
+
+  @override
+  String get sharingNotificationPreferencesOneDay => '1 day';
+
+  @override
+  String get sharingNotificationPreferencesTwoDays => '2 days';
+
+  @override
+  String get sharingNotificationPreferencesThreeDays => '3 days';
+
+  @override
+  String get sharingNotificationPreferencesQuietStart => 'Quiet hours start';
+
+  @override
+  String get sharingNotificationPreferencesQuietEnd => 'Quiet hours end';
+
+  @override
+  String get sharingNotificationPreferencesClearQuietHours =>
+      'Clear quiet hours';
+
+  @override
+  String get sharingPredictionConnectionsTitle => 'Shared with me';
+
+  @override
+  String get sharingPredictionConnectionsStopTitle =>
+      'Stop receiving these predictions?';
+
+  @override
+  String get sharingPredictionConnectionsStopBody =>
+      'You will stop seeing this profile\'s shared cycle calendar. The sharer can invite you again at any time.';
+
+  @override
+  String get sharingPredictionConnectionsCancel => 'Cancel';
+
+  @override
+  String get sharingPredictionConnectionsStopAction => 'Stop receiving';
+
+  @override
+  String get sharingPredictionConnectionsStopped =>
+      'Stopped receiving predictions';
+
+  @override
+  String get sharingPredictionConnectionsStopFailed =>
+      'Could not stop receiving. Check connection.';
+
+  @override
+  String get sharingPredictionConnectionsFailed => 'Connection failed.';
+
+  @override
+  String get sharingPredictionConnectionsLoadError =>
+      'Could not load connections.';
+
+  @override
+  String get sharingPredictionConnectionsEmptyTitle =>
+      'No shared predictions yet';
+
+  @override
+  String get sharingPredictionConnectionsEmptyBody =>
+      'When someone shares their cycle predictions with you, their calendar appears here.';
+
+  @override
+  String get sharingPredictionConnectionsCyclePredictions =>
+      'Cycle predictions';
+
+  @override
+  String sharingPredictionConnectionsSharedSubtitle(String date) {
+    return 'Shared $date • phases only';
+  }
+
+  @override
+  String get sharingPredictionConnectionsStopTooltip => 'Stop receiving';
+
+  @override
+  String get sharingPredictionConnectionsConnect => 'Connect';
+
+  @override
+  String get sharingPredictionCalendarLoadError =>
+      'Could not load the shared predictions.';
+
+  @override
+  String get sharingPredictionCalendarWaitingTitle =>
+      'Waiting for the first update';
+
+  @override
+  String sharingPredictionCalendarWaitingBody(String profileName) {
+    return 'You\'re connected, but $profileName\'s app hasn\'t shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.';
+  }
+
+  @override
+  String get sharingPredictionCalendarEndedTitle => 'Connection ended';
+
+  @override
+  String get sharingPredictionCalendarEndedBody =>
+      'This prediction connection is no longer active.';
+
+  @override
+  String sharingPredictionCalendarConfidence(String tierLabel) {
+    return 'Estimate confidence: $tierLabel';
+  }
+
+  @override
+  String get sharingPredictionCalendarLegendPeriod => 'Period';
+
+  @override
+  String get sharingPredictionCalendarLegendFertile => 'Fertile';
+
+  @override
+  String get sharingPredictionCalendarLegendOvulation => 'Ovulation';
+
+  @override
+  String get sharingPredictionCalendarLegendPms => 'PMS';
+
+  @override
+  String get sharingSharePredictionsCreateFailed =>
+      'Failed to create the connection. Please check your connection and try again.';
+
+  @override
+  String get sharingSharePredictionsCreatedTitle => 'Connection created';
+
+  @override
+  String sharingSharePredictionsSendLink(String profileName) {
+    return 'Send this single-use link to the person who should see $profileName\'s predictions:';
+  }
+
+  @override
+  String sharingSharePredictionsCreatedBody(String expiry) {
+    return 'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. $expiry';
+  }
+
+  @override
+  String get sharingSharePredictionsCopied => 'Copied to clipboard';
+
+  @override
+  String get sharingSharePredictionsDone => 'Done';
+
+  @override
+  String sharingSharePredictionsTitle(String profileName) {
+    return 'Share predictions of $profileName';
+  }
+
+  @override
+  String get sharingSharePredictionsBody =>
+      'Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.';
+
+  @override
+  String get sharingSharePredictionsNicknameLabel =>
+      'Nickname / Label (Optional)';
+
+  @override
+  String get sharingSharePredictionsNicknameHint => 'e.g. Partner, Aunt';
+
+  @override
+  String get sharingSharePredictionsCancel => 'Cancel';
+
+  @override
+  String get sharingSharePredictionsCreateLink => 'Create Link';
+
+  @override
+  String sharingTransferOwnershipScreenTitle(String profileName) {
+    return 'Transfer $profileName\'s Profile';
+  }
+
+  @override
+  String get sharingTransferOwnershipConfirmTitle => 'Transfer ownership?';
+
+  @override
+  String get sharingTransferOwnershipCancel => 'Cancel';
+
+  @override
+  String get sharingTransferOwnershipTransferAction => 'Transfer';
+
+  @override
+  String get sharingTransferOwnershipPendingCancelled =>
+      'Pending transfer cancelled';
+
+  @override
+  String get sharingTransferOwnershipCancelled => 'Transfer cancelled';
+
+  @override
+  String get sharingTransferOwnershipLinkCopied =>
+      'Transfer link copied to clipboard';
+
+  @override
+  String get sharingTransferOwnershipWhatChanges => 'What changes';
+
+  @override
+  String get sharingTransferOwnershipBulletKeepRole =>
+      'You keep the role you choose below.';
+
+  @override
+  String get sharingTransferOwnershipBulletRemoveAccess =>
+      'They can remove your access at any time.';
+
+  @override
+  String get sharingTransferOwnershipBulletDeleteAccount =>
+      'If they later delete their account, this profile\'s history goes with it.';
+
+  @override
+  String get sharingTransferOwnershipHelpLabel => 'How does the transfer work?';
+
+  @override
+  String get sharingTransferOwnershipRoleAfterTitle =>
+      'Your role after the transfer';
+
+  @override
+  String get sharingTransferOwnershipRecipientLabel =>
+      'Recipient label (optional)';
+
+  @override
+  String get sharingTransferOwnershipRecipientHint => 'e.g. Sam';
+
+  @override
+  String get sharingTransferOwnershipAction => 'Transfer Ownership';
+
+  @override
+  String get sharingTransferOwnershipPendingTitle =>
+      'A Transfer Is Already Pending';
+
+  @override
+  String sharingTransferOwnershipPendingBody(String profileName) {
+    return 'A transfer for $profileName is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.';
+  }
+
+  @override
+  String sharingTransferOwnershipExpires(String date) {
+    return 'Expires $date';
+  }
+
+  @override
+  String get sharingTransferOwnershipCancelPending => 'Cancel Pending Transfer';
+
+  @override
+  String get sharingTransferOwnershipReadyTitle => 'Transfer Ready';
+
+  @override
+  String sharingTransferOwnershipShareLink(String profileName) {
+    return 'Share this single-use link with $profileName:';
+  }
+
+  @override
+  String get sharingTransferOwnershipCopyLink => 'Copy Link';
+
+  @override
+  String get sharingTransferOwnershipShare => 'Share';
+
+  @override
+  String get sharingTransferOwnershipCancelTransfer => 'Cancel transfer';
+
+  @override
+  String sharingActivityFeedScreenTitle(String profileName) {
+    return '$profileName Activity';
+  }
+
+  @override
+  String get sharingActivityFeedJustYouTitle => 'Just you for now';
+
+  @override
+  String get sharingActivityFeedJustYouBody =>
+      'This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.';
+
+  @override
+  String get sharingActivityFeedNoActivityTitle => 'No activity yet';
+
+  @override
+  String get sharingActivityFeedNoActivityBody =>
+      'Changes either guardian makes to this profile will appear here.';
+
+  @override
+  String get sharingActivityFeedCaption =>
+      'Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.';
+
+  @override
+  String get sharingActivityFeedVerbLogged => 'Logged';
+
+  @override
+  String get sharingActivityFeedVerbUpdated => 'Updated';
+
+  @override
+  String get sharingActivityFeedVerbRemoved => 'Removed';
+
+  @override
+  String sharingActivityFeedByLineActor(String verb, String actor) {
+    return '$verb by $actor';
+  }
+
+  @override
+  String sharingActivityFeedByLineNoActor(String verb) {
+    return 'Entry $verb';
+  }
+
+  @override
+  String get sharingActivityFeedMergeKeptOne => 'Sync merge kept one version';
+
+  @override
+  String sharingActivityFeedMergeKeptPossessive(String possessive) {
+    return 'Sync merge kept $possessive version';
+  }
+
+  @override
+  String get sharingActivityFeedAccessRemovedNoActor =>
+      'A guardian no longer has access';
+
+  @override
+  String sharingActivityFeedAccessRemovedActor(String actor) {
+    return '$actor no longer has access';
+  }
+
+  @override
+  String get sharingActivityFeedAccessRemovedSubtitle =>
+      'Access to this profile was removed';
+
+  @override
+  String sharingActivityFeedForDate(String date) {
+    return 'for $date';
+  }
+
+  @override
+  String sharingActivityFeedLoggedBy(String actor) {
+    return 'logged by $actor';
+  }
+
+  @override
+  String sharingActivityFeedTagCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tags',
+      one: '1 tag',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sharingActivityFeedNote => 'note';
+
+  @override
+  String get sharingActivityFeedOneGuardian => 'one guardian';
+
+  @override
+  String get sharingActivityFeedDiscardedFlowAndNote =>
+      'flow and note values were';
+
+  @override
+  String get sharingActivityFeedDiscardedNote => 'note was';
+
+  @override
+  String get sharingActivityFeedDiscardedFlow => 'flow value was';
+
+  @override
+  String sharingActivityFeedMergeDiscarded(String possessive, String what) {
+    return '$possessive $what discarded in a same-date merge';
+  }
+
+  @override
+  String get sharingActivityFeedNewBadge => 'New';
+
+  @override
+  String get sharingActivityFeedPossessiveYou => 'your';
+
+  @override
+  String sharingActivityFeedPossessiveName(String name) {
+    return '$name\'s';
+  }
+
+  @override
+  String sharingProfileSharingSharedTooltip(int count) {
+    return 'Shared · $count guardians';
+  }
+
+  @override
+  String sharingPendingInviteBadgePendingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pending invitations',
+      one: '1 pending invitation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String sharingPendingInviteBadgeExpiredCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count invitations expired',
+      one: '1 invitation expired',
+    );
+    return '$_temp0';
   }
 }
