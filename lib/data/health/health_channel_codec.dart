@@ -24,6 +24,7 @@
 /// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `openPermissionSettings` | none | `null` |
 /// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
+/// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
 /// *Sample maps* (`readMenstrualFlow`): `recordId`, `startMs`, `endMs`, and
 /// either an iOS-only `tzName` (the sample's IANA zone, #217) or an
@@ -94,6 +95,7 @@
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -128,6 +130,11 @@ abstract final class HealthChannelMethods {
   /// sample maps rather than a result string — see
   /// [decodeHealthReadResult].
   static const readMenstrualFlow = 'readMenstrualFlow';
+
+  /// The computed cycle-deviation read (Issue #799). Its success result is
+  /// a `List` of deviation maps rather than a result string — see
+  /// [decodeHealthDeviationReadResult].
+  static const readCycleDeviations = 'readCycleDeviations';
 }
 
 /// The canonical Apple SDK raw integer for each [HealthFlowValue], per
@@ -323,6 +330,88 @@ Map<String, Object?> encodeReadWindowArgs(DateTime start, DateTime end) => {
       'startMs': start.millisecondsSinceEpoch,
       'endMs': end.millisecondsSinceEpoch,
     };
+
+/// The args half of `readCycleDeviations` (Issue #799): the same absolute
+/// window as [encodeReadWindowArgs], plus the closed list of deviation
+/// `kinds` this Dart side asks for, as their canonical raw identifier
+/// strings ([HealthDeviationKind.healthKitIdentifier]). Sending the
+/// identifiers explicitly — and resolving them on the Swift side through
+/// its own table — is the #916 lesson applied here: the two languages cannot
+/// share the type table, so the strings crossing the boundary are pinned by
+/// `test/release/health_deviation_read_types_test.dart`.
+Map<String, Object?> encodeDeviationReadArgs(DateTime start, DateTime end) => {
+      ...encodeReadWindowArgs(start, end),
+      'kinds': [
+        for (final kind in HealthDeviationKind.values) kind.healthKitIdentifier,
+      ],
+    };
+
+/// Parses a `readCycleDeviations` result into the typed
+/// [HealthDeviationReadResult] (Issue #799). Two wire shapes are accepted:
+/// a `List` of deviation maps (success) and a result `String`
+/// (`unavailable` / `permissionDenied` / a [HealthSyncCheck] deny name).
+/// Total — an unrecognised shape or a malformed map becomes
+/// [HealthDeviationReadResult.failed], never a silent empty success.
+HealthDeviationReadResult decodeHealthDeviationReadResult(Object? raw) {
+  if (raw is List) {
+    final samples = <HealthDeviationSample>[];
+    for (final entry in raw) {
+      final sample = _decodeDeviationSample(entry);
+      if (sample == null) {
+        return const HealthDeviationReadResult.failed(
+          'malformed readCycleDeviations sample',
+        );
+      }
+      samples.add(sample);
+    }
+    return HealthDeviationReadResult.samples(samples);
+  }
+  if (raw is String) {
+    switch (raw) {
+      case 'unavailable':
+        return const HealthDeviationReadResult.unavailable();
+      case 'permissionDenied':
+        return const HealthDeviationReadResult.permissionDenied();
+      default:
+        final check = _checkFromWire(raw);
+        if (check != null && check != HealthSyncCheck.allowed) {
+          return HealthDeviationReadResult.refused(check);
+        }
+        return HealthDeviationReadResult.failed(
+          'unknown readCycleDeviations result: $raw',
+        );
+    }
+  }
+  return HealthDeviationReadResult.failed(
+    'unexpected readCycleDeviations result (${raw.runtimeType}): $raw',
+  );
+}
+
+/// One deviation map from `readCycleDeviations`, or null when a required
+/// key is missing/typed wrong. [HealthDeviationSample.start]/[end] cross as
+/// epoch-millisecond numbers and become UTC instants; the sample's own zone
+/// rides `tzName` (iOS IANA) or `zoneOffsetSeconds` (+
+/// `zoneOffsetInferred`), exactly like the flow read's #180/#902 contract.
+HealthDeviationSample? _decodeDeviationSample(Object? entry) {
+  if (entry is! Map) return null;
+  final kind = HealthDeviationKind.fromWire(entry['kind'] as String?);
+  final recordId = entry['recordId'];
+  final startMs = (entry['startMs'] as num?)?.toInt();
+  final endMs = (entry['endMs'] as num?)?.toInt();
+  if (kind == null || recordId is! String || startMs == null || endMs == null) {
+    return null;
+  }
+  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
+  return HealthDeviationSample(
+    kind: kind,
+    recordId: recordId,
+    start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
+    end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
+    tzName: entry['tzName'] as String?,
+    offset: offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
+    offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
+  );
+}
 
 /// The guard-args half of every guarded call. [minorBindingAllowed] is
 /// passed in by the adapter (sourced from

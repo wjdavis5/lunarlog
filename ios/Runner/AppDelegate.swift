@@ -295,6 +295,66 @@ enum HealthKitChannelHandler {
     HKCategoryTypeIdentifier.appetiteChanges.rawValue: .appetiteChanges,
   ]
 
+  /// Apple's four computed cycle-deviation category types (Issue #799,
+  /// deferred from #217), resolved by their canonical
+  /// `HKCategoryTypeIdentifier` **raw-value** strings rather than the enum
+  /// cases: the types are iOS 16-only while this target deploys to iOS 15,
+  /// and `init(rawValue:)` is available at the older floor.
+  ///
+  /// **These are read-only, permanently.** They are Apple-computed from the
+  /// user's own logged data, and App Review 5.1.3 forbids writing derived
+  /// data into HealthKit. This table is consumed only by the read path
+  /// (`readCycleDeviations`) and the read authorization set
+  /// (`deviationReadTypes`); it is deliberately absent from
+  /// `writtenCategoryTypeIdentifiers`, so no write or delete path can reach
+  /// it. The Dart side sends the same raw-value strings
+  /// (`HealthDeviationKind.healthKitIdentifier`), and
+  /// `test/release/health_deviation_read_types_test.dart` parses this table
+  /// and pins the two together.
+  static let deviationKinds: [(wire: String, identifier: String)] = [
+    (
+      wire: "irregularMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierIrregularMenstrualCycles"
+    ),
+    (
+      wire: "infrequentMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierInfrequentMenstrualCycles"
+    ),
+    (
+      wire: "prolongedMenstrualPeriods",
+      identifier: "HKCategoryTypeIdentifierProlongedMenstrualPeriods"
+    ),
+    (
+      wire: "persistentIntermenstrualBleeding",
+      identifier: "HKCategoryTypeIdentifierPersistentIntermenstrualBleeding"
+    ),
+  ]
+
+  /// The four deviation types as `HKCategoryType`s for the read
+  /// authorization set. The iOS 16-only identifiers resolve to nil (and are
+  /// dropped by `compactMap`) on an older OS, so the requested set is simply
+  /// smaller there. Never added to the write/share set.
+  static var deviationReadTypes: [HKCategoryType] {
+    deviationKinds.compactMap { entry in
+      HKObjectType.categoryType(
+        forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+    }
+  }
+
+  /// Resolves a wire name (or a canonical raw-value string) to its
+  /// `HKCategoryType`, or nil when the caller asked for something outside
+  /// the closed set — a protocol error the handler reports rather than
+  /// silently ignoring.
+  static func deviationCategoryType(forWire wire: String) -> HKCategoryType? {
+    guard
+      let entry = deviationKinds.first(where: {
+        $0.wire == wire || $0.identifier == wire
+      })
+    else { return nil }
+    return HKObjectType.categoryType(
+      forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+  }
+
   /// Every HealthKit **category** type this app's write path can produce,
   /// as the `HKCategoryTypeIdentifier` case names the `write*` handlers
   /// resolve: #193' flow types, #238's symptom categories, and #228's

@@ -56,6 +56,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 
 import '../../domain/health/day_boundary.dart';
+import '../../domain/health/health_deviation.dart';
 import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
 import '../../domain/health/health_sync_binding.dart';
@@ -420,6 +421,51 @@ class MethodChannelHealthPlatform
             'readMenstrualFlow failed (${error.code}): ${error.message}',
           ),
       };
+
+  /// The computed cycle-deviation read (Issue #799): the same guard ordering
+  /// as every other guarded method — the Dart binding is evaluated first and
+  /// a deny returns [HealthDeviationReadResult.refused] with zero channel
+  /// invocations — then the identifiers and window cross for the native
+  /// handler to resolve against its own table and re-check its mirrored
+  /// binding. Read-only: nothing in this class can write a deviation type.
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final check = await _guardCheck(facts);
+    if (!check.isAllowed) return HealthDeviationReadResult.refused(check);
+    try {
+      final raw = await channel.invokeMethod<Object?>(
+        HealthChannelMethods.readCycleDeviations,
+        {
+          ...encodeGuardArgs(facts, minorBindingAllowed: minorBindingAllowed),
+          ...encodeDeviationReadArgs(start, end),
+        },
+      );
+      return decodeHealthDeviationReadResult(raw);
+    } on PlatformException catch (error) {
+      return _readDeviationPlatformFailure(error);
+    } on MissingPluginException {
+      return const HealthDeviationReadResult.unavailable();
+    } on Exception catch (error) {
+      return HealthDeviationReadResult.failed(
+        'readCycleDeviations failed: $error',
+      );
+    }
+  }
+
+  HealthDeviationReadResult _readDeviationPlatformFailure(
+    PlatformException error,
+  ) =>
+      switch (error.code) {
+        'unavailable' => const HealthDeviationReadResult.unavailable(),
+        'permissionDenied' => const HealthDeviationReadResult.permissionDenied(),
+        _ => HealthDeviationReadResult.failed(
+            'readCycleDeviations failed (${error.code}): ${error.message}',
+          ),
+      };
 }
 
 /// The default [HealthPlatformStore] for platforms with no native half
@@ -514,6 +560,14 @@ class UnsupportedHealthPlatform
     required DateTime end,
   }) async =>
       const HealthReadResult.unavailable();
+
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      const HealthDeviationReadResult.unavailable();
 }
 
 /// Production wiring entry: the platform adapter for [platform]
