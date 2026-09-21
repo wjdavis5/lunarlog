@@ -179,6 +179,11 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   /// page reports.
   HealthImportProgress? _importProgress;
 
+  /// Issue #1017: marks the result block so a finished pass can scroll it
+  /// into view — the import tile sits at the bottom of the page, so the
+  /// result otherwise renders below the fold and the tap looks like a no-op.
+  final GlobalKey _resultKey = GlobalKey();
+
   /// Issue #959: the OS permission state read from [permissionProbe] — null
   /// when no probe is wired (nothing is rendered then). Re-read on every
   /// load and after each user-initiated import, so a revocation made in OS
@@ -504,6 +509,20 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         // (and offers the settings link) without leaving the screen.
         _permissionStatus = permissionStatus;
       });
+      // Issue #1017: bring the result into view and, for a completed pass
+      // that read something, announce its headline in a SnackBar so the
+      // result is impossible to miss. A blocked/empty pass has no headline
+      // to announce; scrolling alone reveals its copy.
+      _revealResult();
+      if (!summary.isBlocked && !summary.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _completedSummaryHeadline(AppLocalizations.of(context), summary),
+            ),
+          ),
+        );
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -511,6 +530,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         _importProgress = null;
         _importFailed = true;
       });
+      _revealResult();
     }
   }
 
@@ -531,37 +551,72 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     };
   }
 
+  /// The completion headline for a pass that actually read something. Issue
+  /// #1017: the headline alone states the imported and skipped counts — the
+  /// pre-#992 "Updated N days" and "N days already matched" lines restated
+  /// them with different verbs, so they are gone. When nothing was imported,
+  /// say so plainly instead of "Imported 0 days".
+  String _completedSummaryHeadline(
+    AppLocalizations l10n,
+    HealthImportSummary summary,
+  ) {
+    if (summary.importedDays == 0 && summary.spottingDaysWritten == 0) {
+      return l10n.healthSyncImportSummaryNothingNew(
+        summary.skippedAlreadyLoggedDays,
+      );
+    }
+    return l10n.healthSyncImportSummaryHeadline(
+      summary.importedDays,
+      summary.skippedAlreadyLoggedDays,
+    );
+  }
+
   /// The positive result lines for a pass that read samples. Empty when
   /// every sample was a no-op. Issue #902: rows placed from this phone's own
   /// zone (the source recorded none) get their own line — never the "Skipped"
   /// wording — and the skip line is reserved for samples that truly could not
-  /// be placed.
+  /// be placed. Issue #1017: that zone provenance is shown only when some
+  /// samples were actually skipped for lack of a zone, so a clean run does
+  /// not carry a line that reads as a warning about nothing.
   List<String> _importResultLines(
     AppLocalizations l10n,
     HealthImportSummary summary,
   ) {
     final source = _sourceName(_importPlatform);
     return [
-      // Issue #992: the required completion headline, then the detail lines.
-      l10n.healthSyncImportSummaryHeadline(
-        summary.importedDays,
-        summary.skippedAlreadyLoggedDays,
-      ),
-      if (summary.daysWritten > 0)
-        l10n.healthSyncImportUpdatedDays(summary.daysWritten, source),
+      // Issue #992/#1017: one completion headline, then only the detail
+      // lines that add information the headline does not already carry.
+      _completedSummaryHeadline(l10n, summary),
       if (summary.spottingDaysWritten > 0)
         l10n.healthSyncImportAddedSpotting(summary.spottingDaysWritten, source),
-      if (summary.daysUnchanged > 0)
-        l10n.healthSyncImportAlreadyMatched(summary.daysUnchanged),
       if (summary.daysKeptManual > 0)
         l10n.healthSyncImportKeptManual(summary.daysKeptManual),
-      if (summary.samplesFromDeviceZone > 0)
-        l10n.healthSyncImportPlacedDeviceZone(summary.samplesFromDeviceZone),
-      if (summary.samplesWithoutZone > 0)
+      if (summary.samplesWithoutZone > 0) ...[
+        if (summary.samplesFromDeviceZone > 0)
+          l10n.healthSyncImportPlacedDeviceZone(summary.samplesFromDeviceZone),
         l10n.healthSyncImportSkippedNoZone(summary.samplesWithoutZone),
+      ],
       if (summary.samplesUnsupported > 0)
         l10n.healthSyncImportSkippedUnsupported(summary.samplesUnsupported),
     ];
+  }
+
+  /// Issue #1017: scrolls the result block into view after a pass finishes,
+  /// so the tap that started it cannot look like it did nothing. Deferred to
+  /// a post-frame callback because the result is not in the tree until the
+  /// `setState` that precedes this has built.
+  void _revealResult() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final resultContext = _resultKey.currentContext;
+      if (resultContext == null) return;
+      unawaited(
+        Scrollable.ensureVisible(
+          resultContext,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.5,
+        ),
+      );
+    });
   }
 
   /// The result block: progress while running, then either the failure
@@ -582,6 +637,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       key: const ValueKey('health-sync-import-summary'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
+        key: _resultKey,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
       ),

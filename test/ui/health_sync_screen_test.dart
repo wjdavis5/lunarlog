@@ -820,14 +820,22 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(importer.calls, 1);
+      // importedDays = 2, skippedAlreadyLoggedDays = 1.
+      final summary = find.byKey(const ValueKey('health-sync-import-summary'));
       expect(
-        find.textContaining('Updated 2 days from Apple Health.'),
+        find.descendant(
+          of: summary,
+          matching: find.text('Imported 2 days, skipped 1 already logged.'),
+        ),
         findsOneWidget,
       );
       expect(
         find.textContaining('Kept your own logged value on 1 day.'),
         findsOneWidget,
       );
+      // Issue #1017: the pre-#992 "Updated N days" line restated the
+      // headline's imported count and is gone.
+      expect(find.textContaining('Updated 2 days'), findsNothing);
     });
 
     testWidgets('the completion summary headline reports imported days and '
@@ -845,9 +853,16 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
       await tester.pumpAndSettle();
 
-      // importedDays = 2, skippedAlreadyLoggedDays = 4 + 1 = 5.
+      // importedDays = 2, skippedAlreadyLoggedDays = 4 + 1 = 5. Scoped to the
+      // result block: the completion SnackBar (Issue #1017) announces the
+      // same headline.
+      final summary = find.byKey(const ValueKey('health-sync-import-summary'));
       expect(
-        find.textContaining('Imported 2 days, skipped 5 already logged.'),
+        find.descendant(
+          of: summary,
+          matching: find.textContaining('Imported 2 days, skipped 5 already '
+              'logged.'),
+        ),
         findsOneWidget,
       );
     });
@@ -871,12 +886,14 @@ void main() {
       );
     });
 
-    testWidgets('a device-zone import is reported as placed, never skipped '
-        '(Issue #902)', (tester) async {
+    testWidgets('a device-zone import is reported as placed alongside the '
+        'unplaceable skips, never labelled skipped itself (Issue #902, '
+        'reshaped by #1017)', (tester) async {
       final importer = _FakeImporter(const HealthImportSummary(
-        samplesRead: 3,
+        samplesRead: 4,
         daysWritten: 3,
-        samplesFromDeviceZone: 3,
+        samplesFromDeviceZone: 2,
+        samplesWithoutZone: 1,
       ));
       final binding = await boundBinding(FakeSettingsStore());
       await pumpScreen(tester, binding: binding, importer: importer);
@@ -886,11 +903,17 @@ void main() {
 
       expect(
         find.textContaining(
-          'Placed 3 samples using the time zone of this phone.',
+          'Placed 2 samples using the time zone of this phone.',
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('Skipped'), findsNothing);
+      expect(
+        find.textContaining('Skipped 1 sample with no recorded time zone.'),
+        findsOneWidget,
+      );
+      // The two inferred placements are reported as placed, never folded
+      // into the skip count.
+      expect(find.textContaining('Skipped 2 samples'), findsNothing);
     });
 
     testWidgets('a confirmed unbind clears the previous import summary from '
@@ -904,8 +927,12 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
       await tester.pumpAndSettle();
+      final summary = find.byKey(const ValueKey('health-sync-import-summary'));
       expect(
-        find.textContaining('Updated 2 days from Apple Health.'),
+        find.descendant(
+          of: summary,
+          matching: find.text('Imported 2 days, skipped 0 already logged.'),
+        ),
         findsOneWidget,
       );
 
@@ -916,10 +943,6 @@ void main() {
 
       expect(
         find.byKey(const ValueKey('health-sync-import-summary')),
-        findsNothing,
-      );
-      expect(
-        find.textContaining('Updated 2 days from Apple Health.'),
         findsNothing,
       );
     });
