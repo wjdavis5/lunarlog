@@ -451,9 +451,11 @@ class _NotificationPreferencesScreenState
             AppLocalizations.of(context)
                 .sharingNotificationPreferencesPeriodSoonSubtitle,
           ),
-          value: prefs.alertOnPeriodSoon,
-          onChanged: (value) =>
-              _apply((p) => p.copyWith(alertOnPeriodSoon: value)),
+          value: prefs.aheadOfTimeAlerts.periodSoon,
+          onChanged: (value) => _apply((p) => p.copyWith(
+                aheadOfTimeAlerts:
+                    p.aheadOfTimeAlerts.copyWith(periodSoon: value),
+              )),
         ),
         SwitchListTile(
           key: const ValueKey('alert-restock-toggle'),
@@ -464,9 +466,11 @@ class _NotificationPreferencesScreenState
             AppLocalizations.of(context)
                 .sharingNotificationPreferencesRestockSubtitle,
           ),
-          value: prefs.alertOnRestock,
-          onChanged: (value) =>
-              _apply((p) => p.copyWith(alertOnRestock: value)),
+          value: prefs.aheadOfTimeAlerts.restock,
+          onChanged: (value) => _apply((p) => p.copyWith(
+                aheadOfTimeAlerts:
+                    p.aheadOfTimeAlerts.copyWith(restock: value),
+              )),
         ),
         SwitchListTile(
           key: const ValueKey('alert-pms-soon-toggle'),
@@ -477,9 +481,11 @@ class _NotificationPreferencesScreenState
             AppLocalizations.of(context)
                 .sharingNotificationPreferencesPmsSoonSubtitle,
           ),
-          value: prefs.alertOnPmsSoon,
-          onChanged: (value) =>
-              _apply((p) => p.copyWith(alertOnPmsSoon: value)),
+          value: prefs.aheadOfTimeAlerts.pmsSoon,
+          onChanged: (value) => _apply((p) => p.copyWith(
+                aheadOfTimeAlerts:
+                    p.aheadOfTimeAlerts.copyWith(pmsSoon: value),
+              )),
         ),
       ];
 

@@ -188,8 +188,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tileOf('alert-period-soon-toggle').value, isTrue);
-    expect(service.stored['profile-1']?.alertOnPeriodSoon, isTrue);
-    expect(service.stored['profile-1']?.alertOnRestock, isFalse);
+    expect(service.stored['profile-1']?.aheadOfTimeAlerts.periodSoon, isTrue);
+    expect(service.stored['profile-1']?.aheadOfTimeAlerts.restock, isFalse);
   });
 
   testWidgets(

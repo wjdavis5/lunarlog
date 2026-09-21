@@ -93,9 +93,9 @@ void main() {
       expect(prefs.highSeverityCadence, AlertCadence.off);
       expect(prefs.digestTimeMinutes, 9 * 60 + 30);
       expect(prefs.missedEntryThreshold, MissedEntryThreshold.twoDays);
-      expect(prefs.alertOnPeriodSoon, isTrue);
-      expect(prefs.alertOnRestock, isFalse);
-      expect(prefs.alertOnPmsSoon, isTrue);
+      expect(prefs.aheadOfTimeAlerts.periodSoon, isTrue);
+      expect(prefs.aheadOfTimeAlerts.restock, isFalse);
+      expect(prefs.aheadOfTimeAlerts.pmsSoon, isTrue);
       expect(prefs.quietHours,
           const QuietHours(startMinutes: 22 * 60, endMinutes: 7 * 60));
       expect(prefs.timeZone, 'America/New_York');
@@ -254,8 +254,8 @@ void main() {
       await service.save(
         _profileId,
         const CaregiverAlertPreferences(
-          alertOnPeriodSoon: true,
-          alertOnPmsSoon: true,
+          aheadOfTimeAlerts:
+              AheadOfTimeAlerts(periodSoon: true, pmsSoon: true),
         ),
       );
     });

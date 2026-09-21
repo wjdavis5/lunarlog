@@ -122,9 +122,11 @@ class SupabaseNotificationPreferencesService
             _timeStringToMinutes(row['digest_local_time'] as String?),
         missedEntryThreshold:
             MissedEntryThreshold.fromDb(row['missed_entry_days'] as int?),
-        alertOnPeriodSoon: row['alert_on_period_soon'] as bool? ?? false,
-        alertOnRestock: row['alert_on_restock'] as bool? ?? false,
-        alertOnPmsSoon: row['alert_on_pms_soon'] as bool? ?? false,
+        aheadOfTimeAlerts: AheadOfTimeAlerts.fromDb(
+          periodSoon: row['alert_on_period_soon'] as bool?,
+          restock: row['alert_on_restock'] as bool?,
+          pmsSoon: row['alert_on_pms_soon'] as bool?,
+        ),
         quietHours: _quietHoursFromRow(
           row['quiet_hours_start'] as String?,
           row['quiet_hours_end'] as String?,
@@ -132,22 +134,25 @@ class SupabaseNotificationPreferencesService
         timeZone: row['time_zone'] as String?,
       );
 
-  static Map<String, dynamic> _toRow(CaregiverAlertPreferences prefs) => {
-        'alert_on_log': prefs.alertOnLog,
-        'alert_on_cycle_start_only': prefs.alertOnCycleStartOnly,
-        'alert_on_high_severity': prefs.alertOnHighSeverity,
-        'log_cadence': prefs.logCadence.toDb(),
-        'cycle_start_cadence': prefs.cycleStartCadence.toDb(),
-        'high_severity_cadence': prefs.highSeverityCadence.toDb(),
-        'digest_local_time': _minutesToTimeString(prefs.digestTimeMinutes),
-        'missed_entry_days': prefs.missedEntryThreshold.toDb(),
-        'alert_on_period_soon': prefs.alertOnPeriodSoon,
-        'alert_on_restock': prefs.alertOnRestock,
-        'alert_on_pms_soon': prefs.alertOnPmsSoon,
-        'quiet_hours_start': _minutesToTimeString(prefs.quietHours?.startMinutes),
-        'quiet_hours_end': _minutesToTimeString(prefs.quietHours?.endMinutes),
-        'time_zone': prefs.timeZone,
-      };
+  static Map<String, dynamic> _toRow(CaregiverAlertPreferences prefs) {
+    final aheadOfTime = prefs.aheadOfTimeAlerts.toDb();
+    return {
+      'alert_on_log': prefs.alertOnLog,
+      'alert_on_cycle_start_only': prefs.alertOnCycleStartOnly,
+      'alert_on_high_severity': prefs.alertOnHighSeverity,
+      'log_cadence': prefs.logCadence.toDb(),
+      'cycle_start_cadence': prefs.cycleStartCadence.toDb(),
+      'high_severity_cadence': prefs.highSeverityCadence.toDb(),
+      'digest_local_time': _minutesToTimeString(prefs.digestTimeMinutes),
+      'missed_entry_days': prefs.missedEntryThreshold.toDb(),
+      'alert_on_period_soon': aheadOfTime.periodSoon,
+      'alert_on_restock': aheadOfTime.restock,
+      'alert_on_pms_soon': aheadOfTime.pmsSoon,
+      'quiet_hours_start': _minutesToTimeString(prefs.quietHours?.startMinutes),
+      'quiet_hours_end': _minutesToTimeString(prefs.quietHours?.endMinutes),
+      'time_zone': prefs.timeZone,
+    };
+  }
 
   static QuietHours? _quietHoursFromRow(String? start, String? end) {
     final startMinutes = _timeStringToMinutes(start);
