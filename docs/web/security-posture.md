@@ -146,6 +146,19 @@ authorization model.
   change (see `docs/ops/supabase-go-live.md`). The hosting must also serve
   the built single page for that path so `Uri.base` carries the code (a
   normal SPA fallback).
+- **The browser URL is cleaned after the callback is handled (slice 4).**
+  `SupabaseAuthService` holds an injectable `WebUrlCleaner` and calls it once
+  a web callback has been handled, passing the URL with the auth parameters
+  removed (`cleanAuthUrl`): the spent `code` (and `type`) after a successful
+  exchange, or the provider's `error`/`error_code`/`error_description` when
+  the link was rejected. The path, parameter order, and every unrelated
+  parameter are preserved. The production implementation is
+  `window.history.replaceState` on web (no new history entry; native compiles
+  a no-op half through a `dart.library.js_interop` conditional import). This
+  is why a reload after sign-in restores the existing session instead of
+  replaying a spent code and showing a bogus expired-link failure. A
+  *transient network* failure deliberately does **not** clean the URL, so the
+  un-latched link stays retryable from the address bar.
 - **Sign out clears the browser session.** On web the bootstrap passes no
   custom `localStorage`/`pkceAsyncStorage` (`buildAuthClientOptions` in
   `lib/startup/supabase_bootstrap.dart`), so the session and PKCE verifier
@@ -235,6 +248,13 @@ never permanently separated from the disclosure that real data is present.
   (dropping `'unsafe-inline'` from `style-src`, tightening the wasm allowance).
   Worth revisiting once hosting exists and real-browser verification is
   possible; this slice cannot run a browser to prove the tighter policy.
+- **Live-browser verification of the URL cleanup.** The `replaceState`
+  rewrite (slice 4) is proven by the injectable seam and the pure
+  `cleanAuthUrl` tests, but no hosted origin exists yet, so it has not been
+  exercised in a real browser; the hosting slice owns that end-to-end check.
+  The cleanup also assumes the `/auth/callback` path reaches the app at all
+  (the SPA-fallback dependency above) — if the host 404s the path, the code
+  never reaches `Uri.base` and there is nothing to clean.
 - **A dedicated XSS/penetration review of the Flutter engine and every web
   dependency.** The strict CSP is the first layer; a review is a follow-up.
 
@@ -246,11 +266,18 @@ never permanently separated from the disclosure that real data is present.
   chosen (`buildAuthClientOptions`).
 - `lib/data/auth/supabase_auth_service.dart` /
   `lib/data/auth/supabase_auth_providers.dart` — the web `<origin>/auth/callback`
-  redirect target and the `Uri.base` PKCE exchange.
+  redirect target, the `Uri.base` PKCE exchange, and the post-callback
+  `WebUrlCleaner` call.
+- `lib/data/auth/web_url_cleaner.dart` — the URL-cleanup seam, its pure
+  `cleanAuthUrl`, and the web/native conditional import
+  (`web_url_cleaner_web.dart` / `web_url_cleaner_stub.dart`).
 - `lib/data/db/web_db.dart` — web drift/WASM/IndexedDB wiring.
 - `lib/ui/web/dev_banner.dart` — the banner and first-run acknowledgement.
 - `web/_headers` — the deployed policy.
 - `test/architecture/web_auth_seam_test.dart` — the web-storage and
   redirect pin.
+- `test/data/web_url_cleaner_test.dart` /
+  `test/architecture/web_url_cleanup_test.dart` — the URL-cleanup behavior
+  and platform-split pins.
 - `docs/ops/supabase-go-live.md` — the dashboard redirect allow-list owner step.
 - `PRIVACY.md` §6/§7 — the public security and retention disclosure.
