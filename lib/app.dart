@@ -23,6 +23,10 @@ import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/notifications/reminder_action_executor.dart';
 import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
+import 'package:lunarlog/data/widget/widget_quick_log_executor.dart';
+import 'package:lunarlog/data/widget/widget_state_publisher.dart';
+import 'package:lunarlog/domain/widget/widget_data_store.dart'
+    show WidgetDataStore;
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
@@ -140,6 +144,7 @@ class LunarLogApp extends StatefulWidget {
     AccountExportRemoteSource? accountExportRemoteSource,
     ReminderWindowRemote? reminderWindowUpsert,
     ReminderScheduler? scheduler,
+    WidgetDataStore? widgetDataStore,
     Stream<Uri>? inviteLinks,
     String? initialInviteCode,
     String? initialInviteProfileId,
@@ -169,6 +174,7 @@ class LunarLogApp extends StatefulWidget {
           accountExportRemoteSource: accountExportRemoteSource,
           reminderWindowUpsert: reminderWindowUpsert,
           scheduler: scheduler,
+          widgetDataStore: widgetDataStore,
           currentUserIdProvider: () => authService?.currentUserId,
           pushEnabled: AppConfig.hasPush && !kIsWeb,
           buildDefaultScheduler: false,
@@ -326,6 +332,16 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// unlock. Non-null only when a scheduler was provided.
   ReminderActionExecutor? _actionExecutor;
 
+  /// Issue #141: the home-screen widget's gated quick-log executor and
+  /// payload publisher, plus the subscription to the widget's launch URIs.
+  /// All three null unless the bundle carries a widget store (armed only
+  /// by production `main.dart` on a platform with a widget surface),
+  /// mirroring how the coordinator above exists only where a scheduler
+  /// was provided.
+  WidgetQuickLogExecutor? _widgetQuickLogExecutor;
+  WidgetStatePublisher? _widgetPublisher;
+  StreamSubscription<Uri>? _widgetLaunchSub;
+
   /// The per-profile reminder configuration store (Issue #136) backing
   /// the coordinator; provided to the tree for the reminder settings
   /// screen. Non-null only when a scheduler was provided.
@@ -432,6 +448,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     // every build with a Supabase client (web and no-push included), so
     // its publisher must start on every one of them too.
     _startPredictionProjectionPublisher();
+    _initWidgetCoordinator();
     _watchAppearanceSetting();
     WidgetsBinding.instance.addObserver(this);
     // U8/R9: invite deep links. The cold-start code is latched here; live
@@ -573,6 +590,63 @@ class _LunarLogAppState extends State<LunarLogApp>
     if (publisher == null) return;
     _predictionProjectionPublisher = publisher;
     publisher.start();
+  }
+
+  /// Issue #141: the home-screen widget's runtime. A null store (every
+  /// test, web, desktop) means none of it is touched at all — the same
+  /// zero-conditional posture the reminder machinery follows without a
+  /// scheduler. Extracted
+  /// out of [initState] (the issue #168 CRAP-gate discipline the
+  /// neighbouring `_init*` methods follow). AC2: construction lives in
+  /// `lib/composition/`; this method only wires the gate callbacks and
+  /// starts the pieces.
+  void _initWidgetCoordinator() {
+    // Null in every test (the bundle builds the store only for a
+    // production `main.dart` — see `buildHomeWidgetStore`) and wherever no
+    // widget surface exists: none of the plugin surface below is touched.
+    final store = _deps.widgetDataStore;
+    if (store == null) return;
+    final gate = context.read<GateController?>();
+    // The gated write path: same closures as the reminder action executor
+    // above — latched while the gate is locked, executed on unlock.
+    _widgetQuickLogExecutor = buildWidgetQuickLogExecutor(
+      dayEntries: _dayEntries,
+      profiles: _profiles,
+      guardians: _profileGuardians,
+      currentUserId: () => _authController?.currentUserId,
+      isUnlocked: gate == null ? null : () => gate.unlocked,
+      addUnlockListener: gate?.addListener,
+      removeUnlockListener: gate?.removeListener,
+    );
+    // The payload publisher: derives the discreet render state from the
+    // app's own data-change signals and writes the (minimal, documented)
+    // boundary payload.
+    _widgetPublisher = buildWidgetStatePublisher(
+      store: store,
+      profiles: _profiles,
+      settings: _settings,
+      prediction: _prediction,
+      guardians: _profileGuardians,
+      currentUserId: () => _authController?.currentUserId,
+    )..start();
+    // Tap delivery: a widget tap opens the app carrying a `lunarlog://`
+    // URI (cold start resolves once; warm taps arrive on the stream). Both
+    // route through the executor, which latches while the gate is locked —
+    // the widget itself never writes.
+    _widgetLaunchSub = store.launches.listen(_handleWidgetLaunch);
+    unawaited(
+      store.initialLaunch().then((uri) {
+        if (!mounted) return;
+        _widgetQuickLogExecutor?.handle(uri);
+      }),
+    );
+  }
+
+  /// Issue #141: routes a widget tap URI into the quick-log executor. A
+  /// plain open intent (and anything unparseable) is ignored there.
+  void _handleWidgetLaunch(Uri uri) {
+    if (!mounted) return;
+    _widgetQuickLogExecutor?.handle(uri);
   }
 
   /// Issue #373: the sharer's device is the only place a projection can be
@@ -1046,6 +1120,15 @@ class _LunarLogAppState extends State<LunarLogApp>
     _authController = null;
     _actionExecutor?.dispose();
     _actionExecutor = null;
+    // Issue #141: the widget pieces tear down with the same shape as the
+    // reminder executor above.
+    unawaited(_widgetLaunchSub?.cancel());
+    _widgetLaunchSub = null;
+    _widgetQuickLogExecutor?.dispose();
+    _widgetQuickLogExecutor = null;
+    final widgetPublisherTeardown =
+        _widgetPublisher?.dispose() ?? Future<void>.value();
+    _widgetPublisher = null;
     final coordinatorTeardown = _coordinator?.dispose() ?? Future<void>.value();
     _coordinator = null;
     final publisherTeardown =
@@ -1075,6 +1158,7 @@ class _LunarLogAppState extends State<LunarLogApp>
       healthFlowTeardown,
       healthSyncTeardown,
       reminderConfigTeardown,
+      widgetPublisherTeardown,
     ]).then((_) {});
     final onTeardown = widget.onTeardown;
     if (onTeardown != null) {

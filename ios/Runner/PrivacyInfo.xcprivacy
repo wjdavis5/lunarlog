@@ -41,11 +41,17 @@
 		  `unixFileSize`) calls `fstat()` to read the database file's size
 		  on every open, a well-documented reason app binaries bundling
 		  SQLite need this category declared.
-		- User Defaults (`NSPrivacyAccessedAPICategoryUserDefaults`, reason
-		  CA92.1, app-exclusive UserDefaults access, not an App Group):
+		- User Defaults (`NSPrivacyAccessedAPICategoryUserDefaults`):
 		  AppDelegate.swift's `HealthKitChannelHandler` reads/writes
 		  `UserDefaults.standard` directly (the `boundProfileId` guard
-		  state, issue #173); this app's own Swift code, not a plugin.
+		  state, issue #173) — reason CA92.1 (app-exclusive access, not
+		  an App Group); issue #141 adds reason CA92.2 (information
+		  shared between an app extension and its containing app) for
+		  the App Group suite the Dart side writes the home-screen
+		  widget's discreet render payload into
+		  (`lib/domain/widget/widget_cycle_state.dart` documents the
+		  exact, minimal field set; the widget extension's own manifest,
+		  ios/LunarLogWidget/PrivacyInfo.xcprivacy, declares CA92.2 too).
 		- NOT declared: System Boot Time, Disk Space, Active Keyboards.
 		  No first-party code (AppDelegate.swift, including the HealthKit
 		  and notification handling) or Flutter/Dart code calls any of
@@ -150,6 +156,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>CA92.2</string>
 			</array>
 		</dict>
 	</array>

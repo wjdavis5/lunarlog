@@ -307,6 +307,38 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'buildFirebaseOptions() was pulled out of '
         'firebase_push_token_source.dart.',
   ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
+  const CoverageExclusion(
+    'lib/data/widget/home_widget_data_store_io.dart',
+    'The home_widget plugin wrapper (issue #141): the static HomeWidget '
+        'method-channel calls (setAppGroupId/saveWidgetData/updateWidget/'
+        'initiallyLaunchedFromHomeWidget/widgetClicked) need the native '
+        'plugin host and cannot run under flutter test -- the same '
+        'shape as google_sign_in_client.dart and '
+        'notification_scheduler.dart. Everything testable sits above this '
+        'file behind the WidgetDataStore port: the payload derivation and '
+        'boundary encoding (lib/domain/widget/widget_cycle_state.dart), '
+        'the publisher (lib/data/widget/widget_state_publisher.dart) and '
+        'the gated quick-log executor (widget_quick_log_executor.dart) '
+        'are all directly unit-tested against fakes; the barrel '
+        '(home_widget_data_store.dart) conditionally selects this file on '
+        'IO platforms and a throwing stub on web because the plugin package '
+        'itself imports dart:io unconditionally; on-device behavior is '
+        'covered by the Home-screen widget device-checklist section.',
+  ),
+  // #215 device-checklist pairing: this file's entry under
+  // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
+  const CoverageExclusion(
+    'lib/data/widget/home_widget_data_store_stub.dart',
+    'The web twin of the conditional barrel above (issue #141): the '
+        'stub branch of the barrel (home_widget_data_store.dart) '
+        '`if (dart.library.io)` export, selected only where the plugin '
+        'cannot exist. The VM test run always compiles the IO twin '
+        'instead, so this file never loads and carries no lcov record -- '
+        'the same never-loaded case as startup_web.dart. Its whole '
+        'surface is a throwing constructor and throwing no-op methods.',
+  ),
 ];
 
 final RegExp _generatedCodePattern = RegExp(r'\.g\.dart$');

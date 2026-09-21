@@ -38,6 +38,13 @@ const _identifierAllowlist = <String>[
   'LunarLogDatabaseManager',
   'LunarLogStorageQueries',
   'LunarLogWidgetBuilder',
+  // Issue #141: the widget kind (the Swift struct and the WidgetCenter
+  // kind string) and the Android provider class are frozen cross-platform
+  // identifiers; the Dart constants that name them carry the same words.
+  'kLunarLogWidgetAndroidName',
+  'LunarLogWidgetProvider',
+  'kLunarLogWidgetName',
+  'LunarLogWidget',
   'LunarlogLocalIntensity',
   'LunarLogAppState',
   'LunarLogRootState',

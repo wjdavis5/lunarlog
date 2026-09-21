@@ -37,6 +37,7 @@ import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/widget/widget_data_store.dart';
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
@@ -143,6 +144,28 @@ void main() {
       (resolved! as FlutterLocalNotificationsScheduler).settingsStore,
       isNotNull,
     );
+  });
+
+  test('issue #141: the widget store is built only when '
+      'buildHomeWidgetStore arms it', () {
+    // Unarmed (every test path): null, so no app-shell test can reach the
+    // plugin's method channels even though the flutter_test binding
+    // reports TargetPlatform.android.
+    final unarmed = buildAppDependencies(db: db);
+    expect(unarmed.widgetDataStore, isNull);
+
+    // Armed (production main.dart): the store exists. (The test binding's
+    // android target makes hasHomeWidgetSurface true here; the store's own
+    // constructor swallows the missing-plugin channel error.)
+    final armed = buildAppDependencies(db: db, buildHomeWidgetStore: true);
+    expect(armed.widgetDataStore, isNotNull);
+
+    // An explicit override passes through untouched.
+    final injected = buildAppDependencies(
+      db: db,
+      widgetDataStore: NoopWidgetDataStore(),
+    );
+    expect(injected.widgetDataStore, isA<NoopWidgetDataStore>());
   });
 
   test('R9: an explicitly injected scheduler passes through untouched', () {

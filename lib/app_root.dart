@@ -209,6 +209,7 @@ class LunarLogRoot extends StatefulWidget {
     this.launchProfileId,
     this.scheduler,
     this.buildDefaultScheduler = false,
+    this.buildHomeWidgetStore = false,
     this.authService,
     this.syncTransport,
     this.sharingService,
@@ -255,6 +256,15 @@ class LunarLogRoot extends StatefulWidget {
   /// database opens. `main.dart` sets this for production; tests leave it
   /// false so they get no scheduler unless they inject one.
   final bool buildDefaultScheduler;
+
+  /// Issue #141: when true (production `main.dart`, next to
+  /// [buildDefaultScheduler]) and the platform has a widget surface, the
+  /// composition factory builds the home_widget-backed store that arms the
+  /// widget runtime. Tests leave it false: the flutter_test binding reports
+  /// `TargetPlatform.android`, so the platform check inside the factory is
+  /// not enough on its own — only this production-only flag keeps the
+  /// plugin's method channels out of every app-shell test.
+  final bool buildHomeWidgetStore;
 
   /// Account auth service (U4), started by the bootstrap before the first
   /// frame; null when the build has no Supabase configuration (KTD11), in
@@ -557,6 +567,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       // The shell owns the platform default scheduler; build it here, with
       // the settings store, rather than constructing a throwaway in main.
       buildDefaultScheduler: widget.buildDefaultScheduler,
+      buildHomeWidgetStore: widget.buildHomeWidgetStore,
       dateTicker: widget.dateTicker,
     );
   }

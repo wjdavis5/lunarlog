@@ -93,6 +93,17 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: 0.20.3
+  # Issue #141: the home-screen widget bridge (iOS App Group / Android
+  # widget store). Pinned exactly (not `^`) — a security- and
+  # platform-sensitive dependency whose internals this repo's native code
+  # and Dart seam pin by contract: the Android SharedPreferences file name
+  # (`HomeWidgetPreferences`), the launch-action string
+  # (`es.antonborri.home_widget.action.LAUNCH`), and the iOS
+  # widget-origin URL marker (`homeWidget`) — see
+  # lib/data/widget/home_widget_data_store.dart's header and
+  # android/app/src/main/kotlin/com/wjdavis5/lunarlog/
+  # LunarLogWidgetProvider.kt's companion object.
+  home_widget: 0.8.1
 
 dev_dependencies:
   flutter_test:

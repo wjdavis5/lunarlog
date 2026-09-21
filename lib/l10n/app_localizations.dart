@@ -1529,6 +1529,30 @@ abstract class AppLocalizations {
   /// **'Calendar'**
   String get settingsSectionCalendar;
 
+  /// Header of the Settings 'Home-screen widget' section (Issue #141): which profile the widget shows. iOS/Android only.
+  ///
+  /// In en, this message translates to:
+  /// **'Home-screen widget'**
+  String get settingsSectionHomeWidget;
+
+  /// Tile title (Issue #141): which profile the home-screen widget renders; the subtitle names the current choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Widget profile'**
+  String get settingsHomeWidgetProfileTitle;
+
+  /// Picker option (Issue #141): the widget tracks whatever profile the app currently has open, instead of pinning one.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the app\'s current profile'**
+  String get settingsHomeWidgetFollowActive;
+
+  /// Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion.
+  ///
+  /// In en, this message translates to:
+  /// **'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.'**
+  String get settingsHomeWidgetDisclosure;
+
   /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
   ///
   /// In en, this message translates to:
