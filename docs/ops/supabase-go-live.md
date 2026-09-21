@@ -1104,6 +1104,59 @@ entries only. Nothing here reaches real family data.
       about." — no profile name, date, or health detail on the lock screen
       or the banner, whatever was logged.
 
+### Home-screen widget (issue #141)
+
+Both platforms, fabricated profiles only. The widget renders outside the
+device-credential gate by definition, so these items verify the two
+compensating controls: the discreet render and the gated write.
+
+- [ ] **iOS prerequisites: the App Group is provisioned before any signed
+      build.** Apple Developer portal: create App Group
+      `group.com.wjdavis5.lunarlog.widgets`; add it to BOTH App IDs
+      (`com.wjdavis5.lunarlog` and `com.wjdavis5.lunarlog.LunarLogWidget`);
+      regenerate the App Store provisioning profile so it carries the
+      capability (this compounds with the Sign in with Apple profile
+      requirement — one regeneration covers both). Until this lands,
+      unsigned builds compile and run but a signed build's widget shows
+      only the neutral dash (the app's suite writes fail silently).
+- [ ] **Discreet render (both platforms).** Add the widget to the home
+      screen for a profile with logged history. The widget shows the app
+      name, "Day <n>", and at most the "≈<n> d" countdown — never the
+      profile's name, a calendar date, a flow level, or a symptom. Lock the
+      phone: the widget still shows the same neutral count (it renders
+      outside the gate by definition — this is expected, and the reason the
+      render is numeric-only). For a profile with no history, predictions
+      suppressed (birth control / a life-stage mode), or predictions turned
+      off, the widget shows only an em dash with no quick-log button
+      difference visible from the outside.
+- [ ] **Quick-log applies after the gate, idempotently (both platforms).**
+      With the app locked (force-quit it first so the next tap is a cold
+      start), tap the widget's Log button: the app opens to the gate.
+      Decline the credential: nothing is logged (verify in History after
+      unlocking normally). Unlock: the write lands once — today's entry
+      shows the quick-log flow level. With today already logged heavier
+      (log `heavy` in the app first), tap Log again: the entry is not
+      downgraded and stays a single entry for the date.
+- [ ] **Viewer role gets no quick-log (both platforms).** Sign in as a
+      `viewer` guardian of a shared profile (or pin such a profile): the
+      widget renders the state but no Log button, and a whole-widget tap on
+      iOS merely opens the app. A profile demoted to viewer after being
+      pinned loses the button on the next app use while the state display
+      remains.
+- [ ] **Profile pinning on a multi-profile device (both platforms).**
+      Settings → Home-screen widget: the picker lists every profile except
+      viewer-role ones, the privacy note is shown, and pinning a different
+      profile re-renders the widget with that profile's state on the next
+      app use. Choosing "Follow the app's current profile" reverts the
+      widget to tracking the app's active profile.
+- [ ] **FLAG_SECURE / app-switcher reconciliation (record, both
+      platforms).** The app's own windows still show the opaque cover in
+      the app switcher and a blank surface in screenshots (Android
+      FLAG_SECURE, unchanged by this feature); the widget is a launcher
+      surface those mechanisms cannot reach, which is exactly why its
+      default render carries no name, date, or health detail. Verify a
+      screenshot of the home screen shows only the discreet count.
+
 ### Gate-exclusion pairing (issue #215)
 
 Every file `tool/quality/exclusions.dart` keeps out of the coverage/CRAP
@@ -1230,6 +1283,24 @@ build), always with a throwaway account and fabricated profiles only.
       account section, no sync, and nothing Supabase-related in the
       console.
 
+- [ ] **`lib/data/widget/home_widget_data_store_io.dart` — the home_widget
+      plugin wrapper (issue #141).** The payload publisher and the gated
+      quick-log executor above it are unit-tested with fakes
+      (`test/data/widget/`); this file is the plugin-bound half. Covered by
+      the "Discreet render" and "Quick-log applies after the gate"
+      items in the Home-screen widget section above (a widget actually
+      re-rendering after an app-side change is this file's
+      `savePayload`/`refresh` surface; a widget tap reaching the app is its
+      launch-URI surface). Running those satisfies this entry. The iOS
+      suite-write path additionally depends on the App Group provisioning
+      item there.
+- [ ] **`lib/data/widget/home_widget_data_store_stub.dart` — the web twin
+      of the conditional barrel (issue #141).** Never loaded on the test
+      VM (the barrel's `if (dart.library.io)` branch selects the IO
+      twin), so there is no on-device behavior of its own to verify: its
+      whole surface is a throwing constructor. Verified instead by the
+      web build compiling the stub branch cleanly (the `Verify` job) and
+      by `hasHomeWidgetSurface`'s own unit test.
 ## Not yet run
 
 Verification-contract steps that could not be executed in the Windows

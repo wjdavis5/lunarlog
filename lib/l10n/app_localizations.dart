@@ -1497,7 +1497,7 @@ abstract class AppLocalizations {
   /// Subtitle of the privacy policy tile.
   ///
   /// In en, this message translates to:
-  /// **'Sync & family sharing, protected at rest, zero tracking'**
+  /// **'How your family\'s data is stored, shared, and kept private'**
   String get settingsPrivacySubtitle;
 
   /// Title of the in-app privacy policy dialog.
@@ -1509,7 +1509,7 @@ abstract class AppLocalizations {
   /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
   ///
   /// In en, this message translates to:
-  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
+  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.
@@ -1559,6 +1559,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calendar'**
   String get settingsSectionCalendar;
+
+  /// Header of the Settings 'Home-screen widget' section (Issue #141): which profile the widget shows. iOS/Android only.
+  ///
+  /// In en, this message translates to:
+  /// **'Home-screen widget'**
+  String get settingsSectionHomeWidget;
+
+  /// Tile title (Issue #141): which profile the home-screen widget renders; the subtitle names the current choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Widget profile'**
+  String get settingsHomeWidgetProfileTitle;
+
+  /// Picker option (Issue #141): the widget tracks whatever profile the app currently has open, instead of pinning one.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the app\'s current profile'**
+  String get settingsHomeWidgetFollowActive;
+
+  /// Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion.
+  ///
+  /// In en, this message translates to:
+  /// **'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.'**
+  String get settingsHomeWidgetDisclosure;
 
   /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
   ///
@@ -3390,10 +3414,10 @@ abstract class AppLocalizations {
   /// **'Reset to default'**
   String get reminderTextResetButton;
 
-  /// Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184).
+  /// Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates, and that custom text is visible on the lock screen (Issue #184, #1002).
   ///
   /// In en, this message translates to:
-  /// **'The preview is exactly what the notification will show — nothing more. lunarlog never adds a profile name, date, or health detail to notification text.'**
+  /// **'The preview is exactly what the notification will show — nothing more. lunarlog never adds a profile name, date, or health detail to notification text. Anything you type here appears on the lock screen, so keep it something anyone may see.'**
   String get reminderTextDiscretionNote;
 
   /// Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.

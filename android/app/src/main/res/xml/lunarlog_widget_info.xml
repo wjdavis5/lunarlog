@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget's metadata (issue #141). The daily
+     updatePeriodMillis only re-runs LunarLogWidgetProvider.onUpdate, which
+     rolls the stored day count forward — it never fetches anything; all
+     real freshness comes from the app's own data-change signals
+     (WidgetStatePublisher). -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="86400000"
+    android:initialLayout="@layout/lunarlog_widget"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen" />

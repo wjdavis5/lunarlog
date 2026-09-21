@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+		Issue #141: the widget extension's own privacy manifest. The
+		extension is pure SwiftUI/WidgetKit with no third-party code and
+		no network; its only required-reason API surface is UserDefaults
+		- it reads the shared App Group suite the containing app writes
+		(the discreet render payload documented in
+		lib/domain/widget/widget_cycle_state.dart). Reason CA92.2 is the
+		app-extension-sharing case ("information shared between an app
+		extension and its containing app"); the containing app declares
+		the same reason alongside its existing CA92.1 in
+		ios/Runner/PrivacyInfo.xcprivacy. Nothing is collected: the
+		widget renders data that already lives on this device, transmits
+		nothing, and links to nothing.
+	-->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.2</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

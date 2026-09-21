@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded surface behind the widget's content (issue #141): the same
+     brand colour the launch screen and adaptive-icon background use
+     (values/colors.xml' ic_launcher_background), so the widget reads as
+     this app's surface and nothing brighter than the app itself. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="14dp" />
+    <solid android:color="@color/ic_launcher_background" />
+</shape>

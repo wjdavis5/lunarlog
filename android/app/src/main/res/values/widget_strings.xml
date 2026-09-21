@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget's strings (issue #141). Deliberately minimal
+     and neutral (the same posture as the reminder actions' copy, pinned by
+     test/release/reminder_action_label_privacy_test.dart on the Dart side):
+     nothing here names a profile, a date, or any health detail. -->
+<resources>
+    <string name="widget_app_label">lunarlog</string>
+    <!-- The placeholder the very first render (before the app has written
+         the payload) shows — the same neutral em dash the no-data state
+         renders. -->
+    <string name="widget_state_placeholder">—</string>
+    <!-- The quick-log button's label: "Log" — a neutral word. The meaning
+         rides the intent URI, never this string. -->
+    <string name="widget_quick_log_label">Log</string>
+    <color name="widget_on_surface">#FFFFFF</color>
+</resources>
