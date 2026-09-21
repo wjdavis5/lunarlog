@@ -215,9 +215,9 @@
   "@cycleHistoryLoadError": {
     "description": "InlineError message (announced as a screen-reader live region) when a cycle-history stream errors. Shared by the calendar's history badge (MonthCalendar) and CycleHistorySection, since both show the same failure for the same underlying stream shape. Issue #602."
   },
-  "cycleHistoryOpenCycleNotCounted": "Not counted yet — your next period completes it",
+  "cycleHistoryOpenCycleNotCounted": "Not counted yet — the next period completes it",
   "@cycleHistoryOpenCycleNotCounted": {
-    "description": "Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted."
+    "description": "Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted. Issue #1005: third person, so a guardian reading this for someone else's profile is not told 'your period'."
   },
   "cycleComparisonToggleButton": "Compare cycles",
   "@cycleComparisonToggleButton": {
@@ -540,10 +540,6 @@
   "daySheetUnmappedImported": "Imported, not recognised",
   "@daySheetUnmappedImported": {
     "description": "Heading above inert chips for datapoints an import kept as-is because they mapped to no field in this app."
-  },
-  "daySheetUnverifiedPin": "Unverified — pin before shipping",
-  "@daySheetUnverifiedPin": {
-    "description": "Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them."
   },
   "daySheetTagSearchHint": "Search",
   "@daySheetTagSearchHint": {
@@ -1401,9 +1397,9 @@
   "@firstRunRestore": {
     "description": "Action on first run allowing user to restore profiles and cycle history from an existing backup or Clue export."
   },
-  "firstRunCycleCaption": "A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.",
+  "firstRunCycleCaption": "A few optional questions to set this profile up — every one can be skipped. The life-stage mode and birth-control answers can be changed later from Edit profile.",
   "@firstRunCycleCaption": {
-    "description": "Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability."
+    "description": "Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability. Issue #1005: names the field 'life-stage mode' (the edit dialog's own label) and points at the 'Edit profile' action instead of inventing a fifth way to say where."
   },
   "firstRunCycleLastPeriodLabel": "Last period start",
   "@firstRunCycleLastPeriodLabel": {
@@ -1449,9 +1445,9 @@
   "@firstRunCycleBirthControlLabel": {
     "description": "Label of the birth-control-method question."
   },
-  "firstRunCycleGoalLabel": "Goal / mode",
+  "firstRunCycleGoalLabel": "Life-stage mode",
   "@firstRunCycleGoalLabel": {
-    "description": "Label of the goal/life-stage-mode question."
+    "description": "Label of the life-stage-mode question. Issue #1005: was 'Goal / mode', a name no other surface used, so a parent could not find the field later; now matches the edit dialog's 'Life-stage mode' label and the care-mode vocabulary."
   },
   "firstRunCreateButton": "Create profile",
   "@firstRunCreateButton": {
@@ -1497,25 +1493,30 @@
   "@firstRunWrapUpAddAnother": {
     "description": "Button looping back to a fresh person card on the household wrap-up step (issue #804)."
   },
-  "firstRunInviteTitle": "Does someone else help?",
+  "firstRunInviteTitle": "Add another guardian?",
   "@firstRunInviteTitle": {
-    "description": "Title of the first-run invite step (issue #804)."
+    "description": "Title of the first-run invite step (issue #804; reworded by issue #996 to name the outcome — another guardian — rather than an unanswerable question about 'help')."
   },
-  "firstRunInviteBody": "Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.",
+  "firstRunInviteBody": "{count, plural, =1{A co-parent or caregiver can follow and log this profile from their own phone.} other{A co-parent or caregiver can follow and log these profiles from their own phone.}}",
   "@firstRunInviteBody": {
-    "description": "Body of the first-run invite step; states skippability and the later path (issue #804)."
+    "description": "Body of the first-run invite step: states the benefit to the invited guardian instead of the account plumbing (issue #996). Plural-aware on the number of profiles created in this flow.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-  "firstRunInviteWhyAccount": "Invites travel through your lunarlog account so the link reaches the other person's device. Sign in or create an account to send one now.",
+  "firstRunInviteWhyAccount": "Invites are sent from your lunarlog account, so sign in first.",
   "@firstRunInviteWhyAccount": {
-    "description": "Shown on the invite step when there is no session: why an account is required here and only here (issue #804 AC3)."
+    "description": "Shown on the invite step when there is no session: names why an account is required here, in the order the user meets it (issue #804 AC3; reworded by issue #996 to drop the mechanism sentence)."
   },
-  "firstRunInviteSignInAction": "Sign in or create account",
+  "firstRunInviteSignInAction": "Sign in to invite",
   "@firstRunInviteSignInAction": {
-    "description": "Button on the invite step opening the embedded sign-in screen (issue #804)."
+    "description": "Button on the invite step opening the embedded sign-in screen; names the outcome the sign-in is for (issue #804; reworded by issue #996)."
   },
-  "firstRunInviteCoParent": "Invite a co-parent",
+  "firstRunInviteCoParent": "Invite a guardian",
   "@firstRunInviteCoParent": {
-    "description": "Per-profile button opening the invite dialog with the guardian presets (issue #804)."
+    "description": "Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent."
   },
   "firstRunInviteSkip": "Skip for now",
   "@firstRunInviteSkip": {
@@ -1638,7 +1639,7 @@
       }
     }
   },
-  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.",
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.",
   "@predictionsSuppressedByModeBody": {
     "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
     "placeholders": {
@@ -1830,7 +1831,7 @@
   "@reminderKindBirthControlShotSubtitle": {
     "description": "The injection reminder's settings row subtitle (Issue #183)."
   },
-  "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method in profile settings to set one",
+  "reminderBirthControlNeedsStartDate": "Waits for a start date on the recorded method — re-record the method from Edit profile to set one",
   "@reminderBirthControlNeedsStartDate": {
     "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183)."
   },
@@ -1886,25 +1887,25 @@
   "@sharingFailureOther": {
     "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."
   },
-  "profileErasureFailureNetwork": "Can't purge while offline. Check your connection and try again.",
+  "profileErasureFailureNetwork": "Can't remove imported data while offline. Check your connection and try again.",
   "@profileErasureFailureNetwork": {
-    "description": "ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart)."
+    "description": "ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). Issue #1005: 'remove', not the jargon 'purge'."
   },
-  "profileErasureFailureUnauthorized": "Only that profile's primary guardian can purge its data.",
+  "profileErasureFailureUnauthorized": "Only that profile's primary guardian can remove its imported data.",
   "@profileErasureFailureUnauthorized": {
-    "description": "ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it."
+    "description": "ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it. Issue #1005: 'remove', not 'purge'."
   },
-  "profileErasureFailureNotSignedIn": "Sign in to your account to purge imported data.",
+  "profileErasureFailureNotSignedIn": "Sign in to your account to remove imported data.",
   "@profileErasureFailureNotSignedIn": {
-    "description": "ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883)."
+    "description": "ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883). Issue #1005: 'remove', not 'purge'."
   },
-  "profileErasureFailureInvalidSource": "That import source isn't supported. Nothing was purged.",
+  "profileErasureFailureInvalidSource": "That import source isn't supported. Nothing was removed.",
   "@profileErasureFailureInvalidSource": {
-    "description": "ProfileErasureFailure.invalidSource copy at the purge surface."
+    "description": "ProfileErasureFailure.invalidSource copy at the purge surface. Issue #1005: 'remove', not 'purge'."
   },
-  "profileErasureFailureOther": "Failed to purge imported data. Check connection and try again.",
+  "profileErasureFailureOther": "Couldn't remove the imported data. Try again.",
   "@profileErasureFailureOther": {
-    "description": "ProfileErasureFailure.other copy at the purge surface."
+    "description": "ProfileErasureFailure.other copy at the purge surface. Issue #1005: the unknown-failure case no longer borrows the network case's 'check connection' advice, and says 'remove', not 'purge'."
   },
   "purgeImportedDataNoRows": "This profile has no imported data from a supported source.",
   "@purgeImportedDataNoRows": {
@@ -2279,9 +2280,9 @@
   "@profileStatusNoHistory": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile with too little history to estimate from (the CyclePredictionService's NotEnoughHistory state)."
   },
-  "profileStatusPredictionsSuppressed": "Period predictions off",
+  "profileStatusPredictionsSuppressed": "Period estimates paused",
   "@profileStatusPredictionsSuppressed": {
-    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode)."
+    "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode). Issue #1005: 'paused', not 'off' — nothing was toggled off and the mode pauses it."
   },
   "profileStatusPredictionsOff": "Period predictions off",
   "@profileStatusPredictionsOff": {
@@ -2631,9 +2632,9 @@
       }
     }
   },
-  "pregnancyDueDateMissing": "No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.",
+  "pregnancyDueDateMissing": "No due date yet. Add one from Edit profile.",
   "@pregnancyDueDateMissing": {
-    "description": "Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192)."
+    "description": "Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192). Issue #1005: it only renders when the life-stage mode already is Pregnancy, so it no longer tells the reader to set the mode they have already set; points at the 'Edit profile' action."
   },
   "pregnancyDueDateLabel": "Estimated due date",
   "@pregnancyDueDateLabel": {
@@ -2651,7 +2652,7 @@
   "@pregnancyExitExclusionTitle": {
     "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
   },
-  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.",
   "@pregnancyExitExclusionBody": {
     "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
   },
@@ -2737,9 +2738,9 @@
   "@conceiveWindowLabel": {
     "description": "Label above the estimated fertile-window date range on the Conceive-mode card (Issue #204)."
   },
-  "conceivePeakDay": "Most likely day: {date} (about {percent}% in one study)",
+  "conceivePeakDay": "Most likely day: {date} (about {percent}% of cycles in the study behind this estimate)",
   "@conceivePeakDay": {
-    "description": "Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Deliberately says 'in one study' so the number never reads as a personal probability.",
+    "description": "Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Issue #1005: names what the percentage is a percentage of — the study's population, not the reader's personal odds.",
     "placeholders": {
       "date": {
         "type": "String"
@@ -2765,7 +2766,7 @@
   "@perimenopauseNotEnoughBody": {
     "description": "Body of the Perimenopause-mode Cycle View card's empty state (Issue #196)."
   },
-  "perimenopauseLengthLonger": "Your last completed cycle was {days} longer than the one before it",
+  "perimenopauseLengthLonger": "The last completed cycle was {days} longer than the one before it",
   "@perimenopauseLengthLonger": {
     "description": "Perimenopause comparison line when the compared cycle is longer than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: the card compares the two most recent COMPLETED cycles (an open cycle has no length yet), so the copy names those rather than saying 'this cycle' — which every other surface uses for the still-open one.",
     "placeholders": {
@@ -2774,7 +2775,7 @@
       }
     }
   },
-  "perimenopauseLengthShorter": "Your last completed cycle was {days} shorter than the one before it",
+  "perimenopauseLengthShorter": "The last completed cycle was {days} shorter than the one before it",
   "@perimenopauseLengthShorter": {
     "description": "Perimenopause comparison line when the compared cycle is shorter than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: names the completed cycles the card actually compares, never 'this cycle'.",
     "placeholders": {
@@ -2783,7 +2784,7 @@
       }
     }
   },
-  "perimenopauseLengthSame": "Your last completed cycle was the same length as the one before it",
+  "perimenopauseLengthSame": "The last completed cycle was the same length as the one before it",
   "@perimenopauseLengthSame": {
     "description": "Perimenopause comparison line when the two compared cycles are the same length (Issue #196). Issue #862: names the completed cycles the card actually compares, never 'this cycle'."
   },
@@ -2929,7 +2930,7 @@
       }
     }
   },
-  "subjectTeenModeDialogBody": "{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.",
+  "subjectTeenModeDialogBody": "{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from Edit profile.",
   "@subjectTeenModeDialogBody": {
     "description": "Manage guardians (Issue #802): body of the Teen-mode suggestion dialog.",
     "placeholders": {

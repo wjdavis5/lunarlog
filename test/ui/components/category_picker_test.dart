@@ -35,7 +35,6 @@ Widget _harness({
           onToggle: onToggle,
           recentCodes: recentCodes,
           enabled: enabled,
-          unverifiedNote: 'Unverified — pin before shipping',
           trailingBuilder: trailingBuilder,
         ),
       ),
@@ -54,12 +53,12 @@ void main() {
     }
   });
 
-  testWidgets('an unverified category shows its heading and the caption, '
-      'no chips', (tester) async {
+  testWidgets('an unverified category is hidden entirely, heading and all '
+      '(issue #997 — no developer placeholder in the UI)', (tester) async {
     await tester.pumpWidget(_harness(onToggle: (_) {}));
 
-    expect(find.text('Sleep quality'), findsOneWidget);
-    expect(find.text('Unverified — pin before shipping'), findsOneWidget);
+    expect(find.text('Sleep quality'), findsNothing);
+    expect(find.text('Unverified — pin before shipping'), findsNothing);
   });
 
   testWidgets('tapping an unselected chip calls onToggle with its code',
@@ -151,7 +150,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Cramps'), findsOneWidget);
-      expect(find.text('Sleep quality'), findsOneWidget);
+      expect(find.text('Sleep quality'), findsNothing,
+          reason: 'an unpinned category stays hidden after clearing the '
+              'search (issue #997)');
       expect(find.byKey(const ValueKey('category-picker-search-clear')), findsNothing);
     });
 

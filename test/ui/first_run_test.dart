@@ -387,7 +387,7 @@ void main() {
       expect(find.text('Typical cycle length (days)'), findsOneWidget);
       expect(find.text('Typical period length (days)'), findsOneWidget);
       expect(find.text('Birth-control method'), findsOneWidget);
-      expect(find.text('Goal / mode'), findsOneWidget);
+      expect(find.text('Life-stage mode'), findsOneWidget);
       expect(find.text('Create profile'), findsOneWidget,
           reason: 'the final action keeps today\'s label');
 

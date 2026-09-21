@@ -2438,7 +2438,9 @@ class _DaySheetState extends State<DaySheet> {
                 // shape read-only/other consumers never touch) is now
                 // `CategoryPicker` — search, a Recent row, and collapsible
                 // sections over the same [_categoriesInOrder] and the same
-                // [_toggleTag]/[kUnverifiedTagCategories] rules.
+                // [_toggleTag] rules. Issue #997: a category whose option
+                // set is unpinned is hidden by the picker rather than
+                // showing a developer placeholder.
                 CategoryPicker(
                   categories: _categoriesInOrder,
                   categoryLabel: _copy.categoryLabel,
@@ -2450,7 +2452,6 @@ class _DaySheetState extends State<DaySheet> {
                   searchSemanticsLabel: l10n.daySheetTagSearchSemanticsLabel,
                   clearSearchTooltip: l10n.daySheetTagSearchClearTooltip,
                   recentLabel: l10n.daySheetTagRecentLabel,
-                  unverifiedNote: l10n.daySheetUnverifiedPin,
                   // Issue #256: the pain category's graded intensity
                   // selectors — one row per pain code that is either
                   // chip-selected or already carries an intensity for the

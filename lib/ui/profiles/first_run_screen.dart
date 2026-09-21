@@ -20,7 +20,7 @@
 /// *suggestion* (preselected, never forced — #131); its cycle step is the
 /// one optional last-period question. After such a creation the flow
 /// continues: "Add another person?" loops back to a fresh card, then
-/// "Does someone else help?" offers the co-parent invite and — per #966's
+/// "Add another guardian?" offers the guardian invite and — per #966's
 /// preset machinery — the subject invite for a minor's own profile, with
 /// the sign-in prompt living here (the first place an account is
 /// required, saying why) when the account step was skipped. Every new
@@ -205,8 +205,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// (or "Both"-flow) creation instead of ending the flow.
   bool _wrapUpPending = false;
 
-  /// Issue #804: the "Does someone else help?" step — per-profile
-  /// co-parent and subject invites (#966's preset machinery).
+  /// Issue #804: the "Add another guardian?" step — per-profile
+  /// guardian and subject invites (#966's preset machinery).
   bool _inviteStepPending = false;
 
   /// Whether the card being filled is for someone other than the
@@ -885,6 +885,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               // else.
               if (_createdProfiles.isEmpty) _whoControl(l10n),
               TextFormField(
+                key: const ValueKey('first-run-name-field'),
                 controller: _nameController,
                 autofocus: true,
                 decoration: InputDecoration(labelText: l10n.firstRunNameLabel),
@@ -942,6 +943,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         style: Theme.of(context).textTheme.bodySmall,
       ),
       Wrap(
+        key: const ValueKey('first-run-who-chips'),
         spacing: 8,
         children: [
           ChoiceChip(
@@ -970,6 +972,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
           ),
         ],
       ),
+      // #994: the compact, shrink-wrapped chips remove the Material
+      // minimum-height slack that used to separate them from the Name
+      // field's floating label, so the label drew across the chips' bottom
+      // edge. Space them like every other stacked control on this card.
+      const SizedBox(height: LLSpace.space3),
     ],
   );
 
@@ -1352,12 +1359,9 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  l10n.firstRunWrapUpTitle,
+                  l10n.firstRunWrapUpBody,
                   key: const ValueKey('first-run-wrap-up'),
-                  style: Theme.of(context).textTheme.titleLarge,
                 ),
-                const SizedBox(height: LLSpace.space2),
-                Text(l10n.firstRunWrapUpBody),
                 const SizedBox(height: LLSpace.space4),
                 FilledButton(
                   key: const ValueKey('first-run-add-another'),
@@ -1378,8 +1382,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     );
   }
 
-  /// Issue #804: "Does someone else help?" — one row per profile created
-  /// in this flow, each offering the co-parent invite and (per #966's
+  /// Issue #804: "Add another guardian?" — one row per profile created
+  /// in this flow, each offering the guardian invite and (per #966's
   /// gating, via [Profile.subjectInviteAvailableAt]) the subject preset
   /// for a minor's own profile. This is the first place an account is
   /// required: without a session the rows wait behind the why-line and
@@ -1400,7 +1404,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
             padding: const EdgeInsets.all(LLSpace.space4),
             children: [
               Text(
-                l10n.firstRunInviteBody,
+                l10n.firstRunInviteBody(_createdProfiles.length),
                 key: const ValueKey('first-run-invite-step'),
               ),
               if (needsSignIn) ...[
