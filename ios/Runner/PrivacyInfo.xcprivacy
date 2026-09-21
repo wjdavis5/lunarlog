@@ -76,8 +76,9 @@
 		this device), and #217 the user-initiated menstrual-flow import
 		(#781's owner decision reversing the earlier write-only posture).
 		The import reads only menstrualFlow, only on an explicit Settings
-		action, only for the bound profile, and only over a bounded 30-day
-		window; samples this app itself wrote are excluded by source
+		action, only for the bound profile, and over the whole available
+		history (paged, issue #992; no longer a bounded 30-day window);
+		samples this app itself wrote are excluded by source
 		filtering, and Apple's four computed cycle-deviation types are never
 		requested, read, or written. The import keeps data on the device:
 		the app itself never transmits HealthKit data off-device and no

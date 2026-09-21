@@ -20,10 +20,14 @@
 ///   delivery, and no automatic pass anywhere in this file. The only entry
 ///   point is [HealthImportRunner.importNow] — a settings action the
 ///   operator triggers.
-/// * **Bounded window.** An import reads a fixed, documented number of
-///   days back ([kHealthImportWindowDays]); full-history and background
-///   reads stay deferred (see `health_channel_codec.dart`'s doc and #186's
-///   AC9).
+/// * **Full history, paged.** An import reads *everything the store will
+///   return* for the bound profile (Issue #992 — the previous fixed 30-day
+///   window was a sequencing choice, not a product rule), from
+///   [kHealthImportEarliestYear] forward, one *page* at a time so no single
+///   channel call or DB write grows with the whole history. Each page is
+///   bounded by [kHealthImportPageSize], and a pass stops after at most
+///   [kHealthImportMaxPages] pages so a misbehaving adapter cannot spin.
+///   Background reads stay deferred (#156/A3-16).
 /// * **Resolve each sample's civil date from its own zone.** HealthKit
 ///   samples carry an IANA zone (`HKMetadataKeyTimeZone`) and Health
 ///   Connect records carry their own `zoneOffset`; a sample with neither is
@@ -53,16 +57,30 @@
 /// Pure Dart (R14/R16): imports only the domain port vocabulary.
 library;
 
-import '../models/local_date.dart';
 import 'health_platform.dart';
 import 'health_sync_policy.dart';
 
-/// How many civil days back one user-initiated import reads, inclusive of
-/// today. The issue's v1 scope is a bounded, user-initiated pass; this
-/// matches the 30-day window `health_channel_codec.dart` already documents
-/// for Health Connect's v1 read limit and the Settings screen states it
-/// plainly rather than silently truncating.
-const int kHealthImportWindowDays = 30;
+/// How many samples one *page* of a platform read asks for (Issue #992).
+/// Sent across the `lunarlog/health` channel as `pageSize` so the native
+/// halves use exactly this value rather than their own guess — a Dart test
+/// pins the number actually sent, and both native halves read it from the
+/// wire (a value that never crosses the boundary cannot drift).
+const int kHealthImportPageSize = 500;
+
+/// A hard upper bound on the number of pages one import pass will fetch
+/// (Issue #992). With [kHealthImportPageSize] this caps a single pass at
+/// 500,000 samples. A well-behaved adapter finishes when a page returns a
+/// null cursor, so this bound only fires on a buggy or hostile one, which
+/// is exactly why it exists: it makes "the import loop can never spin" a
+/// property of this service rather than a property of the adapter.
+const int kHealthImportMaxPages = 1000;
+
+/// The first calendar year an import will consider. HealthKit and Health
+/// Connect samples cannot predate the Unix epoch, and no real cycle history
+/// does; the import's lower bound is the start of [kHealthImportEarliestYear]
+/// rather than the epoch itself so the query window stays a readable civil
+/// date.
+const int kHealthImportEarliestYear = 1970;
 
 /// Which OS health-store record a [HealthFlowSample] came from. The shared
 /// import pipeline handles both of Android's read data types; iOS currently
@@ -180,8 +198,12 @@ sealed class HealthReadResult {
   const HealthReadResult();
 
   /// The query ran; [samples] is what the store returned (possibly empty).
-  const factory HealthReadResult.samples(List<HealthFlowSample> samples) =
-      HealthReadSamples;
+  /// [nextCursor] is the opaque page cursor for the *next* page, or null
+  /// when this was the last page.
+  const factory HealthReadResult.samples(
+    List<HealthFlowSample> samples, {
+    String? nextCursor,
+  }) = HealthReadSamples;
 
   /// No health store exists on this device.
   const factory HealthReadResult.unavailable() = HealthReadUnavailable;
@@ -203,9 +225,16 @@ sealed class HealthReadResult {
 }
 
 final class HealthReadSamples extends HealthReadResult {
-  const HealthReadSamples(this.samples);
+  const HealthReadSamples(this.samples, {this.nextCursor});
 
   final List<HealthFlowSample> samples;
+
+  /// The opaque cursor the platform returned for the next page, or null
+  /// when the read is exhausted. Opaque to Dart by design: an iOS anchor,
+  /// a Health Connect page token, or a changes-stream token all ride the
+  /// same field, and this service only ever compares one cursor to the
+  /// next to prove progress (see [HealthImportRunner]).
+  final String? nextCursor;
 }
 
 final class HealthReadUnavailable extends HealthReadResult {
@@ -238,12 +267,12 @@ enum HealthImportPlatform {
   healthConnect;
 }
 
-/// The read half of the health-store port (Issues #217/#458) — one method
-/// per read data-type concept, mirroring [HealthPlatformStore]'s write
-/// shape. The shared `lunarlog/health` adapter implements both; the Dart
-/// guard and its native mirror apply exactly as they do to a write, because
-/// reading the bound profile's health data is the same device-binding
-/// decision.
+/// The read half of the health-store port (Issues #217/#458, paged in
+/// #992) — one method per read data-type concept, mirroring
+/// [HealthPlatformStore]'s write shape. The shared `lunarlog/health`
+/// adapter implements both; the Dart guard and its native mirror apply
+/// exactly as they do to a write, because reading the bound profile's
+/// health data is the same device-binding decision.
 ///
 /// **Implementor contract:** evaluate `HealthSyncBinding.canWrite` first
 /// (returning a refusal without touching the OS health store on a deny),
@@ -252,20 +281,32 @@ enum HealthImportPlatform {
 /// the query — the same defense-in-depth property [HealthPlatformStore]
 /// documents.
 abstract interface class HealthImportSource {
-  /// Reads menstrual-flow and intermenstrual-bleeding samples whose
-  /// recorded interval intersects `[start]`–`[end]` (absolute instants)
-  /// for the bound profile.
+  /// Reads one page of menstrual-flow and intermenstrual-bleeding samples
+  /// whose recorded interval intersects `[start]`–`[end]` (absolute
+  /// instants) for the bound profile.
   ///
-  /// Samples recorded by this app itself MUST be excluded by the
-  /// implementation before they reach the caller (HealthKit's
-  /// `sourceRevision.source.bundleIdentifier` / Health Connect's
-  /// `dataOrigin` filtering): lunarlog's write path (#193/#202) writes the
-  /// user's logged flow into the OS store, and re-importing those samples
-  /// would duplicate every entry and loop the two directions.
-  Future<HealthReadResult> readMenstrualFlow(
+  /// **Paging contract (Issue #992), mandatory for every implementor:**
+///
+///  * A read is one *page* of at most `pageSize` samples. `cursor` is null
+///    on the first call of a pass and opaque on every later one; the
+///    implementation must return the cursor for the next page as
+///    [HealthReadSamples.nextCursor], or null to mean "no more pages".
+///  * An exhausted store MUST return an empty sample list with a null
+///    cursor — never a repeated cursor, never a non-null cursor forever.
+///  * A page whose raw results were all this app's own writes may be empty
+///    *with* a non-null cursor (the page advanced, it just held nothing
+///    importable); the service continues on a non-null cursor rather than
+///    treating "no samples" as termination.
+///  * The same cursor MUST never be returned twice for two different
+///    pages; a well-behaved implementation advances or terminates. The
+///    service additionally guards against a repeated cursor so a buggy
+///    adapter cannot spin.
+  Future<HealthReadResult> readMenstrualFlowPage(
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
+    required int pageSize,
+    String? cursor,
   });
 }
 
@@ -285,6 +326,9 @@ class HealthImportSummary {
     this.samplesFromDeviceZone = 0,
     this.samplesWithoutZone = 0,
     this.samplesUnsupported = 0,
+    this.pagesRead = 0,
+    this.pageLimitReached = false,
+    this.repeatedCursor = false,
   });
 
   /// False when no profile is bound to this device — the import action is
@@ -332,8 +376,32 @@ class HealthImportSummary {
   /// (HealthKit's `unspecified`).
   final int samplesUnsupported;
 
+  /// How many pages the pass fetched before it terminated (Issue #992).
+  final int pagesRead;
+
+  /// True when the pass stopped because it reached
+  /// [kHealthImportMaxPages] rather than because a page ended the stream —
+  /// a buggy adapter, not a normal completion. The days already resolved
+  /// before the cap are still merged; the summary says so.
+  final bool pageLimitReached;
+
+  /// True when a page returned the same cursor it was given (or a cursor
+  /// already seen this pass), so the service stopped rather than spin —
+  /// a buggy adapter, not a normal completion.
+  final bool repeatedCursor;
+
   /// Whether the pass ended before any read could run.
   bool get isBlocked => blocked != null;
+
+  /// The headline count for the completion summary: days that gained a new
+  /// or refreshed imported value ("Imported N days").
+  int get importedDays => daysWritten;
+
+  /// The headline count for the completion summary: days the import
+  /// deliberately skipped because a value was already there — a hand-logged
+  /// flow it must not overwrite, or an already-imported value it matched
+  /// ("skipped M already logged").
+  int get skippedAlreadyLoggedDays => daysUnchanged + daysKeptManual;
 
   /// Whether the store returned no usable samples at all — the neutral
   /// "nothing came back" state. Never phrased as "nothing was tracked" or
@@ -351,19 +419,43 @@ class HealthImportSummary {
       samplesUnsupported == 0;
 }
 
+/// A mid-pass progress tick (Issue #992): how far a running import has
+/// got, so a long full-history pass can show something other than a
+/// spinner. Carries counts only, never sample content.
+class HealthImportProgress {
+  const HealthImportProgress({
+    required this.pagesRead,
+    required this.samplesRead,
+    required this.daysWritten,
+  });
+
+  /// Pages fetched so far.
+  final int pagesRead;
+
+  /// Samples read so far (after own-source filtering).
+  final int samplesRead;
+
+  /// Days newly written or refreshed so far.
+  final int daysWritten;
+}
+
 /// The seam `lib/ui` drives for a user-initiated import. Implementations
-/// own the binding guard, the bounded window, and the local-store merge;
-/// the screen only renders the returned [HealthImportSummary].
+/// own the binding guard, the full-history window, and the local-store
+/// merge; the screen only renders the returned [HealthImportSummary] and
+/// whatever [HealthImportRunner.importNow]'s optional progress callback
+/// reports.
 abstract interface class HealthImportRunner {
   /// Which OS health store this runner reads from — drives the Settings
   /// copy's data-source name.
   HealthImportPlatform get platform;
 
   /// Runs one user-initiated import pass for the currently bound profile.
-  Future<HealthImportSummary> importNow();
+  ///
+  /// [onProgress], when supplied, is invoked after each page with the
+  /// running counts. It must never be assumed to fire (a one-page or empty
+  /// import may finish before the first tick) and must never be awaited by
+  /// the implementation.
+  Future<HealthImportSummary> importNow({
+    void Function(HealthImportProgress progress)? onProgress,
+  });
 }
-
-/// The first civil day of the inclusive import window ending at [today]
-/// — `today - (kHealthImportWindowDays - 1)`.
-LocalDate healthImportWindowStart(LocalDate today) =>
-    today.addDays(-(kHealthImportWindowDays - 1));

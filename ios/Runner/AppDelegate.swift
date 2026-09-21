@@ -984,15 +984,15 @@ enum HealthKitChannelHandler {
         }
       }
 
-    case "readMenstrualFlow":
-      // Issue #217 (#781's read decision): the user-initiated menstrual-flow
-      // import. Guarded identically to a write (the device-binding decision
-      // is the same), then a bounded sample query. Success returns an array
-      // of primitive maps (StandardMessageCodec), not a result string;
-      // authorization opacity means a denied read arrives here as an empty
-      // array, never an error.
+    case "readMenstrualFlowPage":
+      // Issue #217 (#781's read decision), paged for full history in Issue
+      // #992. Guarded identically to a write (the device-binding decision is
+      // the same), then one page of an `HKAnchoredObjectQuery`. Success
+      // returns a Map of `{samples, nextCursor?}` (StandardMessageCodec),
+      // not a result string; authorization opacity means a denied read
+      // arrives here as a page with an empty samples list, never an error.
       guard let g = args.flatMap(GuardArgs.init) else {
-        badArgs(result, "readMenstrualFlow requires guard args")
+        badArgs(result, "readMenstrualFlowPage requires guard args")
         return
       }
       let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
@@ -1006,22 +1006,27 @@ enum HealthKitChannelHandler {
       }
       guard
         let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
-        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let pageSize = (args?["pageSize"] as? NSNumber)?.intValue,
+        pageSize > 0
       else {
-        badArgs(result, "readMenstrualFlow requires startMs/endMs")
+        badArgs(result, "readMenstrualFlowPage requires startMs/endMs/pageSize")
         return
       }
+      let cursor = args?["cursor"] as? String
       Task {
         do {
-          let payload = try await readMenstrualFlowSamples(
+          let payload = try await readMenstrualFlowPage(
             start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
-            end: Date(timeIntervalSince1970: Double(endMs) / 1000.0))
+            end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+            cursor: cursor,
+            pageSize: pageSize)
           result(payload)
         } catch {
           result(
             FlutterError(
               code: "readFailed",
-              message: "readMenstrualFlow failed: \(error.localizedDescription)",
+              message: "readMenstrualFlowPage failed: \(error.localizedDescription)",
               details: nil))
         }
       }
@@ -1078,15 +1083,25 @@ enum HealthKitChannelHandler {
     )
   }
 
-  /// Reads menstrual-flow samples in `[start, end]` (Issue #217) and flattens
-  /// each into the primitive map `health_channel_codec.dart`'s
+  /// Reads ONE page of menstrual-flow samples in `[start, end]` (Issues
+  /// #217/#992) and returns the `{samples, nextCursor?}` map Dart's
   /// `decodeHealthReadResult` parses.
+  ///
+  /// **Paging.** An `HKAnchoredObjectQuery` seeded with the opaque `cursor`
+  /// anchor returns at most `pageSize` samples and a new anchor. A full page
+  /// means there may be more, so the new anchor is serialized into
+  /// `nextCursor`; a short (or empty) page means the query is exhausted and
+  /// no cursor is sent — the property the Dart loop relies on to terminate.
+  /// Because the anchor advances HealthKit's own cursor, re-running the same
+  /// request can never return the same page.
   ///
   /// **Echo prevention is mandatory here.** A sample lunarlog itself wrote
   /// (#193) comes back with `sourceRevision.source.bundleIdentifier` equal to
   /// this app's bundle id; re-importing it would duplicate every entry and
   /// loop the write and read directions, so any such sample is dropped before
-  /// it reaches Dart.
+  /// it reaches Dart. A page whose samples are ALL our own writes still
+  /// carries its `nextCursor` (the page itself advanced), so Dart does not
+  /// mistake it for exhaustion.
   ///
   /// The sample's own IANA zone rides `HKMetadataKeyTimeZone`; Dart resolves
   /// the civil date from it (day_boundary.dart's #180 contract) — never from
@@ -1099,55 +1114,140 @@ enum HealthKitChannelHandler {
   /// dropped. The device's UTC offset at the sample's instant is sent as
   /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
   /// row and reports it honestly as inferred from this phone's zone.
-  private static func readMenstrualFlowSamples(
+  static func readMenstrualFlowPage(
     start: Date,
-    end: Date
-  ) async throws -> [[String: Any]] {
+    end: Date,
+    cursor: String?,
+    pageSize: Int
+  ) async throws -> [String: Any] {
     let predicate = HKQuery.predicateForSamples(
       withStart: start, end: end, options: [])
-    let samples = try await querySamples(
-      ofType: menstrualFlowType, predicate: predicate)
+    let page = try await anchoredQuery(
+      ofType: menstrualFlowType,
+      predicate: predicate,
+      anchor: decodeAnchor(cursor),
+      limit: pageSize)
     let ownBundleId = Bundle.main.bundleIdentifier
-    var payload: [[String: Any]] = []
-    for case let sample as HKCategorySample in samples {
-      if let ownBundleId,
-        sample.sourceRevision.source.bundleIdentifier == ownBundleId
-      {
-        continue
+    var samples: [[String: Any]] = []
+    for case let sample as HKCategorySample in page.samples {
+      if let entry = samplePayload(sample, ownBundleId: ownBundleId) {
+        samples.append(entry)
       }
-      guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
-        continue
-      }
-      var entry: [String: Any] = [
-        "recordId": sample.uuid.uuidString,
-        "flow": flow.wire,
-        "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
-        "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
-      ]
-      if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
-        entry["tzName"] = tz
-      } else {
-        // Issue #902: a menstruation sample entered by hand in Apple's own
-        // Health app (Browse > Cycle Tracking > Menstruation > +) carries no
-        // HKMetadataKeyTimeZone. Without a zone the Dart importer used to
-        // drop every such sample, which made the feature useless for the
-        // exact data it exists to bring over. Fall back to this device's UTC
-        // offset at the sample's instant — the zone the phone was in at that
-        // moment is the best available proxy — and flag it so Dart reports
-        // the row as inferred (placed using this phone's time zone) rather
-        // than as the sample's own recorded zone. Menstrual flow is a
-        // whole-day category sample, so a wrong offset can only shift the
-        // civil date by at most one day.
-        entry["zoneOffsetSeconds"] =
-          TimeZone.current.secondsFromGMT(for: sample.startDate)
-        entry["zoneOffsetInferred"] = true
-      }
-      if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
-        entry["externalUuid"] = external
-      }
-      payload.append(entry)
+    }
+    var payload: [String: Any] = ["samples": samples]
+    // A full page means HealthKit may have more waiting behind the new
+    // anchor; a short page means the anchored query is exhausted.
+    if page.samples.count >= pageSize,
+      let next = cursorString(for: page.newAnchor)
+    {
+      payload["nextCursor"] = next
     }
     return payload
+  }
+
+  /// One `HKCategorySample`'s primitive map, or nil when it is this app's
+  /// own write or carries no known flow intensity.
+  private static func samplePayload(
+    _ sample: HKCategorySample,
+    ownBundleId: String?
+  ) -> [String: Any]? {
+    if let ownBundleId,
+      sample.sourceRevision.source.bundleIdentifier == ownBundleId
+    {
+      return nil
+    }
+    guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
+      return nil
+    }
+    var entry: [String: Any] = [
+      "recordId": sample.uuid.uuidString,
+      "flow": flow.wire,
+      "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+      "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+    ]
+    if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+      entry["tzName"] = tz
+    } else {
+      // Issue #902: a menstruation sample entered by hand in Apple's own
+      // Health app (Browse > Cycle Tracking > Menstruation > +) carries no
+      // HKMetadataKeyTimeZone. Without a zone the Dart importer used to
+      // drop every such sample, which made the feature useless for the
+      // exact data it exists to bring over. Fall back to this device's UTC
+      // offset at the sample's instant — the zone the phone was in at that
+      // moment is the best available proxy — and flag it so Dart reports
+      // the row as inferred (placed using this phone's time zone) rather
+      // than as the sample's own recorded zone. Menstrual flow is a
+      // whole-day category sample, so a wrong offset can only shift the
+      // civil date by at most one day.
+      entry["zoneOffsetSeconds"] =
+        TimeZone.current.secondsFromGMT(for: sample.startDate)
+      entry["zoneOffsetInferred"] = true
+    }
+    if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
+      entry["externalUuid"] = external
+    }
+    return entry
+  }
+
+  /// Serializes an anchored query's anchor for the wire — the opaque
+  /// `nextCursor` Dart passes back on the next page. `HKQueryAnchor`
+  /// conforms to `NSSecureCoding`; the base64 string is opaque to Dart.
+  static func cursorString(for anchor: HKQueryAnchor?) -> String? {
+    guard let anchor else { return nil }
+    guard
+      let data = try? NSKeyedArchiver.archivedData(
+        withRootObject: anchor, requiringSecureCoding: true)
+    else { return nil }
+    return encodeCursorData(data)
+  }
+
+  /// Base64 without line wrapping — separated from the anchor archive so the
+  /// codec's round-trip is unit-testable without an `HKQueryAnchor`, which
+  /// has no public initializer.
+  static func encodeCursorData(_ data: Data) -> String {
+    data.base64EncodedString()
+  }
+
+  /// The inverse of [encodeCursorData]; nil for nil/empty/malformed input.
+  static func decodeCursorData(_ cursor: String?) -> Data? {
+    guard let cursor, !cursor.isEmpty else { return nil }
+    return Data(base64Encoded: cursor)
+  }
+
+  /// Decodes an opaque cursor back into the anchor the anchored query wants,
+  /// or nil (start from the beginning) when the cursor is absent, empty, or
+  /// not an archived anchor this build understands.
+  static func decodeAnchor(_ cursor: String?) -> HKQueryAnchor? {
+    guard let data = decodeCursorData(cursor) else { return nil }
+    return try? NSKeyedUnarchiver.unarchivedObject(
+      ofClass: HKQueryAnchor.self, from: data)
+  }
+
+  /// Runs one `HKAnchoredObjectQuery` over `store` and awaits its page.
+  /// HealthKit has no async overload, so the callback-based query is bridged
+  /// through a `withCheckedThrowingContinuation`.
+  private static func anchoredQuery(
+    ofType sampleType: HKSampleType,
+    predicate: NSPredicate?,
+    anchor: HKQueryAnchor?,
+    limit: Int
+  ) async throws -> (samples: [HKSample], newAnchor: HKQueryAnchor?) {
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<([HKSample], HKQueryAnchor?), Error>) in
+      let query = HKAnchoredObjectQuery(
+        type: sampleType,
+        predicate: predicate,
+        anchor: anchor,
+        limit: limit
+      ) { _, samples, _, newAnchor, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume(returning: (samples ?? [], newAnchor))
+        }
+      }
+      store.execute(query)
+    }
   }
 
   /// Runs an `HKSampleQuery` over `store` and awaits its results. HealthKit
