@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      account_consents: {
+        Row: {
+          acknowledged_at: string
+          app_version: string
+          consent_via: string
+          policy_version: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged_at: string
+          app_version: string
+          consent_via: string
+          policy_version: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          app_version?: string
+          consent_via?: string
+          policy_version?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       account_deletion_progress: {
         Row: {
           apple_identity_id: string | null
@@ -29,6 +56,35 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      ahead_of_time_alert_state: {
+        Row: {
+          kind: string
+          last_enqueued_for: string | null
+          profile_id: string
+          user_id: string
+        }
+        Insert: {
+          kind: string
+          last_enqueued_for?: string | null
+          profile_id: string
+          user_id: string
+        }
+        Update: {
+          kind?: string
+          last_enqueued_for?: string | null
+          profile_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ahead_of_time_alert_state_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       care_notes: {
         Row: {
@@ -671,6 +727,9 @@ export type Database = {
           alert_on_cycle_start_only: boolean
           alert_on_high_severity: boolean
           alert_on_log: boolean
+          alert_on_period_soon: boolean
+          alert_on_pms_soon: boolean
+          alert_on_restock: boolean
           cycle_start_cadence: string
           digest_local_time: string | null
           high_severity_cadence: string
@@ -687,6 +746,9 @@ export type Database = {
           alert_on_cycle_start_only?: boolean
           alert_on_high_severity?: boolean
           alert_on_log?: boolean
+          alert_on_period_soon?: boolean
+          alert_on_pms_soon?: boolean
+          alert_on_restock?: boolean
           cycle_start_cadence?: string
           digest_local_time?: string | null
           high_severity_cadence?: string
@@ -703,6 +765,9 @@ export type Database = {
           alert_on_cycle_start_only?: boolean
           alert_on_high_severity?: boolean
           alert_on_log?: boolean
+          alert_on_period_soon?: boolean
+          alert_on_pms_soon?: boolean
+          alert_on_restock?: boolean
           cycle_start_cadence?: string
           digest_local_time?: string | null
           high_severity_cadence?: string
@@ -1378,6 +1443,8 @@ export type Database = {
         Args: { p_token_hash: string }
         Returns: Json
       }
+      ahead_of_time_lead_days: { Args: never; Returns: number }
+      ahead_of_time_min_pms_intervals: { Args: never; Returns: number }
       alert_coalesce_window: { Args: never; Returns: string }
       alert_daily_push_ceiling: { Args: never; Returns: number }
       bulk_import_entries: {
@@ -1503,6 +1570,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_minimum_age_acknowledgement: {
+        Args: {
+          p_app_version: string
+          p_consent_via: string
+          p_policy_version: string
+        }
+        Returns: undefined
+      }
       register_push_device: {
         Args: { p_id: string; p_platform: string; p_token: string }
         Returns: undefined
@@ -1547,6 +1622,7 @@ export type Database = {
       }
       run_caregiver_alert_drain: { Args: never; Returns: undefined }
       run_nightly_caregiver_alerts_job: { Args: never; Returns: undefined }
+      scan_ahead_of_time_alerts: { Args: never; Returns: number }
       scan_missed_entry_reminders: { Args: never; Returns: number }
       sweep_alert_digests: { Args: never; Returns: number }
       sweep_notification_outbox: { Args: never; Returns: number }
