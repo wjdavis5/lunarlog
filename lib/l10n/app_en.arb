@@ -741,6 +741,10 @@
   "@overviewUndo": {
     "description": "Snackbar action undoing the today card's quick log."
   },
+  "widgetQuickLogAlreadyLogged": "Already logged for today.",
+  "@widgetQuickLogAlreadyLogged": {
+    "description": "Issue #1016: snackbar shown when a home-screen widget quick-log tap found today already at or above the quick-log flow, so nothing was written (a hand-logged heavier value is never downgraded)."
+  },
   "overviewExcludedSnackbar": "This cycle is excluded from future averages.",
   "@overviewExcludedSnackbar": {
     "description": "Snackbar confirming the long-cycle exclude action."

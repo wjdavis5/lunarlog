@@ -54,6 +54,7 @@ import 'package:lunarlog/domain/conceive.dart'
 import 'package:lunarlog/domain/episodes/episodes.dart' show bleedDatesOf;
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
+import 'package:lunarlog/domain/logging/quick_log_undo.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
@@ -586,17 +587,18 @@ class _OverviewPanelState extends State<OverviewPanel>
 
   /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
   /// [DayEntry] (flow/tags/note preserved) if today already had one, or a
-  /// tombstone if the quick-log tap is what created it. Goes through
-  /// [DayEntriesRepository] either way -- never a bespoke undo path -- so
-  /// sync dirty-marking applies exactly as it would to any other edit.
-  Future<void> _undoLogToday(DayEntry? previous, LocalDate today) async {
-    final repository = context.read<DayEntriesRepository>();
-    if (previous == null) {
-      await repository.delete(widget.profileId, today);
-    } else {
-      await repository.save(previous);
-    }
-  }
+  /// tombstone if the quick-log tap is what created it. Delegates to
+  /// [undoQuickLogToday] -- never a bespoke undo path -- so sync
+  /// dirty-marking applies exactly as it would to any other edit, and the
+  /// home-screen widget's own quick-log Undo (issue #1016) reverses a write
+  /// through this identical helper.
+  Future<void> _undoLogToday(DayEntry? previous, LocalDate today) =>
+      undoQuickLogToday(
+        dayEntries: context.read<DayEntriesRepository>(),
+        profileId: widget.profileId,
+        date: today,
+        previous: previous,
+      );
 
   @override
   Widget build(BuildContext context) {

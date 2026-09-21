@@ -1064,6 +1064,12 @@ abstract class AppLocalizations {
   /// **'Undo'**
   String get overviewUndo;
 
+  /// Issue #1016: snackbar shown when a home-screen widget quick-log tap found today already at or above the quick-log flow, so nothing was written (a hand-logged heavier value is never downgraded).
+  ///
+  /// In en, this message translates to:
+  /// **'Already logged for today.'**
+  String get widgetQuickLogAlreadyLogged;
+
   /// Snackbar confirming the long-cycle exclude action.
   ///
   /// In en, this message translates to:

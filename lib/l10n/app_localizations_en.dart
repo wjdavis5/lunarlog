@@ -566,6 +566,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewUndo => 'Undo';
 
   @override
+  String get widgetQuickLogAlreadyLogged => 'Already logged for today.';
+
+  @override
   String get overviewExcludedSnackbar =>
       'This cycle is excluded from future averages.';
 

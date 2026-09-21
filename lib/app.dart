@@ -25,6 +25,8 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/data/widget/widget_quick_log_executor.dart';
 import 'package:lunarlog/data/widget/widget_state_publisher.dart';
+import 'package:lunarlog/domain/logging/quick_log_undo.dart';
+import 'package:lunarlog/domain/widget/widget_quick_log_outcome.dart';
 import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
@@ -343,6 +345,18 @@ class _LunarLogAppState extends State<LunarLogApp>
   WidgetStatePublisher? _widgetPublisher;
   StreamSubscription<Uri>? _widgetLaunchSub;
 
+  /// Issue #1016: the executor's outcome channel. A gated widget quick-log
+  /// still has no UI of its own, so the shell acknowledges the write here
+  /// exactly as the in-app today card does — navigate to the profile's
+  /// Today tab, then show `overviewLoggedSnackbar` with the shared Undo.
+  StreamSubscription<WidgetQuickLogOutcome>? _widgetOutcomeSub;
+
+  /// Shows the widget quick-log acknowledgement above whatever screen is
+  /// current (the shell's `Scaffold` is inside the app's `Navigator`, and
+  /// the outcome fires outside any one screen's build).
+  final GlobalKey<ScaffoldMessengerState> _scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   /// The per-profile reminder configuration store (Issue #136) backing
   /// the coordinator; provided to the tree for the reminder settings
   /// screen. Non-null only when a scheduler was provided.
@@ -637,6 +651,10 @@ class _LunarLogAppState extends State<LunarLogApp>
     // route through the executor, which latches while the gate is locked —
     // the widget itself never writes.
     _widgetLaunchSub = store.launches.listen(_handleWidgetLaunch);
+    // Issue #1016: the executor's outcome, so a landed (or refused) gated
+    // write is acknowledged instead of silent.
+    _widgetOutcomeSub =
+        _widgetQuickLogExecutor!.outcomes.listen(_handleWidgetQuickLogOutcome);
     unawaited(
       store.initialLaunch().then((uri) {
         if (!mounted) return;
@@ -650,6 +668,84 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _handleWidgetLaunch(Uri uri) {
     if (!mounted) return;
     _widgetQuickLogExecutor?.handle(uri);
+  }
+
+  /// Issue #1016: acknowledges a widget quick-log once it has resolved
+  /// against the gate. `logged` mirrors the in-app today card — switch to
+  /// the widget's profile/Today, then show the same confirmation with an
+  /// Undo restoring exactly the pre-write entry. `alreadyLogged` says so in
+  /// one line (nothing was changed, so no Undo). `dropped` stays silent:
+  /// there is no write and no valid target, and the widget never offered
+  /// the action to a viewer in the first place.
+  void _handleWidgetQuickLogOutcome(WidgetQuickLogOutcome outcome) {
+    if (!mounted) return;
+    switch (outcome) {
+      case WidgetQuickLogLogged():
+        _routeToWidgetProfile(outcome.profileId);
+        _showWidgetLoggedSnackbar(outcome);
+      case WidgetQuickLogAlreadyLogged():
+        _routeToWidgetProfile(outcome.profileId);
+        _showWidgetAlreadyLoggedSnackbar();
+      case WidgetQuickLogDropped():
+        break;
+    }
+  }
+
+  /// Brings the widget's profile and its Today tab forward, reusing the
+  /// same launch-payload seam a plain notification tap uses
+  /// ([GateController.setPendingLaunchProfileId] → `ProfileHomeGate` →
+  /// `AppShell.launchToken`). Any route pushed above home is popped first so
+  /// the reset is visible rather than buried under, e.g., an open sheet.
+  void _routeToWidgetProfile(String profileId) {
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    context.read<GateController?>()?.setPendingLaunchProfileId(profileId);
+  }
+
+  /// The in-app today card's exact acknowledgement (issue #209/#856):
+  /// `overviewLoggedSnackbar` with [overviewUndo], whose action reverses the
+  /// widget's write through the shared [undoQuickLogToday] helper.
+  void _showWidgetLoggedSnackbar(WidgetQuickLogLogged outcome) {
+    final messenger = _scaffoldMessengerKey.currentState;
+    final l10n = _appLocalizations();
+    if (messenger == null || l10n == null) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        l10n.overviewLoggedSnackbar,
+        key: const ValueKey('widget-quick-log-snackbar'),
+      ),
+      action: SnackBarAction(
+        label: l10n.overviewUndo,
+        onPressed: () => unawaited(undoQuickLogToday(
+          dayEntries: _dayEntries,
+          profileId: outcome.profileId,
+          date: outcome.date,
+          previous: outcome.previous,
+        )),
+      ),
+    ));
+  }
+
+  /// The heavier-flow case: today already carried at or above the
+  /// quick-log level, so the widget tap changed nothing.
+  void _showWidgetAlreadyLoggedSnackbar() {
+    final messenger = _scaffoldMessengerKey.currentState;
+    final l10n = _appLocalizations();
+    if (messenger == null || l10n == null) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(
+        l10n.widgetQuickLogAlreadyLogged,
+        key: const ValueKey('widget-quick-log-already-logged-snackbar'),
+      ),
+    ));
+  }
+
+  /// Resolves [AppLocalizations] against the navigator's context (the
+  /// outcome fires outside any screen's build). Null before the first frame
+  /// or after teardown, in which case the acknowledgement is skipped rather
+  /// than crashing.
+  AppLocalizations? _appLocalizations() {
+    final ctx = _navigatorKey.currentContext;
+    return ctx == null ? null : AppLocalizations.of(ctx);
   }
 
   /// Issue #373: the sharer's device is the only place a projection can be
@@ -1142,6 +1238,8 @@ class _LunarLogAppState extends State<LunarLogApp>
     // reminder executor above.
     unawaited(_widgetLaunchSub?.cancel());
     _widgetLaunchSub = null;
+    unawaited(_widgetOutcomeSub?.cancel());
+    _widgetOutcomeSub = null;
     _widgetQuickLogExecutor?.dispose();
     _widgetQuickLogExecutor = null;
     final widgetPublisherTeardown =
@@ -1340,6 +1438,10 @@ class _LunarLogAppState extends State<LunarLogApp>
       ],
       child: MaterialApp(
         navigatorKey: _navigatorKey,
+        // Issue #1016: the widget quick-log outcome fires outside any
+        // screen's build, so its acknowledgement is shown through this
+        // app-wide messenger key (the shell's only Scaffold lives below).
+        scaffoldMessengerKey: _scaffoldMessengerKey,
         navigatorObservers: _navigatorObservers,
         title: _appTitle,
         theme: AppTheme.lightTheme,
