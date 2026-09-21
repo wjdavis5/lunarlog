@@ -1,6 +1,8 @@
-/// Issue #196 AC6: the Health Platform Sync type registry carries the iOS 26
-/// menopause category types as future-mapping placeholders — named, owned,
-/// and deliberately unwritten.
+/// Issues #196 (AC6) and #246: the Health Platform Sync type registry
+/// carries the iOS 26 menopause category types — named, mapped in pure
+/// code by `lib/data/health/health_mode_interval_mapping.dart`, and
+/// deliberately unwritten (the adapter still has no platform plugin, so
+/// there is no write path to call).
 library;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,30 +12,45 @@ HealthTypeRegistryEntry _entryFor(String concept) =>
     kHealthTypeRegistry.firstWhere((entry) => entry.concept == concept);
 
 void main() {
-  group('menopausalState / bleedingAfterMenopause (issue #196)', () {
-    test('are registered as future candidates with their HealthKit ids', () {
-      final menopausalState = _entryFor('menopausalState');
+  group('the four #246 life-stage interval types', () {
+    test('all four are future candidates owned by #246', () {
+      for (final concept in [
+        'pregnancy',
+        'lactation',
+        'menopausalState',
+        'bleedingAfterMenopause',
+      ]) {
+        final entry = _entryFor(concept);
+        expect(
+          entry.status,
+          HealthTypeMappingStatus.futureCandidate,
+          reason: concept,
+        );
+        expect(entry.issue, '#246', reason: concept);
+        // No port method, no channel entry, no write path: a future
+        // candidate is HealthKit-only here, and the explicit null is the
+        // recorded Health Connect absence.
+        expect(entry.healthConnectRecord, isNull, reason: concept);
+      }
+    });
+
+    test('each names its iOS 26 HealthKit identifier', () {
       expect(
-        menopausalState.status,
-        HealthTypeMappingStatus.futureCandidate,
+        _entryFor('pregnancy').healthKitIdentifier,
+        'HKCategoryTypeIdentifier.pregnancy',
       );
       expect(
-        menopausalState.healthKitIdentifier,
+        _entryFor('lactation').healthKitIdentifier,
+        'HKCategoryTypeIdentifier.lactation',
+      );
+      expect(
+        _entryFor('menopausalState').healthKitIdentifier,
         'HKCategoryTypeIdentifier.menopausalState',
       );
-      // Health Connect has no analogue today, which is exactly why these are
-      // placeholders rather than port methods.
-      expect(menopausalState.healthConnectRecord, isNull);
-      expect(menopausalState.issue, contains('#196'));
-
-      final bleeding = _entryFor('bleedingAfterMenopause');
-      expect(bleeding.status, HealthTypeMappingStatus.futureCandidate);
       expect(
-        bleeding.healthKitIdentifier,
+        _entryFor('bleedingAfterMenopause').healthKitIdentifier,
         'HKCategoryTypeIdentifier.bleedingAfterMenopause',
       );
-      expect(bleeding.healthConnectRecord, isNull);
-      expect(bleeding.issue, contains('#196'));
     });
 
     test('a future candidate never claims a port method', () {
@@ -47,6 +64,21 @@ void main() {
           reason: entry.concept,
         );
       }
+    });
+  });
+
+  group('menopausalState / bleedingAfterMenopause (issue #196 AC6)', () {
+    test('are registered with their HealthKit ids and their mapping', () {
+      final menopausalState = _entryFor('menopausalState');
+      expect(
+        menopausalState.healthKitIdentifier,
+        'HKCategoryTypeIdentifier.menopausalState',
+      );
+      final bleeding = _entryFor('bleedingAfterMenopause');
+      expect(
+        bleeding.healthKitIdentifier,
+        'HKCategoryTypeIdentifier.bleedingAfterMenopause',
+      );
     });
   });
 }

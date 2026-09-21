@@ -2,26 +2,31 @@
 /// catalogue of OS-health data types lunarlog maps to, each entry
 /// carrying its mapping status. This is the one place a future issue can
 /// look to see what exists, what is planned, and what is deliberately
-/// absent. The `menopausalState`/`bleedingAfterMenopause` entries are the
-/// future-mapping placeholders issue #196 requires (registry entries only,
-/// **no write path implemented**), sequenced behind Perimenopause mode
-/// existing at all.
+/// absent.
 ///
 /// Issue #228 added the fertility/measurement entries (`cervicalMucus`,
 /// `ovulationTest`, `basalBodyTemperature` — implemented) and recorded
-/// `pregnancyTestResult`, `progesteroneTestResult`, `pregnancy`, and
-/// `lactation` as [HealthTypeMappingStatus.deliberatelyUnsupported]. The
-/// last two were issue #192's future-mapping placeholders; #228 is the
-/// issue that made the call to sequence them behind the Modes epic (#246)
-/// and record that explicitly, so the decision is visible in code rather
-/// than rediscovered later.
+/// `pregnancyTestResult` and `progesteroneTestResult` as
+/// [HealthTypeMappingStatus.deliberatelyUnsupported].
+///
+/// Issue #246 owns the four life-stage interval types: `pregnancy`,
+/// `lactation`, `menopausalState`, and `bleedingAfterMenopause`. The
+/// product modes the work was sequenced behind have landed (pregnancy
+/// mode #192, perimenopause mode #196), and #246 has since documented
+/// their mappings in pure code — `lib/data/health/health_mode_interval_mapping.dart`
+/// derives the interval/point samples from mode transitions and enforces
+/// `menopausalState`'s start == end constraint structurally — but the
+/// Health Platform Sync adapter still has **no platform plugin**, so
+/// there is no write path to call and all four stay
+/// [HealthTypeMappingStatus.futureCandidate]: named, mapped, deliberately
+/// unwritten.
 ///
 /// iOS 26 added `HKCategoryTypeIdentifier.pregnancy` and `.lactation`
 /// (interval samples carrying `HKCategoryValueNotApplicable`), and Apple's
 /// Health app shows gestational age across charts once a pregnancy is
 /// entered (`developer.apple.com/documentation/updates/healthkit`). Health
-/// Connect has no pregnancy/lactation record type today, so a future
-/// mapping would be HealthKit-only — a cross-platform port method (the
+/// Connect has no analogue for any of the four, so a future mapping is
+/// HealthKit-only — a cross-platform port method (the
 /// `HealthPlatformStore` shape, one method per data-type concept) cannot
 /// exist until Health Connect grows an analogue or the port gains an
 /// iOS-only member.
@@ -146,10 +151,10 @@ const List<HealthTypeRegistryEntry> kHealthTypeRegistry = [
     issue: '#228',
   ),
   // Issue #228: deliberately unsupported, with the reason recorded so a
-  // future reader can see it was a decision, not an oversight. `pregnancy`
-  // and `lactation` are the iOS 26 interval category types issue #192
-  // first placed here as future candidates; Issue #228 reclassifies them
-  // as sequenced behind the Modes epic (#246), still not implemented.
+  // future reader can see it was a decision, not an oversight. (`pregnancy`
+  // and `lactation`, which #228 had also parked here behind the Modes epic,
+  // moved back to future candidates when #246 documented their mappings —
+  // see the block below.)
   HealthTypeRegistryEntry(
     concept: 'pregnancyTestResult',
     status: HealthTypeMappingStatus.deliberatelyUnsupported,
@@ -172,50 +177,57 @@ const List<HealthTypeRegistryEntry> kHealthTypeRegistry = [
         'Not a lunarlog tracking category and with no Health Connect '
         'analogue: deliberately unsupported alongside pregnancyTestResult.',
   ),
+  // Issue #246: the four life-stage interval types. Their mappings are
+  // documented and derived in pure code —
+  // `lib/data/health/health_mode_interval_mapping.dart` — but the adapter
+  // still has no platform plugin, so there is no write path to call and
+  // all four stay future candidates: named, mapped, deliberately
+  // unwritten. Health Connect has no analogue for any of the four, so
+  // each is HealthKit-only.
+  //
+  // `pregnancy` and `lactation` are open/closed interval samples carrying
+  // `HKCategoryValueNotApplicable` (existence, not a value, is the
+  // signal), tied to a mode span: pregnancy mode's `mode_started_on` →
+  // exit date derives the pregnancy interval ([LifecycleMode.pregnancy]).
+  // No lunarlog mode derives lactation today — the shape is pinned by the
+  // mapping module's explicit constructor so a future mode wires the same
+  // plan type rather than reinventing it.
+  //
+  // `menopausalState` is a **point-in-time** sample whose start and end
+  // date must be **identical** — HealthKit rejects a save where they
+  // differ, unlike every interval sample this registry otherwise names.
+  // The mapping's `MenopausalStateSample` is built from a single date, so
+  // a mismatched pair is unrepresentable. `bleedingAfterMenopause` is an
+  // interval sample carrying `HKCategoryValueVaginalBleeding`, written
+  // for bleed days logged while perimenopause mode is active — reusing
+  // #193's shared flow-value table (`mapFlowToHealthWrite`), not a
+  // separate ad hoc mapping.
   HealthTypeRegistryEntry(
     concept: 'pregnancy',
-    status: HealthTypeMappingStatus.deliberatelyUnsupported,
+    status: HealthTypeMappingStatus.futureCandidate,
     healthKitIdentifier: 'HKCategoryTypeIdentifier.pregnancy',
     healthConnectRecord: null,
     issue: '#246',
-    reason:
-        'Sequenced behind the Modes epic (issue #246), which owns pregnancy '
-        'mode; Health Connect has no pregnancy interval record today.',
   ),
   HealthTypeRegistryEntry(
     concept: 'lactation',
-    status: HealthTypeMappingStatus.deliberatelyUnsupported,
+    status: HealthTypeMappingStatus.futureCandidate,
     healthKitIdentifier: 'HKCategoryTypeIdentifier.lactation',
     healthConnectRecord: null,
     issue: '#246',
-    reason:
-        'Sequenced behind the Modes epic (issue #246); Health Connect has '
-        'no lactation record type today.',
   ),
-  // Issue #196 AC6: the iOS 26 menopause category types — registry entries
-  // only (no port method, no channel codec entry, no write path). Health
-  // Connect has no menopause-state or post-menopausal-bleeding analogue
-  // today, so both are HealthKit-only candidates, which by itself rules out
-  // a cross-platform port method until one exists (A3-15: write support is
-  // explicitly out of scope for the household's current users).
-  //
-  // Future implementer note: `menopausalState` is a point-in-time category
-  // sample whose start and end date must be **identical** — HealthKit
-  // rejects a save where they differ, unlike every interval sample this
-  // registry otherwise names. `.bleedingAfterMenopause` is an interval
-  // sample carrying `HKCategoryValueVaginalBleeding`.
   HealthTypeRegistryEntry(
     concept: 'menopausalState',
     status: HealthTypeMappingStatus.futureCandidate,
     healthKitIdentifier: 'HKCategoryTypeIdentifier.menopausalState',
     healthConnectRecord: null,
-    issue: '#196 (placeholder; future Health Platform Sync issue)',
+    issue: '#246',
   ),
   HealthTypeRegistryEntry(
     concept: 'bleedingAfterMenopause',
     status: HealthTypeMappingStatus.futureCandidate,
     healthKitIdentifier: 'HKCategoryTypeIdentifier.bleedingAfterMenopause',
     healthConnectRecord: null,
-    issue: '#196 (placeholder; future Health Platform Sync issue)',
+    issue: '#246',
   ),
 ];
