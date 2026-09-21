@@ -13,7 +13,7 @@ void main() {
     });
 
     test('label is human readable and distinct per role', () {
-      expect(ParentPostTransferRole.coManager.label, 'Co-manager');
+      expect(ParentPostTransferRole.coManager.label, 'Co-Parent');
       expect(ParentPostTransferRole.viewer.label, 'Viewer');
       expect(
         ParentPostTransferRole.coManager.label,

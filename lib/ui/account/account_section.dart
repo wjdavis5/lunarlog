@@ -552,8 +552,8 @@ class _AccountSectionState extends State<AccountSection> {
           leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
           title: Text('Delete account',
               style: TextStyle(color: theme.colorScheme.error)),
-          subtitle: const Text(
-              'Removes the account, its server rows, and this device\'s data.'),
+          subtitle: Text(
+              AppLocalizations.of(context).accountDeleteTileSubtitle),
           enabled: !_deleting,
           trailing: _deleting
               ? const SizedBox(
@@ -845,10 +845,8 @@ class _AccountSectionState extends State<AccountSection> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Sign out everywhere?'),
-        content: const Text(
-          'Ends every session of this account. Other devices may keep '
-          'working for up to an hour, until their access expires, and the '
-          'data is removed from this device.',
+        content: Text(
+          AppLocalizations.of(context).accountSignOutEverywhereBody,
         ),
         actions: [
           TextButton(

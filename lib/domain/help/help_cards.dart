@@ -57,8 +57,10 @@ class HelpCards {
 
   /// Issue #853: the "period is late" card's own review date — its body
   /// gained the early-years variance paragraph on 2026-09-20, so it no
-  /// longer shares the bundle-wide stamp.
-  static const String _periodLateReviewDate = '2026-09-20';
+  /// longer shares the bundle-wide stamp. Issue #998 reworded that
+  /// paragraph (2026-09-21) to explain the teen rule and the separate
+  /// irregular-cycles axis for a parent.
+  static const String _periodLateReviewDate = '2026-09-21';
   static const String _appPredictionSource =
       "lunarlog's own prediction model";
   static const String _appBehaviourSource = 'lunarlog app behaviour';
@@ -144,7 +146,8 @@ class HelpCards {
     title: 'Why the app says a period is late',
     summary:
         '"Late" only means today is past the estimated date. The estimate '
-        'is an average, and averages miss.',
+        'is an average, and averages miss. Teen-mode profiles never see '
+        'the "late" wording.',
     body: [
       'The app compares today with the estimated next start. A few days '
           'past it, the resolver offers three options: log the period, '
@@ -155,9 +158,14 @@ class HelpCards {
       'In the first few years after periods start — and at other times, '
           'like perimenopause — cycle lengths vary naturally, and an '
           'estimate built on averages will miss more often. That is '
-          'variation, not a fault: profiles set to the teen care mode, or '
-          'with the "irregular cycles" framing on, are shown ranges and '
-          'quiet "log it when it comes" wording instead of this banner.',
+          'variation, not a fault. Profiles set to the teen care mode never '
+          'see this banner: a teen\u2019s cycles are still settling, and '
+          '"late" can read as a failure when nothing is wrong, so those '
+          'profiles get a quiet "log it when it comes" line instead.',
+      'The "irregular cycles" framing switch is a separate setting. It '
+          'changes how much the estimate hedges, but it is not what keeps '
+          'this banner away from a teen — teen mode does that on its own, '
+          'at every stage.',
       'A late estimate is not a statement about anyone\u2019s body — it '
           'only means nothing logged yet lines up with the average. If '
           'something worries you, talk to a doctor or another clinician '

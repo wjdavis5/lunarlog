@@ -1695,9 +1695,9 @@ void main() {
       await disposeOverview(tester, longCycle);
     });
 
-    testWidgets('teen mode with the framing explicitly OFF keeps the '
-        'standard resolver when late (teen is not a reduced app, and the '
-        'operator chose the adult framing)', (tester) async {
+    testWidgets('issue #998: teen mode with the framing explicitly OFF '
+        'still silences the late resolver -- the flag controls the estimate '
+        'axis, not the overdue wording', (tester) async {
       final h = await pumpOverview(
         tester,
         mode: ProfileMode.teen,
@@ -1707,16 +1707,34 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('late-resolver')),
-        findsOneWidget,
-        reason: 'an explicit choice overrides the engine default',
+        findsNothing,
+        reason: 'teen avoids the error-styled banner at every tier (#998)',
       );
+      expect(find.text('Skip this cycle'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'No new period logged yet — a few days either way is normal.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
+        findsOneWidget,
+      );
+      // The flag is off, so the estimate is the plain single-date teen
+      // register -- only the overdue wording is unconditionally quiet.
       expect(
         find.text('Your next period is estimated around: August 30, 2026'),
         findsOneWidget,
         reason: 'issue #221: rolled forward one 28-day mean cycle',
       );
-      // The wheel's overdue unit keeps the plain framing vocabulary.
-      expect(find.text('28 days late'), findsOneWidget);
+      // The wheel's overdue unit names the estimate, never "late" (#1000).
+      expect(find.text('days past estimate'), findsOneWidget);
+      expect(find.text('days late'), findsNothing);
       await disposeOverview(tester, h);
     });
 
@@ -1817,7 +1835,7 @@ void main() {
         find.byKey(const ValueKey('overview-irregular-overdue')),
         findsOneWidget,
       );
-      expect(find.textContaining('cycles often vary'), findsOneWidget);
+      expect(find.textContaining('a few days either way is normal'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
         findsOneWidget,
@@ -1864,6 +1882,55 @@ void main() {
       // Issue #1000: wheel overdue unit uses 'past estimate' across every framing.
       expect(find.text('day past estimate'), findsOneWidget);
       expect(find.text('day late'), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #998: a teen profile at high confidence, three days '
+        'past the estimate, shows the quiet line -- no "late" text and no '
+        'red resolver', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        // kSteadyHighStarts reads `high`, lifting the irregular-cycles
+        // framing; today is shifted so the 2026-08-29 estimate sits three
+        // days in the past (past the 2-day grace, so standard mode would
+        // render the error-styled late resolver here).
+        today: LocalDate(2026, 9, 1),
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kSteadyHighStarts),
+      );
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'teen mode silences the error-styled banner at every tier',
+      );
+      expect(find.text('Skip this cycle'), findsNothing);
+      expect(find.text('Log it'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'No new period logged yet — a few days either way is normal.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
+        findsOneWidget,
+        reason: 'the quiet line keeps its one "log it when it comes" action',
+      );
+      // High confidence lifted the irregular framing, so the estimate is a
+      // single date in the plain teen register -- the quiet overdue line is
+      // what is left, not the resolver.
+      expect(
+        find.textContaining('Your next period is estimated around:'),
+        findsOneWidget,
+      );
+      // No "late" anywhere on the surface (the wheel's overdue unit names
+      // the estimate, the resolver is gone).
+      expect(find.textContaining('late'), findsNothing);
       await disposeOverview(tester, h);
     });
 

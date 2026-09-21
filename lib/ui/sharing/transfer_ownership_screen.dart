@@ -108,9 +108,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         title: const Text('Transfer ownership?'),
         content: SingleChildScrollView(
           child: Text(
-            '${widget.profile.displayName} will become the owner of this '
-            "profile. You'll keep access as ${role.label}, and they can "
-            'remove that access at any time.',
+            AppLocalizations.of(context).transferOwnershipConfirmBody(
+              widget.profile.displayName,
+              role.label,
+            ),
           ),
         ),
         actions: [
@@ -340,12 +341,15 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
 
   Widget _armableBody(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('What changes', style: theme.textTheme.titleMedium),
         const SizedBox(height: 8),
-        _bullet("${widget.profile.displayName} becomes this profile's owner."),
+        _bullet(
+          l10n.transferOwnershipBecomesGuardian(widget.profile.displayName),
+        ),
         _bullet('You keep the role you choose below.'),
         _bullet('They can remove your access at any time.'),
         _bullet(
@@ -392,8 +396,8 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         const SizedBox(height: 8),
         Text(
           _selectedRole == ParentPostTransferRole.viewer
-              ? 'Viewer: read-only access to their calendar and entries.'
-              : 'Co-manager: keep logging entries and managing this profile.',
+              ? l10n.transferOwnershipRoleViewer
+              : l10n.transferOwnershipRoleCoParent,
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),

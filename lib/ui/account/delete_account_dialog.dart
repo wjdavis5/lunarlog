@@ -21,6 +21,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/models/profile.dart';
@@ -236,6 +237,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final exportError = _exportError;
     return PopScope(
       // #17 P1 fix: block the hardware-back/system-pop path while an export
@@ -257,11 +259,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'This permanently removes the server rows for this account, '
-                    'the account itself, and this device\'s local data. This '
-                    'cannot be undone.',
-                  ),
+                  Text(l10n.accountDeleteDialogBody),
                   const SizedBox(height: 8),
                   const Text(
                     'Entries you logged as a guardian on someone else\'s '
