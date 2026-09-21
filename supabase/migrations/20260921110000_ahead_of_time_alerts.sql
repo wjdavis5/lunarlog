@@ -46,13 +46,17 @@
 -- what "respect the digest cadence" means for kinds that carry no cadence
 -- column of their own.
 --
--- Dedupe is per (recipient, profile, kind, window): each row of the new
--- public.ahead_of_time_alert_state records the estimated_next_start last
--- enqueued for, so a nightly re-run over an unchanged window enqueues
--- nothing and only a freshly published estimate re-arms the alert -- the
--- same shape missed_entry_alert_state uses. Revocation purges it (an AFTER
--- trigger on profile_guardians, so every revocation path is covered, not
--- just revoke_guardian()); account/profile hard deletes cascade it.
+-- Dedupe is per (recipient, profile, kind, window). Rather than a second
+-- state table, public.missed_entry_alert_state is generalised with a `kind`
+-- discriminator (defaulting to 'missed_entry' for every existing row) and a
+-- (profile_id, user_id, kind) primary key: each row records the
+-- estimated_next_start last enqueued for, so a nightly re-run over an
+-- unchanged window enqueues nothing and only a freshly published estimate
+-- re-arms the alert -- the same shape the missed-entry scan already uses.
+-- Generalising that table (rather than adding an analogous one) means
+-- revocation (revoke_guardian deletes by (profile, user)), account/profile
+-- deletion, and export_account_data() all keep covering the marker with no
+-- further wiring, and the Issue #292 user-keyed-table guard stays satisfied.
 --
 -- This file only adds and `create or replace`s; no merged migration is
 -- edited in place. The replaced functions below carry their prior bodies
@@ -140,84 +144,45 @@ revoke all on function public.ahead_of_time_lead_days() from public, anon, authe
 revoke all on function public.ahead_of_time_min_pms_intervals() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4. ahead_of_time_alert_state: the per-(recipient, profile, kind) window
---    dedupe marker. Same posture as missed_entry_alert_state -- owned
---    exclusively by the scan, no policies, no grants; both FKs cascade so a
---    profile or account hard delete takes the marker with it.
+-- 4. Generalise missed_entry_alert_state with a kind discriminator. Every
+--    existing row reads back as kind = 'missed_entry', and the primary key
+--    becomes (profile_id, user_id, kind). Owned exclusively by the two scans
+--    (scan_missed_entry_reminders and scan_ahead_of_time_alerts); no
+--    policies, no grants; both FKs already cascade.
 -- ---------------------------------------------------------------------------
 
-create table public.ahead_of_time_alert_state (
-  profile_id text not null
-    references public.profiles (id) on delete cascade,
-  user_id uuid not null
-    references auth.users (id) on delete cascade,
-  kind text not null
-    constraint ahead_of_time_alert_state_kind_check
-    check (kind in ('period_soon', 'restock_due', 'pms_soon')),
-  last_enqueued_for date,
-  primary key (profile_id, user_id, kind)
-);
+alter table public.missed_entry_alert_state
+  add column kind text not null default 'missed_entry'
+    constraint missed_entry_alert_state_kind_check
+    check (kind in ('missed_entry', 'period_soon', 'restock_due', 'pms_soon'));
 
-comment on table public.ahead_of_time_alert_state is
-  'Per-(recipient, profile, kind) ahead-of-time dedupe marker (Issue #851), '
-  'owned exclusively by public.scan_ahead_of_time_alerts(). Records the '
-  'estimated_next_start the last alert was enqueued for, so a nightly re-run '
-  'over an unchanged window enqueues nothing and a freshly published estimate '
-  're-arms it -- the same shape missed_entry_alert_state uses for the '
-  'missed-entry scan. Purged on guardian revocation by '
-  'profile_guardians_purge_ahead_of_time_state, so a revoked-and-re-invited '
-  'guardian is never silently suppressed for a still-published window.';
+alter table public.missed_entry_alert_state
+  drop constraint missed_entry_alert_state_pkey;
 
-alter table public.ahead_of_time_alert_state enable row level security;
-alter table public.ahead_of_time_alert_state force row level security;
+alter table public.missed_entry_alert_state
+  add primary key (profile_id, user_id, kind);
 
-revoke all on table public.ahead_of_time_alert_state from public, anon, authenticated;
+comment on table public.missed_entry_alert_state is
+  'Per-(recipient, profile, kind) cycle-window dedupe marker, shared by '
+  'public.scan_missed_entry_reminders() (kind = ''missed_entry'') and '
+  'public.scan_ahead_of_time_alerts() (Issue #851: ''period_soon'', '
+  '''restock_due'', ''pms_soon''). Records the estimated_next_start the last '
+  'alert was enqueued for, so a nightly re-run over an unchanged window '
+  'enqueues nothing and a freshly published estimate re-arms it. Owned '
+  'exclusively by the two scans (SECURITY DEFINER); no policies, no grants. '
+  'Issue #851 generalised this from a per-(profile, guardian) marker: a '
+  'dedicated second table would have needed its own revocation cleanup, '
+  'export projection, and Issue #292 accounting, while this one already has '
+  'all three.';
 
--- ---------------------------------------------------------------------------
--- 5. Purge the marker on revocation/removal. A trigger on
---    profile_guardians (rather than a re-emit of revoke_guardian) covers
---    every revocation path -- revoke_guardian(), a self-leave, or any future
---    one -- so a revoked-and-re-invited guardian with a still-published
---    estimated_next_start is never silently suppressed for that window.
---    SECURITY DEFINER because profile_guardians has no grant on the marker
---    table and a self-leave runs under authenticated.
--- ---------------------------------------------------------------------------
-
-create or replace function public.purge_ahead_of_time_state_on_revocation()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if tg_op = 'DELETE'
-     or (new.status = 'revoked' and old.status is distinct from new.status) then
-    delete from public.ahead_of_time_alert_state
-     where profile_id = old.profile_id
-       and user_id = old.user_id;
-  end if;
-  return null; -- AFTER trigger; return value is ignored.
-end;
-$$;
-
-comment on function public.purge_ahead_of_time_state_on_revocation() is
-  'AFTER UPDATE OR DELETE trigger on profile_guardians (Issue #851): drops '
-  'the guardian''s ahead_of_time_alert_state markers for that profile '
-  'whenever their membership is revoked or removed, so a revoked-then-'
-  're-invited guardian is not silently suppressed by a stale pre-revocation '
-  'marker for a still-published estimate window. SECURITY DEFINER because '
-  'the marker table has no grant and an ordinary self-leave runs as '
-  'authenticated.';
-
-revoke execute on function public.purge_ahead_of_time_state_on_revocation()
-  from public, anon, authenticated;
-
-create trigger profile_guardians_purge_ahead_of_time_state
-  after update or delete on public.profile_guardians
-  for each row execute function public.purge_ahead_of_time_state_on_revocation();
+comment on column public.missed_entry_alert_state.kind is
+  'Issue #851: which alert kind this marker dedupes -- ''missed_entry'' for '
+  'the pre-#851 scan, or one of the ahead-of-time kinds. An existing row '
+  'defaults to ''missed_entry'', preserving the missed-entry scan''s exact '
+  'prior behaviour.';
 
 -- ---------------------------------------------------------------------------
--- 6. scan_ahead_of_time_alerts: the nightly ahead-of-time scan (Issue #851).
+-- 5. scan_ahead_of_time_alerts: the nightly ahead-of-time scan (Issue #851).
 --    SECURITY DEFINER -- it reads day_entries/visit_prep_items across
 --    families but never their note/tag content. Per-row exception isolation
 --    mirrors scan_missed_entry_reminders' round-2 review #7 fix: one
@@ -316,7 +281,7 @@ begin
         -- Per (recipient, profile, kind, window) dedupe: only a change in
         -- the published estimate re-arms the alert.
         select s.last_enqueued_for into v_last
-          from public.ahead_of_time_alert_state s
+          from public.missed_entry_alert_state s
          where s.profile_id = v_row.profile_id
            and s.user_id = v_row.user_id
            and s.kind = v_kind;
@@ -353,7 +318,7 @@ begin
           );
         end if;
 
-        insert into public.ahead_of_time_alert_state
+        insert into public.missed_entry_alert_state
           (profile_id, user_id, kind, last_enqueued_for)
         values (v_row.profile_id, v_row.user_id, v_kind, v_est)
         on conflict (profile_id, user_id, kind) do update
@@ -380,13 +345,117 @@ comment on function public.scan_ahead_of_time_alerts() is
   'always, restock_due only with a live unstocked supply item, pms_soon only '
   'with at least ahead_of_time_min_pms_intervals() logged PMS intervals. '
   'Deduped per (recipient, profile, kind, window) via '
-  'ahead_of_time_alert_state, quiet-hours shifted with resolve_deliver_after, '
+  'missed_entry_alert_state, quiet-hours shifted with resolve_deliver_after, '
   'and subject to the same daily push ceiling as immediate alerts (overflow '
   'held for the digest). Each row is isolated in its own begin/exception '
   'block so one tenant never aborts the scan for the rest. Returns the number '
   'of alert rows enqueued.';
 
 revoke all on function public.scan_ahead_of_time_alerts() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 6. Re-emit scan_missed_entry_reminders: the marker table gained `kind`, so
+--    its join and insert must stay scoped to kind = 'missed_entry' (a bare
+--    (profile, user) join would now match every ahead-of-time kind's marker
+--    and the conflict target must name the new key). Body carried forward
+--    verbatim from 20260906230000_reminder_windows_and_cron.sql; the join
+--    predicate, the inserted `kind`, and the conflict target are the only
+--    edits.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.scan_missed_entry_reminders() returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_today date := current_date;
+  v_count integer := 0;
+  v_row record;
+  v_newest date;
+begin
+  for v_row in
+    select p.user_id, p.profile_id, p.missed_entry_days,
+           p.quiet_hours_start, p.quiet_hours_end, p.time_zone,
+           w.estimated_next_start, w.episode_open,
+           s.last_enqueued_for
+      from public.notification_preferences p
+      join public.profile_guardians g
+        on g.profile_id = p.profile_id and g.user_id = p.user_id
+      join public.profile_reminder_windows w
+        on w.profile_id = p.profile_id
+      -- #8 (review): dedupe is per (profile, guardian), not per profile --
+      -- see missed_entry_alert_state's comment. Issue #851 narrowed the
+      -- join to kind = 'missed_entry' so an ahead-of-time marker can never
+      -- masquerade as a missed-entry marker. A guardian with no row yet
+      -- here has never been enqueued for anything, hence the left join.
+      left join public.missed_entry_alert_state s
+        on s.profile_id = p.profile_id and s.user_id = p.user_id
+       and s.kind = 'missed_entry'
+     where p.missed_entry_days is not null
+       and g.status = 'accepted'
+  loop
+    -- #7 (round-2 review): round-1 #15 asked for two things -- splitting
+    -- the cron statements (done, see run_nightly_caregiver_alerts_job()
+    -- below) *and* per-row exception isolation in this loop. Only the cron
+    -- split landed the first time. Without this begin/exception, any error
+    -- on one tenant's row (a concurrent profile or user deletion racing the
+    -- notification_outbox FK insert, for instance) aborts the whole
+    -- cross-tenant scan, silently starving every other guardian's
+    -- missed-entry reminder for that run.
+    begin
+      select max(local_date) into v_newest
+        from public.day_entries
+       where profile_id = v_row.profile_id
+         and deleted_at is null;
+
+      if v_newest is not null
+         and (v_today - v_newest) > v_row.missed_entry_days
+         and (v_row.estimated_next_start <= v_today or coalesce(v_row.episode_open, false))
+         and v_row.last_enqueued_for is distinct from v_row.estimated_next_start
+      then
+        insert into public.notification_outbox
+          (profile_id, recipient_user_id, kind, deliver_after)
+        values (
+          v_row.profile_id, v_row.user_id, 'missed_entry',
+          public.resolve_deliver_after(
+            now(), v_row.quiet_hours_start, v_row.quiet_hours_end, v_row.time_zone
+          )
+        );
+
+        insert into public.missed_entry_alert_state
+          (profile_id, user_id, kind, last_enqueued_for)
+        values (v_row.profile_id, v_row.user_id, 'missed_entry', v_row.estimated_next_start)
+        on conflict (profile_id, user_id, kind) do update
+          set last_enqueued_for = excluded.last_enqueued_for;
+
+        v_count := v_count + 1;
+      end if;
+    exception
+      when others then
+        raise notice 'scan_missed_entry_reminders: profile % / user % failed: %',
+          v_row.profile_id, v_row.user_id, sqlerrm;
+    end;
+  end loop;
+
+  return v_count;
+end;
+$$;
+
+comment on function public.scan_missed_entry_reminders() is
+  'Enqueues one missed_entry alert per (guardian, profile) whose newest '
+  'live entry is older than the guardian''s threshold and whose published '
+  'reminder window says the estimate has passed or an episode is open '
+  '(R14). Deduped per (profile, guardian, kind = ''missed_entry'') via '
+  'missed_entry_alert_state (KTD8, #8 review fix; Issue #851 generalised the '
+  'marker table with a kind discriminator), so a re-run before a fresh '
+  'window is published enqueues nothing (R15), and one guardian being '
+  'enqueued never suppresses a co-guardian with a different threshold on the '
+  'same profile. Each row is isolated in its own begin/exception block '
+  '(round-2 review #7) so one tenant''s failure can never abort the scan for '
+  'every other tenant.';
+
+revoke all on function public.scan_missed_entry_reminders() from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 7. Wire the scan into the nightly job, in its own isolated sub-block,

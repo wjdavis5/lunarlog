@@ -3,16 +3,17 @@
 -- public.ahead_of_time_lead_days()/ahead_of_time_min_pms_intervals(), the
 -- extended notification_outbox kind CHECK, the three
 -- notification_preferences opt-in booleans (off by default), the
--- ahead_of_time_alert_state window dedupe marker, the revocation purge
--- trigger, the extended cancel_outbox_on_preference_off(), and the
--- extended resolve_notification_outbox_dispatch().
+-- missed_entry_alert_state kind-generalisation (the per-window dedupe
+-- marker), the revocation cleanup, the extended
+-- cancel_outbox_on_preference_off(), and the extended
+-- resolve_notification_outbox_dispatch().
 --
 -- Runs on a stack started without pg_cron/pg_net (AGENTS.md's
 -- `supabase start -x ...` exclusion list) -- the scan is exercised
 -- directly, proving KTD9's guard: the alert logic never depends on the cron
 -- schedule actually existing.
 begin;
-select plan(38);
+select plan(39);
 
 -- ---------------------------------------------------------------------------
 -- Helpers.
@@ -32,7 +33,7 @@ create function pg_temp.state_count(
   p_profile text, p_recipient uuid, p_kind text
 ) returns bigint
 language sql security definer set search_path = '' as $$
-  select count(*) from public.ahead_of_time_alert_state
+  select count(*) from public.missed_entry_alert_state
    where profile_id = p_profile
      and user_id = p_recipient
      and kind = p_kind;
@@ -113,11 +114,19 @@ select is(
 );
 
 select is(
-  (select count(*) from pg_proc
-    where proname = 'purge_ahead_of_time_state_on_revocation'
-      and pronamespace = 'public'::regnamespace),
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and table_name = 'missed_entry_alert_state'
+      and column_name = 'kind' and column_default like '''missed_entry''%'),
   1::bigint,
-  'the revocation purge trigger function exists'
+  'missed_entry_alert_state gained a kind discriminator defaulting to missed_entry'
+);
+select is(
+  (select pg_get_constraintdef(oid)
+     from pg_constraint
+    where conname = 'missed_entry_alert_state_kind_check')
+    like '%''pms_soon''%',
+  true,
+  'the marker kind CHECK admits the ahead-of-time kinds'
 );
 
 -- ---------------------------------------------------------------------------
@@ -511,7 +520,7 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Group 558: the revocation purge trigger and the preference-off cancel.
+-- Group 558: the revocation cleanup and the preference-off cancel.
 -- ---------------------------------------------------------------------------
 
 select tests.create_supabase_user('mom_858');
@@ -544,7 +553,7 @@ select set_config('role', 'service_role', true);
 select is(
   pg_temp.state_count(tests.ulid(558), tests.get_supabase_uid('dad_858'), 'period_soon'),
   0::bigint,
-  'revocation: the marker is purged by the profile_guardians trigger'
+  'revocation: revoke_guardian purges the marker (pre-existing missed_entry_alert_state cleanup now covers every kind)'
 );
 
 -- Turning the boolean off cancels an already-queued unsent row.
@@ -659,17 +668,18 @@ select is(
   'authenticated cannot execute ahead_of_time_lead_days'
 );
 select is(
-  has_table_privilege('authenticated', 'public.ahead_of_time_alert_state', 'select'),
+  has_table_privilege('authenticated', 'public.missed_entry_alert_state', 'select'),
   false,
-  'authenticated has no grant at all on ahead_of_time_alert_state'
+  'authenticated has no grant at all on the (now generalised) marker table'
 );
 
 select is(
-  (select count(*) from pg_proc
-    where proname = 'ahead_of_time_alert_state'
-      and pronamespace = 'public'::regnamespace),
-  0::bigint,
-  'ahead_of_time_alert_state is a table, not a function'
+  (select pg_get_constraintdef(oid)
+     from pg_constraint
+    where conname = 'missed_entry_alert_state_pkey')
+    like '%kind%',
+  true,
+  'the marker primary key now includes kind, so per-kind markers coexist per (profile, guardian)'
 );
 
 rollback;

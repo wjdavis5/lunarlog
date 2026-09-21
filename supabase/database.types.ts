@@ -30,35 +30,6 @@ export type Database = {
         }
         Relationships: []
       }
-      ahead_of_time_alert_state: {
-        Row: {
-          kind: string
-          last_enqueued_for: string | null
-          profile_id: string
-          user_id: string
-        }
-        Insert: {
-          kind: string
-          last_enqueued_for?: string | null
-          profile_id: string
-          user_id: string
-        }
-        Update: {
-          kind?: string
-          last_enqueued_for?: string | null
-          profile_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ahead_of_time_alert_state_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       care_notes: {
         Row: {
           body: string
@@ -591,16 +562,19 @@ export type Database = {
       }
       missed_entry_alert_state: {
         Row: {
+          kind: string
           last_enqueued_for: string | null
           profile_id: string
           user_id: string
         }
         Insert: {
+          kind?: string
           last_enqueued_for?: string | null
           profile_id: string
           user_id: string
         }
         Update: {
+          kind?: string
           last_enqueued_for?: string | null
           profile_id?: string
           user_id?: string
