@@ -3312,5 +3312,1071 @@
   "claimProfileBody": "Claiming this link makes you this profile's Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.",
   "@claimProfileBody": {
     "description": "Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'."
-  }
+  },
+    "sharingUnexpectedError": "An unexpected error occurred.",
+    "@sharingUnexpectedError": {
+      "description": "Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces."
+    },
+    "sharingAcceptInvitePreviewIntro": "You've been invited to join {profileName}'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.",
+    "@sharingAcceptInvitePreviewIntro": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        },
+        "roleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingAcceptInviteNeutralIntro": "You've been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.",
+    "@sharingAcceptInviteNeutralIntro": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable."
+    },
+    "sharingAcceptInvitePreviewLoading": "Loading invite details…",
+    "@sharingAcceptInvitePreviewLoading": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status while loading."
+    },
+    "sharingAcceptInvitePreviewError": "Couldn't load invite details, but you can still continue.",
+    "@sharingAcceptInvitePreviewError": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error."
+    },
+    "sharingAcceptInvitePreviewUnavailable": "This invite link may have expired or already been used.",
+    "@sharingAcceptInvitePreviewUnavailable": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview."
+    },
+    "sharingAcceptInviteTitle": "Join Shared Profile",
+    "@sharingAcceptInviteTitle": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet title."
+    },
+    "sharingAcceptInviteDecline": "Decline",
+    "@sharingAcceptInviteDecline": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet decline button."
+    },
+    "sharingAcceptInviteAccept": "Accept & Sync",
+    "@sharingAcceptInviteAccept": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet accept button."
+    },
+    "sharingAcceptInviteNameLabel": "Your display name (e.g. Dad, Mom, Grandma)",
+    "@sharingAcceptInviteNameLabel": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field label."
+    },
+    "sharingAcceptInviteNameHint": "Shows when you log entries",
+    "@sharingAcceptInviteNameHint": {
+      "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field hint."
+    },
+    "sharingAcceptPredictionTitle": "Connect to cycle predictions",
+    "@sharingAcceptPredictionTitle": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet title."
+    },
+    "sharingAcceptPredictionBody": "Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.",
+    "@sharingAcceptPredictionBody": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet body."
+    },
+    "sharingAcceptPredictionDecline": "Decline",
+    "@sharingAcceptPredictionDecline": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet decline button."
+    },
+    "sharingAcceptPredictionConnect": "Connect",
+    "@sharingAcceptPredictionConnect": {
+      "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet connect button."
+    },
+    "sharingClaimProfileTitle": "Become the Owner",
+    "@sharingClaimProfileTitle": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet title."
+    },
+    "sharingClaimProfileDecline": "Decline",
+    "@sharingClaimProfileDecline": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet decline button."
+    },
+    "sharingClaimProfileChildNameLabel": "Child's display name (optional)",
+    "@sharingClaimProfileChildNameLabel": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field label."
+    },
+    "sharingClaimProfileChildNameHint": "Shows on the profile",
+    "@sharingClaimProfileChildNameHint": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field hint."
+    },
+    "sharingClaimProfileParentLabelLabel": "Label for the parent (optional)",
+    "@sharingClaimProfileParentLabelLabel": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field label."
+    },
+    "sharingClaimProfileParentLabelHint": "Shows when they log entries",
+    "@sharingClaimProfileParentLabelHint": {
+      "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field hint."
+    },
+    "sharingInviteGuardianGenerateFailed": "Failed to generate invite. Please check your connection and try again.",
+    "@sharingInviteGuardianGenerateFailed": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure."
+    },
+    "sharingInviteGuardianRoleLabel": "Role:",
+    "@sharingInviteGuardianRoleLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog preset picker label."
+    },
+    "sharingInviteGuardianPresetCoParent": "Co-Parent (Can log, edit profile & invite)",
+    "@sharingInviteGuardianPresetCoParent": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice."
+    },
+    "sharingInviteGuardianPresetCaregiver": "Caregiver (Can log symptoms & periods)",
+    "@sharingInviteGuardianPresetCaregiver": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice."
+    },
+    "sharingInviteGuardianPresetViewer": "Viewer (Read-only access)",
+    "@sharingInviteGuardianPresetViewer": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice."
+    },
+    "sharingInviteGuardianCreatedTitle": "Invitation Created",
+    "@sharingInviteGuardianCreatedTitle": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state title."
+    },
+    "sharingInviteGuardianExpiry": "Expires in 48 hours. Can be redeemed once.",
+    "@sharingInviteGuardianExpiry": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note."
+    },
+    "sharingInviteGuardianCopied": "Copied to clipboard",
+    "@sharingInviteGuardianCopied": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation."
+    },
+    "sharingInviteGuardianDone": "Done",
+    "@sharingInviteGuardianDone": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog done button."
+    },
+    "sharingInviteGuardianCopyLink": "Copy Link",
+    "@sharingInviteGuardianCopyLink": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog copy-link button."
+    },
+    "sharingInviteGuardianShare": "Share",
+    "@sharingInviteGuardianShare": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog share button."
+    },
+    "sharingInviteGuardianTitle": "Invite guardian to {profileName}",
+    "@sharingInviteGuardianTitle": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingInviteGuardianNicknameLabel": "Nickname / Label (Optional)",
+    "@sharingInviteGuardianNicknameLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field label."
+    },
+    "sharingInviteGuardianNicknameHint": "e.g. Dad, Grandma, School Nurse",
+    "@sharingInviteGuardianNicknameHint": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field hint."
+    },
+    "sharingInviteGuardianHelpLabel": "How do invitations work?",
+    "@sharingInviteGuardianHelpLabel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog help-card link label."
+    },
+    "sharingInviteGuardianCancel": "Cancel",
+    "@sharingInviteGuardianCancel": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog cancel button."
+    },
+    "sharingInviteGuardianCreateLink": "Create Link",
+    "@sharingInviteGuardianCreateLink": {
+      "description": "Issue #1004 (tranche 1): invite-guardian dialog create-link button."
+    },
+    "sharingManageGuardiansCancel": "Cancel",
+    "@sharingManageGuardiansCancel": {
+      "description": "Issue #1004 (tranche 1): manage-guardians screen generic cancel action."
+    },
+    "sharingManageGuardiansEndPredictionTitle": "End prediction sharing?",
+    "@sharingManageGuardiansEndPredictionTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection."
+    },
+    "sharingManageGuardiansEndPredictionBody": "They will immediately lose the shared predictions calendar. You can create a new connection any time.",
+    "@sharingManageGuardiansEndPredictionBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection."
+    },
+    "sharingManageGuardiansEndSharing": "End sharing",
+    "@sharingManageGuardiansEndSharing": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection."
+    },
+    "sharingManageGuardiansPredictionSharingEnded": "Prediction sharing ended",
+    "@sharingManageGuardiansPredictionSharingEnded": {
+      "description": "Issue #1004 (tranche 1): snackbar after a prediction connection is revoked."
+    },
+    "sharingManageGuardiansEndSharingFailed": "Failed to end sharing. Check connection.",
+    "@sharingManageGuardiansEndSharingFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails."
+    },
+    "sharingManageGuardiansDeleteProfileTitle": "Delete {profileName} permanently?",
+    "@sharingManageGuardiansDeleteProfileTitle": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansDeleteProfileStep1Body": "This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian's access to it — including your own. Synced copies on every device are erased too.",
+    "@sharingManageGuardiansDeleteProfileStep1Body": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation body."
+    },
+    "sharingManageGuardiansContinue": "Continue",
+    "@sharingManageGuardiansContinue": {
+      "description": "Issue #1004 (tranche 1): first delete-profile confirmation continue action."
+    },
+    "sharingManageGuardiansDeleteProfileStep2Title": "Are you absolutely sure?",
+    "@sharingManageGuardiansDeleteProfileStep2Title": {
+      "description": "Issue #1004 (tranche 1): second delete-profile confirmation title."
+    },
+    "sharingManageGuardiansDeleteProfileStep2Body": "{profileName}'s history will be gone permanently, for every guardian on this profile. There is no undo.",
+    "@sharingManageGuardiansDeleteProfileStep2Body": {
+      "description": "Issue #1004 (tranche 1): second delete-profile confirmation body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansDeletePermanently": "Delete permanently",
+    "@sharingManageGuardiansDeletePermanently": {
+      "description": "Issue #1004 (tranche 1): final destructive delete-profile action."
+    },
+    "sharingManageGuardiansDeleteOffline": "Can't delete while offline. Check your connection and try again.",
+    "@sharingManageGuardiansDeleteOffline": {
+      "description": "Issue #1004 (tranche 1): delete-profile failure while offline."
+    },
+    "sharingManageGuardiansDeleteFailed": "Failed to delete profile. Check connection and try again.",
+    "@sharingManageGuardiansDeleteFailed": {
+      "description": "Issue #1004 (tranche 1): generic delete-profile failure."
+    },
+    "sharingManageGuardiansSolePrimaryLeave": "You're now the only primary guardian, so you can't leave. Add another primary guardian first, then try again.",
+    "@sharingManageGuardiansSolePrimaryLeave": {
+      "description": "Issue #1004 (tranche 1): error when the sole primary guardian tries to leave."
+    },
+    "sharingManageGuardiansRemoveFailed": "Failed to remove guardian. Check connection.",
+    "@sharingManageGuardiansRemoveFailed": {
+      "description": "Issue #1004 (tranche 1): generic revoke-guardian failure."
+    },
+    "sharingManageGuardiansRemoveTitle": "Remove {name}?",
+    "@sharingManageGuardiansRemoveTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansLeaveBody": "You will leave this profile and no longer receive updates or sync its entries.",
+    "@sharingManageGuardiansLeaveBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when the caller removes herself."
+    },
+    "sharingManageGuardiansRemoveBody": "This guardian will lose access to {profileName}'s calendar and entries.",
+    "@sharingManageGuardiansRemoveBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when removing another guardian.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansRemove": "Remove",
+    "@sharingManageGuardiansRemove": {
+      "description": "Issue #1004 (tranche 1): destructive remove-guardian action."
+    },
+    "sharingManageGuardiansRemoved": "Removed {name}",
+    "@sharingManageGuardiansRemoved": {
+      "description": "Issue #1004 (tranche 1): snackbar after a guardian is removed.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansCancelInviteTitle": "Cancel invitation for {name}?",
+    "@sharingManageGuardiansCancelInviteTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansCancelInviteBody": "The invite link will stop working immediately. You can send a new one any time.",
+    "@sharingManageGuardiansCancelInviteBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation."
+    },
+    "sharingManageGuardiansKeepInvitation": "Keep Invitation",
+    "@sharingManageGuardiansKeepInvitation": {
+      "description": "Issue #1004 (tranche 1): decline action for the cancel-invitation dialog."
+    },
+    "sharingManageGuardiansCancelInvitation": "Cancel Invitation",
+    "@sharingManageGuardiansCancelInvitation": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation."
+    },
+    "sharingManageGuardiansCancelInviteFailed": "Failed to cancel invitation. Check connection.",
+    "@sharingManageGuardiansCancelInviteFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when cancelling an invitation fails."
+    },
+    "sharingManageGuardiansPendingLoadError": "Could not load pending invitations.",
+    "@sharingManageGuardiansPendingLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load."
+    },
+    "sharingManageGuardiansNoPending": "No pending invitations",
+    "@sharingManageGuardiansNoPending": {
+      "description": "Issue #1004 (tranche 1): empty state for the pending-invitations section."
+    },
+    "sharingManageGuardiansPendingTitle": "Pending invitations",
+    "@sharingManageGuardiansPendingTitle": {
+      "description": "Issue #1004 (tranche 1): pending-invitations section heading."
+    },
+    "sharingManageGuardiansPendingSubtitleExpired": "{kindLabel} • Expired",
+    "@sharingManageGuardiansPendingSubtitleExpired": {
+      "description": "Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.",
+      "placeholders": {
+        "kindLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansPendingSubtitle": "{kindLabel} • {expiry}",
+    "@sharingManageGuardiansPendingSubtitle": {
+      "description": "Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.",
+      "placeholders": {
+        "kindLabel": {
+          "type": "String"
+        },
+        "expiry": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansResend": "Resend",
+    "@sharingManageGuardiansResend": {
+      "description": "Issue #1004 (tranche 1): resend action on an expired pending invitation."
+    },
+    "sharingManageGuardiansExpiryExpired": "expired",
+    "@sharingManageGuardiansExpiryExpired": {
+      "description": "Issue #1004 (tranche 1): expiry label once an invitation has lapsed."
+    },
+    "sharingManageGuardiansExpiryHours": "expires in {hours}h",
+    "@sharingManageGuardiansExpiryHours": {
+      "description": "Issue #1004 (tranche 1): expiry label rounded to hours.",
+      "placeholders": {
+        "hours": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingManageGuardiansExpiryMinutes": "expires in {minutes}m",
+    "@sharingManageGuardiansExpiryMinutes": {
+      "description": "Issue #1004 (tranche 1): expiry label rounded to minutes.",
+      "placeholders": {
+        "minutes": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingManageGuardiansScreenTitle": "{profileName} Guardians",
+    "@sharingManageGuardiansScreenTitle": {
+      "description": "Issue #1004 (tranche 1): manage-guardians app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansInviteAction": "Invite guardian",
+    "@sharingManageGuardiansInviteAction": {
+      "description": "Issue #1004 (tranche 1): invite-guardian floating action label."
+    },
+    "sharingManageGuardiansNoGuardiansTitle": "No guardians linked yet",
+    "@sharingManageGuardiansNoGuardiansTitle": {
+      "description": "Issue #1004 (tranche 1): empty guardian list title."
+    },
+    "sharingManageGuardiansNoGuardiansBody": "Invite another guardian to sync and share tracking.",
+    "@sharingManageGuardiansNoGuardiansBody": {
+      "description": "Issue #1004 (tranche 1): empty guardian list body."
+    },
+    "sharingManageGuardiansPredictionsSectionTitle": "Predictions-only sharing",
+    "@sharingManageGuardiansPredictionsSectionTitle": {
+      "description": "Issue #1004 (tranche 1): prediction-connection section heading."
+    },
+    "sharingManageGuardiansPredictionsSectionBody": "Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.",
+    "@sharingManageGuardiansPredictionsSectionBody": {
+      "description": "Issue #1004 (tranche 1): prediction-connection section explanatory copy."
+    },
+    "sharingManageGuardiansPredictionsMinor": "Prediction sharing is not available for a minor's profile.",
+    "@sharingManageGuardiansPredictionsMinor": {
+      "description": "Issue #1004 (tranche 1): prediction-connection notice on a minor's profile."
+    },
+    "sharingManageGuardiansSharePredictionsAction": "Share predictions only...",
+    "@sharingManageGuardiansSharePredictionsAction": {
+      "description": "Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection."
+    },
+    "sharingManageGuardiansPredictionsPrimaryOnly": "Only the primary guardian can share predictions.",
+    "@sharingManageGuardiansPredictionsPrimaryOnly": {
+      "description": "Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section."
+    },
+    "sharingManageGuardiansSharingPredictions": "Sharing predictions",
+    "@sharingManageGuardiansSharingPredictions": {
+      "description": "Issue #1004 (tranche 1): prediction-connection tile title once active."
+    },
+    "sharingManageGuardiansPendingBadge": "pending",
+    "@sharingManageGuardiansPendingBadge": {
+      "description": "Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile."
+    },
+    "sharingManageGuardiansPhasesOnlyCalendar": "Phases-only calendar • not a guardian",
+    "@sharingManageGuardiansPhasesOnlyCalendar": {
+      "description": "Issue #1004 (tranche 1): prediction-connection tile subtitle once active."
+    },
+    "sharingManageGuardiansDangerZoneTitle": "Danger zone",
+    "@sharingManageGuardiansDangerZoneTitle": {
+      "description": "Issue #1004 (tranche 1): danger-zone section heading."
+    },
+    "sharingManageGuardiansDangerZoneBody": "Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.",
+    "@sharingManageGuardiansDangerZoneBody": {
+      "description": "Issue #1004 (tranche 1): danger-zone section explanatory copy."
+    },
+    "sharingManageGuardiansDeleteProfileAction": "Delete profile permanently",
+    "@sharingManageGuardiansDeleteProfileAction": {
+      "description": "Issue #1004 (tranche 1): danger-zone delete-profile action."
+    },
+    "sharingManageGuardiansRoleUpdateFailed": "Failed to update role. Check connection.",
+    "@sharingManageGuardiansRoleUpdateFailed": {
+      "description": "Issue #1004 (tranche 1): generic role-update failure."
+    },
+    "sharingManageGuardiansChangeRoleTitle": "Change role to {newRoleLabel}?",
+    "@sharingManageGuardiansChangeRoleTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for a role change.",
+      "placeholders": {
+        "newRoleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansChangeRoleBody": "{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.",
+    "@sharingManageGuardiansChangeRoleBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        },
+        "currentRoleLabel": {
+          "type": "String"
+        },
+        "consequence": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansChangeRoleAction": "Change role",
+    "@sharingManageGuardiansChangeRoleAction": {
+      "description": "Issue #1004 (tranche 1): confirm action for a role change."
+    },
+    "sharingManageGuardiansRoleUpdated": "Role updated to {newRoleLabel}",
+    "@sharingManageGuardiansRoleUpdated": {
+      "description": "Issue #1004 (tranche 1): snackbar after a role change.",
+      "placeholders": {
+        "newRoleLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingManageGuardiansYouSuffix": "(you)",
+    "@sharingManageGuardiansYouSuffix": {
+      "description": "Issue #1004 (tranche 1): suffix marking the caller's own guardian row."
+    },
+    "sharingNotificationPreferencesTitle": "Notifications",
+    "@sharingNotificationPreferencesTitle": {
+      "description": "Issue #1004 (tranche 1): notification-preferences app-bar title."
+    },
+    "sharingNotificationPreferencesSaveWithoutTzTitle": "Save without time zone?",
+    "@sharingNotificationPreferencesSaveWithoutTzTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone."
+    },
+    "sharingNotificationPreferencesSaveWithoutTzBody": "Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?",
+    "@sharingNotificationPreferencesSaveWithoutTzBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone."
+    },
+    "sharingNotificationPreferencesCancel": "Cancel",
+    "@sharingNotificationPreferencesCancel": {
+      "description": "Issue #1004 (tranche 1): notification-preferences dialog cancel action."
+    },
+    "sharingNotificationPreferencesSaveWithoutTz": "Save without time zone",
+    "@sharingNotificationPreferencesSaveWithoutTz": {
+      "description": "Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone."
+    },
+    "sharingNotificationPreferencesLogDeliveryTitle": "Log alert delivery",
+    "@sharingNotificationPreferencesLogDeliveryTitle": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for log alerts."
+    },
+    "sharingNotificationPreferencesLogDeliverySubtitle": "Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest",
+    "@sharingNotificationPreferencesLogDeliverySubtitle": {
+      "description": "Issue #1004 (tranche 1): cadence selector subtitle for log alerts."
+    },
+    "sharingNotificationPreferencesCycleStartDelivery": "Cycle-start alert delivery",
+    "@sharingNotificationPreferencesCycleStartDelivery": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for cycle-start alerts."
+    },
+    "sharingNotificationPreferencesHighSeverityDelivery": "High-severity alert delivery",
+    "@sharingNotificationPreferencesHighSeverityDelivery": {
+      "description": "Issue #1004 (tranche 1): cadence selector title for high-severity alerts."
+    },
+    "sharingNotificationPreferencesDigestTimeTitle": "Digest time",
+    "@sharingNotificationPreferencesDigestTimeTitle": {
+      "description": "Issue #1004 (tranche 1): digest-time tile title."
+    },
+    "sharingNotificationPreferencesDigestTimeSubtitle": "When daily digests are delivered in your time zone",
+    "@sharingNotificationPreferencesDigestTimeSubtitle": {
+      "description": "Issue #1004 (tranche 1): digest-time tile subtitle."
+    },
+    "sharingNotificationPreferencesLoadError": "Could not load your notification settings.",
+    "@sharingNotificationPreferencesLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when notification preferences fail to load."
+    },
+    "sharingNotificationPreferencesDiscretion": "Alerts never show what was logged - just a generic reminder to open lunarlog.",
+    "@sharingNotificationPreferencesDiscretion": {
+      "description": "Issue #1004 (tranche 1): discretion note at the top of notification preferences."
+    },
+    "sharingNotificationPreferencesNotifyOnLog": "Notify me when {profileName} logs an entry",
+    "@sharingNotificationPreferencesNotifyOnLog": {
+      "description": "Issue #1004 (tranche 1): master alert toggle label.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingNotificationPreferencesCycleStartOnly": "Only notify on cycle start",
+    "@sharingNotificationPreferencesCycleStartOnly": {
+      "description": "Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts."
+    },
+    "sharingNotificationPreferencesHighSeverity": "Notify on high-severity days",
+    "@sharingNotificationPreferencesHighSeverity": {
+      "description": "Issue #1004 (tranche 1): narrowing toggle for high-severity alerts."
+    },
+    "sharingNotificationPreferencesMissedEntryTitle": "Missed-entry reminder",
+    "@sharingNotificationPreferencesMissedEntryTitle": {
+      "description": "Issue #1004 (tranche 1): missed-entry threshold tile title."
+    },
+    "sharingNotificationPreferencesMissedEntrySubtitle": "Check in when no entry has been logged for a while",
+    "@sharingNotificationPreferencesMissedEntrySubtitle": {
+      "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
+    },
+    "sharingNotificationPreferencesOff": "Off",
+    "@sharingNotificationPreferencesOff": {
+      "description": "Issue #1004 (tranche 1): off option in the notification-preferences dropdowns."
+    },
+    "sharingNotificationPreferencesOneDay": "1 day",
+    "@sharingNotificationPreferencesOneDay": {
+      "description": "Issue #1004 (tranche 1): one-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesTwoDays": "2 days",
+    "@sharingNotificationPreferencesTwoDays": {
+      "description": "Issue #1004 (tranche 1): two-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesThreeDays": "3 days",
+    "@sharingNotificationPreferencesThreeDays": {
+      "description": "Issue #1004 (tranche 1): three-day missed-entry threshold option."
+    },
+    "sharingNotificationPreferencesQuietStart": "Quiet hours start",
+    "@sharingNotificationPreferencesQuietStart": {
+      "description": "Issue #1004 (tranche 1): quiet-hours start tile title."
+    },
+    "sharingNotificationPreferencesQuietEnd": "Quiet hours end",
+    "@sharingNotificationPreferencesQuietEnd": {
+      "description": "Issue #1004 (tranche 1): quiet-hours end tile title."
+    },
+    "sharingNotificationPreferencesClearQuietHours": "Clear quiet hours",
+    "@sharingNotificationPreferencesClearQuietHours": {
+      "description": "Issue #1004 (tranche 1): clear-quiet-hours action."
+    },
+    "sharingPredictionConnectionsTitle": "Shared with me",
+    "@sharingPredictionConnectionsTitle": {
+      "description": "Issue #1004 (tranche 1): incoming prediction-connections app-bar title."
+    },
+    "sharingPredictionConnectionsStopTitle": "Stop receiving these predictions?",
+    "@sharingPredictionConnectionsStopTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopBody": "You will stop seeing this profile's shared cycle calendar. The sharer can invite you again at any time.",
+    "@sharingPredictionConnectionsStopBody": {
+      "description": "Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsCancel": "Cancel",
+    "@sharingPredictionConnectionsCancel": {
+      "description": "Issue #1004 (tranche 1): prediction-connections generic cancel action."
+    },
+    "sharingPredictionConnectionsStopAction": "Stop receiving",
+    "@sharingPredictionConnectionsStopAction": {
+      "description": "Issue #1004 (tranche 1): destructive action to leave a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopped": "Stopped receiving predictions",
+    "@sharingPredictionConnectionsStopped": {
+      "description": "Issue #1004 (tranche 1): snackbar after leaving a received prediction connection."
+    },
+    "sharingPredictionConnectionsStopFailed": "Could not stop receiving. Check connection.",
+    "@sharingPredictionConnectionsStopFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails."
+    },
+    "sharingPredictionConnectionsFailed": "Connection failed.",
+    "@sharingPredictionConnectionsFailed": {
+      "description": "Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason."
+    },
+    "sharingPredictionConnectionsLoadError": "Could not load connections.",
+    "@sharingPredictionConnectionsLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when incoming connections fail to load."
+    },
+    "sharingPredictionConnectionsEmptyTitle": "No shared predictions yet",
+    "@sharingPredictionConnectionsEmptyTitle": {
+      "description": "Issue #1004 (tranche 1): empty incoming-connections title."
+    },
+    "sharingPredictionConnectionsEmptyBody": "When someone shares their cycle predictions with you, their calendar appears here.",
+    "@sharingPredictionConnectionsEmptyBody": {
+      "description": "Issue #1004 (tranche 1): empty incoming-connections body."
+    },
+    "sharingPredictionConnectionsCyclePredictions": "Cycle predictions",
+    "@sharingPredictionConnectionsCyclePredictions": {
+      "description": "Issue #1004 (tranche 1): incoming connection row title and calendar fallback name."
+    },
+    "sharingPredictionConnectionsSharedSubtitle": "Shared {date} • phases only",
+    "@sharingPredictionConnectionsSharedSubtitle": {
+      "description": "Issue #1004 (tranche 1): incoming connection row subtitle.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionConnectionsStopTooltip": "Stop receiving",
+    "@sharingPredictionConnectionsStopTooltip": {
+      "description": "Issue #1004 (tranche 1): tooltip on the leave-connection icon."
+    },
+    "sharingPredictionConnectionsConnect": "Connect",
+    "@sharingPredictionConnectionsConnect": {
+      "description": "Issue #1004 (tranche 1): manual code entry confirm action."
+    },
+    "sharingPredictionCalendarLoadError": "Could not load the shared predictions.",
+    "@sharingPredictionCalendarLoadError": {
+      "description": "Issue #1004 (tranche 1): inline error when the shared predictions fail to load."
+    },
+    "sharingPredictionCalendarWaitingTitle": "Waiting for the first update",
+    "@sharingPredictionCalendarWaitingTitle": {
+      "description": "Issue #1004 (tranche 1): phase calendar waiting state title."
+    },
+    "sharingPredictionCalendarWaitingBody": "You're connected, but {profileName}'s app hasn't shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.",
+    "@sharingPredictionCalendarWaitingBody": {
+      "description": "Issue #1004 (tranche 1): phase calendar waiting state body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionCalendarEndedTitle": "Connection ended",
+    "@sharingPredictionCalendarEndedTitle": {
+      "description": "Issue #1004 (tranche 1): phase calendar ended state title."
+    },
+    "sharingPredictionCalendarEndedBody": "This prediction connection is no longer active.",
+    "@sharingPredictionCalendarEndedBody": {
+      "description": "Issue #1004 (tranche 1): phase calendar ended state body."
+    },
+    "sharingPredictionCalendarConfidence": "Estimate confidence: {tierLabel}",
+    "@sharingPredictionCalendarConfidence": {
+      "description": "Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.",
+      "placeholders": {
+        "tierLabel": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingPredictionCalendarLegendPeriod": "Period",
+    "@sharingPredictionCalendarLegendPeriod": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for period days."
+    },
+    "sharingPredictionCalendarLegendFertile": "Fertile",
+    "@sharingPredictionCalendarLegendFertile": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for fertile days."
+    },
+    "sharingPredictionCalendarLegendOvulation": "Ovulation",
+    "@sharingPredictionCalendarLegendOvulation": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for ovulation days."
+    },
+    "sharingPredictionCalendarLegendPms": "PMS",
+    "@sharingPredictionCalendarLegendPms": {
+      "description": "Issue #1004 (tranche 1): phase legend entry for PMS days."
+    },
+    "sharingSharePredictionsCreateFailed": "Failed to create the connection. Please check your connection and try again.",
+    "@sharingSharePredictionsCreateFailed": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog unexpected create failure."
+    },
+    "sharingSharePredictionsCreatedTitle": "Connection created",
+    "@sharingSharePredictionsCreatedTitle": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state title."
+    },
+    "sharingSharePredictionsSendLink": "Send this single-use link to the person who should see {profileName}'s predictions:",
+    "@sharingSharePredictionsSendLink": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state share line.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsCreatedBody": "They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. {expiry}",
+    "@sharingSharePredictionsCreatedBody": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state body.",
+      "placeholders": {
+        "expiry": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsCopied": "Copied to clipboard",
+    "@sharingSharePredictionsCopied": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation."
+    },
+    "sharingSharePredictionsDone": "Done",
+    "@sharingSharePredictionsDone": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog done action."
+    },
+    "sharingSharePredictionsTitle": "Share predictions of {profileName}",
+    "@sharingSharePredictionsTitle": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingSharePredictionsBody": "Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.",
+    "@sharingSharePredictionsBody": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog explanatory body."
+    },
+    "sharingSharePredictionsNicknameLabel": "Nickname / Label (Optional)",
+    "@sharingSharePredictionsNicknameLabel": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field label."
+    },
+    "sharingSharePredictionsNicknameHint": "e.g. Partner, Aunt",
+    "@sharingSharePredictionsNicknameHint": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field hint."
+    },
+    "sharingSharePredictionsCancel": "Cancel",
+    "@sharingSharePredictionsCancel": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog cancel action."
+    },
+    "sharingSharePredictionsCreateLink": "Create Link",
+    "@sharingSharePredictionsCreateLink": {
+      "description": "Issue #1004 (tranche 1): share-predictions dialog create-link action."
+    },
+    "sharingTransferOwnershipScreenTitle": "Transfer {profileName}'s Profile",
+    "@sharingTransferOwnershipScreenTitle": {
+      "description": "Issue #1004 (tranche 1): transfer-ownership app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipConfirmTitle": "Transfer ownership?",
+    "@sharingTransferOwnershipConfirmTitle": {
+      "description": "Issue #1004 (tranche 1): confirm dialog title before arming a transfer."
+    },
+    "sharingTransferOwnershipCancel": "Cancel",
+    "@sharingTransferOwnershipCancel": {
+      "description": "Issue #1004 (tranche 1): transfer-ownership generic cancel action."
+    },
+    "sharingTransferOwnershipTransferAction": "Transfer",
+    "@sharingTransferOwnershipTransferAction": {
+      "description": "Issue #1004 (tranche 1): destructive confirm action for arming a transfer."
+    },
+    "sharingTransferOwnershipPendingCancelled": "Pending transfer cancelled",
+    "@sharingTransferOwnershipPendingCancelled": {
+      "description": "Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer."
+    },
+    "sharingTransferOwnershipCancelled": "Transfer cancelled",
+    "@sharingTransferOwnershipCancelled": {
+      "description": "Issue #1004 (tranche 1): snackbar after cancelling a generated transfer."
+    },
+    "sharingTransferOwnershipLinkCopied": "Transfer link copied to clipboard",
+    "@sharingTransferOwnershipLinkCopied": {
+      "description": "Issue #1004 (tranche 1): snackbar after copying a transfer link."
+    },
+    "sharingTransferOwnershipWhatChanges": "What changes",
+    "@sharingTransferOwnershipWhatChanges": {
+      "description": "Issue #1004 (tranche 1): armable-state section heading."
+    },
+    "sharingTransferOwnershipBulletKeepRole": "You keep the role you choose below.",
+    "@sharingTransferOwnershipBulletKeepRole": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipBulletRemoveAccess": "They can remove your access at any time.",
+    "@sharingTransferOwnershipBulletRemoveAccess": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipBulletDeleteAccount": "If they later delete their account, this profile's history goes with it.",
+    "@sharingTransferOwnershipBulletDeleteAccount": {
+      "description": "Issue #1004 (tranche 1): armable-state bullet."
+    },
+    "sharingTransferOwnershipHelpLabel": "How does the transfer work?",
+    "@sharingTransferOwnershipHelpLabel": {
+      "description": "Issue #1004 (tranche 1): transfer help-card link label."
+    },
+    "sharingTransferOwnershipRoleAfterTitle": "Your role after the transfer",
+    "@sharingTransferOwnershipRoleAfterTitle": {
+      "description": "Issue #1004 (tranche 1): post-transfer role picker heading."
+    },
+    "sharingTransferOwnershipRecipientLabel": "Recipient label (optional)",
+    "@sharingTransferOwnershipRecipientLabel": {
+      "description": "Issue #1004 (tranche 1): recipient label field label."
+    },
+    "sharingTransferOwnershipRecipientHint": "e.g. Sam",
+    "@sharingTransferOwnershipRecipientHint": {
+      "description": "Issue #1004 (tranche 1): recipient label field hint."
+    },
+    "sharingTransferOwnershipAction": "Transfer Ownership",
+    "@sharingTransferOwnershipAction": {
+      "description": "Issue #1004 (tranche 1): arm-transfer action."
+    },
+    "sharingTransferOwnershipPendingTitle": "A Transfer Is Already Pending",
+    "@sharingTransferOwnershipPendingTitle": {
+      "description": "Issue #1004 (tranche 1): orphaned-transfer state title."
+    },
+    "sharingTransferOwnershipPendingBody": "A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.",
+    "@sharingTransferOwnershipPendingBody": {
+      "description": "Issue #1004 (tranche 1): orphaned-transfer state body.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipExpires": "Expires {date}",
+    "@sharingTransferOwnershipExpires": {
+      "description": "Issue #1004 (tranche 1): transfer expiry line.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipCancelPending": "Cancel Pending Transfer",
+    "@sharingTransferOwnershipCancelPending": {
+      "description": "Issue #1004 (tranche 1): cancel an orphaned transfer action."
+    },
+    "sharingTransferOwnershipReadyTitle": "Transfer Ready",
+    "@sharingTransferOwnershipReadyTitle": {
+      "description": "Issue #1004 (tranche 1): generated-transfer state title."
+    },
+    "sharingTransferOwnershipShareLink": "Share this single-use link with {profileName}:",
+    "@sharingTransferOwnershipShareLink": {
+      "description": "Issue #1004 (tranche 1): generated-transfer state share line.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingTransferOwnershipCopyLink": "Copy Link",
+    "@sharingTransferOwnershipCopyLink": {
+      "description": "Issue #1004 (tranche 1): copy-transfer-link action."
+    },
+    "sharingTransferOwnershipShare": "Share",
+    "@sharingTransferOwnershipShare": {
+      "description": "Issue #1004 (tranche 1): share-transfer-link action."
+    },
+    "sharingTransferOwnershipCancelTransfer": "Cancel transfer",
+    "@sharingTransferOwnershipCancelTransfer": {
+      "description": "Issue #1004 (tranche 1): cancel a generated transfer action."
+    },
+    "sharingActivityFeedScreenTitle": "{profileName} Activity",
+    "@sharingActivityFeedScreenTitle": {
+      "description": "Issue #1004 (tranche 1): activity-feed app-bar title.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedJustYouTitle": "Just you for now",
+    "@sharingActivityFeedJustYouTitle": {
+      "description": "Issue #1004 (tranche 1): single-guardian empty-state title."
+    },
+    "sharingActivityFeedJustYouBody": "This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.",
+    "@sharingActivityFeedJustYouBody": {
+      "description": "Issue #1004 (tranche 1): single-guardian empty-state body."
+    },
+    "sharingActivityFeedNoActivityTitle": "No activity yet",
+    "@sharingActivityFeedNoActivityTitle": {
+      "description": "Issue #1004 (tranche 1): no-activity empty-state title."
+    },
+    "sharingActivityFeedNoActivityBody": "Changes either guardian makes to this profile will appear here.",
+    "@sharingActivityFeedNoActivityBody": {
+      "description": "Issue #1004 (tranche 1): no-activity empty-state body."
+    },
+    "sharingActivityFeedCaption": "Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.",
+    "@sharingActivityFeedCaption": {
+      "description": "Issue #1004 (tranche 1): activity-feed list caption."
+    },
+    "sharingActivityFeedVerbLogged": "Logged",
+    "@sharingActivityFeedVerbLogged": {
+      "description": "Issue #1004 (tranche 1): activity row verb for a logged entry."
+    },
+    "sharingActivityFeedVerbUpdated": "Updated",
+    "@sharingActivityFeedVerbUpdated": {
+      "description": "Issue #1004 (tranche 1): activity row verb for an updated entry."
+    },
+    "sharingActivityFeedVerbRemoved": "Removed",
+    "@sharingActivityFeedVerbRemoved": {
+      "description": "Issue #1004 (tranche 1): activity row verb for a removed entry."
+    },
+    "sharingActivityFeedByLineActor": "{verb} by {actor}",
+    "@sharingActivityFeedByLineActor": {
+      "description": "Issue #1004 (tranche 1): activity row title with an attributed actor.",
+      "placeholders": {
+        "verb": {
+          "type": "String"
+        },
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedByLineNoActor": "Entry {verb}",
+    "@sharingActivityFeedByLineNoActor": {
+      "description": "Issue #1004 (tranche 1): activity row title for an unattributed entry.",
+      "placeholders": {
+        "verb": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedMergeKeptOne": "Sync merge kept one version",
+    "@sharingActivityFeedMergeKeptOne": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row title without an actor."
+    },
+    "sharingActivityFeedMergeKeptPossessive": "Sync merge kept {possessive} version",
+    "@sharingActivityFeedMergeKeptPossessive": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.",
+      "placeholders": {
+        "possessive": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedAccessRemovedNoActor": "A guardian no longer has access",
+    "@sharingActivityFeedAccessRemovedNoActor": {
+      "description": "Issue #1004 (tranche 1): access-removed row title without an actor."
+    },
+    "sharingActivityFeedAccessRemovedActor": "{actor} no longer has access",
+    "@sharingActivityFeedAccessRemovedActor": {
+      "description": "Issue #1004 (tranche 1): access-removed row title with an actor.",
+      "placeholders": {
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedAccessRemovedSubtitle": "Access to this profile was removed",
+    "@sharingActivityFeedAccessRemovedSubtitle": {
+      "description": "Issue #1004 (tranche 1): access-removed row subtitle."
+    },
+    "sharingActivityFeedForDate": "for {date}",
+    "@sharingActivityFeedForDate": {
+      "description": "Issue #1004 (tranche 1): entry subtitle date fragment.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedLoggedBy": "logged by {actor}",
+    "@sharingActivityFeedLoggedBy": {
+      "description": "Issue #1004 (tranche 1): entry subtitle original-logger fragment.",
+      "placeholders": {
+        "actor": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedTagCount": "{count, plural, =1{1 tag} other{{count} tags}}",
+    "@sharingActivityFeedTagCount": {
+      "description": "Issue #1004 (tranche 1): entry subtitle tag-count fragment.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingActivityFeedNote": "note",
+    "@sharingActivityFeedNote": {
+      "description": "Issue #1004 (tranche 1): entry subtitle note-presence fragment."
+    },
+    "sharingActivityFeedOneGuardian": "one guardian",
+    "@sharingActivityFeedOneGuardian": {
+      "description": "Issue #1004 (tranche 1): fallback actor label for a merge-outcome row."
+    },
+    "sharingActivityFeedDiscardedFlowAndNote": "flow and note values were",
+    "@sharingActivityFeedDiscardedFlowAndNote": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedDiscardedNote": "note was",
+    "@sharingActivityFeedDiscardedNote": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedDiscardedFlow": "flow value was",
+    "@sharingActivityFeedDiscardedFlow": {
+      "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+    },
+    "sharingActivityFeedMergeDiscarded": "{possessive} {what} discarded in a same-date merge",
+    "@sharingActivityFeedMergeDiscarded": {
+      "description": "Issue #1004 (tranche 1): merge-outcome row subtitle.",
+      "placeholders": {
+        "possessive": {
+          "type": "String"
+        },
+        "what": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingActivityFeedNewBadge": "New",
+    "@sharingActivityFeedNewBadge": {
+      "description": "Issue #1004 (tranche 1): New chip on an unseen activity row."
+    },
+    "sharingActivityFeedPossessiveYou": "your",
+    "@sharingActivityFeedPossessiveYou": {
+      "description": "Issue #1004 (tranche 1): possessive form when the actor is the current user."
+    },
+    "sharingActivityFeedPossessiveName": "{name}'s",
+    "@sharingActivityFeedPossessiveName": {
+      "description": "Issue #1004 (tranche 1): possessive form for a named actor.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "sharingProfileSharingSharedTooltip": "Shared · {count} guardians",
+    "@sharingProfileSharingSharedTooltip": {
+      "description": "Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingPendingInviteBadgePendingCount": "{count, plural, =1{1 pending invitation} other{{count} pending invitations}}",
+    "@sharingPendingInviteBadgePendingCount": {
+      "description": "Issue #1004 (tranche 1): pending-invitation badge tooltip.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "sharingPendingInviteBadgeExpiredCount": "{count, plural, =1{1 invitation expired} other{{count} invitations expired}}",
+    "@sharingPendingInviteBadgeExpiredCount": {
+      "description": "Issue #1004 (tranche 1): expired-invitation badge tooltip.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    }
 }

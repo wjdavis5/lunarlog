@@ -89,7 +89,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'An unexpected error occurred.';
+          _error = AppLocalizations.of(context).sharingUnexpectedError;
         });
       }
     }
@@ -99,52 +99,56 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
   /// (was a bare [Row] child), mirroring `AcceptInviteSheet`'s own fix, so
   /// a long localization or 200% text scaling wraps to a second line
   /// instead of overflowing horizontally past the leading icon.
-  Widget _titleRow(ThemeData theme) => Row(
+  Widget _titleRow(BuildContext context, ThemeData theme) => Row(
         children: [
           Icon(Icons.swap_horiz, size: 28, color: theme.colorScheme.primary),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('Become the Owner', style: theme.textTheme.titleLarge),
+            child: Text(
+              AppLocalizations.of(context).sharingClaimProfileTitle,
+              style: theme.textTheme.titleLarge,
+            ),
           ),
         ],
       );
 
   /// Issue #642, LLA-012: [Wrap], not a fixed [Row] — mirrors
-  /// `AcceptInviteSheet._actionsRow`'s own fix: at 320×568 with 200% text
-  /// scaling, "Decline" plus "Become Owner" (plus the loading spinner it
+  /// `AcceptInviteSheet._actionsRow`'s own fix: at 320×568 with 200%
+  /// text scaling, "Decline" plus "Become Owner" (plus the loading spinner it
   /// turns into) can exceed the sheet's width; `Wrap` flows the second
   /// action to its own line instead of overflowing horizontally.
-  Widget _actionsRow() => Wrap(
-        alignment: WrapAlignment.end,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          TextButton(
-            key: const ValueKey('claim-profile-decline'),
-            onPressed: _loading ? null : () => Navigator.of(context).pop(),
-            child: const Text('Decline'),
-          ),
-          FilledButton(
-            key: const ValueKey('claim-profile-become-owner'),
-            onPressed: _loading ? null : _claim,
-            child: _loading
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Text(
-                    AppLocalizations.of(context)
-                        .claimProfileBecomeGuardianAction,
-                  ),
-          ),
-        ],
-      );
+  Widget _actionsRow(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        TextButton(
+          key: const ValueKey('claim-profile-decline'),
+          onPressed: _loading ? null : () => Navigator.of(context).pop(),
+          child: Text(l10n.sharingClaimProfileDecline),
+        ),
+        FilledButton(
+          key: const ValueKey('claim-profile-become-owner'),
+          onPressed: _loading ? null : _claim,
+          child: _loading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Text(l10n.claimProfileBecomeGuardianAction),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return SafeArea(
       // Issue #642, LLA-012: bounded via `ConstrainedBox` +
@@ -168,10 +172,10 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _titleRow(theme),
+                _titleRow(context, theme),
                 const SizedBox(height: 12),
                 Text(
-                  AppLocalizations.of(context).claimProfileBody,
+                  l10n.claimProfileBody,
                   style: theme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 16),
@@ -181,9 +185,9 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                   enabled: !_loading,
                   textInputAction: TextInputAction.next,
                   onSubmitted: (_) => _parentNameFocus.requestFocus(),
-                  decoration: const InputDecoration(
-                    labelText: "Child's display name (optional)",
-                    hintText: 'Shows on the profile',
+                  decoration: InputDecoration(
+                    labelText: l10n.sharingClaimProfileChildNameLabel,
+                    hintText: l10n.sharingClaimProfileChildNameHint,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -197,9 +201,9 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                   onSubmitted: (_) {
                     if (!_loading) unawaited(_claim());
                   },
-                  decoration: const InputDecoration(
-                    labelText: 'Label for the parent (optional)',
-                    hintText: 'Shows when they log entries',
+                  decoration: InputDecoration(
+                    labelText: l10n.sharingClaimProfileParentLabelLabel,
+                    hintText: l10n.sharingClaimProfileParentLabelHint,
                   ),
                 ),
                 if (_error != null)
@@ -210,7 +214,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                   // both plus a TextButton row.
                   InlineError(message: _error!),
                 const SizedBox(height: 20),
-                _actionsRow(),
+                _actionsRow(context),
               ],
             ),
           ),

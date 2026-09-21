@@ -522,6 +522,8 @@ void main() {
         'profile copy instead of assuming a minor', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: AcceptInviteSheet(
               rawToken: 'test-raw-token',
@@ -553,6 +555,8 @@ void main() {
 
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: AcceptInviteSheet(
                 rawToken: 'test-raw-token',
@@ -622,6 +626,8 @@ void main() {
 
           await tester.pumpWidget(
             MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
               home: Scaffold(
                 body: AcceptInviteSheet(
                   rawToken: 'dead-token',
@@ -655,6 +661,8 @@ void main() {
 
           await tester.pumpWidget(
             MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
               home: Scaffold(
                 body: AcceptInviteSheet(
                   rawToken: 'test-raw-token',

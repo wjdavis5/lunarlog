@@ -16,6 +16,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 class PendingInviteBadge extends StatefulWidget {
   const PendingInviteBadge({
@@ -67,6 +68,7 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return FutureBuilder<List<PendingInvite>>(
       future: _future,
       builder: (context, snapshot) {
@@ -85,9 +87,7 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
         final live = invites.where((i) => !i.isExpiredAt(now)).toList();
         if (live.isNotEmpty) {
           return Tooltip(
-            message: live.length == 1
-                ? '1 pending invitation'
-                : '${live.length} pending invitations',
+            message: l10n.sharingPendingInviteBadgePendingCount(live.length),
             child: Badge(
               label: Text('${live.length}'),
               child: const Icon(Icons.mail_outline),
@@ -96,9 +96,7 @@ class _PendingInviteBadgeState extends State<PendingInviteBadge> {
         }
         final expired = invites.where((i) => i.isExpiredAt(now)).toList();
         return Tooltip(
-          message: expired.length == 1
-              ? '1 invitation expired'
-              : '${expired.length} invitations expired',
+          message: l10n.sharingPendingInviteBadgeExpiredCount(expired.length),
           child: Badge(
             backgroundColor: Theme.of(context).colorScheme.error,
             label: Text('${expired.length}'),
