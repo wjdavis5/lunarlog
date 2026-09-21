@@ -431,9 +431,10 @@ mixin LunarLogStorageQueries {
   Future<List<VisitPrepItemData>> getVisitPrepItemsForProfile(
     String profileId, {
     bool includeTombstones = false,
+    String? kind,
   }) {
     return _visitPrepItemQuery(profileId,
-            includeTombstones: includeTombstones)
+            includeTombstones: includeTombstones, kind: kind)
         .get();
   }
 
@@ -441,9 +442,10 @@ mixin LunarLogStorageQueries {
   Stream<List<VisitPrepItemData>> watchVisitPrepItemsForProfile(
     String profileId, {
     bool includeTombstones = false,
+    String? kind,
   }) {
     return _visitPrepItemQuery(profileId,
-            includeTombstones: includeTombstones)
+            includeTombstones: includeTombstones, kind: kind)
         .watch();
   }
 
@@ -1120,11 +1122,16 @@ mixin LunarLogStorageQueries {
     return row;
   }
 
-  /// The checked, live items behind [clearCheckedVisitPrepItems].
-  Selectable<VisitPrepItemData> _carePrepCheckedQuery(String profileId) {
+  /// The checked, live items behind [clearCheckedVisitPrepItems], scoped to
+  /// one list [kind] (Issue #851).
+  Selectable<VisitPrepItemData> _carePrepCheckedQuery(
+    String profileId, {
+    required String kind,
+  }) {
     final query = db.select(db.visitPrepItems)
       ..where((t) =>
           t.profileId.equals(profileId) &
+          t.kind.equals(kind) &
           t.isChecked.equals(true) &
           t.deletedAt.isNull())
       ..orderBy([(t) => OrderingTerm(expression: t.id)]);
@@ -1134,14 +1141,19 @@ mixin LunarLogStorageQueries {
   /// The shared builder behind [getVisitPrepItemsForProfile] and its watch
   /// variant: unchecked first (open questions on top, covered items below
   /// until cleared), then by `updated_at`, then id; tombstones filtered
-  /// unless [includeTombstones].
+  /// unless [includeTombstones]. [kind] scopes the read to one list (Issue
+  /// #851) — null reads every row (the sync-fidelity shape).
   Selectable<VisitPrepItemData> _visitPrepItemQuery(
     String profileId, {
     required bool includeTombstones,
+    String? kind,
   }) {
     final query = db.select(db.visitPrepItems)
       ..where((t) {
         var condition = t.profileId.equals(profileId);
+        if (kind != null) {
+          condition = condition & t.kind.equals(kind);
+        }
         if (!includeTombstones) {
           condition = condition & t.deletedAt.isNull();
         }

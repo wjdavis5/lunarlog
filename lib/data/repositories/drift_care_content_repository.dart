@@ -45,14 +45,29 @@ class DriftCareContentRepository implements CareContentRepository {
 
   @override
   Future<List<domain.VisitPrepItem>> listPrepItems(String profileId) async => [
-        for (final row in await _storage.getVisitPrepItemsForProfile(profileId))
+        for (final row in await _storage.getVisitPrepItemsForProfile(profileId,
+            kind: domain.VisitPrepItemKind.visitPrep.toDb()))
           visitPrepItemToDomain(row),
       ];
 
   @override
-  Stream<List<domain.VisitPrepItem>> watchPrepItems(String profileId) =>
+  Stream<List<domain.VisitPrepItem>> watchPrepItems(String profileId) => _storage
+      .watchVisitPrepItemsForProfile(profileId,
+          kind: domain.VisitPrepItemKind.visitPrep.toDb())
+      .map((rows) => rows.map(visitPrepItemToDomain).toList());
+
+  @override
+  Future<List<domain.VisitPrepItem>> listSupplyItems(String profileId) async => [
+        for (final row in await _storage.getVisitPrepItemsForProfile(profileId,
+            kind: domain.VisitPrepItemKind.supply.toDb()))
+          visitPrepItemToDomain(row),
+      ];
+
+  @override
+  Stream<List<domain.VisitPrepItem>> watchSupplyItems(String profileId) =>
       _storage
-          .watchVisitPrepItemsForProfile(profileId)
+          .watchVisitPrepItemsForProfile(profileId,
+              kind: domain.VisitPrepItemKind.supply.toDb())
           .map((rows) => rows.map(visitPrepItemToDomain).toList());
 
   @override
@@ -60,11 +75,13 @@ class DriftCareContentRepository implements CareContentRepository {
     String? id,
     required String profileId,
     required String body,
+    domain.VisitPrepItemKind kind = domain.VisitPrepItemKind.visitPrep,
   }) async =>
       visitPrepItemToDomain(await _storage.addVisitPrepItem(
         id: id,
         profileId: profileId,
         body: body,
+        kind: kind.toDb(),
       ));
 
   @override
@@ -95,6 +112,9 @@ class DriftCareContentRepository implements CareContentRepository {
       _storage.softDeleteVisitPrepItem(id);
 
   @override
-  Future<int> clearCheckedPrepItems(String profileId) =>
-      _storage.clearCheckedVisitPrepItems(profileId);
+  Future<int> clearCheckedPrepItems(
+    String profileId, {
+    domain.VisitPrepItemKind kind = domain.VisitPrepItemKind.visitPrep,
+  }) =>
+      _storage.clearCheckedVisitPrepItems(profileId, kind: kind.toDb());
 }

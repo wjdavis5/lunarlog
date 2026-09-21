@@ -28,7 +28,10 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -71,11 +74,28 @@ class Harness {
   final AuthController authController;
 }
 
+/// A [CyclePredictionService] that ignores the watched profile and emits a
+/// single caller-supplied prediction — the seam the Issue #851 restock-nudge
+/// widget test needs to drive a hand-built [ActivePrediction].
+class _FixedPredictionService extends CyclePredictionService {
+  _FixedPredictionService(super.entries, this.prediction);
+
+  final CyclePrediction prediction;
+
+  @override
+  Stream<CyclePrediction> watch(
+    String profileId, {
+    LocalDate Function()? today,
+  }) =>
+      Stream<CyclePrediction>.value(prediction);
+}
+
 Future<Harness> pumpCare(
   WidgetTester tester, {
   required String currentUserId,
   String currentRole = 'primary_guardian',
   bool readOnly = false,
+  CyclePrediction? prediction,
   Future<void> Function(LunarLogDatabase db, String profileId)? seed,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
@@ -108,6 +128,13 @@ Future<Harness> pumpCare(
       providers: <SingleChildWidget>[
         Provider<ProfilesRepository>.value(value: profiles),
         ChangeNotifierProvider<AuthController>.value(value: authController),
+        if (prediction != null)
+          Provider<CyclePredictionService>.value(
+            value: _FixedPredictionService(
+              DriftDayEntriesRepository(db.storage),
+              prediction,
+            ),
+          ),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -246,10 +273,12 @@ void main() {
         },
       );
 
-      // One shared header per section (not a per-screen bold Text).
-      expect(find.byType(ListSectionHeader), findsNWidgets(2));
+      // One shared header per section (not a per-screen bold Text), now
+      // including the Issue #851 supplies list.
+      expect(find.byType(ListSectionHeader), findsNWidgets(3));
       expect(find.text('Care notes'), findsOneWidget);
       expect(find.text('Visit prep'), findsOneWidget);
+      expect(find.text('Supplies'), findsOneWidget);
 
       // Four rows, but one Card per section — not a deck of floating tiles.
       expect(find.byKey(const ValueKey('care-notes-card')), findsOneWidget);
@@ -519,6 +548,105 @@ void main() {
       expect(find.byKey(const ValueKey('care-note-field')), findsNothing);
       expect(find.byKey(const ValueKey('visit-prep-field')), findsNothing);
       expect(find.text('This profile is archived.'), findsOneWidget);
+      await disposeCare(tester, h);
+    });
+  });
+
+  group('supplies kit (Issue #851)', () {
+    testWidgets('a guardian adds a supply item and stocks it with '
+        'attribution', (tester) async {
+      final h = await pumpCare(tester, currentUserId: 'user-mom');
+      expect(find.text('No supplies tracked yet.'), findsOneWidget);
+
+      await tester.enterText(
+          find.byKey(const ValueKey('supplies-field')), 'Panty liners');
+      await tester.tap(find.byKey(const ValueKey('supplies-add')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Panty liners'), findsOneWidget);
+      expect(find.text('No supplies tracked yet.'), findsNothing);
+      // The supply row did not land on the visit-prep list.
+      expect(find.byKey(const ValueKey('visit-prep-card')), findsNothing);
+
+      await tester.tap(find.byType(CheckboxListTile).first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Stocked by you'), findsOneWidget);
+
+      await disposeCare(tester, h);
+    });
+
+    testWidgets('the restock nudge fires within the lead window and names '
+        'the unstocked items', (tester) async {
+      final estimate = LocalDate.today().addDays(3);
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-mom',
+        prediction: ActivePrediction(
+          today: LocalDate.today(),
+          lastEpisodeStart: LocalDate.today().addDays(-25),
+          estimatedNextStart: estimate,
+          originalEstimatedNextStart: estimate,
+          averagedCycleLengths: const [30, 30, 30],
+          meanCycleLengthDays: 30,
+          cycleDay: 26,
+          duringEpisode: false,
+          completedCycleCount: 3,
+          validCycleCount: 3,
+        ),
+        seed: (db, profileId) async {
+          await db.storage.addVisitPrepItem(
+              profileId: profileId, body: 'Panty liners', kind: 'supply');
+        },
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('supplies-restock-nudge')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Panty liners'), findsWidgets);
+
+      await disposeCare(tester, h);
+    });
+
+    testWidgets('a guardian can clear the stocked supplies', (tester) async {
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-mom',
+        seed: (db, profileId) async {
+          final item = await db.storage.addVisitPrepItem(
+              profileId: profileId, body: 'Panty liners', kind: 'supply');
+          await db.storage.setVisitPrepItemChecked(
+              id: item.id, checked: true, checkedByUserId: 'user-mom');
+        },
+      );
+
+      expect(
+        find.byKey(const ValueKey('supplies-clear-stocked')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('supplies-clear-stocked')));
+      await tester.pumpAndSettle();
+      expect(find.text('Panty liners'), findsNothing);
+      expect(find.text('No supplies tracked yet.'), findsOneWidget);
+
+      await disposeCare(tester, h);
+    });
+
+    testWidgets('a viewer reads supplies but cannot write', (tester) async {
+      final h = await pumpCare(
+        tester,
+        currentUserId: 'user-doc',
+        currentRole: 'viewer',
+        seed: (db, profileId) async {
+          await db.storage.addVisitPrepItem(
+              profileId: profileId, body: 'Heat patch', kind: 'supply');
+        },
+      );
+
+      expect(find.text('Heat patch'), findsOneWidget);
+      expect(find.byKey(const ValueKey('supplies-field')), findsNothing);
+
       await disposeCare(tester, h);
     });
   });

@@ -37,6 +37,7 @@ VisitPrepItemData itemRow({
   String idOf = itemId,
   String profileIdOf = profileId,
   String body = 'Ask about iron levels.',
+  String kind = 'visit_prep',
   bool isChecked = false,
   String? checkedByUserId,
   DateTime? checkedAt,
@@ -47,6 +48,7 @@ VisitPrepItemData itemRow({
       id: idOf,
       profileId: profileIdOf,
       body: body,
+      kind: kind,
       isChecked: isChecked,
       checkedByUserId: checkedByUserId,
       checkedAt: checkedAt,
@@ -94,10 +96,16 @@ void main() {
         'id': itemId,
         'profile_id': profileId,
         'body': 'Ask about iron levels.',
+        'kind': 'visit_prep',
         'is_checked': false,
         'updated_at': '2026-09-02T10:00:00.000Z',
         'deleted_at': null,
       });
+    });
+
+    test('a supply row emits its kind (Issue #851)', () {
+      final json = encodeVisitPrepItem(itemRow(kind: 'supply'));
+      expect(json['kind'], 'supply');
     });
 
     test('a checked row still emits no checked_by/checked_at (server-stamped)',
@@ -203,6 +211,27 @@ void main() {
       });
       expect(row.isChecked, isFalse);
       expect(row.checkedByUserId, isNull);
+    });
+
+    test('Issue #851: a supply kind round-trips; an absent kind defaults',
+        () {
+      final supply = decodeVisitPrepItem({
+        'id': itemId,
+        'profile_id': profileId,
+        'body': 'Panty liners',
+        'kind': 'supply',
+        'updated_at': '2026-09-02T10:00:00+00:00',
+      });
+      expect(supply.kind, 'supply');
+
+      final absent = decodeVisitPrepItem({
+        'id': itemId,
+        'profile_id': profileId,
+        'body': 'Ask about iron levels.',
+        'updated_at': '2026-09-02T10:00:00+00:00',
+      });
+      expect(absent.kind, 'visit_prep',
+          reason: 'a pre-#851 server row reads as a prep item');
     });
   });
 

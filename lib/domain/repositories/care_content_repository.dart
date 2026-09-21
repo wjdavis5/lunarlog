@@ -29,11 +29,22 @@ abstract interface class CareContentRepository {
   /// Live view of [listPrepItems] for reactive UI.
   Stream<List<VisitPrepItem>> watchPrepItems(String profileId);
 
-  /// Adds an unchecked item to the profile's visit-prep list.
+  /// Issue #851: the profile's live supplies items (kind == supply),
+  /// unstocked first. Same ordering, role gating, and tombstone semantics
+  /// as [listPrepItems] — a supply item is the same substrate with a
+  /// different `kind`.
+  Future<List<VisitPrepItem>> listSupplyItems(String profileId);
+
+  /// Live view of [listSupplyItems] for reactive UI.
+  Stream<List<VisitPrepItem>> watchSupplyItems(String profileId);
+
+  /// Adds an unchecked item to one of the profile's lists. [kind] defaults
+  /// to the visit-prep checklist (Issue #851 adds `supply`).
   Future<VisitPrepItem> addPrepItem({
     String? id,
     required String profileId,
     required String body,
+    VisitPrepItemKind kind = VisitPrepItemKind.visitPrep,
   });
 
   /// Revises an item's text, keeping its check state. Null when the item
@@ -56,7 +67,12 @@ abstract interface class CareContentRepository {
   /// Tombstones a prep item (never a hard delete).
   Future<void> deletePrepItem(String id);
 
-  /// Tombstones every *checked*, live item on the profile's list —
-  /// unchecked items survive. Returns the number of items cleared.
-  Future<int> clearCheckedPrepItems(String profileId);
+  /// Tombstones every *checked*, live item on one of the profile's lists —
+  /// unchecked items survive. Returns the number of items cleared. [kind]
+  /// defaults to the visit-prep list (the pre-#851 behavior); pass
+  /// [VisitPrepItemKind.supply] to clear only the supplies list.
+  Future<int> clearCheckedPrepItems(
+    String profileId, {
+    VisitPrepItemKind kind = VisitPrepItemKind.visitPrep,
+  });
 }

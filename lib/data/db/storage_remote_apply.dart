@@ -2042,13 +2042,31 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// forever once two peers' booleans coincidentally matched. The
   /// authoritative stamp is always the one the already-validated remote
   /// row carries.
-  ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt})
-      _visitPrepItemPayload(RemoteVisitPrepItemRow remote, bool tombstone) {
+  ({
+    String body,
+    String kind,
+    bool isChecked,
+    String? checkedByUserId,
+    DateTime? checkedAt,
+  }) _visitPrepItemPayload(
+    RemoteVisitPrepItemRow remote,
+    bool tombstone,
+  ) {
     if (tombstone) {
-      return (body: '', isChecked: false, checkedByUserId: null, checkedAt: null);
+      return (
+        body: '',
+        // Issue #851: kind is identity, not health content — the tombstone
+        // CHECK does not name it, so it survives the delete and the client
+        // mirrors that here.
+        kind: remote.kind,
+        isChecked: false,
+        checkedByUserId: null,
+        checkedAt: null,
+      );
     }
     return (
       body: remote.body,
+      kind: remote.kind,
       isChecked: remote.isChecked,
       checkedByUserId: remote.checkedByUserId,
       checkedAt: remote.checkedAt?.toUtc(),
@@ -2104,7 +2122,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   /// exceeds the CRAP-gate complexity budget on its own.
   Future<void> _insertVisitPrepItem(
     RemoteVisitPrepItemRow remote,
-    ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
+    ({
+      String body,
+      String kind,
+      bool isChecked,
+      String? checkedByUserId,
+      DateTime? checkedAt,
+    }) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
     _PageLookup? cache,
@@ -2116,6 +2140,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             id: remote.id,
             profileId: remote.profileId,
             body: payload.body,
+            kind: Value(payload.kind),
             isChecked: Value(payload.isChecked),
             checkedByUserId: Value(payload.checkedByUserId),
             checkedAt: Value(payload.checkedAt),
@@ -2136,7 +2161,13 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   Future<void> _updateVisitPrepItem(
     RemoteVisitPrepItemRow remote,
     VisitPrepItemData local,
-    ({String body, bool isChecked, String? checkedByUserId, DateTime? checkedAt}) payload,
+    ({
+      String body,
+      String kind,
+      bool isChecked,
+      String? checkedByUserId,
+      DateTime? checkedAt,
+    }) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
     _PageLookup? cache,
@@ -2147,6 +2178,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         )..where((t) => t.id.equals(remote.id))).writeReturning(
           VisitPrepItemsCompanion(
             body: Value(payload.body),
+            kind: Value(payload.kind),
             isChecked: Value(payload.isChecked),
             checkedByUserId: Value(payload.checkedByUserId),
             checkedAt: Value(payload.checkedAt),
