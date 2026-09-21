@@ -2235,4 +2235,70 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileIrregularFramingHint =>
       'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
+
+  @override
+  String get householdLogToday => 'Log today';
+
+  @override
+  String householdLogTodayFor(String name) {
+    return 'Log today for $name';
+  }
+
+  @override
+  String get householdTimingExpectedToday => 'Period expected today';
+
+  @override
+  String householdTimingExpectedIn(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Period expected in $_temp0';
+  }
+
+  @override
+  String householdTimingLate(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days late',
+      one: '1 day late',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String householdTimingLastLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return 'Last period $_temp0';
+  }
+
+  @override
+  String householdSilence(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Nothing logged for $_temp0';
+  }
+
+  @override
+  String householdChanges(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count changes',
+      one: '1 change',
+    );
+    return '$_temp0 since you last looked';
+  }
 }

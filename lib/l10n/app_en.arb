@@ -2772,6 +2772,68 @@
   "profileIrregularFramingHint": "Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.",
   "@profileIrregularFramingHint": {
     "description": "Issue #853: the composed irregular-framing toggle's hint, shown under the label."
-  }
+  },
 
+  "householdLogToday": "Log today",
+  "@householdLogToday": {
+    "description": "Issue #803: the household row's log-for-her action label. The row itself names the profile, so the visible label stays short; the full 'Log today for <name>' phrasing (householdLogTodayFor) is the action's tooltip/semantics."
+  },
+  "householdLogTodayFor": "Log today for {name}",
+  "@householdLogTodayFor": {
+    "description": "Issue #803: the household row's log-for-her action announced with the profile's name (tooltip and screen-reader label for the short on-row button).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "householdTimingExpectedToday": "Period expected today",
+  "@householdTimingExpectedToday": {
+    "description": "Issue #803: household-row timing line when the next-period estimate falls on today (never rendered for an irregular-framed profile, #853)."
+  },
+  "householdTimingExpectedIn": "Period expected in {count, plural, =1{1 day} other{{count} days}}",
+  "@householdTimingExpectedIn": {
+    "description": "Issue #803: household-row timing line when the next-period estimate falls within the upcoming window (never rendered for an irregular-framed profile, #853).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "householdTimingLate": "{count, plural, =1{1 day late} other{{count} days late}}",
+  "@householdTimingLate": {
+    "description": "Issue #803: household-row timing line for an open cycle past its estimate — the late resolver's own vocabulary (issue #221), never rendered for an irregular-framed profile (#853: variation is expected, not late).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "householdTimingLastLogged": "Last period {count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@householdTimingLastLogged": {
+    "description": "Issue #803: the quiet, factual open-cycle line for an irregular-framed (#853) or stale-history (#859) profile — informative without the overdue framing.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "householdSilence": "Nothing logged for {count, plural, =1{1 day} other{{count} days}}",
+  "@householdSilence": {
+    "description": "Issue #803: household-row silence line — the profile has history but nothing logged for at least its reminder-preference threshold. Counts only, never content.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "householdChanges": "{count, plural, =1{1 change} other{{count} changes}} since you last looked",
+  "@householdChanges": {
+    "description": "Issue #803: household-row changes line from the activity feed's unread count (issue #124 baseline). Counts only — the feed's content discretion applies here too.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }
