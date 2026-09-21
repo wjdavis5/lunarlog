@@ -1135,6 +1135,62 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunCreateButton => 'Create profile';
 
   @override
+  String get firstRunWhoLabel => 'Who is this profile for?';
+
+  @override
+  String get firstRunWhoMe => 'Me';
+
+  @override
+  String get firstRunWhoSomeone => 'Someone I care for';
+
+  @override
+  String get firstRunWhoBoth => 'Both';
+
+  @override
+  String get firstRunRelationshipLabel => 'Relationship';
+
+  @override
+  String get firstRunTeenSuggestedHint =>
+      'Teen mode is suggested for a minor — change it any time.';
+
+  @override
+  String get firstRunCycleShortCaption =>
+      'Optional: if you know when her last period started, add it below. Not sure? Just continue.';
+
+  @override
+  String get firstRunWrapUpTitle => 'Add another person?';
+
+  @override
+  String get firstRunWrapUpBody =>
+      'Everyone you set up now is ready to log. You can also add profiles later from the profile picker.';
+
+  @override
+  String get firstRunWrapUpAddAnother => 'Add another person';
+
+  @override
+  String get firstRunInviteTitle => 'Does someone else help?';
+
+  @override
+  String get firstRunInviteBody =>
+      'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.';
+
+  @override
+  String get firstRunInviteWhyAccount =>
+      'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.';
+
+  @override
+  String get firstRunInviteSignInAction => 'Sign in or create account';
+
+  @override
+  String get firstRunInviteCoParent => 'Invite a co-parent';
+
+  @override
+  String get firstRunInviteSkip => 'Skip for now';
+
+  @override
+  String get firstRunInviteDone => 'Done';
+
+  @override
   String get lifeStageModeLabel => 'Life-stage mode';
 
   @override
@@ -2235,6 +2291,146 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileIrregularFramingHint =>
       'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
+
+  @override
+  String cycleRecapTitle(int cycleNumber) {
+    return 'Cycle $cycleNumber wrapped up';
+  }
+
+  @override
+  String cycleRecapLength(String days) {
+    return 'This cycle lasted $days.';
+  }
+
+  @override
+  String cycleRecapUsualRange(String range) {
+    return 'Your usual range is $range.';
+  }
+
+  @override
+  String cycleRecapLongerThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days longer than the cycle before it.',
+      one: 'One day longer than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleRecapShorterThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days shorter than the cycle before it.',
+      one: 'One day shorter than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cycleRecapSameAsPrevious =>
+      'About the same length as the cycle before it.';
+
+  @override
+  String get cycleRecapEstimatesMoreConfident =>
+      'Your estimates are now more confident.';
+
+  @override
+  String get cycleRecapEstimatesLessConfident =>
+      'Your estimates are a little less certain now.';
+
+  @override
+  String cycleRecapAverageMoved(String days) {
+    return 'Your average cycle length moved by $days.';
+  }
+
+  @override
+  String cycleRecapRecurringSymptom(String symptom, String days) {
+    return '$symptom: most often around cycle day $days.';
+  }
+
+  @override
+  String cycleRecapCrampDays(String days) {
+    return 'Cramps most often land around cycle day $days.';
+  }
+
+  @override
+  String get cycleRecapStillLearning =>
+      'Still learning — estimates appear once a few cycles are recorded.';
+
+  @override
+  String get cycleRecapCompareAction => 'Compare with the cycle before';
+
+  @override
+  String get cycleRecapDismissLabel => 'Dismiss';
+
+  @override
+  String get householdLogToday => 'Log today';
+
+  @override
+  String householdLogTodayFor(String name) {
+    return 'Log today for $name';
+  }
+
+  @override
+  String get householdTimingExpectedToday => 'Period expected today';
+
+  @override
+  String householdTimingExpectedIn(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Period expected in $_temp0';
+  }
+
+  @override
+  String householdTimingLate(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days late',
+      one: '1 day late',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String householdTimingLastLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return 'Last period $_temp0';
+  }
+
+  @override
+  String householdSilence(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Nothing logged for $_temp0';
+  }
+
+  @override
+  String householdChanges(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count changes',
+      one: '1 change',
+    );
+    return '$_temp0 since you last looked';
+  }
 
   @override
   String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';

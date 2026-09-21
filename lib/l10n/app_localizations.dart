@@ -1859,6 +1859,108 @@ abstract class AppLocalizations {
   /// **'Create profile'**
   String get firstRunCreateButton;
 
+  /// The household-setup question at the top of the first-run name form (issue #804). 'Me' is preselected, so today's single-profile path never answers it.
+  ///
+  /// In en, this message translates to:
+  /// **'Who is this profile for?'**
+  String get firstRunWhoLabel;
+
+  /// Household-setup answer: the operator's own profile (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Me'**
+  String get firstRunWhoMe;
+
+  /// Household-setup answer: a profile for a family member (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Someone I care for'**
+  String get firstRunWhoSomeone;
+
+  /// Household-setup answer: the operator's own profile plus family members (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Both'**
+  String get firstRunWhoBoth;
+
+  /// Label above the relationship dropdown on a first-run card for someone other than the operator (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Relationship'**
+  String get firstRunRelationshipLabel;
+
+  /// Hint under the care-mode dropdown when Teen was preselected as a suggestion for a minor (issue #804; suggested, never forced — #131).
+  ///
+  /// In en, this message translates to:
+  /// **'Teen mode is suggested for a minor — change it any time.'**
+  String get firstRunTeenSuggestedHint;
+
+  /// Caption on the shortened cycle step for a family member's profile: the last-period question only, visibly skippable (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Optional: if you know when her last period started, add it below. Not sure? Just continue.'**
+  String get firstRunCycleShortCaption;
+
+  /// Title of the household wrap-up step after a profile was created (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Add another person?'**
+  String get firstRunWrapUpTitle;
+
+  /// Body of the household wrap-up step; states that the loop is optional (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone you set up now is ready to log. You can also add profiles later from the profile picker.'**
+  String get firstRunWrapUpBody;
+
+  /// Button looping back to a fresh person card on the household wrap-up step (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Add another person'**
+  String get firstRunWrapUpAddAnother;
+
+  /// Title of the first-run invite step (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Does someone else help?'**
+  String get firstRunInviteTitle;
+
+  /// Body of the first-run invite step; states skippability and the later path (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.'**
+  String get firstRunInviteBody;
+
+  /// Shown on the invite step when there is no session: why an account is required here and only here (issue #804 AC3).
+  ///
+  /// In en, this message translates to:
+  /// **'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.'**
+  String get firstRunInviteWhyAccount;
+
+  /// Button on the invite step opening the embedded sign-in screen (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in or create account'**
+  String get firstRunInviteSignInAction;
+
+  /// Per-profile button opening the invite dialog with the guardian presets (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Invite a co-parent'**
+  String get firstRunInviteCoParent;
+
+  /// Button ending the household flow without any invite (issue #804; always available).
+  ///
+  /// In en, this message translates to:
+  /// **'Skip for now'**
+  String get firstRunInviteSkip;
+
+  /// Button ending the household flow after (possibly zero) invites (issue #804).
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get firstRunInviteDone;
+
   /// Label above the life-stage-mode dropdown in the profile edit dialog.
   ///
   /// In en, this message translates to:
@@ -3652,6 +3754,138 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.'**
   String get profileIrregularFramingHint;
+
+  /// Issue #852: title of the cycle-end recap card. {cycleNumber} is the 1-based ordinal of the cycle that just closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle {cycleNumber} wrapped up'**
+  String cycleRecapTitle(int cycleNumber);
+
+  /// Issue #852: the recap's one certain fact -- the logged length of the cycle that just closed. {days} is already pluralized by formatDays (e.g. '29 days').
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle lasted {days}.'**
+  String cycleRecapLength(String days);
+
+  /// Issue #852: the recap's estimate-backed range line, shown only when the engine has an estimate. {range} is a formatted span such as '27-31 days'. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'Your usual range is {range}.'**
+  String cycleRecapUsualRange(String range);
+
+  /// Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{One day longer than the cycle before it.} other{{days} days longer than the cycle before it.}}'**
+  String cycleRecapLongerThanPrevious(int days);
+
+  /// Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{One day shorter than the cycle before it.} other{{days} days shorter than the cycle before it.}}'**
+  String cycleRecapShorterThanPrevious(int days);
+
+  /// Issue #852: this-cycle-vs-previous comparison when the two lengths are equal. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'About the same length as the cycle before it.'**
+  String get cycleRecapSameAsPrevious;
+
+  /// Issue #852: a confidence-tier transition upward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists. Uses the app's own CycleConfidence vocabulary, never invented encouragement.
+  ///
+  /// In en, this message translates to:
+  /// **'Your estimates are now more confident.'**
+  String get cycleRecapEstimatesMoreConfident;
+
+  /// Issue #852: a confidence-tier transition downward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Your estimates are a little less certain now.'**
+  String get cycleRecapEstimatesLessConfident;
+
+  /// Issue #852: a meaningful displayed mean-cycle-length shift detected with the #178 statistic-change thresholds. {days} is the pluralized absolute shift.
+  ///
+  /// In en, this message translates to:
+  /// **'Your average cycle length moved by {days}.'**
+  String cycleRecapAverageMoved(String days);
+
+  /// Issue #852: a recurring-symptom fact from the Analysis tab's own report (#135). {symptom} is the tag code with underscores turned into spaces, sentence-cased; {days} is a formatted cycle-day list such as '1-2'.
+  ///
+  /// In en, this message translates to:
+  /// **'{symptom}: most often around cycle day {days}.'**
+  String cycleRecapRecurringSymptom(String symptom, String days);
+
+  /// Issue #852: the cramp forecast's own recurring-day fact (#229), shown only when the engine produced one. {days} is a formatted cycle-day list such as '1, 2'.
+  ///
+  /// In en, this message translates to:
+  /// **'Cramps most often land around cycle day {days}.'**
+  String cycleRecapCrampDays(String days);
+
+  /// Issue #852: the recap's honest thin-history line, shown instead of any estimate-backed fact while the engine is below its estimate threshold. Mirrors the app's 'Estimates not ready' voice rule.
+  ///
+  /// In en, this message translates to:
+  /// **'Still learning — estimates appear once a few cycles are recorded.'**
+  String get cycleRecapStillLearning;
+
+  /// Issue #852: action opening the #235 side-by-side comparison for the recap's two cycles, shown only when both are complete.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare with the cycle before'**
+  String get cycleRecapCompareAction;
+
+  /// Issue #852: tooltip and accessibility label for the recap card's dismiss affordance (reused by the irregular suggestion banner's own copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get cycleRecapDismissLabel;
+
+  /// Issue #803: the household row's log-for-her action label. The row itself names the profile, so the visible label stays short; the full 'Log today for <name>' phrasing (householdLogTodayFor) is the action's tooltip/semantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Log today'**
+  String get householdLogToday;
+
+  /// Issue #803: the household row's log-for-her action announced with the profile's name (tooltip and screen-reader label for the short on-row button).
+  ///
+  /// In en, this message translates to:
+  /// **'Log today for {name}'**
+  String householdLogTodayFor(String name);
+
+  /// Issue #803: household-row timing line when the next-period estimate falls on today (never rendered for an irregular-framed profile, #853).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected today'**
+  String get householdTimingExpectedToday;
+
+  /// Issue #803: household-row timing line when the next-period estimate falls within the upcoming window (never rendered for an irregular-framed profile, #853).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected in {count, plural, =1{1 day} other{{count} days}}'**
+  String householdTimingExpectedIn(int count);
+
+  /// Issue #803: household-row timing line for an open cycle past its estimate — the late resolver's own vocabulary (issue #221), never rendered for an irregular-framed profile (#853: variation is expected, not late).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day late} other{{count} days late}}'**
+  String householdTimingLate(int count);
+
+  /// Issue #803: the quiet, factual open-cycle line for an irregular-framed (#853) or stale-history (#859) profile — informative without the overdue framing.
+  ///
+  /// In en, this message translates to:
+  /// **'Last period {count, plural, =1{1 day ago} other{{count} days ago}}'**
+  String householdTimingLastLogged(int count);
+
+  /// Issue #803: household-row silence line — the profile has history but nothing logged for at least its reminder-preference threshold. Counts only, never content.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged for {count, plural, =1{1 day} other{{count} days}}'**
+  String householdSilence(int count);
+
+  /// Issue #803: household-row changes line from the activity feed's unread count (issue #124 baseline). Counts only — the feed's content discretion applies here too.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change} other{{count} changes}} since you last looked'**
+  String householdChanges(int count);
 
   /// Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop.
   ///

@@ -227,8 +227,11 @@ class _ProfileHomeGateState extends State<ProfileHomeGate> {
 
   /// The base home decision once loading, recovery and sync-status screens
   /// are all out of the way: first-run, the picker, or the active profile.
+  /// Issue #804: the first-run screen also stays up while its household
+  /// setup flow is still active (`firstRunFlowActive`) — the zero-profiles
+  /// rule alone would unmount it the moment the first creation lands.
   Widget _profileScreen(ProfileController controller) {
-    if (controller.needsFirstRun) {
+    if (controller.needsFirstRun || controller.firstRunFlowActive) {
       return const FirstRunScreen();
     }
     final active = controller.activeProfile;

@@ -306,6 +306,7 @@ class ProfileCard extends StatelessWidget {
     this.predictionService,
     this.todayProvider = LocalDate.today,
     this.subtitle,
+    this.subtitleExtra,
     this.sharingService,
     this.refreshToken = 0,
     this.onTap,
@@ -326,6 +327,13 @@ class ProfileCard extends StatelessWidget {
   /// picker's created-date fallback) — rendered in the theme's small
   /// variant style so the status reads as the primary fact.
   final String? subtitle;
+
+  /// Issue #803: an optional widget rendered under [subtitle] in the
+  /// subtitle column (the household view's per-profile signal lines —
+  /// timing / silence / changes). The caller owns its subscriptions; the
+  /// card only places it, so a plain picker row (null) renders exactly as
+  /// before.
+  final Widget? subtitleExtra;
 
   /// Null when the build has no sharing service: the row still renders
   /// its local shared state, but no badge is fetched.
@@ -353,7 +361,7 @@ class ProfileCard extends StatelessWidget {
         displayName: profile.displayName,
       ),
       title: Text(profile.displayName),
-      subtitle: _subtitle(theme, service, subtitleText),
+      subtitle: _subtitle(theme, service, subtitleText, subtitleExtra),
       isThreeLine: service != null && subtitleText != null,
       onTap: onTap,
       trailing: trailingRow,
@@ -405,14 +413,24 @@ class ProfileCard extends StatelessWidget {
       );
 
   /// The status line (when a prediction service exists) plus the caller's
-  /// secondary line, stacked small-under-primary.
+  /// secondary line, stacked small-under-primary, plus the caller's own
+  /// extra widget (issue #803's signal lines) under both.
   Widget? _subtitle(
     ThemeData theme,
     CyclePredictionService? service,
     String? subtitleText,
+    Widget? subtitleExtra,
   ) {
     if (service == null) {
-      return subtitleText == null ? null : Text(subtitleText);
+      if (subtitleText == null && subtitleExtra == null) return null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (subtitleText != null) Text(subtitleText),
+          ?subtitleExtra,
+        ],
+      );
     }
     final secondary = subtitleText == null
         ? null
@@ -437,6 +455,10 @@ class ProfileCard extends StatelessWidget {
         if (secondary != null) ...[
           const SizedBox(height: LLSpace.space1),
           secondary,
+        ],
+        if (subtitleExtra != null) ...[
+          const SizedBox(height: LLSpace.space1),
+          subtitleExtra,
         ],
       ],
     );
