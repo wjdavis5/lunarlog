@@ -201,7 +201,18 @@ int _skipInterpolation(String s, int i) {
 /// Scans [source] (Dart file contents) and returns every first-positional
 /// string-literal argument to a `Text(` or `Tooltip(` call, filtered by
 /// [isHardcodedUiCopy]. Line numbers are 1-based.
-List<HardcodedUiString> scanHardcodedUiStrings(String source) {
+///
+/// [namedArgs] (issue #1004, tranche 1) additionally records a
+/// string-literal value for any identifier in the set written as a named
+/// argument or map entry (`labelText: '...'`, `title: '...'`), which the
+/// default `Text(`/`Tooltip(` scan does not see. It defaults to empty so
+/// the global backlog scan is unchanged; a directory that has burned all
+/// of its positional literals (starting with `lib/ui/sharing/`) opts in to
+/// the stricter check.
+List<HardcodedUiString> scanHardcodedUiStrings(
+  String source, {
+  Set<String> namedArgs = const {},
+}) {
   final found = <HardcodedUiString>[];
   var i = 0;
   var line = 1;
@@ -256,6 +267,41 @@ List<HardcodedUiString> scanHardcodedUiStrings(String source) {
         }
         final atOpenParen = k < source.length && source.codeUnitAt(k) == 0x28;
         if (atOpenParen) {
+          var a = k + 1;
+          while (a < source.length && _isWs(source.codeUnitAt(a))) {
+            a++;
+          }
+          final rawOrQuote = a < source.length
+              ? source.codeUnitAt(a)
+              : 0;
+          final isLiteralArg = _isQuote(rawOrQuote) ||
+              (rawOrQuote == 0x72 /* r */ &&
+                  a + 1 < source.length &&
+                  _isQuote(source.codeUnitAt(a + 1)));
+          if (isLiteralArg) {
+            final lit = _readLiteral(source, a);
+            final literalLine = line + '\n'
+                .allMatches(source.substring(start, a))
+                .length;
+            if (isHardcodedUiCopy(lit.value)) {
+              found.add(
+                HardcodedUiString(value: lit.value, line: literalLine),
+              );
+            }
+            line += '\n'.allMatches(lit.value).length;
+            i = lit.end;
+            continue;
+          }
+        }
+      } else if (namedArgs.contains(ident)) {
+        // `ident: 'literal'` — a named argument or map entry. Skipped
+        // unless the caller opted this identifier into [namedArgs].
+        var k = i;
+        while (k < source.length && _isWs(source.codeUnitAt(k))) {
+          k++;
+        }
+        final atColon = k < source.length && source.codeUnitAt(k) == 0x3A;
+        if (atColon) {
           var a = k + 1;
           while (a < source.length && _isWs(source.codeUnitAt(a))) {
             a++;
