@@ -20,7 +20,10 @@ source "$SCRIPT_DIR/lib/assert.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/apple-client-secret-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
-openssl ecparam -name prime256v1 -genkey -noout -out "$TMP/key.pem" 2>/dev/null
+# Apple's `.p8` is a PKCS#8 EC key (`-----BEGIN PRIVATE KEY-----`), so the
+# throwaway key is converted to the same shape rather than left as SEC1.
+openssl ecparam -name prime256v1 -genkey -noout -out "$TMP/ec-key.pem" 2>/dev/null
+openssl pkcs8 -topk8 -nocrypt -in "$TMP/ec-key.pem" -out "$TMP/key.pem" 2>/dev/null
 openssl ec -in "$TMP/key.pem" -pubout -out "$TMP/pub.pem" 2>/dev/null
 # A second, unrelated key to prove the signature check is not vacuous.
 openssl ecparam -name prime256v1 -genkey -noout -out "$TMP/other-key.pem" 2>/dev/null
