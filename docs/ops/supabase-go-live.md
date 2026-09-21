@@ -63,6 +63,13 @@ JWT are CLI defaults) and says nothing about the cloud project.
       (issue #18/#972). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
+- [ ] Web auth callback added to the redirect allow-list (epic #831 slice 2):
+      `https://app.lunarlog.app/auth/callback`. A browser cannot open the
+      `lunarlog://auth-callback` custom scheme, so a `LUNARLOG_WEB_SYNC=true`
+      web build sends its confirmation, passwordless, and reset mail here and
+      exchanges the returned `?code=` from the initial `Uri.base`. See
+      `docs/web/security-posture.md` §4. Any other origin the web build is
+      served from needs its own `/auth/callback` entry too.
 - [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →
       Providers → Multi-Factor Authentication → "Authenticator App (TOTP)" on.
       `supabase/config.toml`'s `[auth.mfa.totp]` stays `enroll_enabled = false`/

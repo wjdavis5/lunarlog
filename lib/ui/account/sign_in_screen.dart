@@ -129,7 +129,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
   bool get _showApple =>
       widget.showApple ??
-      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+      computeAppleSignInAvailable(
+        isWeb: kIsWeb,
+        isIos: defaultTargetPlatform == TargetPlatform.iOS,
+      );
 
   bool get _showGoogle => widget.showGoogle ?? AppConfig.hasGoogle;
 
