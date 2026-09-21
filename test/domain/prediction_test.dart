@@ -1268,4 +1268,89 @@ void main() {
       expect(p.forecast.last.cycleIndex, kMaxForecastCycles);
     });
   });
+
+  group('issue #859: stale-history state', () {
+    /// The issue's own 2½-year-stale shape: mean 29.33 (29/29/30), last
+    /// logged start 2024-04-27, today 2026-10-13 — 899 days open.
+    final staleStarts = [
+      d(2024, 1, 30),
+      d(2024, 2, 28),
+      d(2024, 3, 28),
+      d(2024, 4, 27),
+    ];
+
+    test('a 2½-year-old open cycle flags staleHistory (and still carries '
+        'the rolled estimate structurally, so no consumer loses it)', () {
+      final p = computePrediction(
+        episodes: episodesFromStarts(staleStarts),
+        today: d(2026, 10, 13),
+      ) as ActivePrediction;
+
+      expect(p.staleHistory, isTrue);
+      expect(p.unusuallyLongCycle, isTrue,
+          reason: 'stale is a strictly further step than long, not a '
+              'replacement for it');
+      expect(p.daysLate, greaterThan(800),
+          reason: 'the three-digit count the issue reports still exists on '
+              'the domain object; #859 is a presentation decision');
+      expect(p.forecast, isNotEmpty);
+    });
+
+    test('the threshold is the profile mean times the multiplier, floored '
+        'at twice kMaxOpenCycleDays', () {
+      // 4 × 29 = 116, under the 120-day floor.
+      expect(staleHistoryThresholdDays(29), kMinStaleHistoryDays);
+      // 4 × 45 = 180, past the floor.
+      expect(staleHistoryThresholdDays(45), 180);
+    });
+
+    test('a 70-day open cycle is unusually long but NOT stale — the '
+        'regression that matters most', () {
+      // Mean 30; last start 2026-05-30 → 70 days open on 2026-08-08.
+      final p = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 3, 1),
+          d(2026, 3, 31),
+          d(2026, 4, 30),
+          d(2026, 5, 30),
+        ]),
+        today: d(2026, 8, 8),
+      ) as ActivePrediction;
+
+      expect(p.daysSinceLastEpisodeStart, 70);
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.staleHistory, isFalse,
+          reason: '70 days is past kMaxOpenCycleDays but under '
+              'staleHistoryThresholdDays(30) — the long-cycle prompt must '
+              'render exactly as it does today');
+    });
+
+    test('an ordinary late cycle (days-to-weeks) is untouched', () {
+      final p = computePrediction(
+        episodes: episodesFromStarts(
+            [d(2026, 1, 1), d(2026, 1, 29), d(2026, 2, 26), d(2026, 3, 26)]),
+        today: d(2026, 4, 26),
+      ) as ActivePrediction;
+
+      expect(p.isLate, isTrue);
+      expect(p.unusuallyLongCycle, isFalse);
+      expect(p.staleHistory, isFalse);
+    });
+
+    test('a long-mean profile (60-day cycles) is not stale at 79 days open',
+        () {
+      // Mean 60; threshold = 4 × 60 = 240.
+      final p = computePrediction(
+        episodes: episodesFromStarts([
+          d(2026, 1, 1),
+          d(2026, 3, 2),
+          d(2026, 5, 1),
+          d(2026, 6, 30),
+        ]),
+        today: d(2026, 9, 17), // 79 days open
+      ) as ActivePrediction;
+      expect(p.unusuallyLongCycle, isTrue);
+      expect(p.staleHistory, isFalse);
+    });
+  });
 }

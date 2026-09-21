@@ -574,6 +574,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewLongCyclePredictionsOff => 'Turn off predictions';
 
   @override
+  String get overviewStaleHistoryTitle => 'Your history is out of date';
+
+  @override
+  String get overviewStaleHistoryBody =>
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+
+  @override
+  String get overviewStaleHistoryLog => 'Log a period';
+
+  @override
   String get overviewReminderHint =>
       'Reminders unavailable — notifications are off';
 
@@ -610,6 +620,33 @@ class AppLocalizationsEn extends AppLocalizations {
       one: 'day late',
     );
     return '$_temp0';
+  }
+
+  @override
+  String cycleWheelDaysPastEstimateUnit(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days past estimate',
+      one: 'day past estimate',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleWheelSemanticsPastEstimate(
+    int daysPast,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      daysPast,
+      locale: localeName,
+      other: '$daysPast days past the estimate.',
+      one: '1 day past the estimate.',
+    );
+    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
   }
 
   @override
@@ -754,6 +791,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
       'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
+
+  @override
+  String healthSyncPermissionGranted(String source) {
+    return '$source access: granted';
+  }
+
+  @override
+  String healthSyncPermissionNotAsked(String source) {
+    return '$source access: not yet asked';
+  }
+
+  @override
+  String healthSyncPermissionDenied(String source) {
+    return '$source access: denied — open Settings to change';
+  }
+
+  @override
+  String healthSyncPermissionUnavailable(String source) {
+    return '$source access is not available on this device.';
+  }
+
+  @override
+  String get healthSyncPermissionOpenSettings => 'Open Settings';
 
   @override
   String healthSyncImportUpdatedDays(int count, String source) {
@@ -1073,6 +1133,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunCreateButton => 'Create profile';
+
+  @override
+  String get firstRunWhoLabel => 'Who is this profile for?';
+
+  @override
+  String get firstRunWhoMe => 'Me';
+
+  @override
+  String get firstRunWhoSomeone => 'Someone I care for';
+
+  @override
+  String get firstRunWhoBoth => 'Both';
+
+  @override
+  String get firstRunRelationshipLabel => 'Relationship';
+
+  @override
+  String get firstRunTeenSuggestedHint =>
+      'Teen mode is suggested for a minor — change it any time.';
+
+  @override
+  String get firstRunCycleShortCaption =>
+      'Optional: if you know when her last period started, add it below. Not sure? Just continue.';
+
+  @override
+  String get firstRunWrapUpTitle => 'Add another person?';
+
+  @override
+  String get firstRunWrapUpBody =>
+      'Everyone you set up now is ready to log. You can also add profiles later from the profile picker.';
+
+  @override
+  String get firstRunWrapUpAddAnother => 'Add another person';
+
+  @override
+  String get firstRunInviteTitle => 'Does someone else help?';
+
+  @override
+  String get firstRunInviteBody =>
+      'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.';
+
+  @override
+  String get firstRunInviteWhyAccount =>
+      'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.';
+
+  @override
+  String get firstRunInviteSignInAction => 'Sign in or create account';
+
+  @override
+  String get firstRunInviteCoParent => 'Invite a co-parent';
+
+  @override
+  String get firstRunInviteSkip => 'Skip for now';
+
+  @override
+  String get firstRunInviteDone => 'Done';
 
   @override
   String get lifeStageModeLabel => 'Life-stage mode';
@@ -2115,4 +2231,204 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianNotesUpdate => 'Update note';
+
+  @override
+  String inviteSubjectOption(String name) {
+    return 'Invite $name to log her own profile';
+  }
+
+  @override
+  String inviteSubjectOptionDetail(String name) {
+    return 'Caregiver access - this is $name\'s own profile, listed as hers on her device';
+  }
+
+  @override
+  String inviteCreatedShareGuardian(String profile) {
+    return 'Share this single-use link with the guardian for $profile:';
+  }
+
+  @override
+  String inviteCreatedShareSubject(String name) {
+    return 'Share this single-use link with $name - she\'ll use it to join and log her own profile:';
+  }
+
+  @override
+  String acceptInviteSubjectIntro(String profile) {
+    return 'This is your profile. $profile\'s cycle calendar and health logs will sync to this device - the guardians already sharing it can see and log it too.';
+  }
+
+  @override
+  String get profilePickerSubjectSubtitle => 'This is your profile';
+
+  @override
+  String get manageGuardiansSubjectBadge => '(her profile)';
+
+  @override
+  String get manageGuardiansPendingSubjectLabel => 'Her own profile';
+
+  @override
+  String subjectTeenModeDialogTitle(String name) {
+    return 'Switch $name to Teen mode?';
+  }
+
+  @override
+  String subjectTeenModeDialogBody(String name) {
+    return '$name is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.';
+  }
+
+  @override
+  String get subjectTeenModeDialogAccept => 'Switch to Teen';
+
+  @override
+  String get subjectTeenModeDialogDecline => 'Keep Standard';
+
+  @override
+  String get subjectTeenModeDoneSnack => 'Switched to Teen mode';
+
+  @override
+  String get profileIrregularFramingLabel => 'Irregular cycles';
+
+  @override
+  String get profileIrregularFramingHint =>
+      'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
+
+  @override
+  String cycleRecapTitle(int cycleNumber) {
+    return 'Cycle $cycleNumber wrapped up';
+  }
+
+  @override
+  String cycleRecapLength(String days) {
+    return 'This cycle lasted $days.';
+  }
+
+  @override
+  String cycleRecapUsualRange(String range) {
+    return 'Your usual range is $range.';
+  }
+
+  @override
+  String cycleRecapLongerThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days longer than the cycle before it.',
+      one: 'One day longer than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleRecapShorterThanPrevious(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days shorter than the cycle before it.',
+      one: 'One day shorter than the cycle before it.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get cycleRecapSameAsPrevious =>
+      'About the same length as the cycle before it.';
+
+  @override
+  String get cycleRecapEstimatesMoreConfident =>
+      'Your estimates are now more confident.';
+
+  @override
+  String get cycleRecapEstimatesLessConfident =>
+      'Your estimates are a little less certain now.';
+
+  @override
+  String cycleRecapAverageMoved(String days) {
+    return 'Your average cycle length moved by $days.';
+  }
+
+  @override
+  String cycleRecapRecurringSymptom(String symptom, String days) {
+    return '$symptom: most often around cycle day $days.';
+  }
+
+  @override
+  String cycleRecapCrampDays(String days) {
+    return 'Cramps most often land around cycle day $days.';
+  }
+
+  @override
+  String get cycleRecapStillLearning =>
+      'Still learning — estimates appear once a few cycles are recorded.';
+
+  @override
+  String get cycleRecapCompareAction => 'Compare with the cycle before';
+
+  @override
+  String get cycleRecapDismissLabel => 'Dismiss';
+
+  @override
+  String get householdLogToday => 'Log today';
+
+  @override
+  String householdLogTodayFor(String name) {
+    return 'Log today for $name';
+  }
+
+  @override
+  String get householdTimingExpectedToday => 'Period expected today';
+
+  @override
+  String householdTimingExpectedIn(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Period expected in $_temp0';
+  }
+
+  @override
+  String householdTimingLate(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days late',
+      one: '1 day late',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String householdTimingLastLogged(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return 'Last period $_temp0';
+  }
+
+  @override
+  String householdSilence(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return 'Nothing logged for $_temp0';
+  }
+
+  @override
+  String householdChanges(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count changes',
+      one: '1 change',
+    );
+    return '$_temp0 since you last looked';
+  }
 }

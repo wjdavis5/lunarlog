@@ -464,6 +464,10 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// gate's server-owned `transferredToUserId` input.)
   /// [mode] (Issue #131) is the raw `toDb()` care-mode string, same
   /// treatment: presentation-only, synced like any other profile column.
+  /// [irregularFraming] (Issue #853) is the composed framing flag's stored
+  /// tri-state: null = engine default, true/false = explicit operator
+  /// choice. Same treatment as mode except that null is meaningful, so a
+  /// caller that "doesn't know" passes null rather than false.
   /// The three cycle-fact parameters (Issue #218) are the onboarding
   /// answers: [lastPeriodStart] as an ISO `yyyy-MM-dd` string (validated
   /// like every other stored civil date) and the two typical lengths as
@@ -487,6 +491,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required String displayName,
     required bool isMinor,
     String mode = 'standard',
+    bool? irregularFraming,
     String bbtUnit = 'celsius',
     String weightUnit = 'kg',
     String? trackingPreferences,
@@ -524,6 +529,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               dirty: const Value(true),
               localRev: const Value(1),
               mode: Value(mode),
+              irregularFraming: Value(irregularFraming),
               bbtUnit: Value(bbtUnit),
               weightUnit: Value(weightUnit),
               // Issue #637, LLA-039: this call is the caller's real,
@@ -552,6 +558,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           dirty: const Value(true),
           localRev: Value(existing.localRev + 1),
           mode: Value(mode),
+          irregularFraming: Value(irregularFraming),
           bbtUnit: Value(bbtUnit),
           weightUnit: Value(weightUnit),
           unitsUnconfirmed:

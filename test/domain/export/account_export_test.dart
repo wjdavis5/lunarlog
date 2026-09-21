@@ -33,6 +33,7 @@ Profile _profile(
   String displayName = 'Riley',
   bool isMinor = true,
   ProfileMode mode = ProfileMode.standard,
+  bool? irregularFraming,
   BbtUnit bbtUnit = BbtUnit.celsius,
   WeightUnit weightUnit = WeightUnit.kg,
   int sortOrder = 0,
@@ -49,6 +50,7 @@ Profile _profile(
       displayName: displayName,
       isMinor: isMinor,
       mode: mode,
+      irregularFraming: irregularFraming,
       bbtUnit: bbtUnit,
       weightUnit: weightUnit,
       sortOrder: sortOrder,
@@ -175,6 +177,40 @@ void main() {
         (sum, p) => sum + ((p as Map)['dayEntries'] as List).length,
       );
       expect(totalEntries, 5);
+    });
+
+    test('issue #853 (export v14): the composed framing flag exports as '
+        'the tri-state it carries, next to the mode', () {
+      final doc = buildAccountExport(
+        profiles: [
+          _profile('p-on', mode: ProfileMode.teen, irregularFraming: true),
+          _profile('p-off', mode: ProfileMode.standard,
+              irregularFraming: false),
+          _profile('p-unset', mode: ProfileMode.teen),
+        ],
+        entriesByProfile: const {},
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+      final profiles = doc['profiles'] as List;
+      // buildAccountExport sorts profiles by id (p-off < p-on < p-unset),
+      // so each map is looked up by its id, never by input position.
+      final byId = {
+        for (final p in profiles) (p as Map)['id'] as String: p,
+      };
+      final on = byId['p-on']!;
+      final off = byId['p-off']!;
+      final unset = byId['p-unset']!;
+      expect(on['irregularFraming'], isTrue);
+      expect(off['irregularFraming'], isFalse);
+      expect(unset['irregularFraming'], isNull,
+          reason: 'null is the meaningful "engine default" state, carried '
+              'as an explicit JSON null');
+      // The mode key itself never carries the legacy rival value from a
+      // v14 export (stored rows were folded at v28/read time upstream).
+      for (final p in profiles) {
+        expect((p as Map)['mode'], isNot('irregular'));
+      }
     });
   });
 
@@ -436,8 +472,9 @@ void main() {
     test('schema version was bumped to 9 for the new keys (since moved to '
         '10 for profiles[].trackingPreferences, Issue #648, 11 for '
         'profiles[].mergeEvents, Issue #130, 12 for profiles[].customTags, '
-        'Issue #824, and 13 for profiles[].guardianNotes, Issue #870)', () {
-      expect(kAccountExportSchemaVersion, 13);
+        'Issue #824, 13 for profiles[].guardianNotes, Issue #870, and 14 for '
+        'profiles[].irregularFraming, Issue #853)', () {
+      expect(kAccountExportSchemaVersion, 14);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -652,7 +689,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mergeEvents'], isEmpty);
       expect((profiles[1] as Map)['mergeEvents'], isEmpty);
@@ -742,7 +779,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['customTags'], isEmpty);
       expect((profiles[1] as Map)['customTags'], isEmpty);
@@ -819,7 +856,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 13);
+      expect(kAccountExportSchemaVersion, 14);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['guardianNotes'], isEmpty);
       expect((profiles[1] as Map)['guardianNotes'], isEmpty);

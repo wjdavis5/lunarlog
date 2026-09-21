@@ -33,10 +33,18 @@ String? guardianRoleReadOnlyReason(AppLocalizations l10n, GuardianRole role) =>
 /// profiles name the group and the role; owned profiles name the role only
 /// when known, otherwise null so the caller falls back to its own subtitle
 /// (e.g. created date) instead of guessing.
+///
+/// Issue #802: a subject membership (the operator's own profile, held via
+/// the "her own profile" invite) reads as owned, and its subtitle names
+/// that fact instead of the caregiver role the preset granted — never
+/// "Caregiver" under the person's own name.
 String? sharingProfileRoleSubtitle(
   AppLocalizations l10n,
   SharingProfileInfo info,
 ) {
+  if (info.isSubject) {
+    return l10n.profilePickerSubjectSubtitle;
+  }
   final role = info.myRole;
   if (info.group == ProfileSharingGroup.sharedWithMe) {
     return l10n.profilePickerSharedRoleSubtitle(guardianRoleLabel(l10n, role!));

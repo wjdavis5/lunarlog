@@ -28,11 +28,11 @@ finding() {
 out="$(run_script '{"results":[]}')"
 assert_contains "empty results passes" "$out" "Database advisor gate passed"
 
-# --- exactly the three documented exclusions, together: still pass ------
+# --- exactly the two documented exclusions, together: still pass --------
 
-three="$(finding authenticated_security_definer_function_executable "sync_push is executable by authenticated" '{"name":"sync_push"}'),$(finding extension_in_public "Extension pg_net is installed in the public schema" '{"name":"pg_net"}'),$(finding auth_leaked_password_protection "Leaked password protection is disabled" '{}')"
-out="$(run_script "{\"results\":[$three]}")"
-assert_contains "all three documented exclusions together still pass" "$out" "Database advisor gate passed"
+two="$(finding authenticated_security_definer_function_executable "sync_push is executable by authenticated" '{"name":"sync_push"}'),$(finding extension_in_public "Extension pg_net is installed in the public schema" '{"name":"pg_net"}')"
+out="$(run_script "{\"results\":[$two]}")"
+assert_contains "both documented exclusions together still pass" "$out" "Database advisor gate passed"
 
 # --- authenticated_security_definer_function_executable, any function name, excluded ---
 
@@ -54,10 +54,19 @@ set -e
 assert_eq "extension_in_public for pg_cron (not pg_net) exits non-zero" "1" "$rc"
 assert_contains "the error reports the pg_cron finding" "$err" "extension_in_public"
 
-# --- auth_leaked_password_protection: excluded ---------------------------
+# --- auth_leaked_password_protection: NO LONGER excluded (issue #972) -----
+# The owner turned leaked-password protection ON (issue #18 dashboard
+# checklist, completed 2026-09-20), so the finding is gone from production
+# and the exclusion was removed. If it ever comes back the toggle was
+# turned off again, and the gate must fail so issue #18 is reopened --
+# never silently excused.
 
-out="$(run_script "{\"results\":[$(finding auth_leaked_password_protection "Leaked password protection is disabled" '{}')]}")"
-assert_contains "auth_leaked_password_protection is excluded" "$out" "Database advisor gate passed"
+set +e
+err_leaked="$(run_script "{\"results\":[$(finding auth_leaked_password_protection "Leaked password protection is disabled" '{}')]}" 2>&1 1>/dev/null)"
+rc_leaked=$?
+set -e
+assert_eq "auth_leaked_password_protection is no longer excluded and exits non-zero" "1" "$rc_leaked"
+assert_contains "the error reports the leaked-password finding" "$err_leaked" "auth_leaked_password_protection"
 
 # --- any other/unknown finding still fails closed -------------------------
 

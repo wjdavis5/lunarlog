@@ -75,6 +75,32 @@ class ProfileController extends ChangeNotifier {
 
   bool get pickerVisible => _pickerRequested || activeProfile == null;
 
+  /// Issue #804: session-scoped flag — the home gate keeps
+  /// [FirstRunScreen] mounted while the household-setup loop is still
+  /// running, even though a profile already exists (the zero-profiles
+  /// rule alone would unmount the screen the moment the first creation
+  /// lands, killing the add-another-person and invite steps). Never
+  /// persisted: a process death mid-flow simply reopens on the profiles
+  /// that were already created, exactly as if the flow had finished.
+  bool get firstRunFlowActive => _firstRunFlowActive;
+  bool _firstRunFlowActive = false;
+
+  /// Called by [FirstRunScreen] when the operator leaves the plain
+  /// single-profile path (who != "me"), before the first creation so the
+  /// gate never sees a half-finished flow.
+  void beginFirstRunFlow() {
+    _firstRunFlowActive = true;
+    notifyListeners();
+  }
+
+  /// Called when the household flow ends (wrap-up "Continue"/invite-step
+  /// done/skip): the gate resumes its ordinary decision — the active
+  /// profile's Today, or the picker when the flow created several.
+  void endFirstRunFlow() {
+    _firstRunFlowActive = false;
+    notifyListeners();
+  }
+
   /// Issue #206 (C-17): this future is fire-and-forget from the provider
   /// `create:` in `lib/app.dart`, and a device reset (`resetDevice`,
   /// `lib/app_lifecycle.dart`) deliberately unmounts the whole app subtree
@@ -133,6 +159,7 @@ class ProfileController extends ChangeNotifier {
     required String displayName,
     required bool isMinor,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     CycleFacts? facts,
@@ -151,6 +178,7 @@ class ProfileController extends ChangeNotifier {
       displayName: _validated(displayName),
       isMinor: isMinor,
       mode: mode,
+      irregularFraming: irregularFraming,
       birthYear: birthYear,
       relationship: relationship,
       lastPeriodStart: facts?.lastPeriodStart,
@@ -173,13 +201,18 @@ class ProfileController extends ChangeNotifier {
   /// [facts] rides the ordinary profile update; a null [facts] keeps the
   /// profile's current answers (pass [CycleFacts.empty] to clear them) —
   /// unlike [birthYear]/[relationship], whose callers have always passed
-  /// the current value explicitly. [lifecycleMode]/[birthControlMethod],
+  /// the current value explicitly. [irregularFraming] (Issue #853) follows
+  /// that same always-pass-explicitly contract: a passed null means the
+  /// engine default (NOT "keep the stored value"), so callers hand it the
+  /// dialog result's own value — which for an untouched control is the
+  /// profile's stored tri-state. [lifecycleMode]/[birthControlMethod],
   /// when non-null, rewrite the mode row.
   Future<void> renameProfile(
     Profile profile, {
     required String displayName,
     required bool isMinor,
     ProfileMode? mode,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     CycleFacts? facts,
@@ -196,6 +229,7 @@ class ProfileController extends ChangeNotifier {
       displayName: _validated(displayName),
       isMinor: isMinor,
       mode: mode ?? profile.mode,
+      irregularFraming: irregularFraming,
       birthYear: birthYear,
       relationship: relationship,
       lastPeriodStart: effectiveFacts.lastPeriodStart,

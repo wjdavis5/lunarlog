@@ -156,6 +156,15 @@ abstract final class SettingsKeys {
   /// the same posture as [reminderConfigs].
   static const String tagRecents = 'tag_recents';
 
+  /// Issue #802: prefix for the per-profile latch behind the one-time
+  /// Teen-mode suggestion shown to a manager when a minor subject joins
+  /// her own profile. The full key is `<prefix>:<profile id>`; any
+  /// present value means the offer was already made on this device
+  /// (accepted or declined), so it never nags twice. Device-local by
+  /// design — which devices have made the offer is presentation state,
+  /// not profile data, so it never syncs.
+  static const String subjectTeenModeOffered = 'subject_teen_mode_offered';
+
   /// The device-local appearance override (issue #137): one of `'system'`,
   /// `'light'`, or `'dark'`, parsed by `themeModeFromStored`
   /// (`lib/ui/theme/appearance.dart`). Absent — or any unrecognized value,

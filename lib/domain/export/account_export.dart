@@ -131,7 +131,16 @@ import 'account_export_remote_source.dart';
 /// `last_modified_by_user_id`) stay out per this file's R9 rule, and
 /// tombstoned rows are excluded. A reader of an old (v12) export treats
 /// the key's absence as "not yet collected," the same v3/v6/v11/v12 precedent.
-const int kAccountExportSchemaVersion = 13;
+///
+/// v14 (Issue #853) adds `profiles[].irregularFraming`: the composed
+/// irregular-cycles framing flag, nullable tri-state exactly as
+/// `Profile.irregularFraming` carries it (`null` = engine default). The
+/// `mode` key keeps carrying only `standard`/`teen`/`caregiver` — the
+/// legacy `irregular` value never appears in a v14 export (the v28 Drift
+/// step and the codec's read-time mapping fold any stored copy into
+/// `standard` + `irregularFraming: true` before export reads it), but the
+/// importer still accepts it from older files and applies the same fold.
+const int kAccountExportSchemaVersion = 14;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -225,6 +234,11 @@ Map<String, Object?> _exportProfile(
     'displayName': profile.displayName,
     'isMinor': profile.isMinor,
     'mode': profile.mode.toDb(),
+    // Issue #853 (kAccountExportSchemaVersion v14): the composed framing
+    // flag — null means "engine default", carried as an explicit JSON null
+    // (the family's data, not the sync protocol: R9 excludes sync
+    // bookkeeping only).
+    'irregularFraming': profile.irregularFraming,
     // Issue #255 (kAccountExportSchemaVersion v8): display-unit
     // preferences -- rendering choices, not data transformations; the
     // profile's observations each still carry their own `unit`.

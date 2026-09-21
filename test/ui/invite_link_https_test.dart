@@ -22,6 +22,7 @@ class _StubSharingService implements SharingService {
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 48),
   }) =>
       throw UnimplementedError();
@@ -70,6 +71,7 @@ class _StubTransferService implements OwnershipTransferService {
     required String profileId,
     required ParentPostTransferRole parentPostTransferRole,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 72),
   }) =>
       throw UnimplementedError();
@@ -103,6 +105,7 @@ class _StubPredictionService implements PredictionConnectionService {
   Future<GeneratedPredictionInvite> createConnection({
     required String profileId,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 72),
   }) =>
       throw UnimplementedError();

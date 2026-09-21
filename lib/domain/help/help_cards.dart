@@ -54,6 +54,11 @@ class HelpCards {
   const HelpCards._();
 
   static const String _reviewDate = '2026-09-11';
+
+  /// Issue #853: the "period is late" card's own review date — its body
+  /// gained the early-years variance paragraph on 2026-09-20, so it no
+  /// longer shares the bundle-wide stamp.
+  static const String _periodLateReviewDate = '2026-09-20';
   static const String _appPredictionSource =
       "lunarlog's own prediction model";
   static const String _appBehaviourSource = 'lunarlog app behaviour';
@@ -147,6 +152,12 @@ class HelpCards {
       'Logging the period closes the cycle and the whole estimate '
           'recomputes. Skipping leaves the cycle in history but out of the '
           'average, and moves the estimate one average cycle later.',
+      'In the first few years after periods start — and at other times, '
+          'like perimenopause — cycle lengths vary naturally, and an '
+          'estimate built on averages will miss more often. That is '
+          'variation, not a fault: profiles set to the teen care mode, or '
+          'with the "irregular cycles" framing on, are shown ranges and '
+          'quiet "log it when it comes" wording instead of this banner.',
       'A late estimate is not a statement about anyone\u2019s body — it '
           'only means nothing logged yet lines up with the average. If '
           'something worries you, talk to a doctor or another clinician '
@@ -154,7 +165,7 @@ class HelpCards {
       'Estimates only — not medical advice.',
     ],
     source: _appPredictionSource,
-    reviewDate: _reviewDate,
+    reviewDate: _periodLateReviewDate,
     screens: ['late-resolver'],
   );
 

@@ -98,6 +98,21 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
 
+      - name: Run apple-client-secret tests
+        # Issue #974: mints the ES256 Apple client-secret JWT the rotation
+        # workflow pushes to Supabase, verified against a throwaway P-256 key
+        # this suite generates itself (never the production `.p8`).
+        if: always()
+        run: bash .github/scripts/tests/apple-client-secret.test.sh
+      # Issue #972: this suite existed but was never wired into CI, so the
+      # advisor gate's exclusion list could change without its truth table
+      # ever running. It proves the removed leaked-password exclusion is
+      # really gone and that unrecognised/missing-level findings still fail
+      # closed.
+      - name: Run check-advisor-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-advisor-gate.test.sh
+
       - name: Run check-auth-config tests
         if: always()
         run: bash .github/scripts/tests/check-auth-config.test.sh
@@ -246,6 +261,19 @@ jobs:
       - name: Run classify-schema-diff tests
         if: always()
         run: bash .github/scripts/tests/classify-schema-diff.test.sh
+
+      - name: Run apple-client-secret tests
+        # Issue #974: mints the ES256 Apple client-secret JWT the rotation
+        # workflow pushes to Supabase, verified against a throwaway P-256 key
+        # this suite generates itself (never the production `.p8`).
+        if: always()
+        run: bash .github/scripts/tests/apple-client-secret.test.sh
+      # Issue #972: same addition as the ubuntu release-guards job above --
+      # proves the advisor gate's truth table (and its Bash 3.2
+      # compatibility) actually runs.
+      - name: Run check-advisor-gate tests
+        if: always()
+        run: bash .github/scripts/tests/check-advisor-gate.test.sh
 
   check:
     # The former "Analyze, test, build web" job, minus the test suite: that

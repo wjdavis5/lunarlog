@@ -266,6 +266,7 @@ class _AppShellState extends State<AppShell> {
           OverviewPanel(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            irregularFraming: widget.profile.irregularFraming,
             trackingPreferences: widget.profile.trackingPreferences,
             isMinor: _isMinor,
             todayProvider: widget.todayProvider,
@@ -278,6 +279,7 @@ class _AppShellState extends State<AppShell> {
           MonthCalendar(
             profileId: widget.profile.id,
             mode: widget.profile.mode,
+            irregularFraming: widget.profile.irregularFraming,
             lifecycleMode: _lifecycleMode,
             trackingPreferences: widget.profile.trackingPreferences,
             isMinor: _isMinor,
@@ -291,6 +293,7 @@ class _AppShellState extends State<AppShell> {
       AppTab.insights => AnalysisTab(
           profileId: widget.profile.id,
           mode: widget.profile.mode,
+          irregularFraming: widget.profile.irregularFraming,
           todayProvider: widget.todayProvider,
           guardiansRepository: guardiansRepository,
           bbtUnit: widget.profile.bbtUnit,

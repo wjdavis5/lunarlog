@@ -105,8 +105,8 @@ select is(
   (select array_agg(k order by k) from jsonb_object_keys(public.preview_guardian_invitation(
     '4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a'
   )) as k),
-  array['expires_at', 'profile_display_name', 'role'],
-  'Exactly three keys are returned - no profile id, no other guardians, nothing extra'
+  array['expires_at', 'is_subject', 'profile_display_name', 'role'],
+  'Exactly four keys are returned - no profile id, no other guardians, nothing extra (Issue #802 added is_subject)'
 );
 
 -- ---------------------------------------------------------------------------

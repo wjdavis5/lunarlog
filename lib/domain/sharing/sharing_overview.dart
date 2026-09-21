@@ -23,9 +23,13 @@ class SharingProfileInfo {
   const SharingProfileInfo({
     required this.myRole,
     required this.acceptedCount,
+    this.isSubject = false,
   });
 
-  const SharingProfileInfo.unknown() : myRole = null, acceptedCount = 0;
+  const SharingProfileInfo.unknown()
+    : myRole = null,
+      acceptedCount = 0,
+      isSubject = false;
 
   /// The operator's own accepted role, or null when unknown.
   final GuardianRole? myRole;
@@ -33,8 +37,13 @@ class SharingProfileInfo {
   /// How many accepted guardians the profile has locally.
   final int acceptedCount;
 
+  /// Issue #802: the operator's own accepted membership is the profile's
+  /// subject — the profile is *about them*, so it reads as theirs in every
+  /// grouping surface regardless of the role the preset granted.
+  final bool isSubject;
+
   ProfileSharingGroup get group {
-    if (myRole == null || myRole == GuardianRole.primaryGuardian) {
+    if (isSubject || myRole == null || myRole == GuardianRole.primaryGuardian) {
       return ProfileSharingGroup.owned;
     }
     return ProfileSharingGroup.sharedWithMe;
@@ -53,9 +62,11 @@ class SharingProfileInfo {
       for (final row in rows)
         if (row.status == GuardianStatus.accepted) row,
     ];
+    final mine = acceptedGuardianFor(accepted, currentUserId);
     return SharingProfileInfo(
-      myRole: acceptedGuardianFor(accepted, currentUserId)?.role,
+      myRole: mine?.role,
       acceptedCount: accepted.length,
+      isSubject: mine?.isSubject ?? false,
     );
   }
 

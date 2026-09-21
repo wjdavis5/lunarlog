@@ -59,16 +59,24 @@ void main() {
       }
     });
 
-    test('pregnancy and lactation are sequenced behind the Modes epic', () {
+    test('pregnancy and lactation are mapped future candidates owned by #246',
+        () {
+      // #246 landed the documented mappings
+      // (lib/data/health/health_mode_interval_mapping.dart): the Modes
+      // epic's pregnancy/perimenopause modes exist, so the entries moved
+      // back from deliberatelyUnsupported to future candidates — mapped,
+      // still unwritten, because the adapter has no platform plugin.
       for (final concept in ['pregnancy', 'lactation']) {
         final entry = _entryFor(concept);
         expect(
           entry.status,
-          HealthTypeMappingStatus.deliberatelyUnsupported,
+          HealthTypeMappingStatus.futureCandidate,
           reason: concept,
         );
         expect(entry.issue, '#246', reason: concept);
-        expect(entry.reason, contains('Modes'), reason: concept);
+        // The reason field is a deliberately-unsupported-only contract;
+        // a future candidate documents through its mapping module instead.
+        expect(entry.reason, isNull, reason: concept);
       }
     });
 

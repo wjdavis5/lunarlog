@@ -270,12 +270,25 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   — the `health_sync_state` posture. No backfill: a device upgrading
   ///   into this version starts with an empty ledger, so its already-exported
   ///   samples remain the documented pre-#936 gap until re-exported.
-  /// * 28 — `visit_prep_items.kind` (Issue #851, the household supplies
+  /// * 28 — `profiles.irregular_framing` (Issue #853, the composed
+  ///   irregular-cycles framing flag — nullable tri-state, null = engine
+  ///   default) and the data migration converting any stored
+  ///   `mode = 'irregular'` row to `mode = 'standard'` +
+  ///   `irregular_framing = 1`, mirroring the server-side migration in
+  ///   `20260920110000_profile_irregular_framing.sql`.
+  /// * 29 — `profile_guardians.is_subject` (Issue #802, the "her own
+  ///   profile" subject marker: this member is the person the profile is
+  ///   about — server-stamped by the subject invitation path or
+  ///   `accept_ownership_transfer` only, pulled with the membership row,
+  ///   never pushed). NOT NULL DEFAULT FALSE, so the one `addColumn` is
+  ///   also the whole backfill: every pre-#802 membership (helper or
+  ///   owner-creator) reads as a plain non-subject row.
+  /// * 30 — `visit_prep_items.kind` (Issue #851, the household supplies
   ///   kit: a `visit_prep` visit-prep item or a `supply` stock item,
   ///   sharing one table/sync/RLS path). Defaults to `visit_prep`, so a
   ///   pre-#851 row reads as a prep item and no backfill is needed.
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -580,8 +593,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV26(m, from);
     // Issue #936's v27 step, same shape again.
     await _upgradeToV27(m, from);
-    // Issue #851's v28 step, same shape again.
+    // Issue #853's v28 step, same shape again.
     await _upgradeToV28(m, from);
+    // Issue #802's v29 step, same shape again.
+    await _upgradeToV29(m, from);
+    // Issue #851's v30 step, same shape again.
+    await _upgradeToV30(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1196,14 +1213,14 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     });
   }
 
-  /// The v28 upgrade step (Issue #851): the supplies-kit `kind` column on
+  /// The v30 upgrade step (Issue #851): the supplies-kit `kind` column on
   /// `visit_prep_items`. Same standalone-method shape as [_upgradeToV24]
   /// (`visit_prep_items` has existed since v11 on every real device, so the
   /// addColumn is always safe regardless of `from`); the `kind` column
   /// itself carries a `visit_prep` default, so every existing row reads as
   /// a prep item with no backfill.
-  Future<void> _upgradeToV28(Migrator m, int from) async {
-    if (from >= 28) return;
+  Future<void> _upgradeToV30(Migrator m, int from) async {
+    if (from >= 30) return;
     await transaction(() async {
       // Same `_hasColumn` (LLA-015) real-schema guard the sibling column
       // steps use, so a schema reconstructed by something other than a real
@@ -1212,7 +1229,72 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await m.addColumn(visitPrepItems, visitPrepItems.kind);
         await migrationStepHook?.call('visit_prep_items.kind');
       }
+      await _advanceSchemaVersion(30);
+    });
+  }
+
+  /// The v28 upgrade step (Issue #853): the nullable, tri-state
+  /// `profiles.irregular_framing` flag (null = engine default —
+  /// `Profiles.irregularFraming`'s doc comment), plus the data migration
+  /// that demotes a stored `mode = 'irregular'` to `mode = 'standard'` +
+  /// `irregular_framing = 1`, so the local store never holds the legacy
+  /// rival value. `profiles` has existed since v1 and `mode` since v5, so
+  /// the addColumn is safe on every real upgrade path; the same
+  /// [_hasColumn] (LLA-015) real-schema guard the other profile column
+  /// steps use covers a schema reconstructed by something other than a
+  /// real `onCreate`. Mirrors the server-side data migration in
+  /// `20260920110000_profile_irregular_framing.sql` (a row left
+  /// `irregular` on the server by an old client's push is additionally
+  /// mapped at read time in `row_codec.dart`'s `decodeProfile`, so this
+  /// local conversion and the server's can land in either order).
+  ///
+  /// Deliberately does NOT mark converted rows dirty: the mode column's
+  /// stored wire value changed, but the *presentation* it selects is
+  /// identical (`standard` + flag `true` composes to the same copy the
+  /// legacy `irregular` mode showed), so re-pushing the row would carry no
+  /// new information — and an unnecessary push with a bumped `updated_at`
+  /// could beat a concurrent co-guardian edit. The server migration
+  /// converges the server copy on its own; a later genuine edit of the
+  /// profile pushes both fields in whatever shape this client stores.
+  Future<void> _upgradeToV28(Migrator m, int from) async {
+    if (from >= 28) return;
+    await transaction(() async {
+      if (!await _hasColumn('profiles', 'irregular_framing')) {
+        await m.addColumn(profiles, profiles.irregularFraming);
+        await migrationStepHook?.call('profiles.irregular_framing');
+      }
+      await customStatement(
+        "UPDATE profiles SET irregular_framing = 1 WHERE mode = 'irregular'",
+      );
+      await migrationStepHook?.call('profiles.irregular_framing.legacy_mode');
+      await customStatement(
+        "UPDATE profiles SET mode = 'standard' WHERE mode = 'irregular'",
+      );
       await _advanceSchemaVersion(28);
+    });
+  }
+
+  /// The v29 upgrade step (Issue #802): `profile_guardians.is_subject`, the
+  /// "her own profile" subject marker. Same standalone-method shape as
+  /// [_upgradeToV24]; `profile_guardians` has existed since v3 on every
+  /// real device, so the addColumn is always safe regardless of `from`.
+  /// The column is NOT NULL DEFAULT FALSE locally, so the `addColumn` is
+  /// also the whole backfill — every existing membership (helper or
+  /// owner-creator) becomes a plain non-subject row in the same
+  /// catalog-only step, and the server's own nullable column decodes to
+  /// false client-side for any row it has not re-stamped since the column
+  /// landed there.
+  Future<void> _upgradeToV29(Migrator m, int from) async {
+    if (from >= 29) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the v24 sibling
+      // uses, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('profile_guardians', 'is_subject')) {
+        await m.addColumn(profileGuardians, profileGuardians.isSubject);
+        await migrationStepHook?.call('profile_guardians.is_subject');
+      }
+      await _advanceSchemaVersion(29);
     });
   }
 }

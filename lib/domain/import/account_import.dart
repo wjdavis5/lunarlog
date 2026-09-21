@@ -296,6 +296,7 @@ class ImportedProfile {
     required this.displayName,
     this.isMinor = false,
     this.mode,
+    this.irregularFraming,
     this.sortOrder = 0,
     this.archivedAt,
     this.createdAt,
@@ -341,6 +342,15 @@ class ImportedProfile {
   /// — a *matched* profile, tombstone-*restored* ones included, keeps its
   /// own stored mode untouched; the file's value is never applied over it.
   final String? mode;
+
+  /// Issue #853 (kAccountExportSchemaVersion v14): the composed framing
+  /// flag's tri-state, or null for both an absent key (a pre-v14 file) and
+  /// an explicit JSON null ("engine default"). Validated at parse time
+  /// (`_parseIrregularFraming`); same create-only treatment as [mode]. A
+  /// legacy file whose `mode` reads `irregular` folds to
+  /// `standard` + `true` in `AccountImporter._resolveProfileId`, exactly
+  /// like the sync codec and both data migrations do.
+  final bool? irregularFraming;
 
   final int sortOrder;
   final DateTime? archivedAt;
@@ -660,6 +670,8 @@ ImportedProfile _parseProfile(Object? raw) {
     displayName: _profileDisplayName(raw['displayName']),
     isMinor: raw['isMinor'] == true,
     mode: _parseMode(raw['mode'], context: context),
+    irregularFraming:
+        _parseIrregularFraming(raw['irregularFraming'], context: context),
     bbtUnit: _parseBbtUnit(raw['bbtUnit'], context: context),
     weightUnit: _parseWeightUnit(raw['weightUnit'], context: context),
     sortOrder: raw['sortOrder'] is int ? raw['sortOrder'] as int : 0,
@@ -710,6 +722,20 @@ String? _parseMode(Object? raw, {required String context}) {
   final recognised = ProfileMode.values.any((m) => m.toDb() == raw);
   if (!recognised) {
     throw _ImportFormatException('$context has an unrecognised mode ("${_truncateForMessage(raw)}").');
+  }
+  return raw;
+}
+
+/// Validates `irregularFraming` (Issue #853, kAccountExportSchemaVersion
+/// v14): null (absent key — every schema version before v14, or an
+/// explicit "engine default" null) passes through unchanged; any non-null
+/// value must be a bool, same reject-outright treatment as every other
+/// mistyped field here.
+bool? _parseIrregularFraming(Object? raw, {required String context}) {
+  if (raw == null) return null;
+  if (raw is! bool) {
+    throw _ImportFormatException(
+        '$context has an invalid irregularFraming value.');
   }
   return raw;
 }
@@ -1608,6 +1634,7 @@ class ProfilePlan {
     required this.outcome,
     this.skipReason,
     this.mode,
+    this.irregularFraming,
     this.bbtUnit,
     this.weightUnit,
     this.isMinor = false,
@@ -1636,6 +1663,10 @@ class ProfilePlan {
   final ProfileImportOutcome outcome;
   final String? skipReason;
   final String? mode;
+
+  /// Issue #853: the composed framing flag, same create-only treatment as
+  /// [mode] — a *matched* profile keeps its own stored choice.
+  final bool? irregularFraming;
 
   /// Issue #255: the raw display-unit strings from the file, already
   /// validated against the closed sets at parse time. Only consulted for a
@@ -2275,6 +2306,7 @@ ProfilePlan _planProfile(
       displayName: imported.displayName,
       outcome: ProfileImportOutcome.created,
       mode: imported.mode,
+      irregularFraming: imported.irregularFraming,
       bbtUnit: imported.bbtUnit,
       weightUnit: imported.weightUnit,
       isMinor: imported.isMinor,

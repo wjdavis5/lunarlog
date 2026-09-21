@@ -343,8 +343,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   separate, deliberate release action, not automatic from merging the
   code.
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
-  access until their JWT expires, which is why the project's JWT expiry is
-  set to the dashboard minimum.
+  access until their JWT expires (up to an hour at Supabase's default, the
+  chosen setting), which is why the app's copy says other devices may take up
+  to an hour to notice.
 - The former "no fertility features, by design; do not add them" commitment
   was removed (#142, following the owner decision in #123). Fertile-window and
   ovulation estimation (#143) has shipped: a calendar-method back-calculation

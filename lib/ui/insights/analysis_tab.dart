@@ -61,6 +61,13 @@
 /// side-by-side comparison this tab is the primary entry point for (the
 /// archived-profile mount in `profile_detail_screen.dart` wires the same
 /// callback for its own, separate [CycleHistorySection] instance).
+///
+/// Issue #852: the [CycleRecapCard] leads this tab when a cycle has
+/// completed since the device last looked. The baseline lives in the
+/// device-local [cycleRecapSettingKey] record (never synced, never health
+/// data), so dismissing it once hides it for that cycle on this device. The
+/// recap is in-app only by decision -- no notification is scheduled by this
+/// tab or anything it mounts.
 library;
 
 import 'dart:async';
@@ -71,6 +78,7 @@ import 'package:provider/provider.dart';
 import '../../domain/episodes/episodes.dart';
 import '../../domain/insights/bbt_chart.dart' as bbt;
 import '../../domain/insights/cycle_insights_calculator.dart';
+import '../../domain/insights/cycle_recap.dart';
 import '../../domain/insights/symptom_trends.dart';
 import '../../domain/models/day_entry.dart';
 import '../../domain/models/measurement_unit.dart';
@@ -78,6 +86,7 @@ import '../../domain/models/observation.dart';
 import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profile_guardians_repository.dart';
+import '../../domain/repositories/settings_store.dart';
 import '../../domain/care_modes.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile_guardian.dart';
@@ -103,6 +112,7 @@ import '../overview/overview_panel.dart'
 import '../sharing/guardian_watch_mixin.dart';
 import '../theme/tokens.dart';
 import 'cycle_comparison_screen.dart';
+import 'cycle_recap_card.dart';
 import 'phase_insights_card.dart';
 import 'symptom_trends_section.dart';
 
@@ -121,12 +131,14 @@ class AnalysisTab extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
     this.dayEntriesRepository,
     this.observationsRepository,
     this.insightsCalculator,
+    this.settingsStore,
     this.bbtUnit = BbtUnit.celsius,
   });
 
@@ -148,6 +160,11 @@ class AnalysisTab extends StatefulWidget {
   /// vocabulary below, same as [OverviewPanel].
   final ProfileMode mode;
 
+  /// Issue #853: the profile's stored irregular-framing tri-state (null =
+  /// engine default), resolved against the live prediction's tier by
+  /// [_copyFor] — same rule as [OverviewPanel.irregularFraming].
+  final bool? irregularFraming;
+
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
 
@@ -166,6 +183,12 @@ class AnalysisTab extends StatefulWidget {
   /// Test seam (issue #841): the pure insights derivation this tab caches.
   /// Null selects [CycleInsightsCalculator.compute] in production.
   final CycleInsightsComputer? insightsCalculator;
+
+  /// Source of this tab's device-local recap baseline (issue #852). Null
+  /// falls back to `context.read<SettingsStore?>()`; when neither is
+  /// present the recap simply never renders (there would be no way to
+  /// remember a dismissal, so showing it would risk repeating the moment).
+  final SettingsStore? settingsStore;
 
   @override
   State<AnalysisTab> createState() => _AnalysisTabState();
@@ -215,7 +238,34 @@ class _AnalysisTabState extends State<AnalysisTab>
   List<DayEntry>? _episodeEntries;
   List<Episode> _episodes = const [];
 
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  /// Issue #852: the device-local recap baseline and the derived recap.
+  /// [_recapStateLoaded] gates baseline establishment until the stored
+  /// record has actually been read, so the first stream emission can never
+  /// write a baseline that the load then overwrites.
+  SettingsStore? _settingsStore;
+  CycleRecapState _recapState = CycleRecapState.empty;
+  bool _recapStateLoaded = false;
+  bool _entriesLoaded = false;
+  CycleRecap? _recap;
+  List<DayEntry>? _recapEntries;
+  CyclePrediction? _recapPrediction;
+  CycleInsightsReport? _recapReport;
+  CycleRecapState? _recapStateUsed;
+
+  /// Issue #853: the composed copy — mode composed with the effective
+  /// irregular framing (stored tri-state resolved against [prediction]'s
+  /// tier; a null tier — not-enough-history/suppressed/disabled — keeps a
+  /// teen's framing ON). Same rule as [OverviewPanel._copyFor]. Replaces
+  /// the pre-#853 single-axis getter: every copy read here flows through
+  /// the composition, never the raw mode axis.
+  CareModeCopy _copyFor(CyclePrediction prediction) => careModeCopyFor(
+        widget.mode,
+        irregularFraming: irregularFramingInEffect(
+          mode: widget.mode,
+          stored: widget.irregularFraming,
+          tier: prediction is ActivePrediction ? prediction.tier : null,
+        ),
+      );
 
   @override
   void initState() {
@@ -226,9 +276,11 @@ class _AnalysisTabState extends State<AnalysisTab>
       auth.addListener(_onAuthChanged);
       _auth = auth;
     }
+    _settingsStore = widget.settingsStore ?? context.read<SettingsStore?>();
     _subscribePredictions();
     _watchGuardians();
     _watchEntries();
+    unawaited(_loadRecapState());
   }
 
   // The listener is only ever registered while [_auth] is non-null and is
@@ -268,6 +320,7 @@ class _AnalysisTabState extends State<AnalysisTab>
         prediction,
       );
       _recomputeInsights();
+      _recomputeRecap();
     });
   }
 
@@ -304,6 +357,14 @@ class _AnalysisTabState extends State<AnalysisTab>
     _report = CycleInsightsReport.empty;
     _episodeEntries = null;
     _episodes = const [];
+    // Same reasoning for the recap (issue #852): never render the previous
+    // profile's recap while the new one's entries stream warms up.
+    _entriesLoaded = false;
+    _recap = null;
+    _recapEntries = null;
+    _recapPrediction = null;
+    _recapReport = null;
+    _recapStateUsed = null;
     final repository =
         widget.dayEntriesRepository ?? context.read<DayEntriesRepository?>();
     if (repository == null) return;
@@ -328,8 +389,10 @@ class _AnalysisTabState extends State<AnalysisTab>
     if (!mounted || token != _entriesTick) return;
     setState(() {
       _entries = entries;
+      _entriesLoaded = true;
       if (observations != null) _observations = observations;
       _recomputeInsights();
+      _recomputeRecap();
     });
   }
 
@@ -377,13 +440,108 @@ class _AnalysisTabState extends State<AnalysisTab>
     return _episodes;
   }
 
+  /// Reads this profile's stored recap baseline (issue #852). Until this
+  /// completes, [_maybeEstablishBaseline] refuses to write — otherwise the
+  /// first entries emission could baseline before the load, and the load
+  /// would then overwrite it.
+  Future<void> _loadRecapState() async {
+    final store = _settingsStore;
+    if (store == null) return;
+    final raw = await store.get(cycleRecapSettingKey(widget.profileId));
+    if (!mounted) return;
+    setState(() {
+      _recapState = decodeCycleRecapState(raw);
+      _recapStateLoaded = true;
+      _recomputeRecap();
+    });
+  }
+
+  /// Memoised recap derivation, mirroring [_recomputeInsights]'s identity
+  /// guard: the same pure [deriveCycleRecap] runs only when the entries,
+  /// prediction, report, or stored baseline actually changed.
+  void _recomputeRecap() {
+    if (identical(_recapEntries, _entries) &&
+        identical(_recapPrediction, _prediction) &&
+        identical(_recapReport, _report) &&
+        identical(_recapStateUsed, _recapState)) {
+      return;
+    }
+    _recapEntries = _entries;
+    _recapPrediction = _prediction;
+    _recapReport = _report;
+    _recapStateUsed = _recapState;
+    _recap = deriveCycleRecap(
+      entries: _entries,
+      prediction: _prediction,
+      report: _report,
+      today: widget.todayProvider(),
+      previousSnapshot: _recapState.snapshot,
+    );
+    _maybeEstablishBaseline();
+  }
+
+  /// One-time baseline (issue #852): on the first observation of a profile
+  /// with a stored-but-unrecorded state, remember the cycle that has
+  /// already closed without showing a recap for it, so only cycles that
+  /// complete *after* this device started watching are ever surfaced.
+  void _maybeEstablishBaseline() {
+    final store = _settingsStore;
+    if (!_recapStateLoaded ||
+        store == null ||
+        _recapState.recorded ||
+        !_entriesLoaded) {
+      return;
+    }
+    final recap = _recap;
+    final next = CycleRecapState(
+      recorded: true,
+      seenCycleIso: recap?.cycleStart.iso,
+      snapshot: recap?.currentSnapshot,
+    );
+    _recapState = next;
+    _recapStateUsed = next;
+    unawaited(
+      store.set(
+        cycleRecapSettingKey(widget.profileId),
+        encodeCycleRecapState(next),
+      ),
+    );
+    // Recompute once with the new baseline so a snapshot can never be
+    // compared against itself on the next emission.
+    _recomputeRecap();
+  }
+
+  /// Persists the dismissal for [recap]'s cycle and hides the card.
+  void _dismissRecap(CycleRecap recap) {
+    final next = CycleRecapState(
+      recorded: true,
+      seenCycleIso: recap.cycleStart.iso,
+      snapshot: recap.currentSnapshot,
+    );
+    setState(() {
+      _recapState = next;
+      _recapStateUsed = next;
+    });
+    final store = _settingsStore;
+    if (store == null) return;
+    unawaited(
+      store.set(
+        cycleRecapSettingKey(widget.profileId),
+        encodeCycleRecapState(next),
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant AnalysisTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profileId != widget.profileId) {
+      _recapState = CycleRecapState.empty;
+      _recapStateLoaded = false;
       _subscribePredictions();
       _watchGuardians();
       _watchEntries();
+      unawaited(_loadRecapState());
       return;
     }
     // Issue #574: same profile, but `guardiansRepository`/`todayProvider`
@@ -449,6 +607,10 @@ class _AnalysisTabState extends State<AnalysisTab>
         style: Theme.of(context).textTheme.headlineSmall,
       ),
       const SizedBox(height: LLSpace.space3),
+      // Issue #852: the cycle-end recap leads the tab — a moment worth
+      // returning for, shown once per completed cycle and dismissible
+      // without covering a single log affordance.
+      ..._recapSection(context),
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context, prediction),
@@ -496,6 +658,46 @@ class _AnalysisTabState extends State<AnalysisTab>
       const SizedBox(height: 16),
       _bbtChartCard(context, episodes),
     ];
+  }
+
+  /// The recap section (issue #852) or nothing at all — split out of
+  /// [_sections] to keep that method's own branch count low (the quality
+  /// gate's per-method CRAP rule).
+  List<Widget> _recapSection(BuildContext context) {
+    final recap = _recap;
+    if (recap == null ||
+        !_recapState.recorded ||
+        _recapState.seenCycleIso == recap.cycleStart.iso) {
+      return const [];
+    }
+    return [_recapCard(context, recap), const SizedBox(height: LLSpace.space3)];
+  }
+
+  Widget _recapCard(BuildContext context, CycleRecap recap) {
+    final prediction = _prediction;
+    return CycleRecapCard(
+      recap: recap,
+      // Issue #853: the recap's suppression follows the composed irregular
+      // framing, not the raw mode axis, so a migrated legacy `irregular`
+      // profile and a teen whose cycles are still settling both keep the
+      // false-precision language off.
+      irregularFraming: irregularFramingInEffect(
+        mode: widget.mode,
+        stored: widget.irregularFraming,
+        tier: prediction is ActivePrediction ? prediction.tier : null,
+      ),
+      onDismiss: () => _dismissRecap(recap),
+      onCompare: recap.previousCycleStart == null
+          ? null
+          : () => Navigator.of(context).push(
+                CycleComparisonScreen.route(
+                  profileId: widget.profileId,
+                  cycleAStart: recap.previousCycleStart!,
+                  cycleBStart: recap.cycleStart,
+                  todayProvider: widget.todayProvider,
+                ),
+              ),
+    );
   }
 
   /// Issue #245: the BBT chart card — data shaping is
@@ -550,8 +752,8 @@ class _AnalysisTabState extends State<AnalysisTab>
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: LLSpace.space2),
-            ..._headlineStats(context, theme, l10n, prediction),
-            ..._fertileWindowSection(context, theme, l10n, prediction),
+            ..._headlineStats(context, theme, l10n, prediction, _copyFor(prediction)),
+            ..._fertileWindowSection(context, theme, l10n, prediction, _copyFor(prediction)),
             const SizedBox(height: LLSpace.space3),
             Text(
               kEstimateDisclaimer,
@@ -577,6 +779,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
+    CareModeCopy copy,
   ) {
     return [
       _statRow(
@@ -598,14 +801,18 @@ class _AnalysisTabState extends State<AnalysisTab>
         theme,
         'analysis-variability',
         'Variability',
-        _variabilityText(l10n, prediction),
+        _variabilityText(l10n, prediction, copy),
       ),
     ];
   }
 
-  String _variabilityText(AppLocalizations l10n, ActivePrediction prediction) {
+  String _variabilityText(
+    AppLocalizations l10n,
+    ActivePrediction prediction,
+    CareModeCopy copy,
+  ) {
     final spread = '±${prediction.spreadDays.round()} days';
-    if (!_copy.showsTierCaption) return spread;
+    if (!copy.showsTierCaption) return spread;
     return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
 
@@ -627,8 +834,9 @@ class _AnalysisTabState extends State<AnalysisTab>
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
+    CareModeCopy copy,
   ) {
-    if (!_copy.showsFertileWindow) return const [];
+    if (!copy.showsFertileWindow) return const [];
     final fertile = currentFertileWindow(prediction);
     if (fertile == null) return const [];
     return [
@@ -636,8 +844,8 @@ class _AnalysisTabState extends State<AnalysisTab>
         context,
         theme,
         'analysis-fertile-window',
-        _copy.fertileWindowLabel,
-        _fertileWindowText(l10n, fertile),
+        copy.fertileWindowLabel,
+        _fertileWindowText(l10n, fertile, copy),
       ),
       const SizedBox(height: LLSpace.space1),
       Text(
@@ -655,10 +863,11 @@ class _AnalysisTabState extends State<AnalysisTab>
   String _fertileWindowText(
     AppLocalizations l10n,
     FertileWindowEstimate fertile,
+    CareModeCopy copy,
   ) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
-    if (!_copy.showsTierCaption) return range;
+    if (!copy.showsTierCaption) return range;
     return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
@@ -744,6 +953,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// vague "a few cycles".
   Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
+    final copy = _copyFor(prediction);
     return Card(
       key: const ValueKey('analysis-not-enough'),
       child: Padding(
@@ -752,8 +962,8 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             EmptyState(
-              title: _copy.notEnoughTitle,
-              body: _copy.notEnoughBody(
+              title: copy.notEnoughTitle,
+              body: copy.notEnoughBody(
                 prediction.usableCycleCount,
                 kMinCompletedValidCycles,
               ),

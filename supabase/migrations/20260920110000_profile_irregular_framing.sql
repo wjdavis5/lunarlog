@@ -1,65 +1,84 @@
 -- ===========================================================================
--- 20260920120000_supplies_kit.sql
--- Issue #851: household logistics -- the per-profile supplies kit.
+-- 20260920110000_profile_irregular_framing.sql
+-- Issue #853: teen mode never says "late"; irregular becomes a flag
+-- composed with the care mode, not a rival value of it.
 --
--- The supplies list is a *generalisation* of `visit_prep_items` (Issue #128)
--- rather than a second, structurally identical table: the issue's own
--- proposal adds `kind text not null default 'visit_prep' check (kind in
--- ('visit_prep','supply'))` to it. A supply item is the same object as a
--- visit-prep item -- a synced, attributed, tombstone-disciplined checklist
--- row with a `checked_by_user_id` server stamp -- so it inherits the same
--- RLS posture (any accepted guardian reads; primary_guardian/co_parent/
--- caregiver write; a viewer reads only), the same server-stamped
--- attribution, and the same per-id last-writer-wins tombstone discipline
--- for free. `is_checked` reads as "stocked" for a supply item.
---
--- The list lives on the profile, visible to every guardian including the
--- subject (the issue's decided direction). #800 already established that
--- guardian notes are visible to the subject; a supplies list a teen cannot
--- see would be a list about her she is excluded from. It is deliberately
--- NOT a household-level, parent-only table.
+-- A teen-mode profile still stored the rival-axis shape: a 13-year-old saw
+-- the error-styled "N days late" banner with "skip this cycle", and a teen
+-- with varying cycles had to CHOOSE between the teen voice and the
+-- irregular framing because `profiles.mode` could carry only one of them.
 --
 -- Change:
---   1. Add public.visit_prep_items.kind with its CHECK. RLS is row-scoped,
---      so no policy changes; kind survives a tombstone (identity, not
---      health content -- the tombstone CHECK does not name it).
---   2. GRANT UPDATE (kind) -- the same column-list grant every sibling
---      column carries.
---   3. Re-emit public.sync_push (signature unchanged) from its current
---      definition (20260919180000_postpartum_birth_date.sql), adding `kind`
---      exactly like the other optional-column siblings: defaulted on parse,
---      inserted on the INSERT path, and containment-guarded on the UPDATE
---      path so an older client's push never rewrites a stored kind. The ten
---      DERIVED allowlist constants are re-derived through
---      public.sync_push_payload_keys(t) and materialized at CREATE time
---      (the #181 DO-block recipe, AGENTS.md Migration Flow item 9) -- the
---      visit_prep_items derivation reads information_schema, so the new
---      column joins c_visit_prep_item_keys automatically once the ALTER has
---      run; the parse/INSERT/UPDATE statements are the only hand edits.
---      Everything else carries forward unchanged.
+--   1. Add the nullable `public.profiles.irregular_framing` boolean --
+--      the composed flag. Nullable tri-state BY DESIGN: null means "never
+--      explicitly chosen; the client's engine default applies" (framing
+--      ON for a teen-mode profile until its prediction reaches
+--      CycleConfidence.high, OFF for every other mode -- derived from the
+--      engine, never from birth_year/is_minor), while true/false is the
+--      operator's explicit override. No NOT NULL, no default: a default
+--      (false) would make every existing profile read as an explicit
+--      "off", locking the teen default out.
+--   2. Demote the legacy rival value: every stored
+--      `mode = 'irregular'` row becomes `mode = 'standard'` +
+--      `irregular_framing = true` -- the same fold every client read
+--      boundary applies (row_codec.dart's decodeProfile, the v28 Drift
+--      step, and the account-import fold), so server and clients converge
+--      regardless of which lands first. profiles_mode_check deliberately
+--      KEEPS accepting 'irregular' (the wire value survives: an old
+--      client's push storing it again is harmless -- the next pull maps
+--      it, and the next new-client write of that row converges it).
+--   3. GRANT UPDATE (irregular_framing) to authenticated -- the same
+--      column-list grant every sibling profiles column carries, which
+--      also keeps sync_push_derived_allowlists_test.sql's "every
+--      write-granted column is in the allowlist" assertion true.
+--   4. Re-emit public.sync_push (signature unchanged) from its current
+--      definition (20260919180000_postpartum_birth_date.sql), adding
+--      `irregular_framing` exactly like its `mode` sibling except for the
+--      null tri-state: declared, parsed (an absent key parses to NULL --
+--      the INSERT path takes the column default, the UPDATE path's
+--      containment guard keeps it there), inserted, and
+--      containment-guard-updated. The ten DERIVED allowlist constants are
+--      re-derived through public.sync_push_payload_keys(t) and
+--      materialized at CREATE time (the #181 DO-block recipe, AGENTS.md
+--      Migration Flow item 9) -- the profiles derivation reads
+--      information_schema, so the new column joins c_profile_keys
+--      automatically once the ALTER has run; the parse/INSERT/UPDATE
+--      statements are the only hand edits. Everything else carries
+--      forward unchanged.
 --
--- No RLS change, no delete_account_data()/export_account_data() change --
--- visit_prep_items already dies with its profile row and already has its
--- own deletion/export handling, and kind rides both untouched.
+-- No RLS change: profiles policies are row-scoped, not column-scoped.
+-- delete_account_data()/export_account_data() need no edit: the column
+-- dies with its profile row, and export_account_data() deliberately never
+-- projected care-mode presentation columns (the #240 precedent).
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
--- 1. Column
+-- 1. Column + data migration
 -- ---------------------------------------------------------------------------
 
-alter table public.visit_prep_items
-  add column kind text not null default 'visit_prep'
-    constraint visit_prep_items_kind_check
-    check (kind in ('visit_prep', 'supply'));
+alter table public.profiles
+  add column irregular_framing boolean;
 
-comment on column public.visit_prep_items.kind is
-  'Issue #851: ''visit_prep'' (the Issue #128 visit-prep checklist item) or ''supply'' (a household-logistics stock item, where is_checked means "stocked"). Synced like every other visit_prep_items column: defaulted on the sync_push parse path, inserted on INSERT, and containment-guarded on UPDATE so a pre-#851 client''s push never rewrites a stored kind. Necessary on the row (rather than a second table) because a supply item is structurally identical to a prep item -- same attribution stamp, same tombstone discipline, same RLS ladder.';
+comment on column public.profiles.irregular_framing is
+  'Issue #853: the composed irregular-cycles framing flag. Null = never explicitly chosen (the client engine default applies: ON for a teen-mode profile until CycleConfidence.high, OFF otherwise); true/false = the operator''s explicit override. Presentation only - never permission. Synced like any other profiles column; an absent payload key never clears a stored choice (sync_push apply-path containment guard).';
+
+-- Demote the legacy rival mode: 'irregular' -> 'standard' + flag on. The
+-- two statements are ordered so an interrupted migration re-runs safely
+-- (the first is idempotent on its own; the second only ever touches rows
+-- the first already flagged).
+update public.profiles
+   set irregular_framing = true
+ where mode = 'irregular';
+
+update public.profiles
+   set mode = 'standard'
+ where mode = 'irregular';
 
 -- ---------------------------------------------------------------------------
--- 2. Privileges (the 20260909141503 column-list shape)
+-- 2. Privileges (the 20260906160000 section 2 column-list shape)
 -- ---------------------------------------------------------------------------
 
-grant update (kind) on table public.visit_prep_items to authenticated;
+grant update (irregular_framing) on table public.profiles to authenticated;
 
 do $derive$
 declare
@@ -90,9 +109,10 @@ begin
   end loop;
 
   -- The 20260919180000 statement verbatim except the ten array
-  -- declarations (placeholder tokens) and the Issue #851 visit_prep_items
-  -- `kind` edits (one new declared variable plus the parse/insert/update
-  -- lines in the visit_prep_items loop).
+  -- declarations (placeholder tokens) and the Issue #853 profiles
+  -- irregular_framing edits (one new declared variable plus the
+  -- parse/insert/update lines in the profiles loop). The Issue #861
+  -- postpartum_birth_date edits it inherited are carried as-is.
   v_body := $ddl$
 create or replace function public.sync_push(
   p_profiles jsonb,
@@ -188,6 +208,9 @@ declare
   v_relationship text;
   -- #131: care mode; absent key parses to the column default
   v_mode text;
+  -- Issue #853: the composed irregular-framing flag; nullable tri-state,
+  -- an absent key parsing to NULL (unlike mode's coalesced default).
+  v_irregular_framing boolean;
   -- #218: onboarding cycle facts
   v_last_period_start date;
   v_typical_cycle_length_days smallint;
@@ -288,10 +311,6 @@ declare
   v_stored_note public.care_notes%rowtype;
   -- Issue #128: visit_prep_items parsing state.
   v_is_checked boolean;
-  -- Issue #851: the checklist row's kind ('visit_prep' | 'supply'). Absent
-  -- key parses to the column default; the UPDATE path guards with v_row ?
-  -- 'kind' so a pre-#851 client never rewrites a stored kind.
-  v_prep_item_kind text;
   v_checked_by_user_id uuid;
   v_checked_at timestamptz;
   v_stored_prep_item public.visit_prep_items%rowtype;
@@ -479,6 +498,13 @@ begin
       -- The UPDATE path applies the same `?` containment guard so a
       -- pre-#131 client's push never touches a stored mode.
       v_mode := coalesce(v_row ->> 'mode', 'standard');
+      -- #853: the composed framing flag parses like an optional column: a
+      -- null (absent key, or an explicit JSON null meaning "engine
+      -- default") is a REAL value here, not a clear instruction -- the
+      -- UPDATE path's `?` containment guard keeps a stored explicit choice
+      -- whenever the key is absent, and only an explicitly carried key
+      -- (true, false, or null) overwrites it.
+      v_irregular_framing := (v_row ->> 'irregular_framing')::boolean;
       -- #218: cycle facts parse like birth_year/relationship -- optional
       -- metadata validated by the table's own CHECK constraints; a bad
       -- value lands the row in `rejected` via the exception handler.
@@ -522,13 +548,13 @@ begin
         -- New profile insertion: creator becomes primary_guardian via trigger
         insert into public.profiles
           (id, display_name, is_minor, sort_order, archived_at, created_at, updated_at, deleted_at,
-           birth_year, relationship, mode,
+           birth_year, relationship, mode, irregular_framing,
            last_period_start, typical_cycle_length_days, typical_period_length_days,
            bbt_unit, weight_unit,
            tracking_preferences)
         values
           (v_id, v_display_name, v_is_minor, v_sort_order, v_archived_at, v_created_at, v_updated_at, v_deleted_at,
-           v_birth_year, v_relationship, v_mode,
+           v_birth_year, v_relationship, v_mode, v_irregular_framing,
            v_last_period_start, v_typical_cycle_length_days, v_typical_period_length_days,
            v_bbt_unit, v_weight_unit,
            v_tracking_preferences);
@@ -589,6 +615,10 @@ begin
                  birth_year = case when v_row ? 'birth_year' then v_birth_year else v_stored_profile.birth_year end,
                  relationship = case when v_row ? 'relationship' then v_relationship else v_stored_profile.relationship end,
                  mode = case when v_row ? 'mode' then v_mode else v_stored_profile.mode end,
+                 -- #853: the framing flag gets the identical containment
+                 -- guard -- an old client (or a never-set one) carries no
+                 -- key, and its push must not clear an explicit choice.
+                 irregular_framing = case when v_row ? 'irregular_framing' then v_irregular_framing else v_stored_profile.irregular_framing end,
                  -- #218: same containment guard as birth_year/relationship
                  -- above -- a pre-#218 client never sends these keys, and
                  -- its ordinary metadata edits must not null a stored fact.
@@ -1977,12 +2007,6 @@ begin
       if v_body is null then
         raise exception 'body is required';
       end if;
-      -- Issue #851: an absent key parses to the column default (the INSERT
-      -- path needs a value); an out-of-set value is rejected by the
-      -- visit_prep_items_kind_check into `rejected` like any other CHECK
-      -- failure. The UPDATE path's v_row ? 'kind' guard below is what keeps
-      -- a pre-#851 client from clearing a stored kind.
-      v_prep_item_kind := coalesce(v_row ->> 'kind', 'visit_prep');
       v_is_checked := coalesce((v_row ->> 'is_checked')::boolean, false);
       v_updated_at := (v_row ->> 'updated_at')::timestamptz;
       if v_updated_at is null then
@@ -2061,22 +2085,15 @@ begin
 
       if v_stored_prep_item.id is null then
         insert into public.visit_prep_items
-          (id, profile_id, body, kind, is_checked, checked_by_user_id, checked_at,
+          (id, profile_id, body, is_checked, checked_by_user_id, checked_at,
            updated_at, deleted_at, logged_by_user_id, last_modified_by_user_id)
         values
-          (v_id, v_profile_id, v_body, v_prep_item_kind, v_is_checked, v_checked_by_user_id, v_checked_at,
+          (v_id, v_profile_id, v_body, v_is_checked, v_checked_by_user_id, v_checked_at,
            v_updated_at, v_deleted_at, v_uid, v_uid)
         returning * into v_stored_prep_item;
       else
         update public.visit_prep_items
            set body = v_body,
-               -- Issue #851: the same containment guard the optional-column
-               -- siblings use -- an old client that omits `kind` preserves
-               -- the stored value instead of resetting it to the default.
-               -- kind is not named by the tombstone CHECK, so it survives a
-               -- tombstone untouched.
-               kind = case when v_row ? 'kind' then v_prep_item_kind
-                           else v_stored_prep_item.kind end,
                is_checked = v_is_checked,
                -- A text edit that leaves the check state unchanged keeps
                -- the stored stamp (editing a co-guardian's checked item

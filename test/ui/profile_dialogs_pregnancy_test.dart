@@ -186,6 +186,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('edit-due-date-field')), findsOneWidget);
+    // Issue #853: the framing toggle grew the dialog, so the dropdown can
+    // sit below the fold in the test viewport — bring it into view first.
+    await tester.ensureVisible(
+        find.byKey(const ValueKey('edit-lifecycle-dropdown')));
     await tester.tap(find.byKey(const ValueKey('edit-lifecycle-dropdown')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Period Tracking').last);

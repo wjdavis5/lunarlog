@@ -117,6 +117,14 @@ class Profiles extends Table with TableInfo {
     $customConstraints: 'NOT NULL DEFAULT \'standard\'',
     defaultValue: const CustomExpression('\'standard\''),
   );
+  late final GeneratedColumn<int> irregularFraming = GeneratedColumn<int>(
+    'irregular_framing',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL CHECK (irregular_framing IN (0, 1))',
+  );
   late final GeneratedColumn<String> transferredAt = GeneratedColumn<String>(
     'transferred_at',
     aliasedName,
@@ -217,6 +225,7 @@ class Profiles extends Table with TableInfo {
     birthYear,
     relationship,
     mode,
+    irregularFraming,
     transferredAt,
     transferredToUserId,
     lastPeriodStart,
@@ -1377,15 +1386,6 @@ class VisitPrepItems extends Table with TableInfo {
     requiredDuringInsert: true,
     $customConstraints: 'NOT NULL',
   );
-  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
-    'kind',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT \'visit_prep\'',
-    defaultValue: const CustomExpression('\'visit_prep\''),
-  );
   late final GeneratedColumn<int> isChecked = GeneratedColumn<int>(
     'is_checked',
     aliasedName,
@@ -1467,7 +1467,6 @@ class VisitPrepItems extends Table with TableInfo {
     id,
     profileId,
     body,
-    kind,
     isChecked,
     checkedByUserId,
     checkedAt,
