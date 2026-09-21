@@ -5991,6 +5991,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Guardian'**
   String get guardianNotesGuardianFallback;
+
+  /// Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831.
+  ///
+  /// In en, this message translates to:
+  /// **'Development build — not for real data.'**
+  String get webBannerDevCopy;
+
+  /// Web banner when LUNARLOG_WEB_SYNC=true made web a first-class client (epic #831): the browser holds synced family data unencrypted alongside the session. Deliberately never says 'not for real data'.
+  ///
+  /// In en, this message translates to:
+  /// **'Browser build — this browser stores a copy of the signed-in profiles\' data unencrypted, plus your sign-in. Signing out clears it.'**
+  String get webBannerSyncedCopy;
+
+  /// Tooltip/label on the browser-build notice's per-session dismiss button (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get webBrowserNoticeDismissTooltip;
+
+  /// Action on the web banner opening the confirm-guarded local wipe (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Wipe local data'**
+  String get webWipeAction;
+
+  /// Title of the web banner's local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase all local data?'**
+  String get webWipeConfirmTitle;
+
+  /// Local-wipe confirmation body for a sync-off web build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser. This cannot be undone.'**
+  String get webWipeConfirmDevBody;
+
+  /// Local-wipe confirmation body for a sync-enabled web build, naming that the account copy is not touched (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.'**
+  String get webWipeConfirmSyncedBody;
+
+  /// Cancel action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get webWipeCancel;
+
+  /// Confirm action of the web local-wipe confirmation (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Erase everything'**
+  String get webWipeConfirmAction;
+
+  /// Snackbar after the web local wipe completes (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'All local data erased.'**
+  String get webWipeDone;
+
+  /// Title of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Development build'**
+  String get webFirstRunDevTitle;
+
+  /// Body of the one-time web first-run acknowledgement for a sync-off build (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This is a development build, not for real data. Data in this browser is not encrypted and not backed up.'**
+  String get webFirstRunDevBody;
+
+  /// Title of the one-time web first-run acknowledgement when the build is a first-class (sync-enabled) client (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'Using lunarlog in this browser'**
+  String get webFirstRunSyncedTitle;
+
+  /// Body of the one-time web first-run acknowledgement when LUNARLOG_WEB_SYNC=true; the honest browser-storage story that replaces the old 'not for real data' wording (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account\'s data stays in your account and can sync again later.'**
+  String get webFirstRunSyncedBody;
+
+  /// Acknowledge button of the one-time web first-run acknowledgement (epic #831).
+  ///
+  /// In en, this message translates to:
+  /// **'I understand'**
+  String get webFirstRunAcknowledge;
 }
 
 class _AppLocalizationsDelegate
