@@ -49,14 +49,17 @@
 ///   `infrequentMenstrualCycles`, `prolongedMenstrualPeriods`,
 ///   `persistentIntermenstrualBleeding`) are Apple-computed, not
 ///   user-logged, and App Review 5.1.3 forbids writing derived data back
-///   into HealthKit. This file's import only ever *reads* user-recorded
-///   menstrual flow and intermenstrual-bleeding records into lunarlog;
-///   there is no read type that can be written, and the write port's
-///   surface is unchanged.
+///   into HealthKit. Issue #799 reads them (read-only, via
+///   [HealthImportSource.readCycleDeviations]) and surfaces them as a
+///   clearly labelled second opinion next to — never merged into —
+///   lunarlog's own prediction. There is no read type that can be written,
+///   and the write port's surface is unchanged: it has no method that
+///   accepts a [HealthDeviationKind] at all.
 ///
 /// Pure Dart (R14/R16): imports only the domain port vocabulary.
 library;
 
+import 'health_deviation.dart';
 import 'health_platform.dart';
 import 'health_sync_policy.dart';
 
@@ -307,6 +310,27 @@ abstract interface class HealthImportSource {
     required DateTime end,
     required int pageSize,
     String? cursor,
+  });
+
+  /// Reads Apple's four computed cycle-deviation category types whose
+  /// interval intersects `[start]`–`[end]` (absolute instants) for the
+  /// bound profile (Issue #799). **Read-only, permanently** — these are
+  /// Apple-computed from the user's own Health data, and App Review 5.1.3
+  /// forbids writing derived data back; no implementation of this port can
+  /// write them, and the write port has no method that accepts one.
+  ///
+  /// Same implementor contract as [readMenstrualFlowPage]: the binding guard
+  /// is evaluated first, the mirror facts ride the call, and a denied read
+  /// arrives as an empty sample list (HealthKit's opacity), never an error.
+  /// Echo prevention does not apply: lunarlog never writes these types, so
+  /// no sample can be the app's own.
+  ///
+  /// A platform whose store has no deviation concept (Health Connect) or
+  /// no read capability answers [HealthDeviationReadResult.unavailable].
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
   });
 }
 

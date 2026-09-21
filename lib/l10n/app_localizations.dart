@@ -3953,6 +3953,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t confirm it\'s you — try again'**
   String get accountReauthFailed;
+
+  /// Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple Health noticed…'**
+  String get healthDeviationCardTitle;
+
+  /// Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged.
+  ///
+  /// In en, this message translates to:
+  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.'**
+  String get healthDeviationCardSubtitle;
+
+  /// Issue #799: tooltip on the deviation card's dismiss button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get healthDeviationDismiss;
+
+  /// Issue #799: label for Apple's irregularMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'irregular cycles'**
+  String get healthDeviationKindIrregular;
+
+  /// Issue #799: label for Apple's infrequentMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'infrequent cycles'**
+  String get healthDeviationKindInfrequent;
+
+  /// Issue #799: label for Apple's prolongedMenstrualPeriods deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'prolonged periods'**
+  String get healthDeviationKindProlonged;
+
+  /// Issue #799: label for Apple's persistentIntermenstrualBleeding deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'bleeding between periods'**
+  String get healthDeviationKindPersistentIntermenstrualBleeding;
+
+  /// Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible {kind} ({range})'**
+  String healthDeviationLine(String kind, String range);
+
+  /// Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} – {end}'**
+  String healthDeviationRange(String start, String end);
+
+  /// Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.
+  ///
+  /// In en, this message translates to:
+  /// **'{date}'**
+  String healthDeviationRangeSingle(String date);
 }
 
 class _AppLocalizationsDelegate

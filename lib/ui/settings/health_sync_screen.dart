@@ -28,6 +28,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../config.dart';
+import '../../domain/health/health_deviation.dart';
 import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
 import '../../domain/health/health_sync_binding.dart';
@@ -114,6 +115,7 @@ class HealthSyncScreen extends StatefulWidget {
     required this.binding,
     required this.signedInUserId,
     this.importer,
+    this.deviationInsights,
     this.permissionProbe,
     this.writeEnabled = true,
   });
@@ -134,6 +136,12 @@ class HealthSyncScreen extends StatefulWidget {
   /// platform with no health store), in which case the import tile is
   /// hidden entirely.
   final HealthImportRunner? importer;
+
+  /// Issue #799: the device-local deviation insight seam. When wired, a
+  /// successful import also refreshes the bound profile's "Apple Health
+  /// noticed…" snapshot, which the overview renders; null (tests, an
+  /// unconfigured build, a platform with no health store) simply skips it.
+  final HealthDeviationInsights? deviationInsights;
 
   /// Whether the write direction is wired on this platform. False on
   /// Android as of Issue #458, where only the read/import runner is wired
@@ -476,6 +484,15 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
           setState(() => _importProgress = progress);
         },
       );
+      // Issue #799: after a pass, refresh the bound profile's computed
+      // cycle-deviation snapshot for the overview card. Best-effort and
+      // read-only — a failure here must never turn a successful import into
+      // a reported failure, so it is swallowed and the pass result stands.
+      try {
+        await widget.deviationInsights?.refresh();
+      } catch (_) {
+        // Ignored: the snapshot is a display cache, not part of the import.
+      }
       final permissionStatus = await _readPermissionStatus();
       if (!mounted) return;
       setState(() {

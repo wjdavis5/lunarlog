@@ -11,6 +11,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -119,6 +120,14 @@ class _FakeSource implements HealthImportSource {
     }
     return result;
   }
+
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async =>
+      const HealthDeviationReadResult.unavailable();
 }
 
 class _FakeProfiles implements ProfilesRepository {

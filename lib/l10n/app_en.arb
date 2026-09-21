@@ -3161,5 +3161,66 @@
   "accountReauthFailed": "Couldn't confirm it's you — try again",
   "@accountReauthFailed": {
     "description": "Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop."
+  },
+  "healthDeviationCardTitle": "Apple Health noticed…",
+  "@healthDeviationCardTitle": {
+    "description": "Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming."
+  },
+  "healthDeviationCardSubtitle": "These are Apple's own estimates from your Health data — separate from lunarlog's prediction.",
+  "@healthDeviationCardSubtitle": {
+    "description": "Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged."
+  },
+  "healthDeviationDismiss": "Dismiss",
+  "@healthDeviationDismiss": {
+    "description": "Issue #799: tooltip on the deviation card's dismiss button."
+  },
+  "healthDeviationKindIrregular": "irregular cycles",
+  "@healthDeviationKindIrregular": {
+    "description": "Issue #799: label for Apple's irregularMenstrualCycles deviation."
+  },
+  "healthDeviationKindInfrequent": "infrequent cycles",
+  "@healthDeviationKindInfrequent": {
+    "description": "Issue #799: label for Apple's infrequentMenstrualCycles deviation."
+  },
+  "healthDeviationKindProlonged": "prolonged periods",
+  "@healthDeviationKindProlonged": {
+    "description": "Issue #799: label for Apple's prolongedMenstrualPeriods deviation."
+  },
+  "healthDeviationKindPersistentIntermenstrualBleeding": "bleeding between periods",
+  "@healthDeviationKindPersistentIntermenstrualBleeding": {
+    "description": "Issue #799: label for Apple's persistentIntermenstrualBleeding deviation."
+  },
+  "healthDeviationLine": "Possible {kind} ({range})",
+  "@healthDeviationLine": {
+    "description": "Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRange": "{start} – {end}",
+  "@healthDeviationRange": {
+    "description": "Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.",
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRangeSingle": "{date}",
+  "@healthDeviationRangeSingle": {
+    "description": "Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   }
 }
