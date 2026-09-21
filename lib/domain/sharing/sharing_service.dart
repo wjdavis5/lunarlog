@@ -82,6 +82,7 @@ class PendingInvite {
     this.recipientLabel,
     required this.createdAt,
     required this.expiresAt,
+    this.subject = false,
   });
 
   final String invitationId;
@@ -90,6 +91,10 @@ class PendingInvite {
   final String? recipientLabel;
   final DateTime createdAt;
   final DateTime expiresAt;
+
+  /// Issue #802: this invitation was created with the "her own profile"
+  /// preset — accepting it stamps the subject marker onto the membership.
+  final bool subject;
 
   /// Whether this invitation has aged past [expiresAt] against [now]
   /// (issue #362). Derived locally - no new server column. Takes [now]
@@ -103,12 +108,13 @@ class PendingInvite {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is PendingInvite &&
-          other.invitationId == invitationId &&
-          other.profileId == profileId &&
-          other.role == role &&
-          other.recipientLabel == recipientLabel &&
-          other.createdAt == createdAt &&
-          other.expiresAt == expiresAt;
+          invitationId == other.invitationId &&
+          profileId == other.profileId &&
+          role == other.role &&
+          recipientLabel == other.recipientLabel &&
+          createdAt == other.createdAt &&
+          expiresAt == other.expiresAt &&
+          subject == other.subject;
 
   @override
   int get hashCode => Object.hash(
@@ -118,6 +124,7 @@ class PendingInvite {
         recipientLabel,
         createdAt,
         expiresAt,
+        subject,
       );
 }
 
@@ -154,22 +161,35 @@ class InvitePreview {
     required this.profileDisplayName,
     required this.role,
     required this.expiresAt,
+    this.isSubject = false,
   });
 
   final String profileDisplayName;
   final GuardianRole role;
   final DateTime expiresAt;
 
+  /// Issue #802: the invitation carries the "her own profile" preset, so
+  /// the accept sheet can promise "this is your profile" (issue #800's
+  /// plain-language decision) before the recipient commits. False for a
+  /// pre-#802 server row and for every ordinary invitation.
+  final bool isSubject;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is InvitePreview &&
-          other.profileDisplayName == profileDisplayName &&
-          other.role == role &&
-          other.expiresAt == expiresAt;
+          profileDisplayName == other.profileDisplayName &&
+          role == other.role &&
+          expiresAt == other.expiresAt &&
+          isSubject == other.isSubject;
 
   @override
-  int get hashCode => Object.hash(profileDisplayName, role, expiresAt);
+  int get hashCode => Object.hash(
+        profileDisplayName,
+        role,
+        expiresAt,
+        isSubject,
+      );
 }
 
 /// Result returned upon accepting an invitation.
@@ -179,11 +199,16 @@ class AcceptedInviteResult {
     required this.profileId,
     required this.profileName,
     required this.role,
+    this.isSubject = false,
   });
 
   final String profileId;
   final String profileName;
   final GuardianRole role;
+
+  /// Issue #802: the accepted membership is the profile's subject (the
+  /// invitation carried the "her own profile" preset).
+  final bool isSubject;
 
   @override
   bool operator ==(Object other) =>
@@ -192,10 +217,11 @@ class AcceptedInviteResult {
           runtimeType == other.runtimeType &&
           profileId == other.profileId &&
           profileName == other.profileName &&
-          role == other.role;
+          role == other.role &&
+          isSubject == other.isSubject;
 
   @override
-  int get hashCode => Object.hash(profileId, profileName, role);
+  int get hashCode => Object.hash(profileId, profileName, role, isSubject);
 }
 
 /// Typed failures for sharing and invitation operations.
@@ -282,11 +308,17 @@ final class SharingOtherFailure extends SharingFailure {
 /// Contract for managing guardian sharing and invitations.
 abstract interface class SharingService {
   /// Generates a new invitation with a 256-bit cryptographically secure token.
+  ///
+  /// Issue #802: [subject] selects the "her own profile" preset — the
+  /// server requires the role to be `caregiver` for it and stamps the
+  /// accepted membership with the subject marker. False (the default) is
+  /// the ordinary helper invitation, unchanged.
   Future<GeneratedInvite> createInvite({
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
     Duration ttl = const Duration(hours: 48),
+    bool subject = false,
   });
 
   /// Redeems an invitation using the [rawToken].

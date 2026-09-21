@@ -28,6 +28,7 @@ import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/profiles/profile_erasure_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
+import '../../domain/models/profile_relationship.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../observability/route_names.dart';
 import '../components/destructive_button.dart';
@@ -39,6 +40,7 @@ import 'guardian_watch_mixin.dart';
 import 'invite_guardian_dialog.dart';
 import 'notification_preferences_screen.dart';
 import 'share_predictions_dialog.dart';
+import 'subject_teen_mode_offer.dart';
 import 'transfer_ownership_screen.dart';
 
 class ManageGuardiansScreen extends StatefulWidget {
@@ -151,6 +153,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// reopening) cannot fire a second call.
   bool _deletingProfile = false;
 
+  /// Issue #802: subscription behind the one-time Teen-mode suggestion —
+  /// the first non-empty guardian-rows emission decides whether a minor
+  /// subject has joined this profile while it is still in Standard care
+  /// mode. Cancelled in [dispose]; [_teenOfferChecked] keeps the check
+  /// itself one-shot regardless of how many emissions arrive.
+  StreamSubscription<List<ProfileGuardian>>? _guardianRowsSub;
+  bool _teenOfferChecked = false;
+
   /// Issue #472: honest, in-place failure copy for a failed delete
   /// (`lib/ui/README.md`'s rule: a delete's own failure renders
   /// `InlineError` right next to the control, not a `SnackBar`). Cleared
@@ -162,13 +172,59 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     super.initState();
     _loadPendingInvites();
     unawaited(_loadPredictionConnection());
+    _guardianRowsSub = watchGuardiansForProfileSafely(
+      widget.guardiansRepository,
+      widget.profile.id,
+    ).listen(_maybeOfferTeenMode);
   }
 
   @override
   void dispose() {
     _pendingPoll?.cancel();
     _pendingPoll = null;
+    unawaited(_guardianRowsSub?.cancel() ?? Future<void>.value());
+    _guardianRowsSub = null;
     super.dispose();
+  }
+
+  /// Issue #802: fires the Teen-mode suggestion at most once per screen
+  /// open, and (via the settings latch inside `offerSubjectTeenModeFromTree`)
+  /// at most once per profile per device. Offered only to a caller who can
+  /// actually edit profile metadata — the caregiver-subject cannot switch
+  /// the mode herself (server-enforced in `sync_push`), so suggesting it
+  /// on her device would promise something the role ladder forbids.
+  void _maybeOfferTeenMode(List<ProfileGuardian> rows) {
+    if (_teenOfferChecked || rows.isEmpty) return;
+    _teenOfferChecked = true;
+    if (!(_callerRoleOf(rows)?.canEditProfile ?? false)) return;
+    final subjectJoined = _acceptedOf(rows).any((g) => g.isSubject);
+    if (!shouldOfferSubjectTeenMode(
+      widget.profile,
+      subjectJoined: subjectJoined,
+      now: DateTime.now(),
+    )) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        offerSubjectTeenModeFromTree(context, profile: widget.profile),
+      );
+    });
+  }
+
+  /// Issue #802: whether the invite dialog should offer the "her own
+  /// profile" preset for this profile — the subject's relation to the
+  /// creator is daughter/son/child, or the profile is a minor's by the
+  /// shared [Profile.isMinorAsOf] rule (birth year authoritative, stored
+  /// flag fallback). Pure display gating; the server enforces the
+  /// preset's own rules independently.
+  bool get _subjectInviteAvailable {
+    final relationship = widget.profile.relationship;
+    final childRelationship = relationship == ProfileRelationship.daughter ||
+        relationship == ProfileRelationship.son ||
+        relationship == ProfileRelationship.child;
+    return childRelationship || widget.profile.isMinorAsOf(DateTime.now());
   }
 
   Future<void> _loadPredictionConnection() async {
@@ -597,6 +653,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           profileId: widget.profile.id,
           profileName: widget.profile.displayName,
           sharingService: widget.sharingService,
+          subjectInviteAvailable: _subjectInviteAvailable,
         ),
         // A newly created invitation should appear in the pending list as
         // soon as the dialog closes, whether the operator created one or
@@ -823,9 +880,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   Widget _pendingInviteTile(PendingInvite invite, GuardianRole? callerRole) {
     final l10n = AppLocalizations.of(context);
     final roleLabel = guardianRoleLabel(l10n, invite.role);
+    // Issue #802: an invitation created with the "her own profile" preset
+    // names the preset, not the caregiver role it grants.
+    final kindLabel = invite.subject
+        ? l10n.manageGuardiansPendingSubjectLabel
+        : roleLabel;
     final label = invite.recipientLabel?.isNotEmpty == true
         ? invite.recipientLabel!
-        : roleLabel;
+        : kindLabel;
     // Issue #362: a recently expired invitation renders as a distinct row
     // state - an `Expired` subtitle (never a negative countdown) with a
     // Resend action that re-opens the existing invite flow, then reloads.
@@ -834,7 +896,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
         key: ValueKey('pending-invite-${invite.invitationId}'),
         leading: const Icon(Icons.mail_outline),
         title: Text(label),
-        subtitle: Text('$roleLabel • Expired'),
+        subtitle: Text('$kindLabel • Expired'),
         trailing: _canCancelInvite(invite, callerRole)
             ? TextButton(
                 onPressed: _openInviteDialog,
@@ -850,7 +912,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
       key: ValueKey('pending-invite-${invite.invitationId}'),
       leading: const Icon(Icons.mail_outline),
       title: Text(label),
-      subtitle: Text('$roleLabel • ${_expiryLabel(invite.expiresAt)}'),
+      subtitle: Text('$kindLabel • ${_expiryLabel(invite.expiresAt)}'),
       trailing: _canCancelInvite(invite, callerRole)
           ? (cancelling
                 ? const Padding(
@@ -1393,6 +1455,17 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           if (isMe)
             Text(
               '(you)',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          // Issue #802 (AC3): the subject's row is distinguishable from
+          // every guardian's without reading a uuid — same Wrap flow as
+          // "(you)" for 200% text scaling.
+          if (guardian.isSubject)
+            Text(
+              AppLocalizations.of(context).manageGuardiansSubjectBadge,
+              key: ValueKey('guardian-subject-badge-${guardian.userId}'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.primary,
               ),

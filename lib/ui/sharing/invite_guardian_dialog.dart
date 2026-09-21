@@ -7,9 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'package:lunarlog/l10n/app_localizations.dart';
+
 import '../../domain/models/profile_guardian.dart';
 import '../../domain/sharing/sharing_service.dart';
-import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import '../help/help_card_view.dart';
 import '../l10n/sharing_failure_copy.dart';
@@ -20,18 +21,56 @@ class InviteGuardianDialog extends StatefulWidget {
     required this.profileId,
     required this.profileName,
     required this.sharingService,
+    this.subjectInviteAvailable = false,
   });
 
   final String profileId;
   final String profileName;
   final SharingService sharingService;
 
+  /// Issue #802: the "her own profile" preset is offered (and preselected)
+  /// only when the caller determined the profile is the invitee's own —
+  /// the profile's relationship is daughter/son/child or the profile is a
+  /// minor's. False keeps the dialog exactly the pre-#802 helper invite.
+  final bool subjectInviteAvailable;
+
   @override
   State<InviteGuardianDialog> createState() => _InviteGuardianDialogState();
 }
 
+/// Issue #802: the dialog's choices are presets, not bare roles — the
+/// fourth one ([_InvitePreset.subject], shown only when
+/// [InviteGuardianDialog.subjectInviteAvailable]) grants the caregiver
+/// role *plus* the subject marker, so the daughter joins her own profile
+/// instead of being labelled a caregiver of it.
+enum _InvitePreset {
+  coParent,
+  caregiver,
+  viewer,
+  subject;
+
+  GuardianRole get role => switch (this) {
+        coParent => GuardianRole.coParent,
+        caregiver => GuardianRole.caregiver,
+        viewer => GuardianRole.viewer,
+        // The issue's recommended default: a minor must not be able to
+        // remove her parent from the profile before a transfer — a
+        // caregiver cannot manage guardians, edit the profile, or delete
+        // it. The server re-checks the pairing ("a subject invitation
+        // must grant the caregiver role").
+        subject => GuardianRole.caregiver,
+      };
+
+  bool get stampsSubject => this == subject;
+}
+
 class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
-  GuardianRole _selectedRole = GuardianRole.coParent;
+  /// Issue #802: the subject preset is the default when it is offered, so
+  /// "her own profile" is the two-tap path from Manage guardians — the
+  /// helper roles stay one explicit selection away.
+  late _InvitePreset _selectedPreset = widget.subjectInviteAvailable
+      ? _InvitePreset.subject
+      : _InvitePreset.coParent;
   final TextEditingController _labelController = TextEditingController();
 
   bool _loading = false;
@@ -62,10 +101,11 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     try {
       final invite = await widget.sharingService.createInvite(
         profileId: widget.profileId,
-        role: _selectedRole,
+        role: _selectedPreset.role,
         recipientLabel: _labelController.text.trim().isEmpty
             ? null
             : _labelController.text.trim(),
+        subject: _selectedPreset.stampsSubject,
       );
       if (mounted) {
         setState(() {
@@ -117,6 +157,83 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     );
   }
 
+  /// The generated state's share line, split out of [build] for the CRAP
+  /// gate's per-method complexity cap (Issue #802): the subject preset
+  /// promises "her own profile", a helper invite addresses the guardian.
+  Widget _shareLine(BuildContext context) => Text(
+        key: ValueKey(_selectedPreset.stampsSubject
+            ? 'invite-created-share-subject'
+            : 'invite-created-share-guardian'),
+        _selectedPreset.stampsSubject
+            ? AppLocalizations.of(context)
+                  .inviteCreatedShareSubject(widget.profileName)
+            : AppLocalizations.of(context)
+                  .inviteCreatedShareGuardian(widget.profileName),
+      );
+
+  /// The preset picker (the "Role:" dropdown plus the subject preset's
+  /// consequence line), split out of [build] for the same CRAP-cap reason
+  /// as [_shareLine].
+  Widget _presetPicker(ThemeData theme) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Role:'),
+          const SizedBox(height: 4),
+          DropdownButton<_InvitePreset>(
+            key: const ValueKey('invite-preset-dropdown'),
+            value: _selectedPreset,
+            isExpanded: true,
+            onChanged: _loading
+                ? null
+                : (preset) {
+                    if (preset != null) {
+                      setState(() => _selectedPreset = preset);
+                    }
+                  },
+            items: [
+              const DropdownMenuItem(
+                value: _InvitePreset.coParent,
+                child: Text(
+                  'Co-Parent (Can log, edit profile & invite)',
+                ),
+              ),
+              const DropdownMenuItem(
+                value: _InvitePreset.caregiver,
+                child: Text('Caregiver (Can log symptoms & periods)'),
+              ),
+              const DropdownMenuItem(
+                value: _InvitePreset.viewer,
+                child: Text('Viewer (Read-only access)'),
+              ),
+              // Issue #802: offered (and preselected) only
+              // for a profile that is the invitee's own.
+              if (widget.subjectInviteAvailable)
+                DropdownMenuItem(
+                  key: const ValueKey('invite-preset-subject'),
+                  value: _InvitePreset.subject,
+                  child: Text(
+                    AppLocalizations.of(context)
+                        .inviteSubjectOption(widget.profileName),
+                  ),
+                ),
+            ],
+          ),
+          if (_selectedPreset == _InvitePreset.subject)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                key: const ValueKey('invite-preset-subject-detail'),
+                AppLocalizations.of(context)
+                    .inviteSubjectOptionDetail(widget.profileName),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -142,9 +259,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Share this single-use link with the guardian for ${widget.profileName}:',
-                      ),
+                      _shareLine(context),
                       const SizedBox(height: 12),
                       Container(
                         padding: const EdgeInsets.all(8),
@@ -252,43 +367,11 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     ],
                     // #557: MergeSemantics folds "Role:" into the dropdown's own
                     // announcement, so a screen reader hears "Role, <value>"
-                    // instead of just the bare value.
+                    // instead of just the bare value. The preset picker lives
+                    // in its own method (Issue #802: the CRAP gate's
+                    // per-method complexity cap on build).
                     MergeSemantics(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Role:'),
-                          const SizedBox(height: 4),
-                          DropdownButton<GuardianRole>(
-                            value: _selectedRole,
-                            isExpanded: true,
-                            onChanged: _loading
-                                ? null
-                                : (role) {
-                                    if (role != null) {
-                                      setState(() => _selectedRole = role);
-                                    }
-                                  },
-                            items: const [
-                              DropdownMenuItem(
-                                value: GuardianRole.coParent,
-                                child: Text(
-                                  'Co-Parent (Can log, edit profile & invite)',
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value: GuardianRole.caregiver,
-                                child: Text('Caregiver (Can log symptoms & periods)'),
-                              ),
-                              DropdownMenuItem(
-                                value: GuardianRole.viewer,
-                                child: Text('Viewer (Read-only access)'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                      child: _presetPicker(theme),
                     ),
                     const SizedBox(height: 12),
                     TextField(

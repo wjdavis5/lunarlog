@@ -243,6 +243,11 @@ const String kRouteMfaRemoveFactorDialog = 'MfaRemoveFactorDialog';
 /// settings screen (status, change, turn off).
 const String kRoutePinSettingsScreen = 'PinSettingsScreen';
 
+/// `lib/ui/sharing/subject_teen_mode_offer.dart` (Issue #802) — the
+/// one-time "switch to Teen mode?" suggestion a manager sees when a minor
+/// subject joins a profile still in Standard care mode.
+const String kRouteSubjectTeenModeDialog = 'SubjectTeenModeDialog';
+
 /// `lib/ui/gate/pin_settings_screen.dart` (issue #271) — the set-a-new-PIN
 /// form, reached when no PIN exists yet.
 const String kRoutePinSetScreen = 'PinSetScreen';
@@ -306,6 +311,7 @@ const Set<String> kSentryRouteNames = {
   kRoutePredictionCalendarScreen,
   kRouteAcceptPredictionConnectionSheet,
   kRouteStopReceivingPredictionsDialog,
+  kRouteSubjectTeenModeDialog,
   kRouteDeleteProfileDialog,
   kRouteDeleteProfileFinalConfirmDialog,
   kRoutePurgeImportedDataDialog,

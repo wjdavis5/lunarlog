@@ -81,6 +81,49 @@ void main() {
           role: GuardianRole.coParent,
         )),
       );
+      expect(
+        res1,
+        isNot(const AcceptedInviteResult(
+          profileId: 'p-1',
+          profileName: 'Luna II',
+          role: GuardianRole.coParent,
+        )),
+      );
+      expect(
+        res1,
+        isNot(const AcceptedInviteResult(
+          profileId: 'p-1',
+          profileName: 'Luna',
+          role: GuardianRole.viewer,
+        )),
+      );
+    });
+
+    // Issue #802: the subject flag participates in identity.
+    test('a differing isSubject flag compares unequal (Issue #802)', () {
+      expect(
+        res1,
+        isNot(const AcceptedInviteResult(
+          profileId: 'p-1',
+          profileName: 'Luna',
+          role: GuardianRole.coParent,
+          isSubject: true,
+        )),
+      );
+      expect(
+        const AcceptedInviteResult(
+          profileId: 'p-1',
+          profileName: 'Luna',
+          role: GuardianRole.caregiver,
+          isSubject: true,
+        ),
+        const AcceptedInviteResult(
+          profileId: 'p-1',
+          profileName: 'Luna',
+          role: GuardianRole.caregiver,
+          isSubject: true,
+        ),
+      );
     });
 
     test('different type is not equal', () {
@@ -135,6 +178,16 @@ void main() {
           expiresAt: expiresAt.add(const Duration(hours: 1)),
         )),
       );
+      // Issue #802: the subject preset participates in identity.
+      expect(
+        preview1,
+        isNot(InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.caregiver,
+          expiresAt: expiresAt,
+          isSubject: true,
+        )),
+      );
     });
 
     test('different type is not equal', () {
@@ -171,6 +224,19 @@ void main() {
           recipientLabel: 'Grandma',
           createdAt: now,
           expiresAt: expires,
+        )),
+      );
+      // Issue #802: the subject preset participates in identity.
+      expect(
+        invite(),
+        isNot(PendingInvite(
+          invitationId: 'inv-1',
+          profileId: 'p-1',
+          role: GuardianRole.viewer,
+          recipientLabel: 'Grandma',
+          createdAt: now,
+          expiresAt: expires,
+          subject: true,
         )),
       );
     });

@@ -166,6 +166,7 @@ domain.ProfileGuardian profileGuardianToDomain(db.ProfileGuardianData row) =>
       invitedBy: row.invitedBy,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      isSubject: row.isSubject,
     );
 
 /// Issue #128: drift-row -> domain [domain.CareNote]. Mirrors

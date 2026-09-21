@@ -48,7 +48,7 @@ import 'hardcoded_ui_strings_scanner.dart';
 /// The backlog this guard landed with (issue #460). Decrement it with
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
-const int _initialAllowlistSize = 368;
+const int _initialAllowlistSize = 367;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -100,7 +100,7 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/sharing/accept_prediction_connection_sheet.dart': 4,
   'lib/ui/sharing/activity_feed_screen.dart': 3,
   'lib/ui/sharing/claim_profile_sheet.dart': 4,
-  'lib/ui/sharing/invite_guardian_dialog.dart': 14,
+  'lib/ui/sharing/invite_guardian_dialog.dart': 13,
   'lib/ui/sharing/manage_guardians_screen.dart': 46,
   'lib/ui/sharing/notification_preferences_screen.dart': 20,
   'lib/ui/sharing/prediction_connection_calendar_screen.dart': 1,

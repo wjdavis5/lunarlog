@@ -418,6 +418,7 @@ export type Database = {
           expires_at: string
           id: string
           invited_by: string
+          is_subject: boolean
           profile_id: string
           recipient_label: string | null
           revoked_at: string | null
@@ -431,6 +432,7 @@ export type Database = {
           expires_at: string
           id?: string
           invited_by: string
+          is_subject?: boolean
           profile_id: string
           recipient_label?: string | null
           revoked_at?: string | null
@@ -444,6 +446,7 @@ export type Database = {
           expires_at?: string
           id?: string
           invited_by?: string
+          is_subject?: boolean
           profile_id?: string
           recipient_label?: string | null
           revoked_at?: string | null
@@ -957,6 +960,7 @@ export type Database = {
           display_name: string | null
           id: string
           invited_by: string | null
+          is_subject: boolean | null
           profile_id: string
           revoked_at: string | null
           role: string
@@ -970,6 +974,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           invited_by?: string | null
+          is_subject?: boolean | null
           profile_id: string
           revoked_at?: string | null
           role: string
@@ -983,6 +988,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           invited_by?: string | null
+          is_subject?: boolean | null
           profile_id?: string
           revoked_at?: string | null
           role?: string
@@ -1393,6 +1399,7 @@ export type Database = {
           p_profile_id: string
           p_recipient_label: string
           p_role: string
+          p_subject?: boolean
           p_token_hash: string
           p_ttl_hours?: number
         }

@@ -209,6 +209,7 @@ class _StubSharingService implements SharingService {
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 48),
   }) async {
     throw UnimplementedError();

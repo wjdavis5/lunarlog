@@ -2678,6 +2678,93 @@
   "@guardianNotesUpdate": {
     "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
   },
+  "inviteSubjectOption": "Invite {name} to log her own profile",
+  "@inviteSubjectOption": {
+    "description": "Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as hers on her device",
+  "@inviteSubjectOptionDetail": {
+    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteCreatedShareGuardian": "Share this single-use link with the guardian for {profile}:",
+  "@inviteCreatedShareGuardian": {
+    "description": "Invite dialog, generated state: what to do with a helper invitation link.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteCreatedShareSubject": "Share this single-use link with {name} - she'll use it to join and log her own profile:",
+  "@inviteCreatedShareSubject": {
+    "description": "Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "acceptInviteSubjectIntro": "This is your profile. {profile}'s cycle calendar and health logs will sync to this device - the guardians already sharing it can see and log it too.",
+  "@acceptInviteSubjectIntro": {
+    "description": "Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "profilePickerSubjectSubtitle": "This is your profile",
+  "@profilePickerSubjectSubtitle": {
+    "description": "Profile picker / sharing subtitle (Issue #802): the operator's own profile held via a subject membership - never the caregiver role label the preset granted."
+  },
+  "manageGuardiansSubjectBadge": "(her profile)",
+  "@manageGuardiansSubjectBadge": {
+    "description": "Manage guardians row (Issue #802): badge marking the member who is the profile's subject, distinguishing her row from every guardian's without reading a uuid."
+  },
+  "manageGuardiansPendingSubjectLabel": "Her own profile",
+  "@manageGuardiansPendingSubjectLabel": {
+    "description": "Manage guardians pending-invitation row (Issue #802): replaces the role label for an invitation created with the 'her own profile' preset."
+  },
+  "subjectTeenModeDialogTitle": "Switch {name} to Teen mode?",
+  "@subjectTeenModeDialogTitle": {
+    "description": "Manage guardians (Issue #802): title of the one-time suggestion shown when a minor subject joins a profile still in Standard care mode. Suggested, never forced.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subjectTeenModeDialogBody": "{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.",
+  "@subjectTeenModeDialogBody": {
+    "description": "Manage guardians (Issue #802): body of the Teen-mode suggestion dialog.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subjectTeenModeDialogAccept": "Switch to Teen",
+  "@subjectTeenModeDialogAccept": {
+    "description": "Manage guardians (Issue #802): accepting button of the Teen-mode suggestion dialog - writes the profile's care mode to teen."
+  },
+  "subjectTeenModeDialogDecline": "Keep Standard",
+  "@subjectTeenModeDialogDecline": {
+    "description": "Manage guardians (Issue #802): declining button of the Teen-mode suggestion dialog - leaves the care mode untouched."
+  },
+  "subjectTeenModeDoneSnack": "Switched to Teen mode",
+  "@subjectTeenModeDoneSnack": {
+    "description": "Manage guardians (Issue #802): confirmation snackbar after accepting the Teen-mode suggestion."
+  },
   "profileIrregularFramingLabel": "Irregular cycles",
   "@profileIrregularFramingLabel": {
     "description": "Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form."

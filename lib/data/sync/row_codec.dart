@@ -726,6 +726,10 @@ RemoteProfileGuardianRow decodeProfileGuardian(JsonRow json) {
     createdAt: r.timestamp('created_at'),
     updatedAt: r.timestamp('updated_at'),
     serverVersion: r.integerOr('server_version', 0),
+    // Issue #802: absent key (a pre-#802 server row) decodes to false —
+    // the subject marker is membership metadata, not an identity field a
+    // pull should reject over.
+    isSubject: json['is_subject'] == null ? false : r.boolean('is_subject'),
   );
 }
 
