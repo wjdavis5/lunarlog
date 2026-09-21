@@ -648,6 +648,13 @@ int? birthControlCadenceDays(BirthControlMethod method) => switch (method) {
 /// PMS-watch, and fertile-window-soon fire only when their configured
 /// moment is still in the future; the late window pre-arms a bounded daily
 /// run starting today.
+///
+/// Issue #982: a stale history (#859) plans none of them. Every kind here
+/// derives its fire date from the rolled estimate, and a period predicted
+/// from a years-old cycle is noise, not a heads-up — the same conclusion
+/// the overview's stale card and the calendar's suppressed bands reach from
+/// the same flag. The prediction-independent kinds (log nudge,
+/// statistic-change, birth-control adherence) still plan as before.
 List<PlannedReminder> _planEstimateRelative({
   required String profileId,
   required LocalDate today,
@@ -655,6 +662,7 @@ List<PlannedReminder> _planEstimateRelative({
   required ReminderConfig config,
   required bool snoozed,
 }) {
+  if (prediction.staleHistory) return const [];
   final planned = _planEstimateAnchored(
     profileId: profileId,
     today: today,

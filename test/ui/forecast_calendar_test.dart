@@ -68,6 +68,17 @@ final List<LocalDate> kPausedStarts = [
   LocalDate(2026, 6, 26),
 ];
 
+/// Issue #859/#982 stale shape: last logged start 2024-04-27, ~856 days
+/// open on [kToday] (2026-08-30), far past `staleHistoryThresholdDays` for
+/// this ~29-day mean. The rolled forecast would otherwise paint bands
+/// decades of cycles out.
+final List<LocalDate> kStaleStarts = [
+  LocalDate(2024, 1, 30),
+  LocalDate(2024, 2, 28),
+  LocalDate(2024, 3, 28),
+  LocalDate(2024, 4, 27),
+];
+
 /// Lengths 90, 95, 100 (outliers) then 28, 28, 28: estimate Sep 2. Only
 /// three usable cycles feed a 6-cycle average window that is not yet full,
 /// so this reads `learning` (issue #213 item 5) rather than `high` — still
@@ -704,6 +715,39 @@ void main() {
       expect(find.byKey(const ValueKey('keep-logging-strip')), findsNothing,
           reason: 'a long open cycle now rolls the estimate forward '
               'instead of pausing predictions');
+      await disposeForecast(tester, h);
+    });
+
+    testWidgets('issue #982: a stale history paints no predicted-period or '
+        'fertile-window bands', (tester) async {
+      final h = await pumpForecast(
+        tester,
+        today: kToday,
+        bleedStarts: kStaleStarts,
+      );
+
+      // The rolled estimate is well past the stale threshold, so #859's
+      // stale state (not the ordinary active one) is in force; the
+      // calendar must not paint any forecast band off it.
+      Finder forecastMarker(String prefix) => find.byWidgetPredicate((w) {
+            final key = w.key;
+            return key is ValueKey<String> && key.value.startsWith(prefix);
+          });
+      expect(
+        forecastMarker('predicted-'),
+        findsNothing,
+        reason: 'no predicted-period band for a stale history',
+      );
+      expect(
+        forecastMarker('fertile-'),
+        findsNothing,
+        reason: 'no fertile-window ring for a stale history',
+      );
+
+      // Still true several months into the navigable horizon.
+      await showMonthForward(tester, 2027, 2);
+      expect(forecastMarker('predicted-'), findsNothing);
+      expect(forecastMarker('fertile-'), findsNothing);
       await disposeForecast(tester, h);
     });
   });

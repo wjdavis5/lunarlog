@@ -2287,6 +2287,10 @@
   "@profileStatusPredictionsOff": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
   },
+  "profileStatusNoRecentPeriod": "No recent period logged",
+  "@profileStatusNoRecentPeriod": {
+    "description": "Issue #982: the one-line cycle status on a ProfileCard row for a stale-history profile (ActivePrediction.staleHistory, issue #859) — a neutral line replacing the rolled 'Cycle day N' count the same way the overview's stale card replaces it."
+  },
   "daysCount": "{count} {count, plural, =1{day} other{days}}",
   "@daysCount": {
     "description": "Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.",
