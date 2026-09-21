@@ -53,6 +53,33 @@ class RunnerTests: XCTestCase {
     XCTAssertNil(HealthKitChannelHandler.severity(forWire: "unknown"))
   }
 
+  /// Issue #992: Pins the paging-cursor codec on the Swift side. Dart treats
+  /// the cursor as opaque and only compares cursors for progress, but the
+  /// bytes that cross the channel must round-trip and malformed input must
+  /// decode to "start over" rather than throw or silently mislead.
+  func testImportCursorDataRoundTripsAndRejectsMalformedInput() {
+    let data = Data([0x01, 0x02, 0xFE, 0xFF])
+    let encoded = HealthKitChannelHandler.encodeCursorData(data)
+    XCTAssertEqual(HealthKitChannelHandler.decodeCursorData(encoded), data)
+
+    // Absent/empty/malformed cursors decode to nil, never a crash.
+    XCTAssertNil(HealthKitChannelHandler.decodeCursorData(nil))
+    XCTAssertNil(HealthKitChannelHandler.decodeCursorData(""))
+    XCTAssertNil(HealthKitChannelHandler.decodeCursorData("***not-base64***"))
+  }
+
+  /// Issue #992: An anchor that is not from this build's query decodes to
+  /// nil (a fresh start) rather than throwing. `HKQueryAnchor` has no public
+  /// initializer, so the round-trip itself is covered by
+  /// `testImportCursorDataRoundTripsAndRejectsMalformedInput`.
+  func testImportCursorAnchorRejectsNonAnchorInput() {
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchor(nil))
+    XCTAssertNil(HealthKitChannelHandler.decodeAnchor(""))
+    XCTAssertNil(
+      HealthKitChannelHandler.decodeAnchor(
+        HealthKitChannelHandler.encodeCursorData(Data([0x00, 0x01, 0x02]))))
+  }
+
   /// Issue #920: Verifies that BBT samples are built as instant samples (startDate == endDate)
   /// rather than whole-day intervals ending at 23:59:59.
   func testBasalBodyTemperatureSampleIsInstant() {

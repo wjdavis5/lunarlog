@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Issue #141: the shared suite this extension reads the discreet
+	     render payload from (and the Runner writes through the
+	     `home_widget` plugin). The SAME identifier is declared in BOTH
+	     Runner.entitlements and DebugProfile.entitlements — an app group
+	     works only when every member declares it, and device signing
+	     requires the App Group capability on both App IDs
+	     (com.wjdavis5.lunarlog and com.wjdavis5.lunarlog.LunarLogWidget)
+	     plus regenerated profiles carrying it; see the device checklist
+	     in docs/ops/supabase-go-live.md. Unsigned CI builds compile and
+	     run regardless. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.wjdavis5.lunarlog.widgets</string>
+	</array>
+</dict>
+</plist>

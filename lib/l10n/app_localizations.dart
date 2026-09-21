@@ -1428,6 +1428,36 @@ abstract class AppLocalizations {
   /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
 
+  /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.'**
+  String healthSyncImportSummaryHeadline(int imported, int skipped);
+
+  /// Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring in all available menstrual flow and spotting.'**
+  String get healthSyncImportTileSubtitle;
+
+  /// Shown while a full-history health import runs (Issue #992): the running sample count, so a long pass shows progress rather than a bare spinner.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.'**
+  String healthSyncImportProgress(int samples);
+
+  /// Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred.
+  ///
+  /// In en, this message translates to:
+  /// **'Imports everything the health store makes available, not a recent window. Background sync is not available yet.'**
+  String get healthSyncFullHistoryNote;
+
+  /// Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely.
+  ///
+  /// In en, this message translates to:
+  /// **'The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.'**
+  String get healthSyncImportStoppedEarly;
+
   /// Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.
   ///
   /// In en, this message translates to:
@@ -1529,6 +1559,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calendar'**
   String get settingsSectionCalendar;
+
+  /// Header of the Settings 'Home-screen widget' section (Issue #141): which profile the widget shows. iOS/Android only.
+  ///
+  /// In en, this message translates to:
+  /// **'Home-screen widget'**
+  String get settingsSectionHomeWidget;
+
+  /// Tile title (Issue #141): which profile the home-screen widget renders; the subtitle names the current choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Widget profile'**
+  String get settingsHomeWidgetProfileTitle;
+
+  /// Picker option (Issue #141): the widget tracks whatever profile the app currently has open, instead of pinning one.
+  ///
+  /// In en, this message translates to:
+  /// **'Follow the app\'s current profile'**
+  String get settingsHomeWidgetFollowActive;
+
+  /// Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion.
+  ///
+  /// In en, this message translates to:
+  /// **'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.'**
+  String get settingsHomeWidgetDisclosure;
 
   /// Header of the Settings 'Family & sharing' section (Issue #226/#126): one row per profile, routing to Manage Guardians.
   ///

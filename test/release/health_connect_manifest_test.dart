@@ -38,19 +38,23 @@ void main() {
     // scope. #228 shipped those write types, so the previously-absent
     // BASAL_BODY_TEMPERATURE permission is now required, and the three
     // fertility/measurement WRITE permissions join the expected-present set.
-    // History, background, and sexual-activity remain deliberately absent
-    // (#186/#210).
+    // Issue #992 adds READ_HEALTH_DATA_HISTORY (the full-history import);
+    // background and sexual-activity remain deliberately absent (#186/#210).
     test(
         'declares the menstruation baseline plus the #228 fertility/measurement '
-        'WRITE permissions -- not history/background/sexual-activity', () {
+        'WRITE permissions plus #992 history -- not background/sexual-activity',
+        () {
       for (final permission in [
         'android.permission.health.WRITE_MENSTRUATION',
         'android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING',
         // Issue #458: the read/import direction the owner's #781 decision
         // unblocked, matching HealthConnectAdapter.kt's readPermissions set
-        // and the user-initiated getChangesToken/getChanges call site.
+        // and the user-initiated paged read call site.
         'android.permission.health.READ_MENSTRUATION',
         'android.permission.health.READ_INTERMENSTRUAL_BLEEDING',
+        // Issue #992: full-history import. Without this permission Health
+        // Connect returns only the 30 days before the grant.
+        'android.permission.health.READ_HEALTH_DATA_HISTORY',
         // Issue #228: write-only (no read-back in scope), matching
         // HealthConnectAdapter.kt's writePermissions set.
         'android.permission.health.WRITE_CERVICAL_MUCUS',
@@ -60,24 +64,31 @@ void main() {
         expect(manifest, contains('android:name="$permission"'),
             reason: permission);
       }
+      // Assert the *declaration* is absent, not the bare name: the manifest
+      // comments name the deferred permissions on purpose, and only an
+      // actual android:name declaration grants anything.
       for (final outOfScope in [
-        'READ_HEALTH_DATA_HISTORY',
         'READ_HEALTH_DATA_IN_BACKGROUND',
         'SEXUAL_ACTIVITY',
       ]) {
-        expect(manifest, isNot(contains(outOfScope)), reason: outOfScope);
+        expect(
+          manifest,
+          isNot(contains('android:name="android.permission.health.$outOfScope"')),
+          reason: outOfScope,
+        );
       }
     });
 
     test(
-        'the Kotlin adapter requests the two read permissions a read call '
-        'site now exists for (Issue #458) -- not just the write set #515 '
-        'left in place', () {
+        'the Kotlin adapter requests the read permissions a read call site '
+        'now exists for (#458 reads, #992 full history) -- not just the '
+        'write set #515 left in place', () {
       final adapter =
           readRepoFile('android/app/src/main/kotlin/com/wjdavis5/lunarlog/'
               'HealthConnectAdapter.kt');
       expect(adapter, contains('readPermissions = setOf('));
       expect(adapter, contains('getReadPermission('));
+      expect(adapter, contains('PERMISSION_READ_HEALTH_DATA_HISTORY'));
       // The single authorization sheet carries write + read together.
       expect(adapter, contains('allPermissions'));
     });

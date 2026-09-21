@@ -192,4 +192,14 @@ abstract final class SettingsKeys {
   /// date header and every relative-day label follow it. Device-local,
   /// same posture as [themeMode].
   static const String dateFormat = 'date_format';
+
+  /// The profile the home-screen widget is pinned to (issue #141): the
+  /// profile id, or the empty string (the "follow the app's active
+  /// profile" default — `WidgetStatePublisher` then resolves
+  /// [lastActiveProfile] the way `ProfileController` does). Device-local
+  /// by design: which profile a widget on *this device's* home screen
+  /// shows is a property of the device, not of the account — never synced,
+  /// the same posture as [themeMode]. The Settings screen's "Home-screen
+  /// widget" section is the only writer.
+  static const String widgetProfileId = 'widget_profile_id';
 }

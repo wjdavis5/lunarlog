@@ -73,9 +73,10 @@ const Set<String> _sharingNamedUiArgs = {
 ///
 /// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero (142
 /// literals), so those entries are gone and the recorded size dropped by
-/// the same amount (370 - 142 = 228). Every remaining entry is another
-/// directory's backlog, owned by a different tranche.
-const int _initialAllowlistSize = 228;
+/// the same amount (367 - 142 = 225, where 367 is the current main
+/// backlog after the widget/health work landed). Every remaining entry is
+/// another directory's backlog, owned by a different tranche.
+const int _initialAllowlistSize = 225;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -119,7 +120,7 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 14,
+  'lib/ui/settings/health_sync_screen.dart': 11,
   'lib/ui/settings/import_screen.dart': 4,
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
