@@ -135,7 +135,7 @@ class CycleLiteracyLibrary {
     id: 'understanding-follicular-phase',
     title: 'The Follicular Phase & The Power of Estrogen',
     summary:
-        'How rising estradiol stimulates follicle development, thickens the endometrium, and elevates energy levels.',
+        'How rising estradiol stimulates follicle development and thickens the endometrium — and why energy often feels higher.',
     category: CycleLiteracyCategory.phases,
     readingTimeMinutes: 2,
     source:
@@ -219,7 +219,7 @@ class CycleLiteracyLibrary {
       ArticleSection(
         heading: 'Thermal and Body Changes',
         paragraphs: [
-          'Progesterone acts directly on the hypothalamic thermoregulatory center, causing resting basal body temperature (BBT) to shift upward by approximately 0.5°F to 1.0°F (0.2°C to 0.5°C). This thermal shift persists until progesterone levels decline at the end of the luteal phase.',
+          'Progesterone acts directly on the hypothalamic thermoregulatory center, causing resting basal body temperature (BBT) to shift upward by approximately 0.5°F to 1.0°F (0.3°C to 0.6°C). This thermal shift persists until progesterone levels decline at the end of the luteal phase.',
         ],
       ),
     ],
@@ -251,7 +251,7 @@ class CycleLiteracyLibrary {
       ArticleSection(
         heading: 'Serotonin and GABA Interactions',
         paragraphs: [
-          'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, GABA and serotonin activity also drop, explaining premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
+          'Progesterone metabolites (such as allopregnanolone) interact directly with GABA receptors in the brain, which regulate calm and anxiety. As progesterone plunges, researchers think this shifts GABA and serotonin signaling, which may contribute to premenstrual mood sensitivity, sleep disruptions, and sugar cravings.',
           'Tracking premenstrual symptoms over several cycles helps identify personal patterns and supports productive discussions with your healthcare provider if symptoms become disruptive.',
         ],
       ),
@@ -301,7 +301,7 @@ class CycleLiteracyLibrary {
     category: CycleLiteracyCategory.variability,
     readingTimeMinutes: 3,
     source:
-        'FIGO Menstrual Disorders Committee (FIGO Systems 1 & 2); World Health Organization (WHO)',
+        'FIGO Menstrual Disorders Committee (FIGO Systems 1 & 2); World Health Organization (WHO); ACOG FAQ049',
     reviewDate: _currentReviewDate,
     relatedSubphases: [
       CycleSubphase.earlyFollicular,
@@ -313,6 +313,19 @@ class CycleLiteracyLibrary {
         paragraphs: [
           'Only a small fraction of individuals have exactly 28-day cycles every month. In healthy adults, cycle lengths naturally vary by 2 to 7 days from month to month without indicating any medical problem.',
           'Factors such as psychological stress, travel, illness, shifts in sleep schedule, and vigorous exercise can transiently delay follicular development and shift ovulation date, extending that month\'s cycle.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'The First Few Years',
+        paragraphs: [
+          'For the first two to three years after a first period, cycles are often longer and less predictable than they will later become — commonly ranging from about 21 to 45 days, with some months skipped entirely. That is a normal part of the hormonal feedback loop maturing, not automatically a sign of a problem.',
+          'Once cycles have settled, an adult cycle generally falls between about 21 and 35 days, and a few days of month-to-month variation remains normal.',
+        ],
+      ),
+      ArticleSection(
+        heading: 'When to Ask a Doctor',
+        paragraphs: [
+          'A few patterns are worth raising with a healthcare professional: no period for three months once cycles had been regular, bleeding that lasts longer than about a week, or soaking through a pad or tampon every hour for several hours.',
         ],
       ),
     ],

@@ -301,12 +301,22 @@ void main() {
       expect(l10n.settingsPrivacyTitle, 'Privacy policy');
       expect(
         l10n.settingsPrivacySubtitle,
-        'Sync & family sharing, protected at rest, zero tracking',
+        "How your family's data is stored, shared, and kept private",
       );
       expect(l10n.settingsPrivacyDialogTitle, 'lunarlog Privacy Policy');
       expect(l10n.settingsPrivacyDialogBody, startsWith(
         'lunarlog is a family cycle tracker built for sync and sharing.',
       ));
+      // Issue #1002: the gate is the device credential, which accepts a
+      // passcode, not biometrics alone.
+      expect(
+        l10n.settingsPrivacyDialogBody,
+        contains('passcode or biometrics'),
+      );
+      expect(
+        l10n.settingsPrivacyDialogBody,
+        isNot(contains('biometric authentication')),
+      );
       expect(
         l10n.settingsPrivacyDialogBody,
         endsWith(
@@ -323,6 +333,16 @@ void main() {
         ),
       );
       expect(l10n.settingsClose, 'Close');
+      // Issue #1002: the reminder editor must warn that custom text is
+      // shown on the lock screen, not only that lunarlog adds nothing.
+      expect(
+        l10n.reminderTextDiscretionNote,
+        contains('appears on the lock screen'),
+      );
+      expect(
+        l10n.reminderTextDiscretionNote,
+        contains('keep it something anyone may see'),
+      );
     });
 
     testWidgets('first-run flow (#216): extracted pre-existing literals '

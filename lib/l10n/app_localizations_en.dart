@@ -918,14 +918,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPrivacySubtitle =>
-      'Sync & family sharing, protected at rest, zero tracking';
+      'How your family\'s data is stored, shared, and kept private';
 
   @override
   String get settingsPrivacyDialogTitle => 'lunarlog Privacy Policy';
 
   @override
   String get settingsPrivacyDialogBody =>
-      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind biometric authentication.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
+      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
 
   @override
   String get settingsClose => 'Close';
@@ -2046,7 +2046,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderTextDiscretionNote =>
-      'The preview is exactly what the notification will show — nothing more. lunarlog never adds a profile name, date, or health detail to notification text.';
+      'The preview is exactly what the notification will show — nothing more. lunarlog never adds a profile name, date, or health detail to notification text. Anything you type here appears on the lock screen, so keep it something anyone may see.';
 
   @override
   String pregnancyWeekTitle(int week) {
