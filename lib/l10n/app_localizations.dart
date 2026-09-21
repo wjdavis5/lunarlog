@@ -3838,6 +3838,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Dismiss'**
   String get cycleRecapDismissLabel;
+
+  /// Issue #803: the household row's log-for-her action label. The row itself names the profile, so the visible label stays short; the full 'Log today for <name>' phrasing (householdLogTodayFor) is the action's tooltip/semantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Log today'**
+  String get householdLogToday;
+
+  /// Issue #803: the household row's log-for-her action announced with the profile's name (tooltip and screen-reader label for the short on-row button).
+  ///
+  /// In en, this message translates to:
+  /// **'Log today for {name}'**
+  String householdLogTodayFor(String name);
+
+  /// Issue #803: household-row timing line when the next-period estimate falls on today (never rendered for an irregular-framed profile, #853).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected today'**
+  String get householdTimingExpectedToday;
+
+  /// Issue #803: household-row timing line when the next-period estimate falls within the upcoming window (never rendered for an irregular-framed profile, #853).
+  ///
+  /// In en, this message translates to:
+  /// **'Period expected in {count, plural, =1{1 day} other{{count} days}}'**
+  String householdTimingExpectedIn(int count);
+
+  /// Issue #803: household-row timing line for an open cycle past its estimate — the late resolver's own vocabulary (issue #221), never rendered for an irregular-framed profile (#853: variation is expected, not late).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day late} other{{count} days late}}'**
+  String householdTimingLate(int count);
+
+  /// Issue #803: the quiet, factual open-cycle line for an irregular-framed (#853) or stale-history (#859) profile — informative without the overdue framing.
+  ///
+  /// In en, this message translates to:
+  /// **'Last period {count, plural, =1{1 day ago} other{{count} days ago}}'**
+  String householdTimingLastLogged(int count);
+
+  /// Issue #803: household-row silence line — the profile has history but nothing logged for at least its reminder-preference threshold. Counts only, never content.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing logged for {count, plural, =1{1 day} other{{count} days}}'**
+  String householdSilence(int count);
+
+  /// Issue #803: household-row changes line from the activity feed's unread count (issue #124 baseline). Counts only — the feed's content discretion applies here too.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change} other{{count} changes}} since you last looked'**
+  String householdChanges(int count);
 }
 
 class _AppLocalizationsDelegate
