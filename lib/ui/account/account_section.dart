@@ -528,7 +528,9 @@ class _AccountSectionState extends State<AccountSection> {
         key: const ValueKey('account-sign-out-everywhere'),
         leading: const Icon(Icons.devices_other),
         title: const Text('Sign out everywhere'),
-        subtitle: const Text('Ends every session of this account.'),
+        subtitle: const Text(
+            'Signs out all devices, though others may take up to an hour to '
+            'notice.'),
         onTap: () => _signOutEverywhere(context),
       ),
     ];
@@ -830,9 +832,9 @@ class _AccountSectionState extends State<AccountSection> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Sign out everywhere?'),
         content: const Text(
-          'Ends every session of this account and removes the data from '
-          'this device. Other devices may keep syncing for up to 10 minutes, '
-          'until their access expires.',
+          'Ends every session of this account. Other devices may keep '
+          'working for up to an hour, until their access expires, and the '
+          'data is removed from this device.',
         ),
         actions: [
           TextButton(
