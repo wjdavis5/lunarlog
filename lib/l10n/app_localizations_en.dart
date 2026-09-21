@@ -3051,4 +3051,259 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingSharePredictionsCreateLink => 'Create Link';
+
+  @override
+  String sharingTransferOwnershipScreenTitle(String profileName) {
+    return 'Transfer $profileName\'s Profile';
+  }
+
+  @override
+  String get sharingTransferOwnershipConfirmTitle => 'Transfer ownership?';
+
+  @override
+  String sharingTransferOwnershipConfirmBody(
+    String profileName,
+    String roleLabel,
+  ) {
+    return '$profileName will become the owner of this profile. You\'ll keep access as $roleLabel, and they can remove that access at any time.';
+  }
+
+  @override
+  String get sharingTransferOwnershipCancel => 'Cancel';
+
+  @override
+  String get sharingTransferOwnershipTransferAction => 'Transfer';
+
+  @override
+  String get sharingTransferOwnershipPendingCancelled =>
+      'Pending transfer cancelled';
+
+  @override
+  String get sharingTransferOwnershipCancelled => 'Transfer cancelled';
+
+  @override
+  String get sharingTransferOwnershipLinkCopied =>
+      'Transfer link copied to clipboard';
+
+  @override
+  String get sharingTransferOwnershipWhatChanges => 'What changes';
+
+  @override
+  String sharingTransferOwnershipBulletOwner(String profileName) {
+    return '$profileName becomes this profile\'s owner.';
+  }
+
+  @override
+  String get sharingTransferOwnershipBulletKeepRole =>
+      'You keep the role you choose below.';
+
+  @override
+  String get sharingTransferOwnershipBulletRemoveAccess =>
+      'They can remove your access at any time.';
+
+  @override
+  String get sharingTransferOwnershipBulletDeleteAccount =>
+      'If they later delete their account, this profile\'s history goes with it.';
+
+  @override
+  String get sharingTransferOwnershipHelpLabel => 'How does the transfer work?';
+
+  @override
+  String get sharingTransferOwnershipRoleAfterTitle =>
+      'Your role after the transfer';
+
+  @override
+  String get sharingTransferOwnershipViewerDetail =>
+      'Viewer: read-only access to their calendar and entries.';
+
+  @override
+  String get sharingTransferOwnershipCoManagerDetail =>
+      'Co-manager: keep logging entries and managing this profile.';
+
+  @override
+  String get sharingTransferOwnershipRecipientLabel =>
+      'Recipient label (optional)';
+
+  @override
+  String get sharingTransferOwnershipRecipientHint => 'e.g. Sam';
+
+  @override
+  String get sharingTransferOwnershipAction => 'Transfer Ownership';
+
+  @override
+  String get sharingTransferOwnershipPendingTitle =>
+      'A Transfer Is Already Pending';
+
+  @override
+  String sharingTransferOwnershipPendingBody(String profileName) {
+    return 'A transfer for $profileName is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.';
+  }
+
+  @override
+  String sharingTransferOwnershipExpires(String date) {
+    return 'Expires $date';
+  }
+
+  @override
+  String get sharingTransferOwnershipCancelPending => 'Cancel Pending Transfer';
+
+  @override
+  String get sharingTransferOwnershipReadyTitle => 'Transfer Ready';
+
+  @override
+  String sharingTransferOwnershipShareLink(String profileName) {
+    return 'Share this single-use link with $profileName:';
+  }
+
+  @override
+  String get sharingTransferOwnershipCopyLink => 'Copy Link';
+
+  @override
+  String get sharingTransferOwnershipShare => 'Share';
+
+  @override
+  String get sharingTransferOwnershipCancelTransfer => 'Cancel transfer';
+
+  @override
+  String sharingActivityFeedScreenTitle(String profileName) {
+    return '$profileName Activity';
+  }
+
+  @override
+  String get sharingActivityFeedJustYouTitle => 'Just you for now';
+
+  @override
+  String get sharingActivityFeedJustYouBody =>
+      'This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.';
+
+  @override
+  String get sharingActivityFeedNoActivityTitle => 'No activity yet';
+
+  @override
+  String get sharingActivityFeedNoActivityBody =>
+      'Changes either guardian makes to this profile will appear here.';
+
+  @override
+  String get sharingActivityFeedCaption =>
+      'Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.';
+
+  @override
+  String get sharingActivityFeedVerbLogged => 'Logged';
+
+  @override
+  String get sharingActivityFeedVerbUpdated => 'Updated';
+
+  @override
+  String get sharingActivityFeedVerbRemoved => 'Removed';
+
+  @override
+  String sharingActivityFeedByLineActor(String verb, String actor) {
+    return '$verb by $actor';
+  }
+
+  @override
+  String sharingActivityFeedByLineNoActor(String verb) {
+    return 'Entry $verb';
+  }
+
+  @override
+  String get sharingActivityFeedMergeKeptOne => 'Sync merge kept one version';
+
+  @override
+  String sharingActivityFeedMergeKeptPossessive(String possessive) {
+    return 'Sync merge kept $possessive version';
+  }
+
+  @override
+  String get sharingActivityFeedAccessRemovedNoActor =>
+      'A guardian no longer has access';
+
+  @override
+  String sharingActivityFeedAccessRemovedActor(String actor) {
+    return '$actor no longer has access';
+  }
+
+  @override
+  String get sharingActivityFeedAccessRemovedSubtitle =>
+      'Access to this profile was removed';
+
+  @override
+  String sharingActivityFeedForDate(String date) {
+    return 'for $date';
+  }
+
+  @override
+  String sharingActivityFeedLoggedBy(String actor) {
+    return 'logged by $actor';
+  }
+
+  @override
+  String sharingActivityFeedTagCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tags',
+      one: '1 tag',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get sharingActivityFeedNote => 'note';
+
+  @override
+  String get sharingActivityFeedOneGuardian => 'one guardian';
+
+  @override
+  String get sharingActivityFeedDiscardedFlowAndNote =>
+      'flow and note values were';
+
+  @override
+  String get sharingActivityFeedDiscardedNote => 'note was';
+
+  @override
+  String get sharingActivityFeedDiscardedFlow => 'flow value was';
+
+  @override
+  String sharingActivityFeedMergeDiscarded(String possessive, String what) {
+    return '$possessive $what discarded in a same-date merge';
+  }
+
+  @override
+  String get sharingActivityFeedNewBadge => 'New';
+
+  @override
+  String get sharingActivityFeedPossessiveYou => 'your';
+
+  @override
+  String sharingActivityFeedPossessiveName(String name) {
+    return '$name\'s';
+  }
+
+  @override
+  String sharingProfileSharingSharedTooltip(int count) {
+    return 'Shared · $count guardians';
+  }
+
+  @override
+  String sharingPendingInviteBadgePendingCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count pending invitations',
+      one: '1 pending invitation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String sharingPendingInviteBadgeExpiredCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count invitations expired',
+      one: '1 invitation expired',
+    );
+    return '$_temp0';
+  }
 }

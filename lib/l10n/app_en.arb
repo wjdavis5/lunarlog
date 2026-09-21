@@ -3886,5 +3886,349 @@
   "sharingSharePredictionsCreateLink": "Create Link",
   "@sharingSharePredictionsCreateLink": {
     "description": "Issue #1004 (tranche 1): share-predictions dialog create-link action."
+  },
+  "sharingTransferOwnershipScreenTitle": "Transfer {profileName}'s Profile",
+  "@sharingTransferOwnershipScreenTitle": {
+    "description": "Issue #1004 (tranche 1): transfer-ownership app-bar title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipConfirmTitle": "Transfer ownership?",
+  "@sharingTransferOwnershipConfirmTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title before arming a transfer."
+  },
+  "sharingTransferOwnershipConfirmBody": "{profileName} will become the owner of this profile. You'll keep access as {roleLabel}, and they can remove that access at any time.",
+  "@sharingTransferOwnershipConfirmBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body before arming a transfer.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      },
+      "roleLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipCancel": "Cancel",
+  "@sharingTransferOwnershipCancel": {
+    "description": "Issue #1004 (tranche 1): transfer-ownership generic cancel action."
+  },
+  "sharingTransferOwnershipTransferAction": "Transfer",
+  "@sharingTransferOwnershipTransferAction": {
+    "description": "Issue #1004 (tranche 1): destructive confirm action for arming a transfer."
+  },
+  "sharingTransferOwnershipPendingCancelled": "Pending transfer cancelled",
+  "@sharingTransferOwnershipPendingCancelled": {
+    "description": "Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer."
+  },
+  "sharingTransferOwnershipCancelled": "Transfer cancelled",
+  "@sharingTransferOwnershipCancelled": {
+    "description": "Issue #1004 (tranche 1): snackbar after cancelling a generated transfer."
+  },
+  "sharingTransferOwnershipLinkCopied": "Transfer link copied to clipboard",
+  "@sharingTransferOwnershipLinkCopied": {
+    "description": "Issue #1004 (tranche 1): snackbar after copying a transfer link."
+  },
+  "sharingTransferOwnershipWhatChanges": "What changes",
+  "@sharingTransferOwnershipWhatChanges": {
+    "description": "Issue #1004 (tranche 1): armable-state section heading."
+  },
+  "sharingTransferOwnershipBulletOwner": "{profileName} becomes this profile's owner.",
+  "@sharingTransferOwnershipBulletOwner": {
+    "description": "Issue #1004 (tranche 1): armable-state bullet.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipBulletKeepRole": "You keep the role you choose below.",
+  "@sharingTransferOwnershipBulletKeepRole": {
+    "description": "Issue #1004 (tranche 1): armable-state bullet."
+  },
+  "sharingTransferOwnershipBulletRemoveAccess": "They can remove your access at any time.",
+  "@sharingTransferOwnershipBulletRemoveAccess": {
+    "description": "Issue #1004 (tranche 1): armable-state bullet."
+  },
+  "sharingTransferOwnershipBulletDeleteAccount": "If they later delete their account, this profile's history goes with it.",
+  "@sharingTransferOwnershipBulletDeleteAccount": {
+    "description": "Issue #1004 (tranche 1): armable-state bullet."
+  },
+  "sharingTransferOwnershipHelpLabel": "How does the transfer work?",
+  "@sharingTransferOwnershipHelpLabel": {
+    "description": "Issue #1004 (tranche 1): transfer help-card link label."
+  },
+  "sharingTransferOwnershipRoleAfterTitle": "Your role after the transfer",
+  "@sharingTransferOwnershipRoleAfterTitle": {
+    "description": "Issue #1004 (tranche 1): post-transfer role picker heading."
+  },
+  "sharingTransferOwnershipViewerDetail": "Viewer: read-only access to their calendar and entries.",
+  "@sharingTransferOwnershipViewerDetail": {
+    "description": "Issue #1004 (tranche 1): explanation under the viewer role segment."
+  },
+  "sharingTransferOwnershipCoManagerDetail": "Co-manager: keep logging entries and managing this profile.",
+  "@sharingTransferOwnershipCoManagerDetail": {
+    "description": "Issue #1004 (tranche 1): explanation under the co-manager role segment."
+  },
+  "sharingTransferOwnershipRecipientLabel": "Recipient label (optional)",
+  "@sharingTransferOwnershipRecipientLabel": {
+    "description": "Issue #1004 (tranche 1): recipient label field label."
+  },
+  "sharingTransferOwnershipRecipientHint": "e.g. Sam",
+  "@sharingTransferOwnershipRecipientHint": {
+    "description": "Issue #1004 (tranche 1): recipient label field hint."
+  },
+  "sharingTransferOwnershipAction": "Transfer Ownership",
+  "@sharingTransferOwnershipAction": {
+    "description": "Issue #1004 (tranche 1): arm-transfer action."
+  },
+  "sharingTransferOwnershipPendingTitle": "A Transfer Is Already Pending",
+  "@sharingTransferOwnershipPendingTitle": {
+    "description": "Issue #1004 (tranche 1): orphaned-transfer state title."
+  },
+  "sharingTransferOwnershipPendingBody": "A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.",
+  "@sharingTransferOwnershipPendingBody": {
+    "description": "Issue #1004 (tranche 1): orphaned-transfer state body.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipExpires": "Expires {date}",
+  "@sharingTransferOwnershipExpires": {
+    "description": "Issue #1004 (tranche 1): transfer expiry line.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipCancelPending": "Cancel Pending Transfer",
+  "@sharingTransferOwnershipCancelPending": {
+    "description": "Issue #1004 (tranche 1): cancel an orphaned transfer action."
+  },
+  "sharingTransferOwnershipReadyTitle": "Transfer Ready",
+  "@sharingTransferOwnershipReadyTitle": {
+    "description": "Issue #1004 (tranche 1): generated-transfer state title."
+  },
+  "sharingTransferOwnershipShareLink": "Share this single-use link with {profileName}:",
+  "@sharingTransferOwnershipShareLink": {
+    "description": "Issue #1004 (tranche 1): generated-transfer state share line.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingTransferOwnershipCopyLink": "Copy Link",
+  "@sharingTransferOwnershipCopyLink": {
+    "description": "Issue #1004 (tranche 1): copy-transfer-link action."
+  },
+  "sharingTransferOwnershipShare": "Share",
+  "@sharingTransferOwnershipShare": {
+    "description": "Issue #1004 (tranche 1): share-transfer-link action."
+  },
+  "sharingTransferOwnershipCancelTransfer": "Cancel transfer",
+  "@sharingTransferOwnershipCancelTransfer": {
+    "description": "Issue #1004 (tranche 1): cancel a generated transfer action."
+  },
+  "sharingActivityFeedScreenTitle": "{profileName} Activity",
+  "@sharingActivityFeedScreenTitle": {
+    "description": "Issue #1004 (tranche 1): activity-feed app-bar title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedJustYouTitle": "Just you for now",
+  "@sharingActivityFeedJustYouTitle": {
+    "description": "Issue #1004 (tranche 1): single-guardian empty-state title."
+  },
+  "sharingActivityFeedJustYouBody": "This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.",
+  "@sharingActivityFeedJustYouBody": {
+    "description": "Issue #1004 (tranche 1): single-guardian empty-state body."
+  },
+  "sharingActivityFeedNoActivityTitle": "No activity yet",
+  "@sharingActivityFeedNoActivityTitle": {
+    "description": "Issue #1004 (tranche 1): no-activity empty-state title."
+  },
+  "sharingActivityFeedNoActivityBody": "Changes either guardian makes to this profile will appear here.",
+  "@sharingActivityFeedNoActivityBody": {
+    "description": "Issue #1004 (tranche 1): no-activity empty-state body."
+  },
+  "sharingActivityFeedCaption": "Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.",
+  "@sharingActivityFeedCaption": {
+    "description": "Issue #1004 (tranche 1): activity-feed list caption."
+  },
+  "sharingActivityFeedVerbLogged": "Logged",
+  "@sharingActivityFeedVerbLogged": {
+    "description": "Issue #1004 (tranche 1): activity row verb for a logged entry."
+  },
+  "sharingActivityFeedVerbUpdated": "Updated",
+  "@sharingActivityFeedVerbUpdated": {
+    "description": "Issue #1004 (tranche 1): activity row verb for an updated entry."
+  },
+  "sharingActivityFeedVerbRemoved": "Removed",
+  "@sharingActivityFeedVerbRemoved": {
+    "description": "Issue #1004 (tranche 1): activity row verb for a removed entry."
+  },
+  "sharingActivityFeedByLineActor": "{verb} by {actor}",
+  "@sharingActivityFeedByLineActor": {
+    "description": "Issue #1004 (tranche 1): activity row title with an attributed actor.",
+    "placeholders": {
+      "verb": {
+        "type": "String"
+      },
+      "actor": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedByLineNoActor": "Entry {verb}",
+  "@sharingActivityFeedByLineNoActor": {
+    "description": "Issue #1004 (tranche 1): activity row title for an unattributed entry.",
+    "placeholders": {
+      "verb": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedMergeKeptOne": "Sync merge kept one version",
+  "@sharingActivityFeedMergeKeptOne": {
+    "description": "Issue #1004 (tranche 1): merge-outcome row title without an actor."
+  },
+  "sharingActivityFeedMergeKeptPossessive": "Sync merge kept {possessive} version",
+  "@sharingActivityFeedMergeKeptPossessive": {
+    "description": "Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.",
+    "placeholders": {
+      "possessive": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedAccessRemovedNoActor": "A guardian no longer has access",
+  "@sharingActivityFeedAccessRemovedNoActor": {
+    "description": "Issue #1004 (tranche 1): access-removed row title without an actor."
+  },
+  "sharingActivityFeedAccessRemovedActor": "{actor} no longer has access",
+  "@sharingActivityFeedAccessRemovedActor": {
+    "description": "Issue #1004 (tranche 1): access-removed row title with an actor.",
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedAccessRemovedSubtitle": "Access to this profile was removed",
+  "@sharingActivityFeedAccessRemovedSubtitle": {
+    "description": "Issue #1004 (tranche 1): access-removed row subtitle."
+  },
+  "sharingActivityFeedForDate": "for {date}",
+  "@sharingActivityFeedForDate": {
+    "description": "Issue #1004 (tranche 1): entry subtitle date fragment.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedLoggedBy": "logged by {actor}",
+  "@sharingActivityFeedLoggedBy": {
+    "description": "Issue #1004 (tranche 1): entry subtitle original-logger fragment.",
+    "placeholders": {
+      "actor": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedTagCount": "{count, plural, =1{1 tag} other{{count} tags}}",
+  "@sharingActivityFeedTagCount": {
+    "description": "Issue #1004 (tranche 1): entry subtitle tag-count fragment.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingActivityFeedNote": "note",
+  "@sharingActivityFeedNote": {
+    "description": "Issue #1004 (tranche 1): entry subtitle note-presence fragment."
+  },
+  "sharingActivityFeedOneGuardian": "one guardian",
+  "@sharingActivityFeedOneGuardian": {
+    "description": "Issue #1004 (tranche 1): fallback actor label for a merge-outcome row."
+  },
+  "sharingActivityFeedDiscardedFlowAndNote": "flow and note values were",
+  "@sharingActivityFeedDiscardedFlowAndNote": {
+    "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+  },
+  "sharingActivityFeedDiscardedNote": "note was",
+  "@sharingActivityFeedDiscardedNote": {
+    "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+  },
+  "sharingActivityFeedDiscardedFlow": "flow value was",
+  "@sharingActivityFeedDiscardedFlow": {
+    "description": "Issue #1004 (tranche 1): merge-outcome subtitle fragment."
+  },
+  "sharingActivityFeedMergeDiscarded": "{possessive} {what} discarded in a same-date merge",
+  "@sharingActivityFeedMergeDiscarded": {
+    "description": "Issue #1004 (tranche 1): merge-outcome row subtitle.",
+    "placeholders": {
+      "possessive": {
+        "type": "String"
+      },
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingActivityFeedNewBadge": "New",
+  "@sharingActivityFeedNewBadge": {
+    "description": "Issue #1004 (tranche 1): New chip on an unseen activity row."
+  },
+  "sharingActivityFeedPossessiveYou": "your",
+  "@sharingActivityFeedPossessiveYou": {
+    "description": "Issue #1004 (tranche 1): possessive form when the actor is the current user."
+  },
+  "sharingActivityFeedPossessiveName": "{name}'s",
+  "@sharingActivityFeedPossessiveName": {
+    "description": "Issue #1004 (tranche 1): possessive form for a named actor.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingProfileSharingSharedTooltip": "Shared · {count} guardians",
+  "@sharingProfileSharingSharedTooltip": {
+    "description": "Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingPendingInviteBadgePendingCount": "{count, plural, =1{1 pending invitation} other{{count} pending invitations}}",
+  "@sharingPendingInviteBadgePendingCount": {
+    "description": "Issue #1004 (tranche 1): pending-invitation badge tooltip.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingPendingInviteBadgeExpiredCount": "{count, plural, =1{1 invitation expired} other{{count} invitations expired}}",
+  "@sharingPendingInviteBadgeExpiredCount": {
+    "description": "Issue #1004 (tranche 1): expired-invitation badge tooltip.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

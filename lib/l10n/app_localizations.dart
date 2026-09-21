@@ -4881,6 +4881,369 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create Link'**
   String get sharingSharePredictionsCreateLink;
+
+  /// Issue #1004 (tranche 1): transfer-ownership app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer {profileName}\'s Profile'**
+  String sharingTransferOwnershipScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): confirm dialog title before arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership?'**
+  String get sharingTransferOwnershipConfirmTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body before arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} will become the owner of this profile. You\'ll keep access as {roleLabel}, and they can remove that access at any time.'**
+  String sharingTransferOwnershipConfirmBody(
+    String profileName,
+    String roleLabel,
+  );
+
+  /// Issue #1004 (tranche 1): transfer-ownership generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingTransferOwnershipCancel;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get sharingTransferOwnershipTransferAction;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending transfer cancelled'**
+  String get sharingTransferOwnershipPendingCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling a generated transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer cancelled'**
+  String get sharingTransferOwnershipCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after copying a transfer link.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer link copied to clipboard'**
+  String get sharingTransferOwnershipLinkCopied;
+
+  /// Issue #1004 (tranche 1): armable-state section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'What changes'**
+  String get sharingTransferOwnershipWhatChanges;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} becomes this profile\'s owner.'**
+  String sharingTransferOwnershipBulletOwner(String profileName);
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'You keep the role you choose below.'**
+  String get sharingTransferOwnershipBulletKeepRole;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'They can remove your access at any time.'**
+  String get sharingTransferOwnershipBulletRemoveAccess;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'If they later delete their account, this profile\'s history goes with it.'**
+  String get sharingTransferOwnershipBulletDeleteAccount;
+
+  /// Issue #1004 (tranche 1): transfer help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How does the transfer work?'**
+  String get sharingTransferOwnershipHelpLabel;
+
+  /// Issue #1004 (tranche 1): post-transfer role picker heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role after the transfer'**
+  String get sharingTransferOwnershipRoleAfterTitle;
+
+  /// Issue #1004 (tranche 1): explanation under the viewer role segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer: read-only access to their calendar and entries.'**
+  String get sharingTransferOwnershipViewerDetail;
+
+  /// Issue #1004 (tranche 1): explanation under the co-manager role segment.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-manager: keep logging entries and managing this profile.'**
+  String get sharingTransferOwnershipCoManagerDetail;
+
+  /// Issue #1004 (tranche 1): recipient label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Recipient label (optional)'**
+  String get sharingTransferOwnershipRecipientLabel;
+
+  /// Issue #1004 (tranche 1): recipient label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Sam'**
+  String get sharingTransferOwnershipRecipientHint;
+
+  /// Issue #1004 (tranche 1): arm-transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ownership'**
+  String get sharingTransferOwnershipAction;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'A Transfer Is Already Pending'**
+  String get sharingTransferOwnershipPendingTitle;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state body.
+  ///
+  /// In en, this message translates to:
+  /// **'A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.'**
+  String sharingTransferOwnershipPendingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): transfer expiry line.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String sharingTransferOwnershipExpires(String date);
+
+  /// Issue #1004 (tranche 1): cancel an orphaned transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Pending Transfer'**
+  String get sharingTransferOwnershipCancelPending;
+
+  /// Issue #1004 (tranche 1): generated-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ready'**
+  String get sharingTransferOwnershipReadyTitle;
+
+  /// Issue #1004 (tranche 1): generated-transfer state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this single-use link with {profileName}:'**
+  String sharingTransferOwnershipShareLink(String profileName);
+
+  /// Issue #1004 (tranche 1): copy-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingTransferOwnershipCopyLink;
+
+  /// Issue #1004 (tranche 1): share-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingTransferOwnershipShare;
+
+  /// Issue #1004 (tranche 1): cancel a generated transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel transfer'**
+  String get sharingTransferOwnershipCancelTransfer;
+
+  /// Issue #1004 (tranche 1): activity-feed app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Activity'**
+  String sharingActivityFeedScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Just you for now'**
+  String get sharingActivityFeedJustYouTitle;
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.'**
+  String get sharingActivityFeedJustYouBody;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get sharingActivityFeedNoActivityTitle;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes either guardian makes to this profile will appear here.'**
+  String get sharingActivityFeedNoActivityBody;
+
+  /// Issue #1004 (tranche 1): activity-feed list caption.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.'**
+  String get sharingActivityFeedCaption;
+
+  /// Issue #1004 (tranche 1): activity row verb for a logged entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get sharingActivityFeedVerbLogged;
+
+  /// Issue #1004 (tranche 1): activity row verb for an updated entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated'**
+  String get sharingActivityFeedVerbUpdated;
+
+  /// Issue #1004 (tranche 1): activity row verb for a removed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get sharingActivityFeedVerbRemoved;
+
+  /// Issue #1004 (tranche 1): activity row title with an attributed actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{verb} by {actor}'**
+  String sharingActivityFeedByLineActor(String verb, String actor);
+
+  /// Issue #1004 (tranche 1): activity row title for an unattributed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry {verb}'**
+  String sharingActivityFeedByLineNoActor(String verb);
+
+  /// Issue #1004 (tranche 1): merge-outcome row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept one version'**
+  String get sharingActivityFeedMergeKeptOne;
+
+  /// Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept {possessive} version'**
+  String sharingActivityFeedMergeKeptPossessive(String possessive);
+
+  /// Issue #1004 (tranche 1): access-removed row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'A guardian no longer has access'**
+  String get sharingActivityFeedAccessRemovedNoActor;
+
+  /// Issue #1004 (tranche 1): access-removed row title with an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} no longer has access'**
+  String sharingActivityFeedAccessRemovedActor(String actor);
+
+  /// Issue #1004 (tranche 1): access-removed row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access to this profile was removed'**
+  String get sharingActivityFeedAccessRemovedSubtitle;
+
+  /// Issue #1004 (tranche 1): entry subtitle date fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'for {date}'**
+  String sharingActivityFeedForDate(String date);
+
+  /// Issue #1004 (tranche 1): entry subtitle original-logger fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'logged by {actor}'**
+  String sharingActivityFeedLoggedBy(String actor);
+
+  /// Issue #1004 (tranche 1): entry subtitle tag-count fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tag} other{{count} tags}}'**
+  String sharingActivityFeedTagCount(int count);
+
+  /// Issue #1004 (tranche 1): entry subtitle note-presence fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note'**
+  String get sharingActivityFeedNote;
+
+  /// Issue #1004 (tranche 1): fallback actor label for a merge-outcome row.
+  ///
+  /// In en, this message translates to:
+  /// **'one guardian'**
+  String get sharingActivityFeedOneGuardian;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow and note values were'**
+  String get sharingActivityFeedDiscardedFlowAndNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note was'**
+  String get sharingActivityFeedDiscardedNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow value was'**
+  String get sharingActivityFeedDiscardedFlow;
+
+  /// Issue #1004 (tranche 1): merge-outcome row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{possessive} {what} discarded in a same-date merge'**
+  String sharingActivityFeedMergeDiscarded(String possessive, String what);
+
+  /// Issue #1004 (tranche 1): New chip on an unseen activity row.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get sharingActivityFeedNewBadge;
+
+  /// Issue #1004 (tranche 1): possessive form when the actor is the current user.
+  ///
+  /// In en, this message translates to:
+  /// **'your'**
+  String get sharingActivityFeedPossessiveYou;
+
+  /// Issue #1004 (tranche 1): possessive form for a named actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s'**
+  String sharingActivityFeedPossessiveName(String name);
+
+  /// Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String sharingProfileSharingSharedTooltip(int count);
+
+  /// Issue #1004 (tranche 1): pending-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 pending invitation} other{{count} pending invitations}}'**
+  String sharingPendingInviteBadgePendingCount(int count);
+
+  /// Issue #1004 (tranche 1): expired-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
+  String sharingPendingInviteBadgeExpiredCount(int count);
 }
 
 class _AppLocalizationsDelegate
