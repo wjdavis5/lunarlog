@@ -35,6 +35,7 @@ import '../../domain/prediction/prediction.dart';
 import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
+import '../../l10n/app_localizations.dart';
 import '../account/export_account_collaborator.dart' show kAppVersionForExport;
 import '../components/inline_error.dart';
 import 'entry_existence_watch_mixin.dart';
@@ -147,7 +148,9 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
         ListTile(
           key: const ValueKey('clinical-export-fhir'),
           leading: const Icon(Icons.medical_information_outlined),
-          title: const Text('Export clinical summary (FHIR)'),
+          title: Text(
+            AppLocalizations.of(context).settingsClinicalExportFhirTitle,
+          ),
           subtitle: Text(
             _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
           ),
@@ -199,7 +202,9 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
       showDialog<Profile>(
         context: context,
         builder: (dialogContext) => SimpleDialog(
-          title: const Text('Export clinical summary for'),
+          title: Text(
+            AppLocalizations.of(dialogContext).clinicalPdfExportForProfileTitle,
+          ),
           children: [
             for (final profile in liveProfiles)
               _profileOption(dialogContext, profile),

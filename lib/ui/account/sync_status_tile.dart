@@ -11,6 +11,7 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_batch_limits.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
@@ -347,7 +348,9 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
                   ),
             title: Text(copy),
             subtitle: hasRejected && !pendingConsent
-                ? const Text('Tap to retry')
+                ? Text(
+                    AppLocalizations.of(context).accountSyncStatusTapToRetry,
+                  )
                 : null,
             onTap: pendingConsent
                 ? () => Navigator.of(context).push(
@@ -405,7 +408,10 @@ class SyncStatusGlyph extends StatelessWidget {
       SnackBar(
         key: const ValueKey('sync-status-snackbar'),
         content: Text(copy),
-        action: SnackBarAction(label: 'Settings', onPressed: onPressed),
+        action: SnackBarAction(
+          label: AppLocalizations.of(context).accountSyncStatusSettingsAction,
+          onPressed: onPressed,
+        ),
       ),
     );
   }

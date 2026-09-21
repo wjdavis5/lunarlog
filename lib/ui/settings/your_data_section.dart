@@ -206,17 +206,16 @@ class _YourDataSectionState extends State<YourDataSection> {
   ) {
     if (!_canExport || profiles.isEmpty) return const [];
     final exportError = _exportError;
+    final l10n = AppLocalizations.of(context);
     return [
       ListTile(
         key: const ValueKey('your-data-export'),
         leading: const Icon(Icons.file_download_outlined),
-        title: const Text('Export my data'),
+        title: Text(l10n.yourDataExportTitle),
         subtitle: Text(
           signedIn
-              ? 'Save your profiles, day entries, care notes, and visit-prep '
-                  "lists as a JSON file, including your account's server data."
-              : 'Save your profiles, day entries, care notes, and visit-prep '
-                  'lists as a JSON file.',
+              ? l10n.yourDataExportSubtitleSignedIn
+              : l10n.yourDataExportSubtitleLocal,
         ),
         enabled: !_exporting,
         trailing: _exporting
@@ -242,14 +241,13 @@ class _YourDataSectionState extends State<YourDataSection> {
   /// "Import from file" (Issue #140) — empty when [_canImport] is false.
   List<Widget> _importTile(BuildContext context) {
     if (!_canImport) return const [];
+    final l10n = AppLocalizations.of(context);
     return [
       ListTile(
         key: const ValueKey('your-data-import'),
         leading: const Icon(Icons.file_upload_outlined),
-        title: const Text('Import from file'),
-        subtitle: const Text(
-          'Restore from a JSON backup, or bring in a Clue export (.zip).',
-        ),
+        title: Text(l10n.yourDataImportTitle),
+        subtitle: Text(l10n.yourDataImportSubtitle),
         onTap: () => pushNamedScreen(context, kRouteImportScreen),
       ),
     ];
@@ -270,15 +268,13 @@ class _YourDataSectionState extends State<YourDataSection> {
     final service = widget.profileErasureService;
     if (service == null || profiles.isEmpty) return const [];
     final purgeError = _purgeError;
+    final l10n = AppLocalizations.of(context);
     return [
       ListTile(
         key: const ValueKey('your-data-purge-imported'),
         leading: const Icon(Icons.filter_alt_off_outlined),
-        title: const Text('Purge imported data'),
-        subtitle: const Text(
-          'Remove only the entries a specific import brought in — manually '
-          'logged data is never touched.',
-        ),
+        title: Text(l10n.yourDataPurgeTitle),
+        subtitle: Text(l10n.yourDataPurgeSubtitle),
         enabled: !_purging,
         trailing: _purging
             ? const SizedBox(
@@ -335,7 +331,9 @@ class _YourDataSectionState extends State<YourDataSection> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Purged ${selection.source.label} data')),
+          SnackBar(
+            content: Text(l10n.yourDataPurgedSnack(selection.source.label)),
+          ),
         );
       }
     } catch (error) {
@@ -557,25 +555,18 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: const Text('Purge imported data'),
+      title: Text(l10n.yourDataPurgeTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Only entries and observations tagged with the chosen import '
-              'source are removed. Manually logged data, and the profile '
-              'itself, are never touched. If this purge leaves the profile '
-              'with no entries at all, its saved cycle details (last period '
-              'start and typical cycle length) are cleared too, since they '
-              'may have come from the import.',
-            ),
+            Text(l10n.yourDataPurgeDialogBody),
             const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Profile',
+                l10n.yourDataPurgeProfileLabel,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -606,14 +597,14 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.yourDataPurgeCancel),
         ),
         DestructiveButton(
           onPressed: _source == null || _selectedCount == 0
               ? null
               : () => Navigator.of(context)
                   .pop(_PurgeSelection(_profileId, _source!)),
-          child: const Text('Purge'),
+          child: Text(l10n.yourDataPurgeConfirm),
         ),
       ],
     );
@@ -649,7 +640,7 @@ class _PurgeImportedDataDialogState extends State<_PurgeImportedDataDialog> {
       Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          'Import source',
+          l10n.yourDataImportSourceLabel,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),

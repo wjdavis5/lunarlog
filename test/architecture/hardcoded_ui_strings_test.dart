@@ -71,32 +71,22 @@ const Set<String> _migratedNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/profiles/`,
-/// `lib/ui/feedback/`, `lib/ui/gate/`, `lib/ui/care/` (tranche 3), and
-/// `lib/ui/logging/`, `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/`
-/// (tranche 4b) down to zero, so those entries are gone and the recorded
-/// size dropped by the same amount: 355 (main, after the widget/health/#1003
-/// work) - 134 (tranche 1) - 56 (tranche 3) - 8 (epic #831 moved
-/// `lib/ui/web/dev_banner.dart` onto `AppLocalizations`) - 13 (tranche 4b)
-/// = 144. Every remaining entry is another directory's backlog, owned by a
-/// different tranche.
-const int _initialAllowlistSize = 144;
+/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/account/` and
+/// `lib/ui/settings/` (tranche 2), `lib/ui/profiles/`, `lib/ui/feedback/`,
+/// `lib/ui/gate/`, `lib/ui/care/` (tranche 3), and `lib/ui/logging/`,
+/// `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/` (tranche 4b) down to
+/// zero, so those entries are gone and the recorded size dropped by the same
+/// amount: 355 (main, after the widget/health/#1003 work) - 134 (tranche 1) -
+/// 113 (tranche 2) - 56 (tranche 3) - 8 (epic #831 moved `lib/ui/web/
+/// dev_banner.dart` onto `AppLocalizations`) - 13 (tranche 4b) = 31. Every
+/// remaining entry is another directory's backlog, owned by a different
+/// tranche.
+const int _initialAllowlistSize = 31;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
-  'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 27,
-  'lib/ui/account/delete_account_dialog.dart': 7,
-  'lib/ui/account/mfa_settings_section.dart': 1,
-  'lib/ui/account/mfa_step_up_dialog.dart': 1,
-  'lib/ui/account/password_recovery_screen.dart': 4,
-  'lib/ui/account/restore_error_screen.dart': 4,
-  'lib/ui/account/restoring_screen.dart': 1,
-  'lib/ui/account/sign_in_screen.dart': 9,
-  'lib/ui/account/upload_consent_screen.dart': 6,
-  'lib/ui/account/sync_status_tile.dart': 1,
   'lib/ui/components/app_shell.dart': 2,
   'lib/ui/components/inline_error.dart': 1,
   'lib/ui/components/today_log_fab.dart': 1,
@@ -105,13 +95,6 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/insights/symptom_trends_section.dart': 12,
   'lib/ui/overview/cycle_history_section.dart': 7,
   'lib/ui/overview/late_resolver.dart': 2,
-  'lib/ui/settings/clinical_export_tile.dart': 2,
-  'lib/ui/settings/csv_export_tile.dart': 2,
-  'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 10,
-  'lib/ui/settings/import_screen.dart': 4,
-  'lib/ui/settings/reminder_settings_screen.dart': 10,
-  'lib/ui/settings/your_data_section.dart': 12,
 };
 
 /// Asserts [directory] has no user-facing literals left, under both the
@@ -235,10 +218,17 @@ void main() {
   // `subtitle:`, `label:`, `message:`, `semanticLabel:`), and it forbids the
   // directory from reappearing in the allowlist at all — so a new literal
   // fails even if someone tries to re-allowlist the file instead of adding
-  // an ARB key. Tranche 1 did `lib/ui/sharing/`; tranche 3 did `profiles/`,
-  // `feedback/`, `gate/`, and `care/`.
+  // an ARB key. Tranche 1 did `lib/ui/sharing/`; tranche 2 did `account/`
+  // and `settings/`; tranche 3 did `profiles/`, `feedback/`, `gate/`, and
+  // `care/`; tranche 4b did `logging/`, `help/`, `content/`, and `startup/`.
   test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)',
       () => expectDirectoryFullyLocalized('lib/ui/sharing', 'sharing'));
+
+  test('lib/ui/account stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/account', 'account'));
+
+  test('lib/ui/settings stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/settings', 'settings'));
 
   test('lib/ui/profiles stays fully localized (issue #1004 tranche 3)',
       () => expectDirectoryFullyLocalized('lib/ui/profiles', 'profiles'));
