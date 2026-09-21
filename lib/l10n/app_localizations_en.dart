@@ -764,11 +764,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHealthHeader => 'Health';
 
   @override
-  String get settingsHealthSyncTitle => 'Health app sync';
+  String settingsHealthSyncTitle(String source) {
+    return '$source sync';
+  }
 
   @override
-  String get settingsHealthSyncSubtitle =>
-      'Choose which profile\'s data may sync to this phone\'s Health app';
+  String settingsHealthSyncSubtitle(String source) {
+    return 'Choose which profile\'s data may sync to $source';
+  }
 
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
@@ -846,10 +849,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
-    return 'Placed $_temp0 using the time zone of this phone.';
+    return 'Dated $_temp0 using the time zone of this phone.';
   }
 
   @override
@@ -857,8 +860,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no recorded time zone.';
   }
@@ -868,8 +871,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no matching flow level.';
   }
@@ -931,13 +934,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncUnbindDialogWriteBody(String name) {
-    return 'This phone will stop writing data for $name to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.';
+  String healthSyncUnbindDialogWriteBody(String name, String source) {
+    return 'This phone will stop writing data for $name to $source and stop importing from it. Nothing already logged in lunarlog, or already written to $source, is deleted.';
   }
 
   @override
-  String healthSyncUnbindDialogImportBody(String name) {
-    return 'This phone will stop importing data for $name from its Health app. Nothing already logged is deleted.';
+  String healthSyncUnbindDialogImportBody(String name, String source) {
+    return 'This phone will stop importing data for $name from $source. Nothing already logged is deleted.';
   }
 
   @override
@@ -4256,13 +4259,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncBindWriteBody(String name) {
-    return 'Only $name\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindWriteBody(String name, String source) {
+    return 'Only $name\'s data will ever be written to $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override
-  String healthSyncBindImportBody(String name) {
-    return 'Only $name\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindImportBody(String name, String source) {
+    return 'Only $name\'s data will ever be imported from $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override

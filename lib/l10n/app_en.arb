@@ -1003,13 +1003,23 @@
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
   },
-  "settingsHealthSyncTitle": "Health app sync",
+  "settingsHealthSyncTitle": "{source} sync",
   "@settingsHealthSyncTitle": {
-    "description": "Settings tile opening per-profile Health app sync."
+    "description": "Settings tile opening per-profile health sync.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
-  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to this phone's Health app",
+  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to {source}",
   "@settingsHealthSyncSubtitle": {
-    "description": "Subtitle of the health-sync tile."
+    "description": "Subtitle of the health-sync tile.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
@@ -1017,7 +1027,7 @@
   },
   "healthSyncPermissionGranted": "{source} access: granted",
   "@healthSyncPermissionGranted": {
-    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.",
     "placeholders": {
       "source": {
         "type": "String"
@@ -1097,27 +1107,27 @@
       }
     }
   },
-  "healthSyncImportPlacedDeviceZone": "Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.",
+  "healthSyncImportPlacedDeviceZone": "Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.",
   "@healthSyncImportPlacedDeviceZone": {
-    "description": "Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.",
+    "description": "Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.",
+  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.",
   "@healthSyncImportSkippedNoZone": {
-    "description": "Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).",
+    "description": "Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.",
+  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.",
   "@healthSyncImportSkippedUnsupported": {
-    "description": "Health import summary: samples whose flow value has no lunarlog equivalent.",
+    "description": "Health import summary: entries whose flow value has no lunarlog equivalent.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -1175,20 +1185,26 @@
       }
     }
   },
-  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.",
+  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.",
   "@healthSyncUnbindDialogWriteBody": {
     "description": "Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).",
     "placeholders": {
       "name": {
         "type": "String"
+      },
+      "source": {
+        "type": "String"
       }
     }
   },
-  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.",
+  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.",
   "@healthSyncUnbindDialogImportBody": {
     "description": "Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).",
     "placeholders": {
       "name": {
+        "type": "String"
+      },
+      "source": {
         "type": "String"
       }
     }
@@ -5437,20 +5453,26 @@
         }
       }
     },
-    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
     "@healthSyncBindWriteBody": {
-      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.",
+      "description": "health-sync bind confirmation body for a write direction.",
       "placeholders": {
         "name": {
+          "type": "String"
+        },
+        "source": {
           "type": "String"
         }
       }
     },
-    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
     "@healthSyncBindImportBody": {
-      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.",
+      "description": "health-sync bind confirmation body for an import-only direction.",
       "placeholders": {
         "name": {
+          "type": "String"
+        },
+        "source": {
           "type": "String"
         }
       }
