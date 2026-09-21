@@ -138,7 +138,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Last clinical review: ${article.reviewDate}',
+              'Last reviewed: ${article.reviewDate}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
