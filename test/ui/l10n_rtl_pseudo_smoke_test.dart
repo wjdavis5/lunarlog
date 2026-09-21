@@ -279,11 +279,19 @@ void main() {
       await scrollThrough(tester);
       expectNoLayoutOverflow(tester, 'the scrolled overview surface');
 
-      // Surface 2: the calendar tab. The segment labels are not yet
-      // localized (backlog in the #460 allowlist), so they are findable
-      // by their literal text even under the pseudo-locale.
+      // Surface 2: the calendar tab. The segment labels are localized now
+      // (issue #1004 tranche 3), so under the pseudo-locale they render as
+      // pseudo copy and are reached by position — the second segment of
+      // the tab toggle — rather than by literal text.
       await scrollThrough(tester, steps: 4, dy: 320); // back to the top
-      await tester.tap(find.text('Calendar'));
+      await tester.tap(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('detail-tab-toggle')),
+              matching: find.byType(Text),
+            )
+            .at(1),
+      );
       await tester.pumpAndSettle();
       expectNoLayoutOverflow(tester, 'the calendar surface');
       await scrollThrough(tester);
