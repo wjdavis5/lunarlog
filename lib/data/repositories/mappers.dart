@@ -28,6 +28,12 @@ domain.Profile profileToDomain(db.Profile row) => domain.Profile(
       displayName: row.displayName,
       isMinor: row.isMinor,
       mode: domain.ProfileMode.fromDb(row.mode),
+      // Issue #853: the nullable tri-state framing flag. A stored
+      // `mode = 'irregular'` row can only predate the v28 migration or come
+      // from a code path that bypassed it — decode-time mapping lives in
+      // `row_codec.dart` (the wire boundary), so anything reaching here
+      // already reads `standard`; this mapper just carries the flag.
+      irregularFraming: row.irregularFraming,
       sortOrder: row.sortOrder,
       archivedAt: row.archivedAt,
       createdAt: row.createdAt,

@@ -133,6 +133,7 @@ class ProfileController extends ChangeNotifier {
     required String displayName,
     required bool isMinor,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     CycleFacts? facts,
@@ -151,6 +152,7 @@ class ProfileController extends ChangeNotifier {
       displayName: _validated(displayName),
       isMinor: isMinor,
       mode: mode,
+      irregularFraming: irregularFraming,
       birthYear: birthYear,
       relationship: relationship,
       lastPeriodStart: facts?.lastPeriodStart,
@@ -173,13 +175,18 @@ class ProfileController extends ChangeNotifier {
   /// [facts] rides the ordinary profile update; a null [facts] keeps the
   /// profile's current answers (pass [CycleFacts.empty] to clear them) —
   /// unlike [birthYear]/[relationship], whose callers have always passed
-  /// the current value explicitly. [lifecycleMode]/[birthControlMethod],
+  /// the current value explicitly. [irregularFraming] (Issue #853) follows
+  /// that same always-pass-explicitly contract: a passed null means the
+  /// engine default (NOT "keep the stored value"), so callers hand it the
+  /// dialog result's own value — which for an untouched control is the
+  /// profile's stored tri-state. [lifecycleMode]/[birthControlMethod],
   /// when non-null, rewrite the mode row.
   Future<void> renameProfile(
     Profile profile, {
     required String displayName,
     required bool isMinor,
     ProfileMode? mode,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     CycleFacts? facts,
@@ -196,6 +203,7 @@ class ProfileController extends ChangeNotifier {
       displayName: _validated(displayName),
       isMinor: isMinor,
       mode: mode ?? profile.mode,
+      irregularFraming: irregularFraming,
       birthYear: birthYear,
       relationship: relationship,
       lastPeriodStart: effectiveFacts.lastPeriodStart,

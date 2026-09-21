@@ -167,18 +167,13 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
     _resubscribeAll();
   }
 
-  /// Re-opens a channel for every known profile under the current identity.
-  /// Mirrors [_rebuildChannels]'s identity guard but is safe for the
+  /// Re-opens a channel for every known profile under the current identity,
+  /// through the shared gates in [_subscribeMissingProfiles] — safe for the
   /// no-auth coordinator too (which has no `_boundUserId` and subscribes
   /// unconditionally), so resume restores exactly the channels pause removed.
   void _resubscribeAll() {
-    if (_disposed || _lifecyclePaused) return;
-    if (auth != null && _boundUserId == null) return;
-    for (final id in _lastProfileIds) {
-      if (!_channels.containsKey(id)) {
-        _subscribeToProfile(id);
-      }
-    }
+    if (_disposed) return;
+    _subscribeMissingProfiles(_lastProfileIds);
   }
 
   void _onAuthStateChanged() {
@@ -195,7 +190,11 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
   /// re-subscribes from the last-known profile set under the new identity
   /// (KTD3). A transition to signed-out removes channels and stops there —
   /// there is no authorized identity to bind a fresh subscription to, so
-  /// resubscribing would just open channels the server will reject.
+  /// resubscribing would just open channels the server will reject. Since
+  /// issue #778 the same posture covers the initial subscribe too (see
+  /// [_subscribeMissingProfiles]): a signed-out coordinator never opens a
+  /// channel in the first place, so there is nothing to tear down on
+  /// sign-out unless the sign-out happens mid-subscription.
   void _rebuildChannels() {
     for (final removal in _clearChannels()) {
       unawaited(removal);
@@ -203,10 +202,7 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
     if (_boundUserId == null) return;
     // Issue #842: while backgrounded, defer re-subscription to [_onResumed]
     // rather than opening channels the pause just removed.
-    if (_lifecyclePaused) return;
-    for (final id in _lastProfileIds) {
-      _subscribeToProfile(id);
-    }
+    _subscribeMissingProfiles(_lastProfileIds);
   }
 
   void _onProfilesUpdated(List<Profile> profiles) {
@@ -226,10 +222,25 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
       }
     }
 
-    // 2. Add channels for newly discovered profiles, unless backgrounded
-    // (issue #842) — [_onResumed] picks them up from [_lastProfileIds].
+    // 2. Add channels for newly discovered profiles, under the global
+    // gates in [_subscribeMissingProfiles].
+    _subscribeMissingProfiles(currentIds);
+  }
+
+  /// Opens a channel for every profile in [ids] that does not already
+  /// have one, under the two global gates: no channel while backgrounded
+  /// (issue #842 — [_onResumed] re-runs this from [_lastProfileIds]) and,
+  /// with an auth source, no channel while signed out (issue #778 — there
+  /// is no authorized identity to bind a fresh subscription to, so the
+  /// server rejects it under RLS and every retry would be doomed, the
+  /// #771 storm just backoff-tapered; sign-in's [_rebuildChannels]
+  /// re-runs this from the recorded profile set instead of waiting for
+  /// another profile emission). A coordinator built without an auth
+  /// source has no identity concept and subscribes unconditionally.
+  void _subscribeMissingProfiles(Iterable<String> ids) {
     if (_lifecyclePaused) return;
-    for (final id in currentIds) {
+    if (auth != null && _boundUserId == null) return;
+    for (final id in ids) {
       if (!_channels.containsKey(id)) {
         _subscribeToProfile(id);
       }

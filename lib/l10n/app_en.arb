@@ -462,6 +462,41 @@
   "@daySheetUndo": {
     "description": "Snackbar action that restores a just-deleted day entry (issue #856), mirroring overviewUndo."
   },
+  "daySheetCycleStartDialogTitle": "Start a new cycle?",
+  "@daySheetCycleStartDialogTitle": {
+    "description": "Issue #887: title of the confirmation shown when a flow-chip tap would start a new cycle earlier than the profile's history expects."
+  },
+  "daySheetCycleStartDialogBody": "This looks early — you're on cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates your averages and estimates. Spotting never starts a cycle.",
+  "@daySheetCycleStartDialogBody": {
+    "description": "Issue #887: body of the early-cycle-start confirmation. {cycleDay} is the 1-based day in the cycle being closed ('cycle day 17'), {flow} the tapped bleed level's label, {cycleLength} the length the closed cycle would end up with (16 for a day-17 start).",
+    "placeholders": {
+      "cycleDay": {
+        "type": "int"
+      },
+      "flow": {
+        "type": "String"
+      },
+      "cycleLength": {
+        "type": "int"
+      }
+    }
+  },
+  "daySheetCycleStartConfirm": "Start new cycle",
+  "@daySheetCycleStartConfirm": {
+    "description": "Issue #887: the confirmation action — proceed with the flow log that starts the new cycle."
+  },
+  "daySheetCycleStartSpotting": "Log spotting instead",
+  "@daySheetCycleStartSpotting": {
+    "description": "Issue #887: the alternative action — record the day as spotting (its own observation row), the mid-cycle bleed that never starts a cycle."
+  },
+  "daySheetCycleStartSnackbar": "New cycle started — history and estimates updated.",
+  "@daySheetCycleStartSnackbar": {
+    "description": "Issue #887: snackbar shown when a day-sheet session changed the cycle-start set by starting a new cycle at the logged day; carries an Undo action restoring the pre-session entry."
+  },
+  "daySheetCycleHistorySnackbar": "Cycle history updated.",
+  "@daySheetCycleHistorySnackbar": {
+    "description": "Issue #887: snackbar shown when a day-sheet session changed the cycle-start set without starting a cycle at the logged day (a cleared cycle-starting bleed, or a bridging edit); carries an Undo action restoring the pre-session entry."
+  },
   "daySheetSave": "Save",
   "@daySheetSave": {
     "description": "The day sheet's save button label."
@@ -692,6 +727,18 @@
   "@overviewLongCyclePredictionsOff": {
     "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
+  "overviewStaleHistoryTitle": "Your history is out of date",
+  "@overviewStaleHistoryTitle": {
+    "description": "Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything."
+  },
+  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.",
+  "@overviewStaleHistoryBody": {
+    "description": "Issue #859: calm, non-alarming body of the stale-history overview card."
+  },
+  "overviewStaleHistoryLog": "Log a period",
+  "@overviewStaleHistoryLog": {
+    "description": "Issue #859: primary action on the stale-history card, logging a period start for today."
+  },
   "overviewReminderHint": "Reminders unavailable — notifications are off",
   "@overviewReminderHint": {
     "description": "Hint line shown when notification permission is denied."
@@ -724,6 +771,23 @@
     "description": "Unit label beneath the days-late count in the cycle wheel centre when overdue.",
     "placeholders": {
       "count": {"type": "int"}
+    }
+  },
+  "cycleWheelDaysPastEstimateUnit": "{count, plural, =1{day past estimate} other{days past estimate}}",
+  "@cycleWheelDaysPastEstimateUnit": {
+    "description": "Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsPastEstimate": "{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsPastEstimate": {
+    "description": "Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.",
+    "placeholders": {
+      "daysPast": {"type": "int"},
+      "cycleDay": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
     }
   },
   "cycleWheelBleedDayHero": "Day {day}",
@@ -893,6 +957,46 @@
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
     "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it."
+  },
+  "healthSyncPermissionGranted": "{source} access: granted",
+  "@healthSyncPermissionGranted": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionNotAsked": "{source} access: not yet asked",
+  "@healthSyncPermissionNotAsked": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS permission sheet has not been answered yet.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionDenied": "{source} access: denied — open Settings to change",
+  "@healthSyncPermissionDenied": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionUnavailable": "{source} access is not available on this device.",
+  "@healthSyncPermissionUnavailable": {
+    "description": "Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionOpenSettings": "Open Settings",
+  "@healthSyncPermissionOpenSettings": {
+    "description": "The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959)."
   },
   "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
   "@healthSyncImportUpdatedDays": {
@@ -2660,6 +2764,14 @@
   "subjectTeenModeDoneSnack": "Switched to Teen mode",
   "@subjectTeenModeDoneSnack": {
     "description": "Manage guardians (Issue #802): confirmation snackbar after accepting the Teen-mode suggestion."
+  },
+  "profileIrregularFramingLabel": "Irregular cycles",
+  "@profileIrregularFramingLabel": {
+    "description": "Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form."
+  },
+  "profileIrregularFramingHint": "Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.",
+  "@profileIrregularFramingHint": {
+    "description": "Issue #853: the composed irregular-framing toggle's hint, shown under the label."
   }
 
 }

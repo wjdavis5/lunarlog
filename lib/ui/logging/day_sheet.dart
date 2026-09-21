@@ -49,6 +49,17 @@
 /// "Delete this entry?" / "Discard unsaved changes?" `showDialog`s are
 /// deliberately left unnamed — trivial confirm/cancel choices, not distinct
 /// destinations.
+///
+/// Issue #887 (cycle-start consent): a bleed-level chip tap that would
+/// start a new cycle earlier than the profile's history expects asks
+/// first (`_selectFlow` through the pure surprise condition in
+/// `lib/domain/logging/cycle_start_confirm.dart` — "Start new cycle" /
+/// "Log spotting instead" / cancel), and any session that changes the
+/// cycle-start set leaves the sheet through a snackbar with an Undo
+/// restoring the pre-session entry (`_cycleStartChangeSnackBar`, #316's
+/// pattern). Disclosure and consent only — the engine's cycle-start
+/// semantics are untouched, the same design principle #130 applied to
+/// same-date merges.
 library;
 
 import 'dart:async'
@@ -69,6 +80,7 @@ import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show describeUnmappedRaw;
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
+import 'package:lunarlog/domain/logging/cycle_start_confirm.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/logging/day_sheet_reconciliation.dart';
 import 'package:lunarlog/domain/logging/day_sheet_save_state.dart';
@@ -505,6 +517,14 @@ class _DaySheetState extends State<DaySheet> {
   /// spotting is turned off.
   bool _spottingRaisedFlow = false;
 
+  /// Issue #887: the profile's bleed dates excluding this sheet's own
+  /// date, snapshotted once at open by [_loadBleedHistory] — the history
+  /// the cycle-start guard evaluates against. Null until the load
+  /// settles, and permanently null when it fails: the guard fails open
+  /// (a silent no-op, exactly the pre-#887 behavior) because logging
+  /// must never be blocked on a disclosure guard's own read.
+  Set<LocalDate>? _otherBleedDates;
+
   /// The observations repository backing the spotting toggle (#247),
   /// resolved once the sheet is in the tree ([Provider.of] is illegal in
   /// `initState`) and cached so a write started while mounted can finish
@@ -545,7 +565,14 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// The mode's headings and surfacing order (Issue #131).
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  ///
+  /// Issue #853: only the mode-axis fields (category order/headings) are
+  /// read here, and none of them vary with the irregular-framing flag
+  /// (composition never touches categories), so the composed axis is
+  /// deliberately not plumbed into this widget — `irregularFraming: false`
+  /// selects exactly the same category fields the flag-on copy would.
+  CareModeCopy get _copy =>
+      careModeCopyFor(widget.mode, irregularFraming: false);
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated
@@ -684,6 +711,35 @@ class _DaySheetState extends State<DaySheet> {
     // Issue #130: the merge-notice list for this date (rendered read-only
     // or not — the disclosure is informational, never an edit).
     unawaited(_loadMergeEvents());
+    // Issue #887: the bleed history the cycle-start guard evaluates
+    // against (see [_otherBleedDates]).
+    unawaited(_loadBleedHistory());
+  }
+
+  /// Issue #887: loads the profile's bleed dates (excluding this sheet's
+  /// own date) for the cycle-start guard. Session-scoped by design: a
+  /// co-guardian's sync landing mid-session is seen by the next sheet
+  /// open, not this one — the same staleness every other once-per-open
+  /// read here (the merge-notice list, the child observations) carries.
+  /// A failure fails open and is reported to Sentry: a safety disclosure
+  /// silently going dark is worth a breadcrumb, but never worth blocking
+  /// the sheet over.
+  Future<void> _loadBleedHistory() async {
+    try {
+      final entries = await widget.repository.listForProfile(
+        widget.profileId,
+      );
+      if (!mounted) return;
+      _otherBleedDates = {
+        for (final entry in entries)
+          if (entry.deletedAt == null &&
+              entry.localDate != widget.date &&
+              isBleed(entry.flow))
+            entry.localDate,
+      };
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    }
   }
 
   /// Issue #130: loads this date's undismissed merge disclosures through
@@ -735,7 +791,10 @@ class _DaySheetState extends State<DaySheet> {
     final match = FlowLevel.values
         .where((level) => level.toDb() == event.losingValueText)
         .firstOrNull;
-    if (match != null) _selectFlow(match);
+    // Issue #887: the restore rides the same guarded write path as a chip
+    // tap — a restored bleed can be an early cycle start too, and the
+    // author deserves the same disclosure before it lands.
+    if (match != null) unawaited(_selectFlow(match));
   }
 
   @override
@@ -1516,6 +1575,15 @@ class _DaySheetState extends State<DaySheet> {
   /// sheet just closes; a debounced change still pending is flushed so
   /// dismissal never silently drops it; and a failed-pending sheet refuses
   /// to close without an explicit discard ([_confirmDiscardWhileFailed]).
+  ///
+  /// Issue #887 adds the dismissal-time cycle-start disclosure: a session
+  /// that changed the cycle-start set gets a snackbar with an Undo that
+  /// restores the pre-session entry (#316's pattern, the one #856 gave
+  /// delete). It queues *behind* the offline acknowledgement when both
+  /// are due — #182 AC8's "Saved on this device · will sync" shows the
+  /// moment the sheet leaves (that contract is pinned by its own tests),
+  /// and ScaffoldMessenger displays queued snackbars in order, so the
+  /// estimate-change disclosure with its Undo follows it.
   void _onSheetPop(bool didPop, Object? result) {
     if (!didPop) {
       if (_saveState is DaySheetFailed && !_discardUnsaved) {
@@ -1523,26 +1591,119 @@ class _DaySheetState extends State<DaySheet> {
       }
       return;
     }
-    // Dirty or Failed both carry unsaved content (mirrors the old `_dirty`,
-    // which failure also set) — PopScope's own `canPop` above means Failed
-    // only reaches here once `_discardUnsaved` is already true, so this is
-    // belt-and-braces for that case too, not just Dirty's normal one.
+    _handleSheetPopped();
+  }
+
+  /// The didPop half of [_onSheetPop] (split out for the CRAP gate):
+  /// flush what a debounce left pending, then show the dismissal-time
+  /// snackbars.
+  void _handleSheetPopped() {
+    // Dirty or Failed both carry unsaved content (mirrors the old
+    // `_dirty`, which failure also set) — PopScope's own `canPop` above
+    // means Failed only reaches here once `_discardUnsaved` is already
+    // true, so this is belt-and-braces for that case too, not just
+    // Dirty's normal one.
     final flushPending =
         (_saveState is DaySheetDirty || _saveState is DaySheetFailed) &&
             !_discardUnsaved;
     // Computed before the flush settles the state: an offline-looking flush
     // earns the same "Saved on this device · will sync" acknowledgement a
-    // completed save already latched in `_offlineAckMessenger`.
+    // completed save already latched in `_offlineAckMessenger`. The
+    // cycle-start evaluation below also reads the pre-flush composed entry
+    // — exactly the state the flush is about to persist.
     final messenger =
         _offlineAckMessenger ??
         (flushPending ? _offlineConfirmationMessenger(context) : null);
+    final cycleStartSnackBar = _cycleStartChangeSnackBar();
     if (flushPending) unawaited(_performAutosave());
-    messenger?.showSnackBar(
-      const SnackBar(
-        key: ValueKey('offline-save-confirmation'),
-        content: Text(kOfflineSaveConfirmationCopy),
+    if (messenger != null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          key: ValueKey('offline-save-confirmation'),
+          content: Text(kOfflineSaveConfirmationCopy),
+        ),
+      );
+    }
+    if (cycleStartSnackBar != null) {
+      ScaffoldMessenger.of(context).showSnackBar(cycleStartSnackBar);
+    }
+  }
+
+  /// Issue #887: the paths where the sheet's leaving state is not what
+  /// persists, so the cycle-start snackbar must stay silent — read-only
+  /// and future-dated sheets never write, a discard drops the changes on
+  /// purpose, and the delete flow's own Undo snackbar owns its dismissal.
+  bool get _cycleStartSnackBarSuppressed =>
+      widget.readOnly ||
+      widget.date.isAfter(widget.today) ||
+      _discardUnsaved ||
+      _saveState is DaySheetDeleting ||
+      _saveState is DaySheetDeleted;
+
+  /// Issue #887: the Undo snackbar for a dismissal whose session changed
+  /// the cycle-start set, or null when it didn't (or can't be known —
+  /// see [_otherBleedDates]'s fail-open rule). Evaluated as the *net*
+  /// session change — the composed entry the sheet is leaving behind
+  /// (also exactly what a still-debounced flush is about to write)
+  /// against the entry the sheet opened with — so a user who reverts
+  /// their flow before dismissing earns nothing: the estimates never saw
+  /// a change.
+  SnackBar? _cycleStartChangeSnackBar() {
+    final others = _otherBleedDates;
+    if (others == null || _cycleStartSnackBarSuppressed) return null;
+    final evaluation = evaluateCycleStartWrite(
+      otherBleedDates: others,
+      date: widget.date,
+      today: widget.today,
+      fromFlow: widget.existing?.flow ?? FlowLevel.none,
+      toFlow: _composeEntry().flow,
+    );
+    if (!evaluation.changesCycleStartSet) return null;
+    final l10n = AppLocalizations.of(context);
+    return SnackBar(
+      key: const ValueKey('day-sheet-cycle-start-snackbar'),
+      content: Text(
+        evaluation.startsCycleAtDate
+            ? l10n.daySheetCycleStartSnackbar
+            : l10n.daySheetCycleHistorySnackbar,
+      ),
+      action: SnackBarAction(
+        label: l10n.daySheetUndo,
+        onPressed: () => unawaited(_undoCycleStartChange(
+          repository: widget.repository,
+          previous: widget.existing,
+          profileId: widget.profileId,
+          date: widget.date,
+        )),
       ),
     );
+  }
+
+  /// Issue #887: restores exactly what the session's cycle-start-changing
+  /// write overwrote — the entry the sheet opened with, or a tombstone
+  /// through the repository's own delete path when the session created
+  /// the day (`overview_panel.dart`'s `_undoLogToday`, #316's pattern, is
+  /// the model the issue names). Goes through [DayEntriesRepository]
+  /// either way, so sync dirty-marking applies as it would to any edit.
+  /// The child observation rows a session may have written (spotting,
+  /// graded pain, measurements) are deliberately untouched: none of them
+  /// can start a cycle, so the undo's contract is exactly the
+  /// cycle-start decision the snackbar disclosed.
+  Future<void> _undoCycleStartChange({
+    required DayEntriesRepository repository,
+    required DayEntry? previous,
+    required String profileId,
+    required LocalDate date,
+  }) async {
+    try {
+      if (previous == null) {
+        await repository.delete(profileId, date);
+      } else {
+        await repository.save(previous);
+      }
+    } catch (error, stackTrace) {
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    }
   }
 
   /// The discard confirmation shown when dismissal is attempted while a
@@ -1674,7 +1835,7 @@ class _DaySheetState extends State<DaySheet> {
               onSelected: _busy
                   ? null
                   : (selected) {
-                      if (selected) _selectFlow(level);
+                      if (selected) unawaited(_selectFlow(level));
                     },
             ),
           ),
@@ -1777,13 +1938,99 @@ class _DaySheetState extends State<DaySheet> {
   /// Selects [level] as the day's flow — the single write path behind both
   /// the visible ChoiceChip's `onSelected` and the #138 semantics wrapper's
   /// accessibility tap.
-  void _selectFlow(FlowLevel level) {
+  ///
+  /// Issue #887: a bleed-level tap that would start a new cycle earlier
+  /// than the profile's history expects asks first — disclosure and
+  /// consent, never a different model (the engine's episode semantics are
+  /// untouched, the same design principle #130 applied to same-date
+  /// merges). "Start new cycle" falls through to the ordinary selection
+  /// below; "Log spotting instead" records the day as spotting (the
+  /// mid-cycle bleed that never starts a cycle); cancel leaves the sheet
+  /// exactly as it was. Once a bleed level is selected, further
+  /// bleed-level taps don't re-ask — the evaluation compares against the
+  /// current selection, so only the transition into a cycle-starting
+  /// bleed is a consent decision.
+  Future<void> _selectFlow(FlowLevel level) async {
+    final guard = _cycleStartGuardFor(level);
+    if (guard != null) {
+      final choice = await _confirmCycleStartDialog(guard, level);
+      if (choice != _CycleStartChoice.startCycle) {
+        if (choice == _CycleStartChoice.logSpotting && !_spotting) {
+          _toggleSpotting(true);
+        }
+        return;
+      }
+    }
     LLHaptics.selection();
     setState(() {
       _flow = level;
       _flowExplicitlySet = true;
     });
     _markDirty();
+  }
+
+  /// Issue #887: the surprise evaluation for tapping [level], or null when
+  /// no confirmation is due — not surprising, or the bleed history has not
+  /// loaded (see [_otherBleedDates]'s fail-open rule). Evaluated against
+  /// the *current* in-memory selection as the before-state, so a change
+  /// between bleed levels (light → heavy) never re-asks.
+  CycleStartWriteEvaluation? _cycleStartGuardFor(FlowLevel level) {
+    final others = _otherBleedDates;
+    if (others == null) return null;
+    final evaluation = evaluateCycleStartWrite(
+      otherBleedDates: others,
+      date: widget.date,
+      today: widget.today,
+      fromFlow: _flow,
+      toFlow: level,
+    );
+    return evaluation.startsCycleEarly ? evaluation : null;
+  }
+
+  /// Issue #887: the early-cycle-start confirmation. Plain-language: names
+  /// the cycle day, what the tap would close and update, and that spotting
+  /// — the chip right next to this one, the mis-tap the issue is about —
+  /// never starts a cycle.
+  Future<_CycleStartChoice> _confirmCycleStartDialog(
+    CycleStartWriteEvaluation guard,
+    FlowLevel level,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    return await showDialog<_CycleStartChoice>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            key: const ValueKey('cycle-start-confirm-dialog'),
+            title: Text(l10n.daySheetCycleStartDialogTitle),
+            content: Text(
+              l10n.daySheetCycleStartDialogBody(
+                guard.cycleDay ?? 0,
+                localizedFlowLabel(level, l10n),
+                guard.closedCycleLengthDays ?? 0,
+              ),
+            ),
+            actions: [
+              TextButton(
+                key: const ValueKey('cycle-start-cancel'),
+                onPressed: () =>
+                    Navigator.of(dialogContext).pop(_CycleStartChoice.cancel),
+                child: Text(l10n.daySheetCancel),
+              ),
+              OutlinedButton(
+                key: const ValueKey('cycle-start-spotting'),
+                onPressed: () => Navigator.of(dialogContext)
+                    .pop(_CycleStartChoice.logSpotting),
+                child: Text(l10n.daySheetCycleStartSpotting),
+              ),
+              FilledButton(
+                key: const ValueKey('cycle-start-confirm'),
+                onPressed: () => Navigator.of(dialogContext)
+                    .pop(_CycleStartChoice.startCycle),
+                child: Text(l10n.daySheetCycleStartConfirm),
+              ),
+            ],
+          ),
+        ) ??
+        _CycleStartChoice.cancel;
   }
 
   /// Sets the standalone spotting toggle (issue #247) — shared by the
@@ -2293,25 +2540,9 @@ class _DaySheetState extends State<DaySheet> {
                 if (_unmappedObservations.isNotEmpty)
                   ..._unmappedObservationsSection(theme),
                 // Issue #801: the per-guardian dated notes, beside the shared
-                // day note — never a rework of it.
-                // Issue #872: only when the profile actually has guardians to
-                // share with. A signed-out, guardian-less local profile used
-                // to render this section's second note box and a near-identical
-                // disclosure, even though there is no guardian, no one else
-                // with access, and no actionable difference — such a profile
-                // keeps exactly the one shared "Note" box it has always had.
-                if (!widget.readOnly &&
-                    widget.currentUserId != null &&
-                    widget.guardians.isNotEmpty)
-                  GuardianNotesSection(
-                    profileId: widget.profileId,
-                    date: widget.date,
-                    tz: (widget.timezoneProvider ??
-                        resolveCurrentTimeZoneSync)(),
-                    currentUserId: widget.currentUserId,
-                    guardians: widget.guardians,
-                    canWrite: _guardianNotesCanWrite,
-                  ),
+                // day note — never a rework of it. Gated in
+                // [_guardianNotesSlot] (issues #872 and #869).
+                ..._guardianNotesSlot(),
               ],
             ),
           ),
@@ -2605,6 +2836,38 @@ class _DaySheetState extends State<DaySheet> {
         true;
   }
 
+  /// The guardian-notes section (issue #801), or nothing.
+  ///
+  /// Issue #872: rendered only when the profile actually has guardians to
+  /// share with. A signed-out, guardian-less local profile used to render
+  /// this section's second note box and a near-identical disclosure, even
+  /// though there is no guardian, no one else with access, and no
+  /// actionable difference — such a profile keeps exactly the one shared
+  /// "Note" box it has always had.
+  ///
+  /// Issue #869: NOT gated on [DaySheet.readOnly]. The read-only sheet (a
+  /// `viewer`, or a guardian with no logging role) renders the same section
+  /// with [GuardianNotesSection.canWrite] false, so a viewer reads every
+  /// guardian note exactly as `PRIVACY.md` §5 and the open-and-transparent
+  /// decision on issue #800 say she can. Before this fix the section was
+  /// only built inside the editable body, so the one role the policy names
+  /// as read-only could not actually read.
+  List<Widget> _guardianNotesSlot() {
+    if (widget.currentUserId == null || widget.guardians.isEmpty) {
+      return const [];
+    }
+    return [
+      GuardianNotesSection(
+        profileId: widget.profileId,
+        date: widget.date,
+        tz: (widget.timezoneProvider ?? resolveCurrentTimeZoneSync)(),
+        currentUserId: widget.currentUserId,
+        guardians: widget.guardians,
+        canWrite: _guardianNotesCanWrite,
+      ),
+    ];
+  }
+
   /// Issue #642, LLA-012: bounded via [SingleChildScrollView] — before this
   /// fix, a long note, several tag chips, or (once LLA-011 lands alongside
   /// this) spotting/graded-pain-intensity lines could exceed
@@ -2638,6 +2901,10 @@ class _DaySheetState extends State<DaySheet> {
                 AppLocalizations.of(context).daySheetNoEntry,
                 style: theme.textTheme.bodyMedium,
               ),
+              // Issue #869: a guardian note is keyed by date, not by entry,
+              // so a viewer must see the day's notes even when nobody
+              // logged an entry for it.
+              ..._guardianNotesSlot(),
             ],
           ),
         ),
@@ -2730,6 +2997,8 @@ class _DaySheetState extends State<DaySheet> {
                       ? AppLocalizations.of(context).daySheetNoNote
                       : existing.note!,
                 ),
+                // Issue #869: the viewer reads guardian notes too.
+                ..._guardianNotesSlot(),
               ],
             ),
           ),
@@ -2893,3 +3162,10 @@ class _DaySheetState extends State<DaySheet> {
     );
   }
 }
+
+/// Issue #887: the outcome of the early-cycle-start confirmation dialog
+/// ([_DaySheetState._confirmCycleStartDialog]). Barrier dismissal (a tap
+/// outside the dialog) reads as [cancel] — the sheet keeps exactly what
+/// it had, which is the same consent posture as the explicit cancel
+/// button.
+enum _CycleStartChoice { startCycle, logSpotting, cancel }

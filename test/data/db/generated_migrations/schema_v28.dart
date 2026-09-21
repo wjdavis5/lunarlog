@@ -117,6 +117,14 @@ class Profiles extends Table with TableInfo {
     $customConstraints: 'NOT NULL DEFAULT \'standard\'',
     defaultValue: const CustomExpression('\'standard\''),
   );
+  late final GeneratedColumn<int> irregularFraming = GeneratedColumn<int>(
+    'irregular_framing',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    $customConstraints: 'NULL CHECK (irregular_framing IN (0, 1))',
+  );
   late final GeneratedColumn<String> transferredAt = GeneratedColumn<String>(
     'transferred_at',
     aliasedName,
@@ -217,6 +225,7 @@ class Profiles extends Table with TableInfo {
     birthYear,
     relationship,
     mode,
+    irregularFraming,
     transferredAt,
     transferredToUserId,
     lastPeriodStart,
@@ -537,15 +546,6 @@ class ProfileGuardians extends Table with TableInfo {
     $customConstraints: 'NOT NULL DEFAULT 0',
     defaultValue: const CustomExpression('0'),
   );
-  late final GeneratedColumn<int> isSubject = GeneratedColumn<int>(
-    'is_subject',
-    aliasedName,
-    false,
-    type: DriftSqlType.int,
-    requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 0 CHECK (is_subject IN (0, 1))',
-    defaultValue: const CustomExpression('0'),
-  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -558,7 +558,6 @@ class ProfileGuardians extends Table with TableInfo {
     createdAt,
     updatedAt,
     serverVersion,
-    isSubject,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;

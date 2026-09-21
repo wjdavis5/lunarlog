@@ -1151,6 +1151,7 @@ export type Database = {
           deleted_at: string | null
           display_name: string
           id: string
+          irregular_framing: boolean | null
           is_minor: boolean
           last_period_start: string | null
           mode: string
@@ -1174,6 +1175,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string
           id: string
+          irregular_framing?: boolean | null
           is_minor?: boolean
           last_period_start?: string | null
           mode?: string
@@ -1197,6 +1199,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string
           id?: string
+          irregular_framing?: boolean | null
           is_minor?: boolean
           last_period_start?: string | null
           mode?: string
@@ -1720,5 +1723,3 @@ export const Constants = {
   },
 } as const
 
-A new version of Supabase CLI is available: v2.117.0 (currently installed v2.116.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli

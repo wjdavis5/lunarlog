@@ -41,6 +41,7 @@ import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
+import 'package:lunarlog/domain/care_modes.dart' show irregularFramingInEffect;
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
 import 'package:lunarlog/domain/notifications/reminder_scheduler.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart';
@@ -145,6 +146,13 @@ class ReminderCoordinator with WidgetsBindingObserver {
   /// the same `_onProfilesChanged` emission that schedules the replan, so a
   /// mode switch is applied at the next coordinator pass.
   final Map<String, ProfileMode> _modes = {};
+
+  /// Each active profile's stored irregular-framing tri-state (Issue #853),
+  /// resolved against the live prediction's tier at replan time by
+  /// [irregularFramingInEffect] — the teen default (framing ON until
+  /// `CycleConfidence.high`) therefore applies to reminder planning too,
+  /// not just rendered copy.
+  final Map<String, bool?> _irregularFraming = {};
   Timer? _replanTimer;
   int _permissionProbeGeneration = 0;
 
@@ -211,6 +219,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
           unawaited(sub.cancel());
           _latest.remove(id);
           _modes.remove(id);
+          _irregularFraming.remove(id);
           return true;
         });
     _syncBirthControlSubs(activeIds);
@@ -219,8 +228,13 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // (any profile write) lands here and the scheduled replan below
       // re-filters every reminder through the new preset (Issue #131).
       _modes[profile.id] = profile.mode;
+      // Issue #853: the framing flag rides the same stream for the same
+      // reason — the compose happens per replan (with the live tier), not
+      // here, so the teen default follows the engine as it changes.
+      _irregularFraming[profile.id] = profile.irregularFraming;
     }
     _modes.removeWhere((id, _) => !activeIds.contains(id));
+    _irregularFraming.removeWhere((id, _) => !activeIds.contains(id));
     for (final id in activeIds) {
       _predictionSubs.putIfAbsent(
         id,
@@ -388,8 +402,27 @@ class ReminderCoordinator with WidgetsBindingObserver {
       today: today(),
       predictions: Map.of(_latest),
       presets: {
+        // Issue #853: the preset composes mode + the effective irregular
+        // framing (the stored tri-state resolved against the live tier from
+        // the prediction the coordinator already holds) — framing ON means
+        // no "late" nags, whatever the mode.
         for (final entry in _modes.entries)
-          entry.key: reminderPresetFor(entry.value),
+          entry.key: reminderPresetFor(
+            entry.value,
+            irregularFraming: irregularFramingInEffect(
+              mode: entry.value,
+              stored: _irregularFraming[entry.key],
+              // Only an ActivePrediction carries a tier; every other
+              // prediction state (not-enough-history/suppressed/disabled)
+              // reads null, which irregularFramingInEffect resolves to a
+              // teen's framing ON — the early months are exactly when the
+              // "late" nag would be wrong.
+              tier: switch (_latest[entry.key]) {
+                final ActivePrediction p => p.tier,
+                _ => null,
+              },
+            ),
+          ),
       },
       configs: configs,
       lateSnoozes: lateSnoozes,

@@ -154,6 +154,20 @@
             "dsl_features": []
           },
           {
+            "name": "irregular_framing",
+            "getter_name": "irregularFraming",
+            "moor_type": "bool",
+            "nullable": true,
+            "customConstraints": null,
+            "defaultConstraints": "CHECK (\"irregular_framing\" IN (0, 1))",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "CHECK (\"irregular_framing\" IN (0, 1))"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
             "name": "transferred_at",
             "getter_name": "transferredAt",
             "moor_type": "dateTime",
@@ -623,20 +637,6 @@
             "moor_type": "int",
             "nullable": false,
             "customConstraints": null,
-            "default_dart": "const CustomExpression('0')",
-            "default_client_dart": null,
-            "dsl_features": []
-          },
-          {
-            "name": "is_subject",
-            "getter_name": "isSubject",
-            "moor_type": "bool",
-            "nullable": false,
-            "customConstraints": null,
-            "defaultConstraints": "CHECK (\"is_subject\" IN (0, 1))",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "CHECK (\"is_subject\" IN (0, 1))"
-            },
             "default_dart": "const CustomExpression('0')",
             "default_client_dart": null,
             "dsl_features": []
@@ -2572,7 +2572,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"transferred_at\" TEXT NULL, \"transferred_to_user_id\" TEXT NULL, \"last_period_start\" TEXT NULL, \"typical_cycle_length_days\" INTEGER NULL, \"typical_period_length_days\" INTEGER NULL, \"tracking_preferences\" TEXT NULL, \"bbt_unit\" TEXT NOT NULL DEFAULT 'celsius', \"weight_unit\" TEXT NOT NULL DEFAULT 'kg', \"access_revoked_at\" TEXT NULL, \"units_unconfirmed\" INTEGER NULL CHECK (\"units_unconfirmed\" IN (0, 1)), PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"profiles\" (\"id\" TEXT NOT NULL, \"display_name\" TEXT NOT NULL, \"is_minor\" INTEGER NOT NULL CHECK (\"is_minor\" IN (0, 1)), \"sort_order\" INTEGER NOT NULL DEFAULT 0, \"archived_at\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"deleted_at\" TEXT NULL, \"dirty\" INTEGER NOT NULL DEFAULT 0 CHECK (\"dirty\" IN (0, 1)), \"local_rev\" INTEGER NOT NULL DEFAULT 0, \"birth_year\" INTEGER NULL, \"relationship\" TEXT NULL, \"mode\" TEXT NOT NULL DEFAULT 'standard', \"irregular_framing\" INTEGER NULL CHECK (\"irregular_framing\" IN (0, 1)), \"transferred_at\" TEXT NULL, \"transferred_to_user_id\" TEXT NULL, \"last_period_start\" TEXT NULL, \"typical_cycle_length_days\" INTEGER NULL, \"typical_period_length_days\" INTEGER NULL, \"tracking_preferences\" TEXT NULL, \"bbt_unit\" TEXT NOT NULL DEFAULT 'celsius', \"weight_unit\" TEXT NOT NULL DEFAULT 'kg', \"access_revoked_at\" TEXT NULL, \"units_unconfirmed\" INTEGER NULL CHECK (\"units_unconfirmed\" IN (0, 1)), PRIMARY KEY (\"id\"));"
         }
       ]
     },
@@ -2590,7 +2590,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"profile_guardians\" (\"id\" TEXT NOT NULL, \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"user_id\" TEXT NOT NULL, \"role\" TEXT NOT NULL, \"status\" TEXT NOT NULL DEFAULT 'accepted', \"display_name\" TEXT NULL, \"invited_by\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"server_version\" INTEGER NOT NULL DEFAULT 0, \"is_subject\" INTEGER NOT NULL DEFAULT 0 CHECK (\"is_subject\" IN (0, 1)), PRIMARY KEY (\"id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"profile_guardians\" (\"id\" TEXT NOT NULL, \"profile_id\" TEXT NOT NULL REFERENCES profiles (id), \"user_id\" TEXT NOT NULL, \"role\" TEXT NOT NULL, \"status\" TEXT NOT NULL DEFAULT 'accepted', \"display_name\" TEXT NULL, \"invited_by\" TEXT NULL, \"created_at\" TEXT NOT NULL, \"updated_at\" TEXT NOT NULL, \"server_version\" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (\"id\"));"
         }
       ]
     },

@@ -190,6 +190,24 @@ void main() {
       expect(conceiveEstimateFromHistory(entries: const [], today: _today),
           isNull);
     });
+
+    test('Issue #859: null for a stale-history prediction (no curve derived '
+        'from a rolled estimate nobody observed)', () {
+      final stale = ActivePrediction(
+        today: _today,
+        lastEpisodeStart: d(2024, 1, 1),
+        estimatedNextStart: d(2024, 1, 29),
+        originalEstimatedNextStart: d(2024, 1, 29),
+        averagedCycleLengths: const [28, 28, 28],
+        meanCycleLengthDays: 28,
+        cycleDay: 900,
+        duringEpisode: false,
+        completedCycleCount: 4,
+        validCycleCount: 4,
+        staleHistory: true,
+      );
+      expect(currentConceptionEstimate(stale), isNull);
+    });
   });
 
   group('conceiveEstimateFromHistory', () {

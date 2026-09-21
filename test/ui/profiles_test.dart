@@ -695,10 +695,17 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField).first, 'Luna');
       await tester.enterText(find.byType(TextFormField).last, '2015');
+      // Issue #853: the dialog's framing toggle grew its content — scroll
+      // the fields into view before tapping them.
+      await tester.ensureVisible(
+          find.byType(DropdownButton<ProfileRelationship?>));
       await tester.tap(find.byType(DropdownButton<ProfileRelationship?>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Daughter').last);
       await tester.pumpAndSettle();
+      // Issue #853: the dialog's framing toggle grew its content — scroll
+      // the submit button into view before tapping it.
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Create'));
       await tester.tap(find.widgetWithText(FilledButton, 'Create'));
       await tester.pumpAndSettle();
 
@@ -821,10 +828,17 @@ void main() {
       expect(find.text('Daughter'), findsOneWidget,
           reason: 'dropdown prefilled from the existing relationship');
 
+      // Issue #853: the dialog's framing toggle grew its content — scroll
+      // the dropdown into view before tapping it.
+      await tester.ensureVisible(
+          find.byType(DropdownButton<ProfileRelationship?>));
       await tester.tap(find.byType(DropdownButton<ProfileRelationship?>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('None').last);
       await tester.pumpAndSettle();
+      // Issue #853: the dialog's framing toggle grew its content — scroll
+      // the submit button into view before tapping it.
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
 
@@ -1065,12 +1079,10 @@ void main() {
             displayName: 'Alex', isMinor: false, mode: ProfileMode.standard);
       });
 
-      for (final mode in [
-        ProfileMode.irregular,
-        ProfileMode.caregiver,
-        ProfileMode.teen,
-        ProfileMode.standard,
-      ]) {
+      // Issue #853: the dialog offers exactly the choosable modes —
+      // `irregular` is a legacy wire value composed as a flag, not a mode
+      // the picker may switch a profile to.
+      for (final mode in ProfileMode.choosableModes) {
         final tile = find.ancestor(
             of: find.text('Alex'), matching: find.byType(ListTile));
         await tester.tap(find.descendant(
@@ -1083,6 +1095,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text(mode.label).last);
         await tester.pumpAndSettle();
+        // Issue #853: the dialog's framing toggle grew its content — scroll
+        // the submit button into view before tapping it.
+        await tester.ensureVisible(
+            find.widgetWithText(FilledButton, 'Save'));
         await tester.tap(find.widgetWithText(FilledButton, 'Save'));
         await tester.pumpAndSettle();
 
@@ -1275,6 +1291,7 @@ class _EmptyProfilesRepository implements ProfilesRepository {
     required bool isMinor,
     int sortOrder = 0,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     LocalDate? lastPeriodStart,

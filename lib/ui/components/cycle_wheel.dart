@@ -75,6 +75,11 @@ List<double> predictedBandDashes(double sweep, double dashLen, double gapLen) {
 /// only). Public so it is directly unit-testable without a `Semantics`
 /// pump. #138: the phrases come from [AppLocalizations] (#340's rule),
 /// leading with the focal-point hero fact (issue #807).
+///
+/// Issue #853: [irregularFraming] switches the overdue wording away from
+/// "late" — the count stays (days past the estimate is a fact), the unit
+/// and the semantics sentence say "past estimate" instead, matching the
+/// variance-expecting framing a composed profile renders everywhere else.
 String cycleWheelSemanticsLabel({
   required int cycleDay,
   required bool duringEpisode,
@@ -82,6 +87,7 @@ String cycleWheelSemanticsLabel({
   required int periodLengthDays,
   required AppLocalizations l10n,
   int? daysUntilNextPeriod,
+  bool irregularFraming = false,
 }) {
   if (duringEpisode) {
     return l10n.cycleWheelSemanticsBleed(
@@ -92,12 +98,19 @@ String cycleWheelSemanticsLabel({
   }
   final days = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
   if (days < 0) {
-    return l10n.cycleWheelSemanticsLate(
-      -days,
-      cycleDay,
-      cycleLengthDays,
-      periodLengthDays,
-    );
+    return irregularFraming
+        ? l10n.cycleWheelSemanticsPastEstimate(
+            -days,
+            cycleDay,
+            cycleLengthDays,
+            periodLengthDays,
+          )
+        : l10n.cycleWheelSemanticsLate(
+            -days,
+            cycleDay,
+            cycleLengthDays,
+            periodLengthDays,
+          );
   }
   return l10n.cycleWheelSemanticsMidCycle(
     days,
@@ -115,6 +128,7 @@ class CycleWheel extends StatelessWidget {
     required this.cycleLengthDays,
     required this.periodLengthDays,
     this.daysUntilNextPeriod,
+    this.irregularFraming = false,
     this.diameter = 200,
   });
 
@@ -135,6 +149,12 @@ class CycleWheel extends StatelessWidget {
   /// Days until next period (issue #807). When omitted, falls back to
   /// `cycleLengthDays - cycleDay`.
   final int? daysUntilNextPeriod;
+
+  /// Issue #853: variance-expecting overdue wording ("N days past
+  /// estimate", never "late") — the effective composed flag, resolved by
+  /// the caller from the profile's stored tri-state and the live tier
+  /// (`irregularFramingInEffect`). Presentation only.
+  final bool irregularFraming;
 
   final double diameter;
 
@@ -162,8 +182,12 @@ class CycleWheel extends StatelessWidget {
     final effectiveDays = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
     final isLate = effectiveDays < 0;
     final displayCount = isLate ? -effectiveDays : effectiveDays;
+    // Issue #853: under the irregular framing the overdue count names the
+    // estimate, not the body — "N days past estimate", never "late".
     final unit = isLate
-        ? l10n.cycleWheelDaysLateUnit(displayCount)
+        ? (irregularFraming
+            ? l10n.cycleWheelDaysPastEstimateUnit(displayCount)
+            : l10n.cycleWheelDaysLateUnit(displayCount))
         : l10n.cycleWheelDaysUntilUnit(displayCount);
 
     return Column(
@@ -198,6 +222,7 @@ class CycleWheel extends StatelessWidget {
         cycleLengthDays: cycleLengthDays,
         periodLengthDays: periodLengthDays,
         daysUntilNextPeriod: daysUntilNextPeriod,
+        irregularFraming: irregularFraming,
         l10n: l10n,
       ),
       // The centre label below is purely visual duplication of this node's

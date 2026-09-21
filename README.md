@@ -27,10 +27,11 @@ mucus, ovulation tests, issue #144) that would refine it further does not
 exist yet.
 Targets iOS (iPhone first-class), Android, and
 an installable web PWA used for iteration only. The app holds sensitive health
-data, including minors'; this repo stays private and must never contain real
-personal or health data.
+data, including minors'; this repository is public, open source, and fully auditable,
+and must never contain real personal or health data.
 
 **Privacy Policy:** Read our full [Privacy Policy](PRIVACY.md).  
+**Security Policy:** Read our [Security Policy](SECURITY.md) to report vulnerabilities responsibly.  
 **License:** [PolyForm Noncommercial 1.0.0](LICENSE) (Free for personal/noncommercial use; commercial resale prohibited).
 
 **Status:** dev project, not deployed. Release is gated (see Known limitations).
@@ -342,8 +343,9 @@ Part of the home lab; the canonical inventory lives in the lab root's
   separate, deliberate release action, not automatic from merging the
   code.
 - "Sign out everywhere" revokes sessions, not tokens: other devices keep
-  access until their JWT expires, which is why the project's JWT expiry is
-  set to the dashboard minimum.
+  access until their JWT expires (up to an hour at Supabase's default, the
+  chosen setting), which is why the app's copy says other devices may take up
+  to an hour to notice.
 - The former "no fertility features, by design; do not add them" commitment
   was removed (#142, following the owner decision in #123). Fertile-window and
   ovulation estimation (#143) has shipped: a calendar-method back-calculation

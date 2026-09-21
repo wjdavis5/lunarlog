@@ -17,6 +17,11 @@
 /// empty/insufficient-history copy. `irregular` additionally silences the
 /// late resolver, replacing it with a quiet status line; the disclaimer
 /// stays next to every estimate in every mode, without exception.
+/// Issue #853 composes that silencing with any mode via the profile's
+/// irregular-framing flag (teen by default until `CycleConfidence.high`):
+/// the quiet line replaces the resolver, the teen composition adds its
+/// single "log it when it comes" action, and the wheel's overdue unit says
+/// "days past estimate", never "late".
 ///
 /// Issue #221/A2-11/A2-12: the old dead-end "predictions paused" card is
 /// gone — an open cycle past sixty days stays an active, rolled-forward
@@ -133,6 +138,7 @@ class OverviewPanel extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.trackingPreferences,
     this.isMinor = false,
     this.todayProvider = LocalDate.today,
@@ -148,6 +154,14 @@ class OverviewPanel extends StatefulWidget {
   /// Presentation only — it never changes what any guardian role may read
   /// or write ([_effectiveReadOnly] consults roles alone).
   final ProfileMode mode;
+
+  /// Issue #853: the profile's stored irregular-framing tri-state (null =
+  /// engine default). Resolved against the live prediction's tier per
+  /// render by [_copyFor] — a `teen` profile with no explicit choice keeps
+  /// the variance-expecting framing (no "late" banner, no "days late"
+  /// wheel wording) until its estimate reaches `CycleConfidence.high`.
+  /// Presentation only, same as [mode].
+  final bool? irregularFraming;
 
   /// The profile's curated tracking categories (Issue #259), forwarded to
   /// [DaySheet]; null means never customized. Presentation only.
@@ -243,8 +257,21 @@ class _OverviewPanelState extends State<OverviewPanel>
   String? _currentUserId;
   List<ProfileGuardian> _guardians = const [];
 
-  /// The mode's vocabulary (Issue #131), resolved once per build.
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  /// The mode's vocabulary (Issue #131), composed with the effective
+  /// irregular framing (Issue #853): the stored tri-state resolved against
+  /// [prediction]'s confidence tier — `teen` + unset reads as framing ON
+  /// until `CycleConfidence.high`, so teen mode never says "late" out of
+  /// the box. Null tier (no active estimate — not-enough-history,
+  /// suppressed, disabled) keeps a teen's framing ON: the early, no-
+  /// history months are exactly when the alarm framing would be wrong.
+  CareModeCopy _copyFor(CyclePrediction prediction) => careModeCopyFor(
+        widget.mode,
+        irregularFraming: irregularFramingInEffect(
+          mode: widget.mode,
+          stored: widget.irregularFraming,
+          tier: prediction is ActivePrediction ? prediction.tier : null,
+        ),
+      );
 
   @override
   void initState() {
@@ -694,6 +721,10 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// alone; it never reads a logged ovulation test or BBT reading.
   Widget? _conceiveCard(BuildContext context, CyclePrediction prediction) {
     if (prediction is! ActivePrediction) return null;
+    // Issue #859: a stale history has no meaningful fertile window — the
+    // domain helper already returns null for it, but short-circuiting here
+    // keeps the stale card the single thing on screen (see _activeCard).
+    if (prediction.staleHistory) return null;
     final estimate = currentConceptionEstimate(prediction);
     if (estimate == null) return null;
     return ConceiveCard(
@@ -746,8 +777,19 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// what renders for an unusually-long-open cycle now (folded into
   /// [ActivePrediction] — there is no separate paused state to gate here
   /// any more).
-  Widget _lateSectionFor(ActivePrediction prediction, ThemeData theme) {
-    if (_copy.silencesLateBanner) {
+  ///
+  /// Issue #853: the same silencing composes with any mode via the
+  /// irregular-framing flag — teen by default until `high` confidence —
+  /// and the teen composition carries exactly ONE action ("log it when it
+  /// comes", the issue's own wording, wired to the same day sheet the
+  /// resolver's "log it" opens). Never "skip this cycle" for a teen: an
+  /// open cycle isn't something to declare skipped, just not logged yet.
+  Widget _lateSectionFor(
+    ActivePrediction prediction,
+    ThemeData theme,
+    CareModeCopy copy,
+  ) {
+    if (copy.silencesLateBanner) {
       return Padding(
         key: const ValueKey('overview-irregular-overdue'),
         padding: const EdgeInsets.only(top: LLSpace.space2),
@@ -755,12 +797,25 @@ class _OverviewPanelState extends State<OverviewPanel>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _copy.overdueStatusLabel,
+              copy.overdueStatusLabel,
               key: const ValueKey('overview-irregular-overdue-line'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.tertiary,
               ),
             ),
+            if (copy.overdueActionLabel.isNotEmpty &&
+                !_effectiveReadOnly) ...[
+              const SizedBox(height: LLSpace.space1),
+              // Issue #853: the teen composition's single quiet action.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton(
+                  key: const ValueKey('irregular-overdue-log-when-it-comes'),
+                  onPressed: _logItToday,
+                  child: Text(copy.overdueActionLabel),
+                ),
+              ),
+            ],
           ],
         ),
       );
@@ -776,13 +831,25 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// headline). The tier caption, late resolver/status line, and
   /// long-cycle prompt are unchanged.
   Widget _activeCard(BuildContext context, ActivePrediction prediction) {
+    // Issue #859: when the history is stale, the rolled estimate, the
+    // days-late hero number, and any fertile window would all read as
+    // broken. Replace the whole active surface with a calm, non-alarming
+    // explanation and a way forward — never a silent screen (#221's
+    // posture still holds: it says something useful). The long-cycle
+    // state between kMaxOpenCycleDays and the stale threshold is
+    // deliberately untouched (stale is a strictly further step).
+    if (prediction.staleHistory) {
+      return _staleHistoryCard(context);
+    }
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final copy = _copyFor(prediction);
     final aboutSection = _aboutEstimateSection(
       context,
       prediction,
       theme,
       l10n,
+      copy,
     );
 
     return Card(
@@ -798,10 +865,15 @@ class _OverviewPanelState extends State<OverviewPanel>
               cycleLengthDays: prediction.meanCycleLengthDays.round(),
               periodLengthDays: prediction.meanPeriodLengthDays.round(),
               daysUntilNextPeriod: prediction.daysUntilNextPeriod,
+              irregularFraming: irregularFramingInEffect(
+                mode: widget.mode,
+                stored: widget.irregularFraming,
+                tier: prediction.tier,
+              ),
               estimateText:
-                  '${_copy.nextEstimateLabel} ${_estimateDateText(prediction, dates.calendarLocale(context))}',
+                  '${copy.nextEstimateLabel} ${_estimateDateText(prediction, dates.calendarLocale(context))}',
               tier: prediction.tier,
-              showConfidenceChip: _copy.showsTierCaption,
+              showConfidenceChip: copy.showsTierCaption,
               canLog: !_effectiveReadOnly,
               onLogToday: _logPeriodStartedToday,
             ),
@@ -820,11 +892,71 @@ class _OverviewPanelState extends State<OverviewPanel>
             ],
             if (prediction.isLate || prediction.unusuallyLongCycle) ...[
               const SizedBox(height: LLSpace.space2),
-              _lateSectionFor(prediction, theme),
+              _lateSectionFor(prediction, theme, copy),
             ],
             if (prediction.unusuallyLongCycle) ...[
               const SizedBox(height: LLSpace.space2),
               _longCycleSection(context, prediction, theme),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Issue #859: the stale-history replacement for the whole active
+  /// estimate surface. A calm, non-alarming card — no days-late count, no
+  /// rolled next-period date, no confidence chip, no fertile window — that
+  /// says the history is old and offers the two ways forward the issue
+  /// names: log a period start, or turn predictions off. It keeps #221's
+  /// "never go silent" posture (the screen still explains the situation)
+  /// without rendering numbers the roll-forward machinery can no longer
+  /// justify. Actions are hidden for a read-only (viewer/archived) tree,
+  /// matching the long-cycle prompt's own rule.
+  Widget _staleHistoryCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    return Card(
+      key: const ValueKey('overview-stale-history'),
+      child: Padding(
+        padding: const EdgeInsets.all(LLSpace.space4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.overviewStaleHistoryTitle,
+              key: const ValueKey('overview-stale-history-title'),
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: LLSpace.space2),
+            Text(
+              l10n.overviewStaleHistoryBody,
+              key: const ValueKey('overview-stale-history-body'),
+              style: theme.textTheme.bodyMedium,
+            ),
+            if (!_effectiveReadOnly) ...[
+              const SizedBox(height: LLSpace.space3),
+              Wrap(
+                spacing: LLSpace.space2,
+                runSpacing: LLSpace.space1,
+                children: [
+                  FilledButton.icon(
+                    key: const ValueKey('stale-history-log'),
+                    onPressed: _logPeriodStartedToday,
+                    icon: const Icon(Icons.water_drop_outlined, size: 18),
+                    label: Text(l10n.overviewStaleHistoryLog),
+                  ),
+                  // Issue #225: profile-level "turn predictions off" in
+                  // Settings — the same affordance the long-cycle prompt and
+                  // the late resolver offer when an estimate stops helping.
+                  OutlinedButton(
+                    key: const ValueKey('stale-history-predictions-off'),
+                    onPressed: () =>
+                        pushNamedScreen<void>(context, kRouteSettingsScreen),
+                    child: Text(l10n.overviewLongCyclePredictionsOff),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -839,9 +971,10 @@ class _OverviewPanelState extends State<OverviewPanel>
     ActivePrediction prediction,
     ThemeData theme,
     AppLocalizations l10n,
+    CareModeCopy copy,
   ) {
     final hasTierCaption =
-        _copy.showsTierCaption && prediction.tier != CycleConfidence.high;
+        copy.showsTierCaption && prediction.tier != CycleConfidence.high;
     final hasPms = prediction.pms != null;
     if (!hasTierCaption && !hasPms) return null;
 
@@ -1125,6 +1258,10 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// concluding the app is broken.
   Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
+    // Issue #853: resolved with a null tier — a teen with no history yet
+    // keeps the variance-expecting framing (the quiet title/body), exactly
+    // the case the issue's "13-year-old" scenario describes.
+    final copy = _copyFor(prediction);
     return Card(
       key: const ValueKey('overview-not-enough'),
       child: Padding(
@@ -1133,8 +1270,8 @@ class _OverviewPanelState extends State<OverviewPanel>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             EmptyState(
-              title: _copy.notEnoughTitle,
-              body: _copy.notEnoughBody(
+              title: copy.notEnoughTitle,
+              body: copy.notEnoughBody(
                 prediction.usableCycleCount,
                 kMinCompletedValidCycles,
               ),
