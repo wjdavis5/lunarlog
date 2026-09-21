@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
+import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
 
 class CycleLiteracyArticleSheet extends StatelessWidget {
@@ -27,6 +28,7 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -60,7 +62,9 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${article.readingTimeMinutes} min read',
+                  l10n.cycleLiteracyReadingTimeMinutes(
+                    article.readingTimeMinutes,
+                  ),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                   ),
@@ -124,21 +128,21 @@ class CycleLiteracyArticleSheet extends StatelessWidget {
 
             // Clinical / Academic Provenance
             Text(
-              'Source & Review',
+              l10n.cycleLiteracySourceHeading,
               style: theme.textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              'Source: ${article.source}',
+              l10n.cycleLiteracySourceLine(article.source),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 2),
             Text(
-              'Last reviewed: ${article.reviewDate}',
+              l10n.cycleLiteracyLastReviewedLine(article.reviewDate),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
