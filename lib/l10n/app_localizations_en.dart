@@ -1135,6 +1135,62 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunCreateButton => 'Create profile';
 
   @override
+  String get firstRunWhoLabel => 'Who is this profile for?';
+
+  @override
+  String get firstRunWhoMe => 'Me';
+
+  @override
+  String get firstRunWhoSomeone => 'Someone I care for';
+
+  @override
+  String get firstRunWhoBoth => 'Both';
+
+  @override
+  String get firstRunRelationshipLabel => 'Relationship';
+
+  @override
+  String get firstRunTeenSuggestedHint =>
+      'Teen mode is suggested for a minor — change it any time.';
+
+  @override
+  String get firstRunCycleShortCaption =>
+      'Optional: if you know when her last period started, add it below. Not sure? Just continue.';
+
+  @override
+  String get firstRunWrapUpTitle => 'Add another person?';
+
+  @override
+  String get firstRunWrapUpBody =>
+      'Everyone you set up now is ready to log. You can also add profiles later from the profile picker.';
+
+  @override
+  String get firstRunWrapUpAddAnother => 'Add another person';
+
+  @override
+  String get firstRunInviteTitle => 'Does someone else help?';
+
+  @override
+  String get firstRunInviteBody =>
+      'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.';
+
+  @override
+  String get firstRunInviteWhyAccount =>
+      'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.';
+
+  @override
+  String get firstRunInviteSignInAction => 'Sign in or create account';
+
+  @override
+  String get firstRunInviteCoParent => 'Invite a co-parent';
+
+  @override
+  String get firstRunInviteSkip => 'Skip for now';
+
+  @override
+  String get firstRunInviteDone => 'Done';
+
+  @override
   String get lifeStageModeLabel => 'Life-stage mode';
 
   @override

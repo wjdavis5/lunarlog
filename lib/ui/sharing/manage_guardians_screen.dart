@@ -28,7 +28,6 @@ import '../../domain/notifications/notification_preferences_service.dart';
 import '../../domain/profiles/profile_erasure_service.dart';
 import '../../domain/sharing/ownership_transfer_service.dart';
 import '../../domain/sharing/prediction_connection_service.dart';
-import '../../domain/models/profile_relationship.dart';
 import '../../domain/sharing/sharing_service.dart';
 import '../../observability/route_names.dart';
 import '../components/destructive_button.dart';
@@ -214,18 +213,14 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   }
 
   /// Issue #802: whether the invite dialog should offer the "her own
-  /// profile" preset for this profile — the subject's relation to the
-  /// creator is daughter/son/child, or the profile is a minor's by the
-  /// shared [Profile.isMinorAsOf] rule (birth year authoritative, stored
-  /// flag fallback). Pure display gating; the server enforces the
-  /// preset's own rules independently.
-  bool get _subjectInviteAvailable {
-    final relationship = widget.profile.relationship;
-    final childRelationship = relationship == ProfileRelationship.daughter ||
-        relationship == ProfileRelationship.son ||
-        relationship == ProfileRelationship.child;
-    return childRelationship || widget.profile.isMinorAsOf(DateTime.now());
-  }
+  /// profile" preset for this profile. Delegates to the shared
+  /// [Profile.subjectInviteAvailableAt] rule (daughter/son/child
+  /// relationship, or a minor by the shared [Profile.isMinorAsOf] rule —
+  /// birth year authoritative, stored flag fallback), which the first-run
+  /// invite step (issue #804) answers identically. Pure display gating;
+  /// the server enforces the preset's own rules independently.
+  bool get _subjectInviteAvailable =>
+      widget.profile.subjectInviteAvailableAt(DateTime.now());
 
   Future<void> _loadPredictionConnection() async {
     final service = _predictionService;
