@@ -2235,4 +2235,7 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileIrregularFramingHint =>
       'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
+
+  @override
+  String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
 }
