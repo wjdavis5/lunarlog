@@ -4,8 +4,11 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart'
+    show kAppVersionForExport;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
 import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
@@ -28,6 +31,7 @@ class AcceptInviteSheet extends StatefulWidget {
     this.onAccepted,
     this.breadcrumbLog,
     this.acknowledgementContext,
+    this.consentService,
   });
 
   final String rawToken;
@@ -42,6 +46,14 @@ class AcceptInviteSheet extends StatefulWidget {
   /// a widget test injects either context here to render both wordings
   /// without a live preview (the injection seam).
   final MinimumAgeAcknowledgementContext? acknowledgementContext;
+
+  /// Issue #957: the #845 consent-record seam. When a subject invitation is
+  /// accepted (the server's [AcceptedInviteResult.isSubject]), the acceptance
+  /// records `consent_via = parent_invite` — the parent's invitation is the
+  /// parental-consent record. Null in an unconfigured build and in tests that
+  /// do not exercise the write; the write is best-effort either way (the
+  /// parent's invitation remains the record even if this call fails).
+  final ConsentService? consentService;
 
   @override
   State<AcceptInviteSheet> createState() => _AcceptInviteSheetState();
@@ -102,6 +114,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
         rawToken: widget.rawToken,
         displayName: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
       );
+      await _recordParentInviteConsent(res);
       if (mounted) {
         widget.onAccepted?.call(res);
         Navigator.of(context).pop(res);
@@ -122,6 +135,27 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
           _error = AppLocalizations.of(context).sharingUnexpectedError;
         });
       }
+    }
+  }
+
+  /// Issue #957: accepting a subject invitation is the parental-consent
+  /// record, so it writes `consent_via = parent_invite` through the #845
+  /// seam. An ordinary guardian acceptance (a co-parent/caregiver invite)
+  /// never writes this. Best-effort and never throws: the accepted
+  /// membership is already the durable record even if the sync call fails,
+  /// and the write is skipped entirely when no consent seam exists
+  /// (an unconfigured build).
+  Future<void> _recordParentInviteConsent(AcceptedInviteResult res) async {
+    final consent = widget.consentService;
+    if (!res.isSubject || consent == null) return;
+    try {
+      await consent.recordMinimumAgeAcknowledgement(
+        consentVia: kConsentViaParentInvite,
+        appVersion: kAppVersionForExport,
+        policyVersion: kMinimumAgePolicyVersion,
+      );
+    } catch (_) {
+      // Best-effort: the parent's invitation remains the consent record.
     }
   }
 

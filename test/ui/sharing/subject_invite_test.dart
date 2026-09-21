@@ -16,6 +16,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
@@ -28,12 +29,18 @@ import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
 
+import '../../support/fake_consent_service.dart';
+
 /// Minimal fake recording what the dialog asked for; previews and accept
 /// results are scriptable for the sheet tests.
 class _FakeSharing implements SharingService {
   String? lastCreatedRole;
   bool? lastCreatedSubject;
   InvitePreview? scriptedPreview;
+
+  /// Issue #957: the subject marker the accept result carries, so a test can
+  /// exercise both the parent-invite write and its absence.
+  bool acceptedIsSubject = true;
 
   @override
   Future<GeneratedInvite> createInvite({
@@ -61,11 +68,11 @@ class _FakeSharing implements SharingService {
     required String rawToken,
     String? displayName,
   }) async =>
-      const AcceptedInviteResult(
+      AcceptedInviteResult(
         profileId: 'p-1',
         profileName: 'Riley',
         role: GuardianRole.caregiver,
-        isSubject: true,
+        isSubject: acceptedIsSubject,
       );
 
   @override
@@ -337,6 +344,76 @@ void main() {
         findsOneWidget,
       );
       expect(find.text(parentInviteLabel), findsOneWidget);
+    });
+  });
+
+  group('subject acceptance records parent-invite consent (Issue #957)', () {
+    testWidgets('accepting a subject invitation writes parent_invite through '
+        'the #845 seam', (tester) async {
+      final sharing = _FakeSharing();
+      final consent = FakeConsentService();
+      AcceptedInviteResult? accepted;
+
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(
+          rawToken: 'raw',
+          sharingService: sharing,
+          consentService: consent,
+          onAccepted: (r) => accepted = r,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'Riley');
+      await tester.tap(find.text('Accept & Sync'));
+      await tester.pumpAndSettle();
+
+      expect(accepted, isNotNull);
+      expect(consent.recordCalls, hasLength(1));
+      expect(consent.recordCalls.single.$1, kConsentViaParentInvite);
+      expect(consent.recordCalls.single.$3, kMinimumAgePolicyVersion);
+    });
+
+    testWidgets('accepting an ordinary (non-subject) invitation never writes '
+        'parent_invite', (tester) async {
+      final sharing = _FakeSharing()..acceptedIsSubject = false;
+      final consent = FakeConsentService();
+      AcceptedInviteResult? accepted;
+
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(
+          rawToken: 'raw',
+          sharingService: sharing,
+          consentService: consent,
+          onAccepted: (r) => accepted = r,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Accept & Sync'));
+      await tester.pumpAndSettle();
+
+      expect(accepted, isNotNull);
+      expect(consent.recordCalls, isEmpty);
+    });
+
+    testWidgets('no consent seam (an unconfigured build) still accepts without '
+        'a write', (tester) async {
+      final sharing = _FakeSharing();
+      AcceptedInviteResult? accepted;
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(
+          rawToken: 'raw',
+          sharingService: sharing,
+          onAccepted: (r) => accepted = r,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Accept & Sync'));
+      await tester.pumpAndSettle();
+
+      expect(accepted, isNotNull);
     });
   });
 
