@@ -49,6 +49,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/limits.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -66,6 +67,8 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart'
     show kRouteImportScreen, kRouteInviteGuardianSheet;
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart'
+    show kAppVersionForExport;
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sign_in_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
@@ -275,12 +278,34 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   Future<void> _checkAgeAcknowledgment() async {
     final store = context.read<SettingsStore>();
+    final auth = context.read<AuthController?>();
+    final consent = context.read<ConsentService?>();
     final acknowledged =
         await store.get(SettingsKeys.minimumAgeAcknowledged) == 'true';
+    final storedPolicyVersion =
+        await store.get(SettingsKeys.minimumAgePolicyVersion);
+    // Issue #845: a legacy record (no stored version) reads as current so
+    // upgrading never re-prompts; a record written under an older policy
+    // version is re-prompted unless the account's synced consent row already
+    // carries the current version (a second device or a reinstall).
+    var current = acknowledged &&
+        (storedPolicyVersion == null ||
+            storedPolicyVersion == kMinimumAgePolicyVersion);
+    if (!current &&
+        consent != null &&
+        (auth?.state.hasUsableSession ?? false)) {
+      final remote = await consent.fetchMinimumAgeAcknowledgement();
+      if (remote != null && remote.policyVersion == kMinimumAgePolicyVersion) {
+        current = true;
+        await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+        await store.set(
+            SettingsKeys.minimumAgePolicyVersion, kMinimumAgePolicyVersion);
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _ageAckPreviouslyRecorded = acknowledged;
-      _ageAcknowledged = acknowledged;
+      _ageAckPreviouslyRecorded = current;
+      _ageAcknowledged = current;
     });
   }
 
@@ -502,6 +527,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     final controller = context.read<ProfileController>();
     final l10n = AppLocalizations.of(context);
     final recorder = _resolveRecorder();
+    // Issue #845: resolved before the first await (the home gate unmounts
+    // this screen the moment the profile exists on the plain path). The
+    // consent write is best-effort and only attempted for a signed-in
+    // operator; the local boolean below stays the offline cache.
+    final auth = context.read<AuthController?>();
+    final consent = context.read<ConsentService?>();
     setState(() {
       _creating = true;
       _createError = null;
@@ -510,7 +541,21 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
         final store = context.read<SettingsStore>();
         await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+        await store.set(
+            SettingsKeys.minimumAgePolicyVersion, kMinimumAgePolicyVersion);
         _ageAckPreviouslyRecorded = true;
+        if (consent != null && (auth?.state.hasUsableSession ?? false)) {
+          try {
+            await consent.recordMinimumAgeAcknowledgement(
+              consentVia: kConsentViaSelf13Plus,
+              appVersion: kAppVersionForExport,
+              policyVersion: kMinimumAgePolicyVersion,
+            );
+          } catch (_) {
+            // Best-effort: the local record above is the offline cache and
+            // the next re-prompt (or a later launch) will retry.
+          }
+        }
       }
       final profile = await controller.createProfile(
         displayName: _nameController.text,

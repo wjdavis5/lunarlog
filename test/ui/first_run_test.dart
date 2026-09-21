@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
@@ -38,6 +39,8 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart'
+    show kAppVersionForExport;
 import 'package:lunarlog/ui/account/restoring_screen.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/profiles/first_run_screen.dart';
@@ -45,6 +48,7 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:provider/provider.dart';
 
 import '../support/fake_auth_service.dart';
+import '../support/fake_consent_service.dart';
 import '../support/fake_sync_engine.dart';
 
 /// The third card's copy — the pre-#216 notice, kept verbatim (#334's
@@ -91,6 +95,7 @@ class Harness {
     bool isWebBuild = false,
     AuthController? auth,
     SyncStatusController? sync,
+    ConsentService? consent,
     Future<void> Function(BuildContext context)? onOpenImport,
     MediaQueryData? mediaQueryData,
   }) async {
@@ -104,6 +109,8 @@ class Harness {
           ChangeNotifierProvider<AuthController>.value(value: auth),
         if (sync != null)
           ChangeNotifierProvider<SyncStatusController>.value(value: sync),
+        if (consent != null)
+          Provider<ConsentService>.value(value: consent),
       ],
       child: FirstRunScreen(
         isWebBuild: isWebBuild,
@@ -859,6 +866,167 @@ void main() {
       expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
           findsNothing,
           reason: 'not re-prompted when already acknowledged');
+      await h.dispose();
+    });
+  });
+
+  group('synced consent record (Issue #845)', () {
+    Future<ConsentService> signedInAuthAndConsent(
+      WidgetTester tester,
+      Harness h,
+      FakeAuthService auth,
+      FakeConsentService consent,
+    ) async {
+      await h.pump(
+        auth: AuthController(authService: auth),
+        consent: consent,
+      );
+      await tester.pumpAndSettle();
+      return consent;
+    }
+
+    testWidgets(
+        'a signed-in acknowledgement writes self_13_plus to the account',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final consent = FakeConsentService();
+      await signedInAuthAndConsent(tester, h, auth, consent);
+
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      await _revealFirstRunAction(
+          tester, find.byKey(const ValueKey('cycle-create')));
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+
+      expect(consent.recordCalls, hasLength(1));
+      expect(consent.recordCalls.single.$1, kConsentViaSelf13Plus);
+      expect(consent.recordCalls.single.$3, kMinimumAgePolicyVersion);
+      expect(
+        await h.settings.get(SettingsKeys.minimumAgePolicyVersion),
+        kMinimumAgePolicyVersion,
+        reason: 'the local cache records the acknowledged policy version',
+      );
+      await h.dispose();
+    });
+
+    testWidgets('a signed-out acknowledgement never calls the consent service',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      final consent = FakeConsentService();
+      await h.pump(consent: consent);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'Nova');
+      await tester.tap(find.byKey(const ValueKey('first-run-age-ack-checkbox')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('first-run-continue')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('cycle-create')));
+      await tester.pumpAndSettle();
+
+      expect(consent.recordCalls, isEmpty,
+          reason: 'no session means no server write; the local cache carries it');
+      expect(await h.settings.get(SettingsKeys.minimumAgeAcknowledged), 'true');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a matching synced row hides the checkbox on a fresh device',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final consent = FakeConsentService(
+        remote: ConsentRecord(
+          consentVia: kConsentViaSelf13Plus,
+          acknowledgedAt: DateTime.utc(2026, 9, 1),
+          appVersion: kAppVersionForExport,
+          policyVersion: kMinimumAgePolicyVersion,
+        ),
+      );
+      await signedInAuthAndConsent(tester, h, auth, consent);
+
+      expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
+          findsNothing,
+          reason: 'the account already acknowledged the current policy');
+      expect(await h.settings.get(SettingsKeys.minimumAgeAcknowledged), 'true',
+          reason: 'the synced row re-seeds the local cache');
+      await h.dispose();
+    });
+
+    testWidgets('a stale policy version re-prompts despite a local record',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.settings.set(SettingsKeys.minimumAgePolicyVersion, '2020-01-01');
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final consent = FakeConsentService(
+        remote: ConsentRecord(
+          consentVia: kConsentViaSelf13Plus,
+          acknowledgedAt: DateTime.utc(2020, 1, 1),
+          appVersion: '1.0.0+1',
+          policyVersion: '2020-01-01',
+        ),
+      );
+      await signedInAuthAndConsent(tester, h, auth, consent);
+
+      expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
+          findsOneWidget,
+          reason: 'both the local and synced records predate the current policy');
+      await h.dispose();
+    });
+
+    testWidgets(
+        'a current synced row clears a stale local policy version',
+        (tester) async {
+      final h = Harness(tester);
+      await h.settings.set(SettingsKeys.firstRunNoticeShown, 'true');
+      await h.settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+      await h.settings.set(SettingsKeys.minimumAgePolicyVersion, '2020-01-01');
+      final auth = FakeAuthService(
+        initialState: AuthSessionState.signedIn,
+        user: const AuthUser(id: 'u1', email: 'a@b.c'),
+      );
+      addTearDown(auth.dispose);
+      final consent = FakeConsentService(
+        remote: ConsentRecord(
+          consentVia: kConsentViaSelf13Plus,
+          acknowledgedAt: DateTime.utc(2026, 9, 1),
+          appVersion: kAppVersionForExport,
+          policyVersion: kMinimumAgePolicyVersion,
+        ),
+      );
+      await signedInAuthAndConsent(tester, h, auth, consent);
+
+      expect(find.byKey(const ValueKey('first-run-age-ack-checkbox')),
+          findsNothing,
+          reason: 'the account already acknowledged the current policy');
+      expect(
+        await h.settings.get(SettingsKeys.minimumAgePolicyVersion),
+        kMinimumAgePolicyVersion,
+      );
       await h.dispose();
     });
   });
