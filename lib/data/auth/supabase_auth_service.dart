@@ -53,7 +53,11 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
 export 'package:lunarlog/data/auth/auth_link_classifier.dart'
-    show kAuthCallbackHost, kAuthCallbackScheme, kAuthCallbackUrl;
+    show
+        kAuthCallbackHost,
+        kAuthCallbackScheme,
+        kAuthCallbackUrl,
+        kWebAuthCallbackPath;
 
 part 'supabase_auth_providers.dart';
 part 'supabase_auth_session_state.dart';
@@ -66,6 +70,7 @@ class SupabaseAuthService
     required this._gateway,
     required this._links,
     String? redirectTo,
+    Uri? webInitialUri,
     bool? appleAvailable,
     this._requestAppleCredential = defaultAppleCredentialRequest,
     bool? googleAvailable,
@@ -75,8 +80,12 @@ class SupabaseAuthService
     PasskeyCeremonyClient? passkeyClient,
   })  : _redirectTo =
             redirectTo ?? resolveAuthRedirectUrl(isWeb: kIsWeb, base: Uri.base),
+        _webInitialUri = webInitialUri ?? (kIsWeb ? Uri.base : null),
         _appleAvailable = appleAvailable ??
-            (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS),
+            computeAppleSignInAvailable(
+              isWeb: kIsWeb,
+              isIos: defaultTargetPlatform == TargetPlatform.iOS,
+            ),
         _googleAvailable = googleAvailable ?? (!kIsWeb && AppConfig.hasGoogle),
         _googleClient = googleClient ?? PluginGoogleSignInClient(),
         _passkeysAvailable = passkeysAvailable ?? AppConfig.hasPasskeys,
@@ -88,6 +97,16 @@ class SupabaseAuthService
   final AuthLinkSource _links;
   @override
   final String _redirectTo;
+
+  /// The browser's launch URL on web (epic #831 slice 2): a confirmation,
+  /// passwordless, or reset email lands on `<origin>/auth/callback?code=…`,
+  /// and this service — not the browser — exchanges that code over the same
+  /// PKCE path native links use. Null on native (where app_links supplies
+  /// [AuthLinkSource.initialLink] instead); injectable so tests can drive a
+  /// web callback without a browser.
+  @override
+  final Uri? _webInitialUri;
+
   @override
   final bool _appleAvailable;
   @override

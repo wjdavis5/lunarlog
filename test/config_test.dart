@@ -259,6 +259,30 @@ void main() {
     });
   });
 
+  group('computeAppleSignInAvailable (epic #831 slice 2)', () {
+    test('is false on web even on iOS', () {
+      expect(
+        computeAppleSignInAvailable(isWeb: true, isIos: true),
+        isFalse,
+        reason: 'a browser has no native Sign in with Apple ceremony',
+      );
+    });
+
+    test('is false on a non-iOS native platform', () {
+      expect(
+        computeAppleSignInAvailable(isWeb: false, isIos: false),
+        isFalse,
+      );
+    });
+
+    test('is true only natively on iOS', () {
+      expect(
+        computeAppleSignInAvailable(isWeb: false, isIos: true),
+        isTrue,
+      );
+    });
+  });
+
   group('computeHasUniversalLinks (issue #129)', () {
     test('is false for an empty link domain', () {
       expect(computeHasUniversalLinks(''), isFalse);
