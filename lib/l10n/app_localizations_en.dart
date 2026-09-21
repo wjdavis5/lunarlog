@@ -623,6 +623,33 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String cycleWheelDaysPastEstimateUnit(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days past estimate',
+      one: 'day past estimate',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleWheelSemanticsPastEstimate(
+    int daysPast,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      daysPast,
+      locale: localeName,
+      other: '$daysPast days past the estimate.',
+      one: '1 day past the estimate.',
+    );
+    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
+  }
+
+  @override
   String cycleWheelBleedDayHero(int day) {
     return 'Day $day';
   }
@@ -2148,4 +2175,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianNotesUpdate => 'Update note';
+
+  @override
+  String get profileIrregularFramingLabel => 'Irregular cycles';
+
+  @override
+  String get profileIrregularFramingHint =>
+      'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
 }

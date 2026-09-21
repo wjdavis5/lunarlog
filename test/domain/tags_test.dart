@@ -442,7 +442,7 @@ void main() {
   // new one — re-adding "Great stool" fails.
   test('no display label repeats its own category heading except the '
       'documented attested/collision exceptions', () {
-    final standard = careModeCopyFor(ProfileMode.standard);
+    final standard = careModeCopyFor(ProfileMode.standard, irregularFraming: false);
     const documentedExceptions = <String>{
       // Category word is the phrase's own subject, not a qualifier.
       'back_pain', // "Back pain" (Pain)

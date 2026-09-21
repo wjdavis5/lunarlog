@@ -238,6 +238,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     return OverviewPanel(
       profileId: widget.profile.id,
       mode: widget.profile.mode,
+      irregularFraming: widget.profile.irregularFraming,
       trackingPreferences: widget.profile.trackingPreferences,
       isMinor: _isMinor,
       todayProvider: widget.todayProvider,

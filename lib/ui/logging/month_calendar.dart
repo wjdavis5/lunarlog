@@ -565,6 +565,7 @@ class MonthCalendar extends StatefulWidget {
     required this.profileId,
     this.readOnly = false,
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.lifecycleMode,
     this.trackingPreferences,
     this.isMinor = false,
@@ -582,6 +583,12 @@ class MonthCalendar extends StatefulWidget {
   /// The profile's care mode (Issue #131): forwarded to [DaySheet] for its
   /// category headings and surfacing order. Presentation only.
   final ProfileMode mode;
+
+  /// Issue #853: the profile's stored irregular-framing tri-state (null =
+  /// engine default), resolved against the live prediction's tier by
+  /// [_copy] — gates the fertile-window band/legend through the composed
+  /// copy, same rule as [OverviewPanel.irregularFraming].
+  final bool? irregularFraming;
 
   /// The profile's life-stage mode (Issue #188/#204), forwarded to
   /// [DaySheet] so Conceive mode surfaces Tests/Discharge first. Null means
@@ -845,7 +852,23 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// explainer text all gate on [CareModeCopy.showsFertileWindow] through
   /// this one lookup — presentation only, same posture as every other
   /// `CareModeCopy` consumer.
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  ///
+  /// Issue #853: composed with the effective irregular framing — the
+  /// stored tri-state resolved against the prediction the memo pass last
+  /// saw ([_computeInputPrediction], assigned by `_ensureComputed` before
+  /// any cell or legend renders). A teen with no explicit choice hides the
+  /// fertile window until its estimate reaches `CycleConfidence.high`.
+  CareModeCopy get _copy => careModeCopyFor(
+        widget.mode,
+        irregularFraming: irregularFramingInEffect(
+          mode: widget.mode,
+          stored: widget.irregularFraming,
+          tier: switch (_computeInputPrediction) {
+            ActivePrediction(:final tier) => tier,
+            _ => null,
+          },
+        ),
+      );
 
   /// Issue #196 AC1: the fertile-window display is also suppressed by the
   /// Perimenopause life-stage mode, on top of the care-mode gate — a

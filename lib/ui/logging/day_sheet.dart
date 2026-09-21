@@ -565,7 +565,14 @@ class _DaySheetState extends State<DaySheet> {
   }
 
   /// The mode's headings and surfacing order (Issue #131).
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  ///
+  /// Issue #853: only the mode-axis fields (category order/headings) are
+  /// read here, and none of them vary with the irregular-framing flag
+  /// (composition never touches categories), so the composed axis is
+  /// deliberately not plumbed into this widget — `irregularFraming: false`
+  /// selects exactly the same category fields the flag-on copy would.
+  CareModeCopy get _copy =>
+      careModeCopyFor(widget.mode, irregularFraming: false);
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated

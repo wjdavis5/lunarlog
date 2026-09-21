@@ -260,6 +260,7 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       displayName: result.displayName,
       isMinor: result.isMinor,
       mode: result.mode,
+      irregularFraming: result.irregularFraming,
       birthYear: result.birthYear,
       relationship: result.relationship,
     );
@@ -326,6 +327,9 @@ class _ProfilePickerScreenState extends State<ProfilePickerScreen> {
       displayName: result.displayName,
       isMinor: result.isMinor,
       mode: result.mode,
+      // Issue #853: always passed explicitly — the dialog result already
+      // carries the profile's stored tri-state for an untouched control.
+      irregularFraming: result.irregularFraming,
       birthYear: result.birthYear,
       relationship: result.relationship,
     );

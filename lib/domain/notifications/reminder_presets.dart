@@ -35,14 +35,24 @@ class ReminderPreset {
       ReminderPreset(upcoming: false, late: false);
 }
 
-/// The preset for [mode]. A switch expression naming every mode (no `_`
+/// The preset for [mode], composed with the irregular-framing flag
+/// (Issue #853). A switch expression naming every mode (no `_`
 /// wildcard): adding a [ProfileMode] without a preset is a compile error.
-ReminderPreset reminderPresetFor(ProfileMode mode) => switch (mode) {
+/// [irregularFraming] composes the same way the copy registry does: the
+/// base mode's preset, minus the "late" nags — overdue framing is wrong
+/// rather than useful for a profile whose framing treats variation as
+/// expected (teen + flag, or any mode + flag).
+ReminderPreset reminderPresetFor(
+  ProfileMode mode, {
+  bool irregularFraming = false,
+}) {
+  final base = switch (mode) {
       // The default experience is unchanged: both reminder types on.
       ProfileMode.standard => ReminderPreset.all,
-      ProfileMode.teen =>
-        const ReminderPreset(upcoming: true, late: false),
+      ProfileMode.teen => const ReminderPreset(upcoming: true, late: false),
       ProfileMode.caregiver => ReminderPreset.none,
-      ProfileMode.irregular =>
-        const ReminderPreset(upcoming: true, late: false),
+      ProfileMode.irregular => const ReminderPreset(upcoming: true, late: false),
     };
+  if (!irregularFraming) return base;
+  return ReminderPreset(upcoming: base.upcoming, late: false);
+}

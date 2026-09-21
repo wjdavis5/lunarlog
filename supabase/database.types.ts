@@ -1145,6 +1145,7 @@ export type Database = {
           deleted_at: string | null
           display_name: string
           id: string
+          irregular_framing: boolean | null
           is_minor: boolean
           last_period_start: string | null
           mode: string
@@ -1168,6 +1169,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string
           id: string
+          irregular_framing?: boolean | null
           is_minor?: boolean
           last_period_start?: string | null
           mode?: string
@@ -1191,6 +1193,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string
           id?: string
+          irregular_framing?: boolean | null
           is_minor?: boolean
           last_period_start?: string | null
           mode?: string

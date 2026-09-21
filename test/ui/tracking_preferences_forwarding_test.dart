@@ -78,9 +78,9 @@ final TrackingPreferences kCuratedPreferences = TrackingPreferences({
 });
 
 final String kPartyingLabel =
-    careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+    careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(TagCategory.partying);
 final String kSexLifeLabel =
-    careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.sexLife);
+    careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(TagCategory.sexLife);
 
 /// Creates the one fixture every test below opens a day sheet for: a minor
 /// profile with [kCuratedPreferences] stored.
