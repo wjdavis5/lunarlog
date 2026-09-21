@@ -571,17 +571,22 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   /// caller is leaving vs. removing someone else) isn't counted against
   /// [_revoke] itself.
   Future<bool?> _confirmRevoke(ProfileGuardian guardian) {
-    final roleLabel = guardianRoleLabel(
-      AppLocalizations.of(context),
-      guardian.role,
-    );
+    final l10n = AppLocalizations.of(context);
+    final roleLabel = guardianRoleLabel(l10n, guardian.role);
+    final isSelf = guardian.userId == widget.currentUserId;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Remove ${guardian.displayName ?? roleLabel}?'),
+        title: Text(
+          isSelf
+              ? l10n.manageGuardiansLeaveProfileDialogTitle(
+                  widget.profile.displayName,
+                )
+              : 'Remove ${guardian.displayName ?? roleLabel}?',
+        ),
         content: SingleChildScrollView(
           child: Text(
-            guardian.userId == widget.currentUserId
+            isSelf
                 ? 'You will leave this profile and no longer receive updates or sync its entries.'
                 : 'This guardian will lose access to ${widget.profile.displayName}\'s calendar and entries.',
           ),
@@ -593,7 +598,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ),
           DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Remove'),
+            child: Text(isSelf ? l10n.manageGuardiansLeaveProfileConfirm : 'Remove'),
           ),
         ],
       ),
@@ -1214,7 +1219,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final title = connection.pending
         ? (connection.recipientLabel?.isNotEmpty == true
               ? connection.recipientLabel!
-              : 'Waiting for code redemption')
+              : l10n.manageGuardiansWaitingForRedemption)
         : (connection.recipientLabel?.isNotEmpty == true
               ? connection.recipientLabel!
               : 'Sharing predictions');

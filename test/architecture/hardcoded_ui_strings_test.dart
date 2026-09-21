@@ -48,15 +48,15 @@ import 'hardcoded_ui_strings_scanner.dart';
 /// The backlog this guard landed with (issue #460). Decrement it with
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
-const int _initialAllowlistSize = 367;
+const int _initialAllowlistSize = 355;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 29,
-  'lib/ui/account/delete_account_dialog.dart': 8,
+  'lib/ui/account/account_section.dart': 27,
+  'lib/ui/account/delete_account_dialog.dart': 7,
   'lib/ui/account/mfa_settings_section.dart': 1,
   'lib/ui/account/mfa_step_up_dialog.dart': 1,
   'lib/ui/account/password_recovery_screen.dart': 4,
@@ -92,21 +92,21 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 11,
+  'lib/ui/settings/health_sync_screen.dart': 10,
   'lib/ui/settings/import_screen.dart': 4,
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
   'lib/ui/sharing/accept_invite_sheet.dart': 5,
   'lib/ui/sharing/accept_prediction_connection_sheet.dart': 4,
   'lib/ui/sharing/activity_feed_screen.dart': 3,
-  'lib/ui/sharing/claim_profile_sheet.dart': 4,
+  'lib/ui/sharing/claim_profile_sheet.dart': 2,
   'lib/ui/sharing/invite_guardian_dialog.dart': 13,
-  'lib/ui/sharing/manage_guardians_screen.dart': 46,
+  'lib/ui/sharing/manage_guardians_screen.dart': 44,
   'lib/ui/sharing/notification_preferences_screen.dart': 20,
   'lib/ui/sharing/prediction_connection_calendar_screen.dart': 1,
-  'lib/ui/sharing/prediction_connections_screen.dart': 15,
-  'lib/ui/sharing/share_predictions_dialog.dart': 10,
-  'lib/ui/sharing/transfer_ownership_screen.dart': 21,
+  'lib/ui/sharing/prediction_connections_screen.dart': 13,
+  'lib/ui/sharing/share_predictions_dialog.dart': 9,
+  'lib/ui/sharing/transfer_ownership_screen.dart': 20,
   'lib/ui/startup/fail_closed_screen.dart': 2,
   'lib/ui/web/dev_banner.dart': 8,
 };

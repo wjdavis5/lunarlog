@@ -24,8 +24,11 @@ enum ParentPostTransferRole {
   };
 
   /// Human-readable label for the role picker shown when arming a transfer.
+  /// Issue #1003: `coManager` is the `co_parent` role, so it reads as the
+  /// canonical "Co-Parent" label the rest of the app uses — never
+  /// "Co-manager".
   String get label => switch (this) {
-    ParentPostTransferRole.coManager => 'Co-manager',
+    ParentPostTransferRole.coManager => 'Co-Parent',
     ParentPostTransferRole.viewer => 'Viewer',
   };
 

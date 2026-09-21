@@ -46,10 +46,11 @@ void main() {
       expect(teen.categoriesInOrder.first, TagCategory.body);
     });
 
-    test('only irregular silences the late banner (Issue #131)', () {
+    test('irregular and teen silence the late banner (Issue #131, #998); '
+        'standard and caregiver keep it', () {
       expect(careModeCopyFor(ProfileMode.irregular, irregularFraming: false).silencesLateBanner, isTrue);
       expect(careModeCopyFor(ProfileMode.standard, irregularFraming: false).silencesLateBanner, isFalse);
-      expect(careModeCopyFor(ProfileMode.teen, irregularFraming: false).silencesLateBanner, isFalse);
+      expect(careModeCopyFor(ProfileMode.teen, irregularFraming: false).silencesLateBanner, isTrue);
       expect(
         careModeCopyFor(ProfileMode.caregiver, irregularFraming: false).silencesLateBanner,
         isFalse,
@@ -336,9 +337,9 @@ void main() {
         copy.overdueActionLabel,
       ].join(' ').toLowerCase();
       expect(surfaced, isNot(contains('late')));
-      // The adult composition keeps the legacy irregular mode's exact
-      // quiet line, which the pre-#853 suite already pins as late-free.
-      expect(copy.overdueStatusLabel, contains('expected'));
+      // Issue #998: the teen composition now shares the base teen's own
+      // quiet line, which is late-free and tier-independent.
+      expect(copy.overdueStatusLabel, contains('normal'));
     });
 
     test('teen + irregular offers exactly one action: "log it when it '
@@ -472,5 +473,57 @@ void main() {
       expect(reminderPresetFor(ProfileMode.teen).late, isFalse);
     }
     );
+  });
+
+  group('issue #998: teen mode avoids late framing at every tier', () {
+    test('teen silences the late banner and carries its own quiet line '
+        'whether or not the irregular framing is composed', () {
+      const expected =
+          'No new period logged yet — a few days either way is normal.';
+      for (final framed in [false, true]) {
+        final copy =
+            careModeCopyFor(ProfileMode.teen, irregularFraming: framed);
+        expect(copy.silencesLateBanner, isTrue, reason: 'framed=$framed');
+        expect(copy.overdueStatusLabel, expected, reason: 'framed=$framed');
+        expect(copy.overdueActionLabel, 'Log it when it comes',
+            reason: 'framed=$framed');
+      }
+    });
+
+    test('every surfaced teen tier string is free of "late" — the framing '
+        'axis no longer decides the overdue wording', () {
+      final surfaced = [
+        careModeCopyFor(ProfileMode.teen, irregularFraming: false),
+        careModeCopyFor(ProfileMode.teen, irregularFraming: true),
+      ]
+          .expand((copy) => [
+                copy.notEnoughTitle,
+                copy.notEnoughBody(2, 3),
+                copy.nextEstimateLabel,
+                copy.overdueStatusLabel,
+                copy.overdueActionLabel,
+              ])
+          .join(' ')
+          .toLowerCase();
+      expect(surfaced, isNot(contains('late')));
+      expect(surfaced, isNot(contains('skip')));
+    });
+
+    test('the separate axis still works: teen at high confidence lifts the '
+        'range/tier/caption framing while keeping the quiet overdue line', () {
+      expect(
+        irregularFramingInEffect(
+            mode: ProfileMode.teen,
+            stored: null,
+            tier: CycleConfidence.high),
+        isFalse,
+        reason: 'high confidence still lifts the irregular-cycles framing',
+      );
+      final highTierTeen =
+          careModeCopyFor(ProfileMode.teen, irregularFraming: false);
+      expect(highTierTeen.silencesLateBanner, isTrue);
+      expect(highTierTeen.showsTierCaption, isTrue);
+      expect(highTierTeen.showsFertileWindow, isTrue);
+    });
   });
 }

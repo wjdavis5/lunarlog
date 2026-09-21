@@ -87,7 +87,7 @@ void main() {
       expect(fields, findsNWidgets(2));
       await tester.enterText(fields.at(0), 'Luna');
       await tester.enterText(fields.at(1), 'Dad');
-      await tester.tap(find.text('Become Owner'));
+      await tester.tap(find.text('Become Primary Guardian'));
       await tester.pumpAndSettle();
 
       expect(result, isNotNull);
@@ -117,7 +117,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Become Owner'));
+      await tester.tap(find.text('Become Primary Guardian'));
       await tester.pumpAndSettle();
 
       expect(service.claimCalls.single.childDisplayName, isNull);
@@ -142,7 +142,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Become Owner'));
+      await tester.tap(find.text('Become Primary Guardian'));
       await tester.pumpAndSettle();
 
       expect(find.text('This transfer link has expired.'), findsOneWidget);
@@ -168,7 +168,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Become Owner'));
+      await tester.tap(find.text('Become Primary Guardian'));
       await tester.pumpAndSettle();
 
       expect(
@@ -196,7 +196,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Become Owner'));
+      await tester.tap(find.text('Become Primary Guardian'));
       await tester.pumpAndSettle();
 
       expect(find.text('An unexpected error occurred.'), findsOneWidget);

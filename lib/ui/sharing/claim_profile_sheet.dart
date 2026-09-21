@@ -134,7 +134,10 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Become Owner'),
+                : Text(
+                    AppLocalizations.of(context)
+                        .claimProfileBecomeGuardianAction,
+                  ),
           ),
         ],
       );
@@ -168,9 +171,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                 _titleRow(theme),
                 const SizedBox(height: 12),
                 Text(
-                  'Claiming this link makes you the owner of this profile. The '
-                  'parent who shared it keeps the role they chose, and every '
-                  'past entry stays with whoever originally logged it.',
+                  AppLocalizations.of(context).claimProfileBody,
                   style: theme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 16),

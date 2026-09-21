@@ -100,6 +100,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     if (_invite != null) {
       return AlertDialog(
@@ -130,8 +131,8 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               const SizedBox(height: 12),
               Text(
                 'They will see estimated period, fertile, ovulation, and PMS '
-                'days on a read-only calendar — no notes or logs. The code '
-                'expires in 72 hours and can be redeemed once.',
+                'days on a read-only calendar — no notes or logs. '
+                '${l10n.sharePredictionsLinkExpiry}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -174,7 +175,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
           FilledButton.icon(
             onPressed: _copyCode,
             icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copy Link'),
+            label: Text(l10n.sharePredictionsCopyLink),
           ),
         ],
       );

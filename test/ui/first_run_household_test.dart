@@ -519,10 +519,10 @@ void main() {
       expect(find.byKey(const ValueKey('first-run-invite-step')),
           findsOneWidget);
       expect(find.text('Invite a guardian'), findsNWidgets(2));
-      expect(find.text('Invite Riley to log her own profile'), findsOneWidget,
+      expect(find.text('Invite Riley to log their own profile'), findsOneWidget,
           reason: '#966\'s subject preset is offered for the minor\'s own '
               'profile');
-      expect(find.text('Invite Nova to log her own profile'), findsNothing,
+      expect(find.text('Invite Nova to log their own profile'), findsNothing,
           reason: 'the operator\'s own profile is not a subject invite');
 
       // The co-parent invite rides the existing dialog and asks the
@@ -561,7 +561,7 @@ void main() {
       await h.createCaredForProfile('Riley');
       await h.tapKey('first-run-wrap-up-continue');
 
-      await tester.tap(find.text('Invite Riley to log her own profile'));
+      await tester.tap(find.text('Invite Riley to log their own profile'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Create Link'));
       await tester.tap(find.text('Create Link'));
