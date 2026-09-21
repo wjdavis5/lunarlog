@@ -47,6 +47,7 @@ import 'package:lunarlog/data/auth/auth_gateway.dart';
 import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/data/auth/passkey_ceremony_client.dart';
+import 'package:lunarlog/data/auth/web_url_cleaner.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -71,6 +72,7 @@ class SupabaseAuthService
     required this._links,
     String? redirectTo,
     Uri? webInitialUri,
+    WebUrlCleaner? webUrlCleaner,
     bool? appleAvailable,
     this._requestAppleCredential = defaultAppleCredentialRequest,
     bool? googleAvailable,
@@ -81,6 +83,7 @@ class SupabaseAuthService
   })  : _redirectTo =
             redirectTo ?? resolveAuthRedirectUrl(isWeb: kIsWeb, base: Uri.base),
         _webInitialUri = webInitialUri ?? (kIsWeb ? Uri.base : null),
+        _cleanWebUrl = webUrlCleaner ?? replaceBrowserUrl,
         _appleAvailable = appleAvailable ??
             computeAppleSignInAvailable(
               isWeb: kIsWeb,
@@ -106,6 +109,15 @@ class SupabaseAuthService
   /// web callback without a browser.
   @override
   final Uri? _webInitialUri;
+
+  /// Rewrites the browser URL after a web auth callback is handled (epic
+  /// #831 slice 4): the spent `code` removed on success, the provider's
+  /// `error` parameters removed when the link was rejected, so a reload
+  /// cannot replay the exchange and surface a bogus expired-link failure.
+  /// Defaults to [replaceBrowserUrl]; injectable so tests record the cleaned
+  /// [Uri] without a browser.
+  @override
+  final WebUrlCleaner _cleanWebUrl;
 
   @override
   final bool _appleAvailable;
