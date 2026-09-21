@@ -257,6 +257,21 @@ void main() {
   test('lib/ui/care stays fully localized (issue #1004 tranche 3)',
       () => expectDirectoryFullyLocalized('lib/ui/care', 'care'));
 
+  test('lib/ui/logging stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/logging', 'logging'));
+
+  test('lib/ui/help stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/help', 'help'));
+
+  test('lib/ui/content stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/content', 'content'));
+
+  test('lib/ui/startup stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/startup', 'startup'));
+
+  test('lib/ui/web stays fully localized (issue #1004 tranche 4b)',
+      () => expectDirectoryFullyLocalized('lib/ui/web', 'web'));
+
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
   // can take": without this, a scanner that silently stopped matching
