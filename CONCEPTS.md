@@ -15,3 +15,10 @@ The implementation subagent a coordinator dispatches for exactly one issue. It w
 ## Claim
 
 A coordinator's public taking of an issue, recorded as labels on the issue itself. The labels are the sole source of ownership truth; a coordinator's own state files are only a bookkeeping cache of its actions and never determine what belongs to whom.
+
+## Teen mode and the "late" framing
+
+Teen care mode never uses "late" framing. A teenager's cycles are still settling, so a few days either way is normal, and "late" can read as a failure when nothing is wrong. A teen profile therefore always shows a quiet overdue line ("No new period logged yet — a few days either way is normal.") with a single "log it when it comes" action; the error-styled late resolver never renders. This holds at every confidence tier, not just while a profile is new.
+
+The irregular-cycles framing is a separate axis. That switch (default on for a teen until its cycles reach high confidence) controls whether estimates are hedged as ranges, whether the tier caption shows, and whether the fertile-window estimate appears. It is not what keeps "late" away from a teen — teen mode does that on its own.
+

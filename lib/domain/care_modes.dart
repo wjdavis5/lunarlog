@@ -24,10 +24,17 @@
 /// irregularFraming: ...)`). The composition keeps the base mode's voice —
 /// teen stays teen — and overlays the variance-expecting framing: a
 /// range-style estimate label, a quiet non-alarm overdue line replacing the
-/// error-styled late resolver, no tier caption, no fertile window. A teen
-/// profile defaults to the flag ON until its engine confidence reaches
-/// `CycleConfidence.high` (`irregularFramingInEffect`), so teen mode never
-/// says "late" out of the box.
+/// error-styled late resolver, no tier caption, no fertile window.
+///
+/// Issue #998: teen mode avoids "late" framing at *every* engine tier, not
+/// only while the flag is on. A teen's cycles are still settling, and
+/// "late" reads as a failure, so `_teen` carries its own quiet overdue line
+/// ("No new period logged yet — a few days either way is normal.") and
+/// `silencesLateBanner: true` unconditionally. The irregular-cycles framing
+/// flag is a *separate* axis: it still governs the range estimate, the tier
+/// caption and the fertile window (and defaults ON for a teen until
+/// `CycleConfidence.high`, [irregularFramingInEffect]), but it no longer
+/// decides whether the teen sees the error-styled late resolver.
 library;
 
 import 'models/profile_mode.dart';
@@ -90,15 +97,26 @@ String _composedNextEstimateLabel(ProfileMode mode) => switch (mode) {
       _ => 'Next period may start around:',
     };
 
+/// Issue #998: the teen mode's own quiet overdue line, shown at *every*
+/// engine tier. A teen's cycles are still settling, so a few days either
+/// way is normal, and "late" would read as a failure. The irregular-cycles
+/// framing flag is a separate axis ([irregularFramingInEffect]); the teen's
+/// overdue wording no longer depends on it.
+const String _teenOverdueStatusLabel =
+    'No new period logged yet — a few days either way is normal.';
+
+/// Issue #998: the single action the teen quiet line offers — the same
+/// "log it when it comes" the #853 composition already carried.
+const String _teenOverdueActionLabel = 'Log it when it comes';
+
 /// Issue #853: the quiet overdue line replacing the error-styled late
-/// resolver when the flag composes. Teen keeps its body-literacy register
-/// ("still forming"); the other modes keep the legacy `irregular` mode's
-/// exact line, which existing irregular-mode profiles already see. Neither
-/// variant says "late" — variation is expected, not overdue.
+/// resolver when the flag composes. Teen now uses its own tier-independent
+/// line ([_teenOverdueStatusLabel], issue #998); the other modes keep the
+/// legacy `irregular` mode's exact line, which existing irregular-mode
+/// profiles already see. Neither variant says "late" — variation is
+/// expected, not overdue.
 String _composedOverdueStatusLabel(ProfileMode mode) => switch (mode) {
-      ProfileMode.teen =>
-        'No new period logged yet — cycles often vary while a pattern is '
-            'still forming, and that is expected.',
+      ProfileMode.teen => _teenOverdueStatusLabel,
       _ => _irregular.overdueStatusLabel,
     };
 
@@ -107,7 +125,7 @@ String _composedOverdueStatusLabel(ProfileMode mode) => switch (mode) {
 /// carries one; the adult composition stays a text-only line, exactly the
 /// behavior the legacy `irregular` mode had.
 String _composedOverdueActionLabel(ProfileMode mode) => switch (mode) {
-      ProfileMode.teen => 'Log it when it comes',
+      ProfileMode.teen => _teenOverdueActionLabel,
       _ => '',
     };
 
@@ -164,11 +182,9 @@ class CareModeCopy {
 
   /// Whether the late resolver (the error-styled banner with log-it /
   /// skip-cycle / remind-me actions) is suppressed for this mode. The
-  /// legacy `irregular` mode and every composed (mode + irregular,
-  /// Issue #853) copy silence it — and, since #853, a `teen` profile
-  /// carries the flag by default until its engine confidence reaches
-  /// `CycleConfidence.high` (`irregularFramingInEffect`), so a
-  /// first-year tracker never sees the banner.
+  /// legacy `irregular` mode, every composed (mode + irregular, Issue #853)
+  /// copy, and `teen` (Issue #998, at every engine tier) silence it — so a
+  /// teen never sees the banner, whether or not its cycles have steadied.
   final bool silencesLateBanner;
 
   /// Whether the overview's tier caption (issue #213: the short
@@ -276,8 +292,13 @@ const CareModeCopy _teen = CareModeCopy(
   notEnoughTitle: 'Your record is just getting started',
   notEnoughBody: _teenNotEnoughBody,
   nextEstimateLabel: 'Your next period is estimated around:',
-  overdueStatusLabel: '',
-  silencesLateBanner: false,
+  overdueStatusLabel: _teenOverdueStatusLabel,
+  overdueActionLabel: _teenOverdueActionLabel,
+  // Issue #998: teen mode avoids "late" framing at every tier — a teen's
+  // cycles are still settling, and "late" reads as a failure. This is
+  // independent of the irregular-cycles framing flag, which only controls
+  // the range estimate, the tier caption and the fertile window.
+  silencesLateBanner: true,
   showsTierCaption: true,
   showsFertileWindow: true,
   // Issue #143 review: plainer, less clinical phrasing than
@@ -476,7 +497,10 @@ CareModeCopy careModeCopyFor(
 ///     also reads ON: the early, no-history months are exactly when the
 ///     alarm framing would be wrong). Once the cycles steady into `high`,
 ///     the framing lifts on its own; if they later become genuinely
-///     irregular again, the tier drops and the framing returns.
+///     irregular again, the tier drops and the framing returns. Issue
+///     #998: this axis controls the range estimate, tier caption and
+///     fertile window only — a teen's quiet overdue line and suppressed
+///     late resolver hold at every tier regardless of its value.
 ///   * every other mode — OFF.
 ///
 /// Pure; the caller supplies the tier the prediction stream already holds.

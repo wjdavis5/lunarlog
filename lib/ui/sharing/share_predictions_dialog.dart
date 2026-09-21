@@ -128,7 +128,9 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               ),
               const SizedBox(height: 12),
               Text(
-                l10n.sharingSharePredictionsCreatedBody,
+                l10n.sharingSharePredictionsCreatedBody(
+                  l10n.sharePredictionsLinkExpiry,
+                ),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -171,7 +173,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
           FilledButton.icon(
             onPressed: _copyCode,
             icon: const Icon(Icons.copy, size: 16),
-            label: Text(l10n.sharingSharePredictionsCopyLink),
+            label: Text(l10n.sharePredictionsCopyLink),
           ),
         ],
       );

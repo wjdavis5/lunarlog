@@ -203,7 +203,7 @@ class _PredictionConnectionsScreenState
         key: const ValueKey('enter-prediction-code'),
         onPressed: _enterCode,
         icon: const Icon(Icons.vpn_key_outlined),
-        label: Text(l10n.sharingPredictionConnectionsEnterCode),
+        label: Text(l10n.predictionEnterLinkAction),
       ),
       body: FutureBuilder<List<IncomingPredictionConnection>>(
         future: _connectionsFuture,
@@ -344,7 +344,7 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(l10n.sharingPredictionConnectionsEnterCodeTitle),
+      title: Text(l10n.predictionEnterLinkTitle),
       content: TextField(
         key: const ValueKey('prediction-code-field'),
         controller: _controller,
@@ -354,7 +354,7 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => Navigator.of(context).pop(_controller.text.trim()),
         decoration: InputDecoration(
-          hintText: l10n.sharingPredictionConnectionsCodeHint,
+          hintText: l10n.predictionEnterLinkHint,
         ),
       ),
       actions: [

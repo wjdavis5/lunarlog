@@ -295,6 +295,66 @@ enum HealthKitChannelHandler {
     HKCategoryTypeIdentifier.appetiteChanges.rawValue: .appetiteChanges,
   ]
 
+  /// Apple's four computed cycle-deviation category types (Issue #799,
+  /// deferred from #217), resolved by their canonical
+  /// `HKCategoryTypeIdentifier` **raw-value** strings rather than the enum
+  /// cases: the types are iOS 16-only while this target deploys to iOS 15,
+  /// and `init(rawValue:)` is available at the older floor.
+  ///
+  /// **These are read-only, permanently.** They are Apple-computed from the
+  /// user's own logged data, and App Review 5.1.3 forbids writing derived
+  /// data into HealthKit. This table is consumed only by the read path
+  /// (`readCycleDeviations`) and the read authorization set
+  /// (`deviationReadTypes`); it is deliberately absent from
+  /// `writtenCategoryTypeIdentifiers`, so no write or delete path can reach
+  /// it. The Dart side sends the same raw-value strings
+  /// (`HealthDeviationKind.healthKitIdentifier`), and
+  /// `test/release/health_deviation_read_types_test.dart` parses this table
+  /// and pins the two together.
+  static let deviationKinds: [(wire: String, identifier: String)] = [
+    (
+      wire: "irregularMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierIrregularMenstrualCycles"
+    ),
+    (
+      wire: "infrequentMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierInfrequentMenstrualCycles"
+    ),
+    (
+      wire: "prolongedMenstrualPeriods",
+      identifier: "HKCategoryTypeIdentifierProlongedMenstrualPeriods"
+    ),
+    (
+      wire: "persistentIntermenstrualBleeding",
+      identifier: "HKCategoryTypeIdentifierPersistentIntermenstrualBleeding"
+    ),
+  ]
+
+  /// The four deviation types as `HKCategoryType`s for the read
+  /// authorization set. The iOS 16-only identifiers resolve to nil (and are
+  /// dropped by `compactMap`) on an older OS, so the requested set is simply
+  /// smaller there. Never added to the write/share set.
+  static var deviationReadTypes: [HKCategoryType] {
+    deviationKinds.compactMap { entry in
+      HKObjectType.categoryType(
+        forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+    }
+  }
+
+  /// Resolves a wire name (or a canonical raw-value string) to its
+  /// `HKCategoryType`, or nil when the caller asked for something outside
+  /// the closed set — a protocol error the handler reports rather than
+  /// silently ignoring.
+  static func deviationCategoryType(forWire wire: String) -> HKCategoryType? {
+    guard
+      let entry = deviationKinds.first(where: {
+        $0.wire == wire || $0.identifier == wire
+      })
+    else { return nil }
+    return HKObjectType.categoryType(
+      forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+  }
+
   /// Every HealthKit **category** type this app's write path can produce,
   /// as the `HKCategoryTypeIdentifier` case names the `write*` handlers
   /// resolve: #193' flow types, #238's symptom categories, and #228's
@@ -531,12 +591,18 @@ enum HealthKitChannelHandler {
       // The read set below is deliberately unchanged (issue #766 governs
       // reads).
       let toShare = Set(writtenSampleTypes)
-      // Issue #217: the read set is no longer empty. It carries only the
-      // menstrual-flow type the user-initiated import reads; the four
-      // Apple-computed cycle-deviation types are deliberately NOT requested
-      // and are never read or written. The one system sheet now covers both
-      // the write types and the read type.
-      let toRead: Set<HKObjectType> = [menstrualFlowType]
+      // Issue #217: the read set is no longer empty. It carries the
+      // menstrual-flow type the user-initiated import reads, plus (Issue
+      // #799) the four Apple-computed cycle-deviation types the overview
+      // insight reads. The deviation types are read-only, permanently:
+      // they are joined to `toRead` only and never to `toShare`, and no
+      // write/delete path resolves them. `deviationReadTypes` drops the
+      // iOS 16-only identifiers on an older OS, so the requested set is
+      // simply smaller there. The one system sheet covers both the write
+      // types and the read types.
+      let toRead: Set<HKObjectType> = Set(
+        [menstrualFlowType as HKObjectType]
+          + deviationReadTypes.map { $0 as HKObjectType })
       Task {
         do {
           // iOS's sheet reports completion, not the user's choice —
@@ -1031,6 +1097,66 @@ enum HealthKitChannelHandler {
         }
       }
 
+    case "readCycleDeviations":
+      // Issue #799 (deferred from #217): Apple's four computed cycle-deviation
+      // types, read-only. Guarded identically to every other read/write (the
+      // device-binding decision is the same); the caller sends its closed kind
+      // list, resolved here against `deviationKinds` so an unknown wire name
+      // is a bad-args protocol error rather than a silent skip. Success
+      // returns an array of primitive maps (StandardMessageCodec), never a
+      // result string; authorization opacity means a denied read arrives as an
+      // empty array. Nothing here can write a deviation type.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "readCycleDeviations requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value
+      else {
+        badArgs(result, "readCycleDeviations requires startMs/endMs")
+        return
+      }
+      let requested = (args?["kinds"] as? [String]) ?? []
+      var requestedPairs: [(wire: String, type: HKCategoryType)] = []
+      for wire in requested {
+        guard
+          let entry = deviationKinds.first(where: {
+            $0.wire == wire || $0.identifier == wire
+          }),
+          let type = deviationCategoryType(forWire: wire)
+        else {
+          badArgs(result, "readCycleDeviations unknown kind: \(wire)")
+          return
+        }
+        requestedPairs.append((wire: entry.wire, type: type))
+      }
+      Task {
+        do {
+          let payload = try await readCycleDeviationSamples(
+            types: requestedPairs,
+            start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+            end: Date(timeIntervalSince1970: Double(endMs) / 1000.0))
+          result(payload)
+        } catch {
+          result(
+            FlutterError(
+              code: "readFailed",
+              message:
+                "readCycleDeviations failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
+
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -1141,6 +1267,49 @@ enum HealthKitChannelHandler {
       let next = cursorString(for: page.newAnchor)
     {
       payload["nextCursor"] = next
+    }
+    return payload
+  }
+
+  /// Reads Apple's computed cycle-deviation samples (Issue #799, read-only)
+  /// in `[start, end]` for each requested `(wire, type)` pair and flattens
+  /// each into the primitive map `health_channel_codec.dart`'s
+  /// `decodeHealthDeviationReadResult` parses.
+  ///
+  /// **No echo prevention is needed here.** lunarlog never writes these
+  /// types (App Review 5.1.3 — they are Apple's own derived data), so no
+  /// sample can be this app's own. Apple's computed samples carry no
+  /// `HKMetadataKeyTimeZone`, so each sample's zone is this device's UTC
+  /// offset at the sample's instant, flagged `zoneOffsetInferred` — the
+  /// same #902 contract the flow read uses, so Dart resolves and reports the
+  /// civil date honestly.
+  private static func readCycleDeviationSamples(
+    types: [(wire: String, type: HKCategoryType)],
+    start: Date,
+    end: Date
+  ) async throws -> [[String: Any]] {
+    let predicate = HKQuery.predicateForSamples(
+      withStart: start, end: end, options: [])
+    var payload: [[String: Any]] = []
+    for pair in types {
+      let samples = try await querySamples(
+        ofType: pair.type, predicate: predicate)
+      for case let sample as HKCategorySample in samples {
+        var entry: [String: Any] = [
+          "kind": pair.wire,
+          "recordId": sample.uuid.uuidString,
+          "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+          "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+        ]
+        if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+          entry["tzName"] = tz
+        } else {
+          entry["zoneOffsetSeconds"] =
+            TimeZone.current.secondsFromGMT(for: sample.startDate)
+          entry["zoneOffsetInferred"] = true
+        }
+        payload.append(entry)
+      }
     }
     return payload
   }

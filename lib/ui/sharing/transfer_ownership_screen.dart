@@ -109,7 +109,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         title: Text(l10n.sharingTransferOwnershipConfirmTitle),
         content: SingleChildScrollView(
           child: Text(
-            l10n.sharingTransferOwnershipConfirmBody(
+            l10n.transferOwnershipConfirmBody(
               widget.profile.displayName,
               role.label,
             ),
@@ -368,9 +368,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 8),
         _bullet(
-          l10n.sharingTransferOwnershipBulletOwner(
-            widget.profile.displayName,
-          ),
+          l10n.transferOwnershipBecomesGuardian(widget.profile.displayName),
         ),
         _bullet(l10n.sharingTransferOwnershipBulletKeepRole),
         _bullet(l10n.sharingTransferOwnershipBulletRemoveAccess),
@@ -418,8 +416,8 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         const SizedBox(height: 8),
         Text(
           _selectedRole == ParentPostTransferRole.viewer
-              ? l10n.sharingTransferOwnershipViewerDetail
-              : l10n.sharingTransferOwnershipCoManagerDetail,
+              ? l10n.transferOwnershipRoleViewer
+              : l10n.transferOwnershipRoleCoParent,
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 12),

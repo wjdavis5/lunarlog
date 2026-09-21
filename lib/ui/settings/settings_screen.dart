@@ -39,6 +39,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -490,6 +491,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           binding: HealthSyncBinding(context.read<SettingsStore>()),
           signedInUserId: signedInUserId,
           importer: Provider.of<HealthImportRunner?>(context, listen: false),
+          // Issue #799: refreshes the overview's deviation snapshot after a
+          // pass. Null on a build with no health sync, in which case the
+          // import simply skips it.
+          deviationInsights: Provider.of<HealthDeviationInsights?>(
+            context,
+            listen: false,
+          ),
           // Issue #959: the OS permission status line reads this narrow
           // probe (never the write port). Null on a build with no native
           // permission surface, in which case the screen renders no line.

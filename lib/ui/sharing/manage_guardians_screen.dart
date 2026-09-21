@@ -578,17 +578,22 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
   Future<bool?> _confirmRevoke(ProfileGuardian guardian) {
     final l10n = AppLocalizations.of(context);
     final roleLabel = guardianRoleLabel(l10n, guardian.role);
+    final isSelf = guardian.userId == widget.currentUserId;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          l10n.sharingManageGuardiansRemoveTitle(
-            guardian.displayName ?? roleLabel,
-          ),
+          isSelf
+              ? l10n.manageGuardiansLeaveProfileDialogTitle(
+                  widget.profile.displayName,
+                )
+              : l10n.sharingManageGuardiansRemoveTitle(
+                  guardian.displayName ?? roleLabel,
+                ),
         ),
         content: SingleChildScrollView(
           child: Text(
-            guardian.userId == widget.currentUserId
+            isSelf
                 ? l10n.sharingManageGuardiansLeaveBody
                 : l10n.sharingManageGuardiansRemoveBody(
                     widget.profile.displayName,
@@ -602,7 +607,11 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
           ),
           DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.sharingManageGuardiansRemove),
+            child: Text(
+              isSelf
+                  ? l10n.manageGuardiansLeaveProfileConfirm
+                  : l10n.sharingManageGuardiansRemove,
+            ),
           ),
         ],
       ),
@@ -1246,7 +1255,7 @@ class _ManageGuardiansScreenState extends State<ManageGuardiansScreen> {
     final title = connection.pending
         ? (connection.recipientLabel?.isNotEmpty == true
               ? connection.recipientLabel!
-              : l10n.sharingManageGuardiansPendingRedemption)
+              : l10n.manageGuardiansWaitingForRedemption)
         : (connection.recipientLabel?.isNotEmpty == true
               ? connection.recipientLabel!
               : l10n.sharingManageGuardiansSharingPredictions);

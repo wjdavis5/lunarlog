@@ -139,7 +139,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Text(l10n.sharingClaimProfileBecomeOwner),
+              : Text(l10n.claimProfileBecomeGuardianAction),
         ),
       ],
     );
@@ -175,7 +175,7 @@ class _ClaimProfileSheetState extends State<ClaimProfileSheet> {
                 _titleRow(context, theme),
                 const SizedBox(height: 12),
                 Text(
-                  l10n.sharingClaimProfileBody,
+                  l10n.claimProfileBody,
                   style: theme.textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 16),

@@ -2838,10 +2838,10 @@ abstract class AppLocalizations {
   /// **'That sign-in method already belongs to another account.'**
   String get authFailureIdentityTaken;
 
-  /// AuthSignUpClosedFailure copy.
+  /// AuthSignUpClosedFailure copy. Issue #1003: the old line blocked an invitee with no next step; this names who can invite them.
   ///
   /// In en, this message translates to:
-  /// **'New accounts for this app are set up by the account owner.'**
+  /// **'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.'**
   String get authFailureSignUpClosed;
 
   /// AuthLastSignInMethodFailure copy.
@@ -3726,16 +3726,16 @@ abstract class AppLocalizations {
   /// **'Update note'**
   String get guardianNotesUpdate;
 
-  /// Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.
+  /// Invite dialog (Issue #802): the 'their own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker. Issue #1003: gender-neutral — the preset is offered for daughter/son/child, so 'her' was wrong.
   ///
   /// In en, this message translates to:
-  /// **'Invite {name} to log her own profile'**
+  /// **'Invite {name} to log their own profile'**
   String inviteSubjectOption(String name);
 
-  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.
+  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Caregiver access - this is {name}\'s own profile, listed as hers on her device'**
+  /// **'Caregiver access - this is {name}\'s own profile, listed as theirs on their device'**
   String inviteSubjectOptionDetail(String name);
 
   /// Invite dialog, generated state: what to do with a helper invitation link.
@@ -3744,10 +3744,10 @@ abstract class AppLocalizations {
   /// **'Share this single-use link with the guardian for {profile}:'**
   String inviteCreatedShareGuardian(String profile);
 
-  /// Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.
+  /// Invite dialog, generated state (Issue #802): what to do with a 'their own profile' invitation link. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Share this single-use link with {name} - she\'ll use it to join and log her own profile:'**
+  /// **'Share this single-use link with {name} - they\'ll use it to join and log their own profile:'**
   String inviteCreatedShareSubject(String name);
 
   /// Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.
@@ -3954,6 +3954,174 @@ abstract class AppLocalizations {
   /// **'Couldn\'t confirm it\'s you — try again'**
   String get accountReauthFailed;
 
+  /// Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple Health noticed…'**
+  String get healthDeviationCardTitle;
+
+  /// Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged.
+  ///
+  /// In en, this message translates to:
+  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.'**
+  String get healthDeviationCardSubtitle;
+
+  /// Issue #799: tooltip on the deviation card's dismiss button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get healthDeviationDismiss;
+
+  /// Issue #799: label for Apple's irregularMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'irregular cycles'**
+  String get healthDeviationKindIrregular;
+
+  /// Issue #799: label for Apple's infrequentMenstrualCycles deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'infrequent cycles'**
+  String get healthDeviationKindInfrequent;
+
+  /// Issue #799: label for Apple's prolongedMenstrualPeriods deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'prolonged periods'**
+  String get healthDeviationKindProlonged;
+
+  /// Issue #799: label for Apple's persistentIntermenstrualBleeding deviation.
+  ///
+  /// In en, this message translates to:
+  /// **'bleeding between periods'**
+  String get healthDeviationKindPersistentIntermenstrualBleeding;
+
+  /// Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.
+  ///
+  /// In en, this message translates to:
+  /// **'Possible {kind} ({range})'**
+  String healthDeviationLine(String kind, String range);
+
+  /// Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} – {end}'**
+  String healthDeviationRange(String start, String end);
+
+  /// Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.
+  ///
+  /// In en, this message translates to:
+  /// **'{date}'**
+  String healthDeviationRangeSingle(String date);
+
+  /// Issue #1003: delete-account dialog body — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.'**
+  String get accountDeleteDialogBody;
+
+  /// Issue #1003: Settings delete-account tile subtitle — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the account, everything in it, and this device\'s copy.'**
+  String get accountDeleteTileSubtitle;
+
+  /// Issue #1003: the sign-out-everywhere confirmation body — plainer and shorter than the previous 'Ends every session…' copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.'**
+  String get accountSignOutEverywhereBody;
+
+  /// Issue #1003: transfer-ownership confirmation body. Names the canonical 'Primary Guardian' role and the continuing role the arming parent chose.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will become the Primary Guardian of this profile. You\'ll keep access as {role}, and they can remove that access at any time.'**
+  String transferOwnershipConfirmBody(String name, String role);
+
+  /// Issue #1003: transfer-ownership 'What changes' bullet — 'Primary Guardian', not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} becomes this profile\'s Primary Guardian.'**
+  String transferOwnershipBecomesGuardian(String name);
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the co_parent role — the canonical 'Co-Parent' label, not 'Co-manager'.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent: keep logging entries and managing this profile.'**
+  String get transferOwnershipRoleCoParent;
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the viewer role.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer: read-only access to their calendar and entries.'**
+  String get transferOwnershipRoleViewer;
+
+  /// Issue #1003: the revoke confirmation dialog title when the caller is removing their own row — 'Leave', not 'Remove <name>'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave {profile}\'s profile?'**
+  String manageGuardiansLeaveProfileDialogTitle(String profile);
+
+  /// Issue #1003: the confirm button on the caller's own leave dialog — 'Leave', not 'Remove'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get manageGuardiansLeaveProfileConfirm;
+
+  /// Issue #1003: pending prediction-connection tile title with no recipient label — plain language, not 'code redemption'.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for them to open the link'**
+  String get manageGuardiansWaitingForRedemption;
+
+  /// Issue #1003: the confirm action of the 'Sync {name} to this phone?' dialog — matches the title verb, not 'Bind'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync'**
+  String get healthSyncConfirmSyncAction;
+
+  /// Issue #1003: the recipient's manual-entry dialog title — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a connection link'**
+  String get predictionEnterLinkTitle;
+
+  /// Issue #1003: the recipient's manual-entry field hint — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the link you received'**
+  String get predictionEnterLinkHint;
+
+  /// Issue #1003: the recipient's manual-entry FAB label — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter link'**
+  String get predictionEnterLinkAction;
+
+  /// Issue #1003: the sharer's copy action — sentence case and one term ('link') with the recipient's entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get sharePredictionsCopyLink;
+
+  /// Issue #1003: the sharer's expiry note — says 'link', matching the copied artifact and the recipient's wording.
+  ///
+  /// In en, this message translates to:
+  /// **'The link expires in 72 hours and can be used once.'**
+  String get sharePredictionsLinkExpiry;
+
+  /// Issue #1003: the claim-transfer confirm button — names the canonical 'Primary Guardian' role, not 'Owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Become Primary Guardian'**
+  String get claimProfileBecomeGuardianAction;
+
+  /// Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
+  String get claimProfileBody;
+
   /// Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces.
   ///
   /// In en, this message translates to:
@@ -4055,18 +4223,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Decline'**
   String get sharingClaimProfileDecline;
-
-  /// Issue #1004 (tranche 1): claim-profile sheet become-owner button.
-  ///
-  /// In en, this message translates to:
-  /// **'Become Owner'**
-  String get sharingClaimProfileBecomeOwner;
-
-  /// Issue #1004 (tranche 1): claim-profile sheet body.
-  ///
-  /// In en, this message translates to:
-  /// **'Claiming this link makes you the owner of this profile. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
-  String get sharingClaimProfileBody;
 
   /// Issue #1004 (tranche 1): claim-profile sheet child-name field label.
   ///
@@ -4458,12 +4614,6 @@ abstract class AppLocalizations {
   /// **'Only the primary guardian can share predictions.'**
   String get sharingManageGuardiansPredictionsPrimaryOnly;
 
-  /// Issue #1004 (tranche 1): prediction-connection tile title while the code is unredeemed.
-  ///
-  /// In en, this message translates to:
-  /// **'Waiting for code redemption'**
-  String get sharingManageGuardiansPendingRedemption;
-
   /// Issue #1004 (tranche 1): prediction-connection tile title once active.
   ///
   /// In en, this message translates to:
@@ -4738,12 +4888,6 @@ abstract class AppLocalizations {
   /// **'Connection failed.'**
   String get sharingPredictionConnectionsFailed;
 
-  /// Issue #1004 (tranche 1): manual code entry action.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter code'**
-  String get sharingPredictionConnectionsEnterCode;
-
   /// Issue #1004 (tranche 1): inline error when incoming connections fail to load.
   ///
   /// In en, this message translates to:
@@ -4779,18 +4923,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Stop receiving'**
   String get sharingPredictionConnectionsStopTooltip;
-
-  /// Issue #1004 (tranche 1): manual code entry dialog title.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter connection code'**
-  String get sharingPredictionConnectionsEnterCodeTitle;
-
-  /// Issue #1004 (tranche 1): manual code entry field hint.
-  ///
-  /// In en, this message translates to:
-  /// **'Paste the code you received'**
-  String get sharingPredictionConnectionsCodeHint;
 
   /// Issue #1004 (tranche 1): manual code entry confirm action.
   ///
@@ -4879,8 +5011,8 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): share-predictions dialog generated-state body.
   ///
   /// In en, this message translates to:
-  /// **'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. The code expires in 72 hours and can be redeemed once.'**
-  String get sharingSharePredictionsCreatedBody;
+  /// **'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. {expiry}'**
+  String sharingSharePredictionsCreatedBody(String expiry);
 
   /// Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation.
   ///
@@ -4893,12 +5025,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Done'**
   String get sharingSharePredictionsDone;
-
-  /// Issue #1004 (tranche 1): share-predictions dialog copy-link action.
-  ///
-  /// In en, this message translates to:
-  /// **'Copy Link'**
-  String get sharingSharePredictionsCopyLink;
 
   /// Issue #1004 (tranche 1): share-predictions dialog title.
   ///
@@ -4948,15 +5074,6 @@ abstract class AppLocalizations {
   /// **'Transfer ownership?'**
   String get sharingTransferOwnershipConfirmTitle;
 
-  /// Issue #1004 (tranche 1): confirm dialog body before arming a transfer.
-  ///
-  /// In en, this message translates to:
-  /// **'{profileName} will become the owner of this profile. You\'ll keep access as {roleLabel}, and they can remove that access at any time.'**
-  String sharingTransferOwnershipConfirmBody(
-    String profileName,
-    String roleLabel,
-  );
-
   /// Issue #1004 (tranche 1): transfer-ownership generic cancel action.
   ///
   /// In en, this message translates to:
@@ -4996,12 +5113,6 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 1): armable-state bullet.
   ///
   /// In en, this message translates to:
-  /// **'{profileName} becomes this profile\'s owner.'**
-  String sharingTransferOwnershipBulletOwner(String profileName);
-
-  /// Issue #1004 (tranche 1): armable-state bullet.
-  ///
-  /// In en, this message translates to:
   /// **'You keep the role you choose below.'**
   String get sharingTransferOwnershipBulletKeepRole;
 
@@ -5028,18 +5139,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Your role after the transfer'**
   String get sharingTransferOwnershipRoleAfterTitle;
-
-  /// Issue #1004 (tranche 1): explanation under the viewer role segment.
-  ///
-  /// In en, this message translates to:
-  /// **'Viewer: read-only access to their calendar and entries.'**
-  String get sharingTransferOwnershipViewerDetail;
-
-  /// Issue #1004 (tranche 1): explanation under the co-manager role segment.
-  ///
-  /// In en, this message translates to:
-  /// **'Co-manager: keep logging entries and managing this profile.'**
-  String get sharingTransferOwnershipCoManagerDetail;
 
   /// Issue #1004 (tranche 1): recipient label field label.
   ///

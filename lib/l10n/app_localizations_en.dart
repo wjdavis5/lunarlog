@@ -1774,7 +1774,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authFailureSignUpClosed =>
-      'New accounts for this app are set up by the account owner.';
+      'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.';
 
   @override
   String get authFailureLastSignInMethod =>
@@ -2292,12 +2292,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteSubjectOption(String name) {
-    return 'Invite $name to log her own profile';
+    return 'Invite $name to log their own profile';
   }
 
   @override
   String inviteSubjectOptionDetail(String name) {
-    return 'Caregiver access - this is $name\'s own profile, listed as hers on her device';
+    return 'Caregiver access - this is $name\'s own profile, listed as theirs on their device';
   }
 
   @override
@@ -2307,7 +2307,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteCreatedShareSubject(String name) {
-    return 'Share this single-use link with $name - she\'ll use it to join and log her own profile:';
+    return 'Share this single-use link with $name - they\'ll use it to join and log their own profile:';
   }
 
   @override
@@ -2494,6 +2494,112 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
 
   @override
+  String get healthDeviationCardTitle => 'Apple Health noticed…';
+
+  @override
+  String get healthDeviationCardSubtitle =>
+      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.';
+
+  @override
+  String get healthDeviationDismiss => 'Dismiss';
+
+  @override
+  String get healthDeviationKindIrregular => 'irregular cycles';
+
+  @override
+  String get healthDeviationKindInfrequent => 'infrequent cycles';
+
+  @override
+  String get healthDeviationKindProlonged => 'prolonged periods';
+
+  @override
+  String get healthDeviationKindPersistentIntermenstrualBleeding =>
+      'bleeding between periods';
+
+  @override
+  String healthDeviationLine(String kind, String range) {
+    return 'Possible $kind ($range)';
+  }
+
+  @override
+  String healthDeviationRange(String start, String end) {
+    return '$start – $end';
+  }
+
+  @override
+  String healthDeviationRangeSingle(String date) {
+    return '$date';
+  }
+
+  @override
+  String get accountDeleteDialogBody =>
+      'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.';
+
+  @override
+  String get accountDeleteTileSubtitle =>
+      'Deletes the account, everything in it, and this device\'s copy.';
+
+  @override
+  String get accountSignOutEverywhereBody =>
+      'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.';
+
+  @override
+  String transferOwnershipConfirmBody(String name, String role) {
+    return '$name will become the Primary Guardian of this profile. You\'ll keep access as $role, and they can remove that access at any time.';
+  }
+
+  @override
+  String transferOwnershipBecomesGuardian(String name) {
+    return '$name becomes this profile\'s Primary Guardian.';
+  }
+
+  @override
+  String get transferOwnershipRoleCoParent =>
+      'Co-Parent: keep logging entries and managing this profile.';
+
+  @override
+  String get transferOwnershipRoleViewer =>
+      'Viewer: read-only access to their calendar and entries.';
+
+  @override
+  String manageGuardiansLeaveProfileDialogTitle(String profile) {
+    return 'Leave $profile\'s profile?';
+  }
+
+  @override
+  String get manageGuardiansLeaveProfileConfirm => 'Leave';
+
+  @override
+  String get manageGuardiansWaitingForRedemption =>
+      'Waiting for them to open the link';
+
+  @override
+  String get healthSyncConfirmSyncAction => 'Sync';
+
+  @override
+  String get predictionEnterLinkTitle => 'Enter a connection link';
+
+  @override
+  String get predictionEnterLinkHint => 'Paste the link you received';
+
+  @override
+  String get predictionEnterLinkAction => 'Enter link';
+
+  @override
+  String get sharePredictionsCopyLink => 'Copy link';
+
+  @override
+  String get sharePredictionsLinkExpiry =>
+      'The link expires in 72 hours and can be used once.';
+
+  @override
+  String get claimProfileBecomeGuardianAction => 'Become Primary Guardian';
+
+  @override
+  String get claimProfileBody =>
+      'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.';
+
+  @override
   String get sharingUnexpectedError => 'An unexpected error occurred.';
 
   @override
@@ -2550,13 +2656,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingClaimProfileDecline => 'Decline';
-
-  @override
-  String get sharingClaimProfileBecomeOwner => 'Become Owner';
-
-  @override
-  String get sharingClaimProfileBody =>
-      'Claiming this link makes you the owner of this profile. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.';
 
   @override
   String get sharingClaimProfileChildNameLabel =>
@@ -2811,10 +2910,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Only the primary guardian can share predictions.';
 
   @override
-  String get sharingManageGuardiansPendingRedemption =>
-      'Waiting for code redemption';
-
-  @override
   String get sharingManageGuardiansSharingPredictions => 'Sharing predictions';
 
   @override
@@ -2985,9 +3080,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingPredictionConnectionsFailed => 'Connection failed.';
 
   @override
-  String get sharingPredictionConnectionsEnterCode => 'Enter code';
-
-  @override
   String get sharingPredictionConnectionsLoadError =>
       'Could not load connections.';
 
@@ -3010,14 +3102,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingPredictionConnectionsStopTooltip => 'Stop receiving';
-
-  @override
-  String get sharingPredictionConnectionsEnterCodeTitle =>
-      'Enter connection code';
-
-  @override
-  String get sharingPredictionConnectionsCodeHint =>
-      'Paste the code you received';
 
   @override
   String get sharingPredictionConnectionsConnect => 'Connect';
@@ -3072,17 +3156,15 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get sharingSharePredictionsCreatedBody =>
-      'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. The code expires in 72 hours and can be redeemed once.';
+  String sharingSharePredictionsCreatedBody(String expiry) {
+    return 'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. $expiry';
+  }
 
   @override
   String get sharingSharePredictionsCopied => 'Copied to clipboard';
 
   @override
   String get sharingSharePredictionsDone => 'Done';
-
-  @override
-  String get sharingSharePredictionsCopyLink => 'Copy Link';
 
   @override
   String sharingSharePredictionsTitle(String profileName) {
@@ -3115,14 +3197,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingTransferOwnershipConfirmTitle => 'Transfer ownership?';
 
   @override
-  String sharingTransferOwnershipConfirmBody(
-    String profileName,
-    String roleLabel,
-  ) {
-    return '$profileName will become the owner of this profile. You\'ll keep access as $roleLabel, and they can remove that access at any time.';
-  }
-
-  @override
   String get sharingTransferOwnershipCancel => 'Cancel';
 
   @override
@@ -3143,11 +3217,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sharingTransferOwnershipWhatChanges => 'What changes';
 
   @override
-  String sharingTransferOwnershipBulletOwner(String profileName) {
-    return '$profileName becomes this profile\'s owner.';
-  }
-
-  @override
   String get sharingTransferOwnershipBulletKeepRole =>
       'You keep the role you choose below.';
 
@@ -3165,14 +3234,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sharingTransferOwnershipRoleAfterTitle =>
       'Your role after the transfer';
-
-  @override
-  String get sharingTransferOwnershipViewerDetail =>
-      'Viewer: read-only access to their calendar and entries.';
-
-  @override
-  String get sharingTransferOwnershipCoManagerDetail =>
-      'Co-manager: keep logging entries and managing this profile.';
 
   @override
   String get sharingTransferOwnershipRecipientLabel =>

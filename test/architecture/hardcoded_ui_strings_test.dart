@@ -71,20 +71,20 @@ const Set<String> _sharingNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero (142
-/// literals), so those entries are gone and the recorded size dropped by
-/// the same amount (367 - 142 = 225, where 367 is the current main
-/// backlog after the widget/health work landed). Every remaining entry is
-/// another directory's backlog, owned by a different tranche.
-const int _initialAllowlistSize = 225;
+/// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero, so those
+/// entries are gone and the recorded size dropped by the same amount:
+/// 355 (main, after the widget/health/#1003 work) - 134 = 221. Every
+/// remaining entry is another directory's backlog, owned by a different
+/// tranche.
+const int _initialAllowlistSize = 221;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 29,
-  'lib/ui/account/delete_account_dialog.dart': 8,
+  'lib/ui/account/account_section.dart': 27,
+  'lib/ui/account/delete_account_dialog.dart': 7,
   'lib/ui/account/mfa_settings_section.dart': 1,
   'lib/ui/account/mfa_step_up_dialog.dart': 1,
   'lib/ui/account/password_recovery_screen.dart': 4,
@@ -120,7 +120,7 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 11,
+  'lib/ui/settings/health_sync_screen.dart': 10,
   'lib/ui/settings/import_screen.dart': 4,
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
