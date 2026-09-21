@@ -92,6 +92,7 @@ class _LateResolverState extends State<LateResolver> {
 
   Widget _snoozedLine(BuildContext context, LocalDate until) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Padding(
       key: const ValueKey('late-snoozed'),
       padding: const EdgeInsets.only(top: LLSpace.space2),
@@ -101,7 +102,7 @@ class _LateResolverState extends State<LateResolver> {
           const SizedBox(width: LLSpace.space2),
           Expanded(
             child: Text(
-              'We will check back on ${_formatDate(until, context)}.',
+              l10n.lateResolverSnoozedUntil(_formatDate(until, context)),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.tertiary,
               ),
@@ -114,7 +115,7 @@ class _LateResolverState extends State<LateResolver> {
                 lateSnoozeSettingKey(widget.profileId),
                 '',
               ),
-              child: const Text('Show options'),
+              child: Text(l10n.lateResolverShowOptions),
             ),
         ],
       ),
@@ -131,16 +132,18 @@ class _LateResolverState extends State<LateResolver> {
   String _lateLine(AppLocalizations l10n) {
     final daysLate = widget.prediction.daysLate;
     if (daysLate != null) {
-      return '$daysLate day${daysLate == 1 ? '' : 's'} late';
+      return l10n.lateResolverDaysLate(daysLate);
     }
     // Issue #545: routed through the shared ICU-plural daysCount key
     // instead of a bare "N days" interpolation (fixes "1 days").
-    return 'No period logged for '
-        '${l10n.daysCount(widget.prediction.daysSinceLastEpisodeStart)}';
+    return l10n.lateResolverNoPeriodLoggedFor(
+      l10n.daysCount(widget.prediction.daysSinceLastEpisodeStart),
+    );
   }
 
   Widget _resolverCard(BuildContext context, ThemeData theme, bool wasSnoozed) {
-    final lateLine = _lateLine(AppLocalizations.of(context));
+    final l10n = AppLocalizations.of(context);
+    final lateLine = _lateLine(l10n);
     return Container(
       key: const ValueKey('late-resolver'),
       margin: const EdgeInsets.only(top: LLSpace.space3),
@@ -175,8 +178,8 @@ class _LateResolverState extends State<LateResolver> {
           const SizedBox(height: LLSpace.space1),
           Text(
             wasSnoozed
-                ? 'Still nothing logged — what would you like to do?'
-                : 'What would you like to do?',
+                ? l10n.lateResolverPromptStillNothing
+                : l10n.lateResolverPrompt,
             key: const ValueKey('late-resolver-prompt'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onErrorContainer,
@@ -191,21 +194,21 @@ class _LateResolverState extends State<LateResolver> {
                 _option(
                   key: 'resolver-log',
                   icon: Icons.edit,
-                  label: 'Log it',
+                  label: l10n.lateResolverLogIt,
                   onPressed: widget.onLogIt,
                   emphasized: true,
                 ),
                 _option(
                   key: 'resolver-skip',
                   icon: Icons.skip_next,
-                  label: 'Skip this cycle',
+                  label: l10n.lateResolverSkipCycle,
                   onPressed: () =>
                       widget.exclusions.omit(widget.profileId, _openCycleStart),
                 ),
                 _option(
                   key: 'resolver-remind',
                   icon: Icons.alarm,
-                  label: 'Remind me in 3 days',
+                  label: l10n.lateResolverRemindMe,
                   onPressed: () => widget.settings.set(
                     lateSnoozeSettingKey(widget.profileId),
                     encodeLateSnooze(
@@ -225,9 +228,9 @@ class _LateResolverState extends State<LateResolver> {
             ),
           ),
           // Issue #139: contextual entry point to the "late period" card.
-          const HelpCardLink(
+          HelpCardLink(
             cardId: 'period-late',
-            label: 'Why is it late?',
+            label: l10n.lateResolverWhyLate,
           ),
         ],
       ),

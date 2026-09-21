@@ -71,13 +71,14 @@ const Set<String> _migratedNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 burned `lib/ui/sharing/` (tranche 1) and `lib/ui/profiles/`,
-/// `lib/ui/feedback/`, `lib/ui/gate/`, `lib/ui/care/` (tranche 3) down to
-/// zero, so those entries are gone and the recorded size dropped by the
-/// same amount: 355 (main, after the widget/health/#1003 work) - 134
-/// (tranche 1) - 56 (tranche 3) = 165. Every remaining entry is another
-/// directory's backlog, owned by a different tranche.
-const int _initialAllowlistSize = 165;
+/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/profiles/`,
+/// `lib/ui/feedback/`, `lib/ui/gate/`, `lib/ui/care/` (tranche 3), and
+/// `lib/ui/components/`, `lib/ui/overview/`, `lib/ui/insights/` (tranche 4a)
+/// down to zero, so those entries are gone and the recorded size dropped by
+/// the same amount: 355 (main, after the widget/health/#1003 work) - 134
+/// (tranche 1) - 56 (tranche 3) - 31 (tranche 4a) = 134. Every remaining
+/// entry is another directory's backlog, owned by a different tranche.
+const int _initialAllowlistSize = 134;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -94,20 +95,12 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/account/sign_in_screen.dart': 9,
   'lib/ui/account/upload_consent_screen.dart': 6,
   'lib/ui/account/sync_status_tile.dart': 1,
-  'lib/ui/components/app_shell.dart': 2,
-  'lib/ui/components/inline_error.dart': 1,
-  'lib/ui/components/today_log_fab.dart': 1,
   'lib/ui/content/cycle_literacy_article_sheet.dart': 4,
   'lib/ui/content/cycle_literacy_library_screen.dart': 2,
   'lib/ui/help/help_card_view.dart': 2,
   'lib/ui/help/help_library_screen.dart': 1,
-  'lib/ui/insights/analysis_tab.dart': 3,
-  'lib/ui/insights/phase_insights_card.dart': 3,
-  'lib/ui/insights/symptom_trends_section.dart': 12,
   'lib/ui/logging/day_sheet.dart': 1,
   'lib/ui/logging/month_calendar.dart': 1,
-  'lib/ui/overview/cycle_history_section.dart': 7,
-  'lib/ui/overview/late_resolver.dart': 2,
   'lib/ui/settings/clinical_export_tile.dart': 2,
   'lib/ui/settings/csv_export_tile.dart': 2,
   'lib/ui/settings/export_range_picker_sheet.dart': 3,
@@ -256,6 +249,15 @@ void main() {
 
   test('lib/ui/care stays fully localized (issue #1004 tranche 3)',
       () => expectDirectoryFullyLocalized('lib/ui/care', 'care'));
+
+  test('lib/ui/components stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/components', 'components'));
+
+  test('lib/ui/overview stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/overview', 'overview'));
+
+  test('lib/ui/insights stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/insights', 'insights'));
 
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
