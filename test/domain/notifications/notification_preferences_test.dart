@@ -89,6 +89,9 @@ void main() {
       highSeverityCadence: AlertCadence.off,
       digestTimeMinutes: 9 * 60,
       missedEntryThreshold: MissedEntryThreshold.twoDays,
+      alertOnPeriodSoon: true,
+      alertOnRestock: true,
+      alertOnPmsSoon: true,
       quietHours: QuietHours(startMinutes: 1320, endMinutes: 420),
       timeZone: 'America/New_York',
     );
@@ -122,6 +125,9 @@ void main() {
             .quietHours,
         const QuietHours(startMinutes: 0, endMinutes: 60),
       );
+      expect(base.copyWith(alertOnPeriodSoon: false).alertOnPeriodSoon, isFalse);
+      expect(base.copyWith(alertOnRestock: false).alertOnRestock, isFalse);
+      expect(base.copyWith(alertOnPmsSoon: false).alertOnPmsSoon, isFalse);
       expect(base.copyWith(clearQuietHours: true).quietHours, isNull);
       expect(base.copyWith(timeZone: 'UTC').timeZone, 'UTC');
       expect(base.copyWith(clearTimeZone: true).timeZone, isNull);
@@ -144,6 +150,9 @@ void main() {
       );
       expect(base, isNot(base.copyWith(clearQuietHours: true)));
       expect(base, isNot(base.copyWith(clearTimeZone: true)));
+      expect(base, isNot(base.copyWith(alertOnPeriodSoon: false)));
+      expect(base, isNot(base.copyWith(alertOnRestock: false)));
+      expect(base, isNot(base.copyWith(alertOnPmsSoon: false)));
     });
 
     test('the all-off default has every alert off and threshold off', () {
@@ -153,6 +162,12 @@ void main() {
       expect(CaregiverAlertPreferences.off.missedEntryThreshold,
           MissedEntryThreshold.off);
       expect(CaregiverAlertPreferences.off.quietHours, isNull);
+    });
+
+    test('the ahead-of-time opt-ins are off by default (Issue #851)', () {
+      expect(CaregiverAlertPreferences.off.alertOnPeriodSoon, isFalse);
+      expect(CaregiverAlertPreferences.off.alertOnRestock, isFalse);
+      expect(CaregiverAlertPreferences.off.alertOnPmsSoon, isFalse);
     });
 
     test('the all-off default keeps every cadence immediate and no digest time (Issue #125)', () {

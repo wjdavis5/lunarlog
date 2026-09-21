@@ -418,11 +418,70 @@ class _NotificationPreferencesScreenState
           ),
         ),
         const Divider(),
+        ..._aheadOfTimeSection(prefs),
         ..._quietHoursSection(prefs.quietHours),
         ..._timeZoneErrorSection(context),
       ],
     );
   }
+
+  /// The Issue #851 "Ahead of time" group: three independent opt-ins for the
+  /// server-side period_soon / restock_due / pms_soon alerts. Each is
+  /// governed solely by its own boolean (there is no entry-alert master
+  /// switch for these), so each toggle is always enabled and writes through
+  /// the same optimistic [NotificationPreferencesService.save] path as every
+  /// other control. The server copy stays the fixed generic line; nothing
+  /// kind-specific is rendered here or in the notification.
+  List<Widget> _aheadOfTimeSection(CaregiverAlertPreferences prefs) => [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesAheadOfTimeHeader,
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-period-soon-toggle'),
+          title: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesPeriodSoon,
+          ),
+          subtitle: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesPeriodSoonSubtitle,
+          ),
+          value: prefs.alertOnPeriodSoon,
+          onChanged: (value) =>
+              _apply((p) => p.copyWith(alertOnPeriodSoon: value)),
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-restock-toggle'),
+          title: Text(
+            AppLocalizations.of(context).sharingNotificationPreferencesRestock,
+          ),
+          subtitle: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesRestockSubtitle,
+          ),
+          value: prefs.alertOnRestock,
+          onChanged: (value) =>
+              _apply((p) => p.copyWith(alertOnRestock: value)),
+        ),
+        SwitchListTile(
+          key: const ValueKey('alert-pms-soon-toggle'),
+          title: Text(
+            AppLocalizations.of(context).sharingNotificationPreferencesPmsSoon,
+          ),
+          subtitle: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesPmsSoonSubtitle,
+          ),
+          value: prefs.alertOnPmsSoon,
+          onChanged: (value) =>
+              _apply((p) => p.copyWith(alertOnPmsSoon: value)),
+        ),
+      ];
 
   /// The quiet-hours start/end tiles plus the "Clear quiet hours" tile
   /// that only appears once a window is set. Split out of

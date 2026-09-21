@@ -125,6 +125,9 @@ class CaregiverAlertPreferences {
     this.highSeverityCadence = AlertCadence.immediate,
     this.digestTimeMinutes,
     this.missedEntryThreshold = MissedEntryThreshold.off,
+    this.alertOnPeriodSoon = false,
+    this.alertOnRestock = false,
+    this.alertOnPmsSoon = false,
     this.quietHours,
     this.timeZone,
   });
@@ -153,6 +156,17 @@ class CaregiverAlertPreferences {
   final int? digestTimeMinutes;
 
   final MissedEntryThreshold missedEntryThreshold;
+
+  /// Per-guardian opt-ins for the ahead-of-time alerts (Issue #851), each
+  /// off by default like every other caregiver alert (R4). [alertOnPeriodSoon]
+  /// fires a few days before the next expected period; [alertOnRestock] adds
+  /// the supplies nudge on the same window; [alertOnPmsSoon] is the
+  /// PMS-window heads-up, which the server only ever fires for a profile
+  /// with at least three logged PMS intervals.
+  final bool alertOnPeriodSoon;
+  final bool alertOnRestock;
+  final bool alertOnPmsSoon;
+
   final QuietHours? quietHours;
 
   /// IANA zone name (e.g. `America/New_York`); null means quiet hours never
@@ -162,7 +176,7 @@ class CaregiverAlertPreferences {
   /// Structural identity for [==]/[hashCode]: records compare by value, so
   /// equality stays one branch however many fields this class gains.
   (bool, bool, bool, AlertCadence, AlertCadence, AlertCadence, int?,
-          MissedEntryThreshold, QuietHours?, String?)
+          MissedEntryThreshold, bool, bool, bool, QuietHours?, String?)
       get _identity => (
             alertOnLog,
             alertOnCycleStartOnly,
@@ -172,6 +186,9 @@ class CaregiverAlertPreferences {
             highSeverityCadence,
             digestTimeMinutes,
             missedEntryThreshold,
+            alertOnPeriodSoon,
+            alertOnRestock,
+            alertOnPmsSoon,
             quietHours,
             timeZone,
           );
@@ -191,6 +208,9 @@ class CaregiverAlertPreferences {
     int? digestTimeMinutes,
     bool clearDigestTime = false,
     MissedEntryThreshold? missedEntryThreshold,
+    bool? alertOnPeriodSoon,
+    bool? alertOnRestock,
+    bool? alertOnPmsSoon,
     QuietHours? quietHours,
     bool clearQuietHours = false,
     String? timeZone,
@@ -207,6 +227,9 @@ class CaregiverAlertPreferences {
         digestTimeMinutes:
             _pick(this.digestTimeMinutes, digestTimeMinutes, clearDigestTime),
         missedEntryThreshold: missedEntryThreshold ?? this.missedEntryThreshold,
+        alertOnPeriodSoon: alertOnPeriodSoon ?? this.alertOnPeriodSoon,
+        alertOnRestock: alertOnRestock ?? this.alertOnRestock,
+        alertOnPmsSoon: alertOnPmsSoon ?? this.alertOnPmsSoon,
         quietHours: _pick(this.quietHours, quietHours, clearQuietHours),
         timeZone: _pick(this.timeZone, timeZone, clearTimeZone),
       );
@@ -225,6 +248,8 @@ class CaregiverAlertPreferences {
       'logCadence: $logCadence, cycleStartCadence: $cycleStartCadence, '
       'highSeverityCadence: $highSeverityCadence, '
       'digestTime: $digestTimeMinutes, '
-      'missedEntry: $missedEntryThreshold, quietHours: $quietHours, '
+      'missedEntry: $missedEntryThreshold, '
+      'periodSoon: $alertOnPeriodSoon, restock: $alertOnRestock, '
+      'pmsSoon: $alertOnPmsSoon, quietHours: $quietHours, '
       'timeZone: $timeZone)';
 }

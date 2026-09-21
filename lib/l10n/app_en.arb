@@ -3867,6 +3867,34 @@
     "@sharingNotificationPreferencesMissedEntrySubtitle": {
       "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
     },
+    "sharingNotificationPreferencesAheadOfTimeHeader": "Ahead of time",
+    "@sharingNotificationPreferencesAheadOfTimeHeader": {
+      "description": "Issue #851: section header over the three opt-in ahead-of-time guardian alerts."
+    },
+    "sharingNotificationPreferencesPeriodSoon": "Period reminder",
+    "@sharingNotificationPreferencesPeriodSoon": {
+      "description": "Issue #851: opt-in toggle for the period_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPeriodSoonSubtitle": "A heads-up a few days before the next expected period",
+    "@sharingNotificationPreferencesPeriodSoonSubtitle": {
+      "description": "Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail)."
+    },
+    "sharingNotificationPreferencesRestock": "Restock reminder",
+    "@sharingNotificationPreferencesRestock": {
+      "description": "Issue #851: opt-in toggle for the restock_due ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesRestockSubtitle": "Remind me to restock supplies before the next expected period",
+    "@sharingNotificationPreferencesRestockSubtitle": {
+      "description": "Issue #851: restock_due toggle subtitle."
+    },
+    "sharingNotificationPreferencesPmsSoon": "PMS heads-up",
+    "@sharingNotificationPreferencesPmsSoon": {
+      "description": "Issue #851: opt-in toggle for the pms_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPmsSoonSubtitle": "A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)",
+    "@sharingNotificationPreferencesPmsSoonSubtitle": {
+      "description": "Issue #851: pms_soon toggle subtitle, naming the three-interval gate."
+    },
     "sharingNotificationPreferencesOff": "Off",
     "@sharingNotificationPreferencesOff": {
       "description": "Issue #1004 (tranche 1): off option in the notification-preferences dropdowns."

@@ -4804,6 +4804,48 @@ abstract class AppLocalizations {
   /// **'Check in when no entry has been logged for a while'**
   String get sharingNotificationPreferencesMissedEntrySubtitle;
 
+  /// Issue #851: section header over the three opt-in ahead-of-time guardian alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Ahead of time'**
+  String get sharingNotificationPreferencesAheadOfTimeHeader;
+
+  /// Issue #851: opt-in toggle for the period_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Period reminder'**
+  String get sharingNotificationPreferencesPeriodSoon;
+
+  /// Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail).
+  ///
+  /// In en, this message translates to:
+  /// **'A heads-up a few days before the next expected period'**
+  String get sharingNotificationPreferencesPeriodSoonSubtitle;
+
+  /// Issue #851: opt-in toggle for the restock_due ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock reminder'**
+  String get sharingNotificationPreferencesRestock;
+
+  /// Issue #851: restock_due toggle subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me to restock supplies before the next expected period'**
+  String get sharingNotificationPreferencesRestockSubtitle;
+
+  /// Issue #851: opt-in toggle for the pms_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS heads-up'**
+  String get sharingNotificationPreferencesPmsSoon;
+
+  /// Issue #851: pms_soon toggle subtitle, naming the three-interval gate.
+  ///
+  /// In en, this message translates to:
+  /// **'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)'**
+  String get sharingNotificationPreferencesPmsSoonSubtitle;
+
   /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
   ///
   /// In en, this message translates to:
