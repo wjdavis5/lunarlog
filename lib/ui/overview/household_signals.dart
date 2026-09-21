@@ -6,11 +6,11 @@
 /// body, no symptom label, ever (the issue's content-discretion constraint,
 /// the same rule as the activity feed and notification payloads):
 ///
-/// * **Timing** — "Period expected in 3 days" / "4 days late" from the
-///   [CyclePredictionService] prediction the row's cycle status already
-///   uses, with #853's framing respected: a profile whose effective
-///   irregular framing is ON (`irregularFramingInEffect`) never reads
-///   "late" — variation is expected, not overdue — so its overdue state
+/// * **Timing** — "Period expected in 3 days" / "4 days past the estimate"
+///   from the [CyclePredictionService] prediction the row's cycle status
+///   already uses, with #853's framing respected: a profile whose effective
+///   irregular framing is ON (`irregularFramingInEffect`) never renders an
+///   overdue count — variation is expected, not overdue — so its overdue state
 ///   renders as the quiet factual "Last period N days ago" instead, and
 ///   its upcoming estimate renders nothing at all (a precise-looking
 ///   "expected in N days" is exactly the false precision the framing
@@ -90,8 +90,9 @@ class HouseholdTimingExpected extends HouseholdTimingSignal {
   final int days;
 }
 
-/// The open cycle is [days] past its un-rolled estimate — the resolver's
-/// own vocabulary ("N days late"), never rendered for a framed profile.
+/// The open cycle is [days] past its un-rolled estimate (issue #803, #1000:
+/// renders as "N days past the estimate", never "late"), never rendered for
+/// a framed profile.
 class HouseholdTimingLate extends HouseholdTimingSignal {
   const HouseholdTimingLate(this.days);
 
@@ -161,15 +162,13 @@ HouseholdTimingSignal? _activeTiming(
 String householdTimingCopy(
   HouseholdTimingSignal signal,
   AppLocalizations l10n,
-) =>
-    switch (signal) {
-      HouseholdTimingExpected(:final days) when days == 0 =>
-        l10n.householdTimingExpectedToday,
-      HouseholdTimingExpected(:final days) =>
-        l10n.householdTimingExpectedIn(days),
-      HouseholdTimingLate(:final days) => l10n.householdTimingLate(days),
-      HouseholdTimingOpen(:final days) => l10n.householdTimingLastLogged(days),
-    };
+) => switch (signal) {
+  HouseholdTimingExpected(:final days) when days == 0 =>
+    l10n.householdTimingExpectedToday,
+  HouseholdTimingExpected(:final days) => l10n.householdTimingExpectedIn(days),
+  HouseholdTimingLate(:final days) => l10n.householdTimingPastEstimate(days),
+  HouseholdTimingOpen(:final days) => l10n.householdTimingLastLogged(days),
+};
 
 /// The silence threshold in days for a profile whose device-local reminder
 /// config carries the daily log nudge [log] (null when it has none): the
@@ -295,9 +294,8 @@ class _HouseholdRowSignalsState extends State<HouseholdRowSignals> {
     }
   }
 
-  Stream<CyclePrediction>? _watchPredictions() =>
-      widget.predictionService?.watch(widget.profile.id,
-          today: widget.todayProvider);
+  Stream<CyclePrediction>? _watchPredictions() => widget.predictionService
+      ?.watch(widget.profile.id, today: widget.todayProvider);
 
   /// Device-local per-profile reminder config read; the [changes] stream
   /// re-runs it after any settings edit, the same way the reminder
@@ -320,7 +318,8 @@ class _HouseholdRowSignalsState extends State<HouseholdRowSignals> {
     final predictions = _predictions;
     final feedRepository = widget.feedRepository;
     final dayEntriesRepository = widget.dayEntriesRepository;
-    if (predictions == null || feedRepository == null ||
+    if (predictions == null ||
+        feedRepository == null ||
         dayEntriesRepository == null) {
       return const SizedBox.shrink();
     }
@@ -350,8 +349,9 @@ class _HouseholdRowSignalsState extends State<HouseholdRowSignals> {
   }) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final style = theme.textTheme.bodySmall
-        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final style = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     final framing = irregularFramingInEffect(
       mode: widget.profile.mode,
       stored: widget.profile.irregularFraming,

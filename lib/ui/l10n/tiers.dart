@@ -12,13 +12,12 @@ library;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
-String tierLabel(AppLocalizations l10n, CycleConfidence tier) =>
-    switch (tier) {
-      CycleConfidence.high => l10n.cycleConfidenceHigh,
-      CycleConfidence.learning => l10n.cycleConfidenceLearning,
-      CycleConfidence.irregular => l10n.cycleConfidenceIrregular,
-      CycleConfidence.provisional => l10n.cycleConfidenceProvisional,
-    };
+String tierLabel(AppLocalizations l10n, CycleConfidence tier) => switch (tier) {
+  CycleConfidence.high => l10n.cycleConfidenceHigh,
+  CycleConfidence.learning => l10n.cycleConfidenceLearning,
+  CycleConfidence.irregular => l10n.cycleConfidenceIrregular,
+  CycleConfidence.provisional => l10n.cycleConfidenceProvisional,
+};
 
 String tierSummary(AppLocalizations l10n, CycleConfidence tier) =>
     switch (tier) {
@@ -26,4 +25,15 @@ String tierSummary(AppLocalizations l10n, CycleConfidence tier) =>
       CycleConfidence.learning => l10n.cycleConfidenceSummaryLearning,
       CycleConfidence.irregular => l10n.cycleConfidenceSummaryIrregular,
       CycleConfidence.provisional => l10n.cycleConfidenceSummaryProvisional,
+    };
+
+/// Issue #1000: short lowercased tier name for inline composition (e.g.
+/// inside `futureExplainerConfidence` — "Estimate confidence: high.",
+/// never "Estimate confidence: high confidence.").
+String tierShortLabel(AppLocalizations l10n, CycleConfidence tier) =>
+    switch (tier) {
+      CycleConfidence.high => l10n.cycleConfidenceShortHigh,
+      CycleConfidence.learning => l10n.cycleConfidenceShortLearning,
+      CycleConfidence.irregular => l10n.cycleConfidenceShortIrregular,
+      CycleConfidence.provisional => l10n.cycleConfidenceShortProvisional,
     };
