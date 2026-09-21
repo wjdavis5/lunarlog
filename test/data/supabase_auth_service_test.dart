@@ -676,10 +676,12 @@ void main() {
     String Function()? generateNonce,
     bool passkeysAvailable = false,
     PasskeyCeremonyClient? passkeyClient,
+    Uri? webInitialUri,
   }) async {
     final service = SupabaseAuthService(
       gateway: gateway,
       links: links,
+      webInitialUri: webInitialUri,
       appleAvailable: appleAvailable,
       requestAppleCredential:
           requestAppleCredential ?? (({required hashedNonce}) async {
@@ -749,13 +751,86 @@ void main() {
   });
 
   group('redirect URL (pure)', () {
-    test('native uses the custom scheme; web uses the page origin', () {
+    test('native uses the custom scheme; web uses the page origin callback', () {
       expect(resolveAuthRedirectUrl(isWeb: false, base: Uri.parse('https://x.y/z')),
           callback);
       expect(
           resolveAuthRedirectUrl(
               isWeb: true, base: Uri.parse('https://lunarlog.example/app/?a=1')),
-          'https://lunarlog.example');
+          'https://lunarlog.example/auth/callback');
+    });
+  });
+
+  group('web auth callback (epic #831 slice 2)', () {
+    const webCallback =
+        'https://app.lunarlog.app/auth/callback?code=abc';
+
+    test('start() exchanges the code off the initial Uri.base on web', () async {
+      gateway.codeVerifier = 'verifier';
+      final service = await started(webInitialUri: Uri.parse(webCallback));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(gateway.getSessionFromUrlCalls.single, Uri.parse(webCallback));
+      expect(service.currentUserId, 'linked');
+      expect(service.state, AuthSessionState.signedIn);
+    });
+
+    test('a web password-reset callback latches recovery', () async {
+      gateway.codeVerifier = 'verifier/passwordRecovery';
+      final service = await started(webInitialUri: Uri.parse(webCallback));
+      await settle();
+      expect(service.pendingRecovery, isTrue);
+      expect(service.state, AuthSessionState.passwordRecovery);
+    });
+
+    test('a web launch with no auth callback is ignored', () async {
+      final service =
+          await started(webInitialUri: Uri.parse('https://app.lunarlog.app/'));
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(service.pendingLinkFailure, isNull);
+      expect(service.state, AuthSessionState.signedOut);
+    });
+
+    test('a web callback and an app-links initial link carrying the same URL '
+        'are exchanged once', () async {
+      gateway.codeVerifier = 'verifier';
+      final uri = Uri.parse(webCallback);
+      links.initial = uri;
+      final service = await started(webInitialUri: uri);
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, hasLength(1));
+      expect(service.currentUserId, 'linked');
+    });
+
+    test('signOut clears the session (the browser-held token on web) and '
+        'reports signedOut', () async {
+      // On web the session lives in gotrue's own browser storage; gotrue's
+      // signOut removes it there. The fake models that gateway surface (the
+      // session is cleared); the browser-storage choice itself is pinned in
+      // web_auth_seam_test.dart.
+      final service = await started();
+      await service.signInWithPassword(email: 'a@b.c', password: 'pw');
+      await settle();
+      expect(service.currentUserId, isNotNull);
+
+      await service.signOut();
+      await settle();
+      expect(service.currentUserId, isNull);
+      expect(service.state, AuthSessionState.signedOut);
+      expect(gateway.signOutCalls, [SignOutScope.local]);
+    });
+
+    test('the emailed 8-digit code path is redirect-independent and works '
+        'the same on web', () async {
+      final service = await started();
+      await service.sendMagicLink(email: 'a@b.c', createAccount: false);
+      final user =
+          await service.verifyEmailCode(email: 'a@b.c', code: '12345678');
+      await settle();
+      expect(user.email, 'a@b.c');
+      expect(service.state, AuthSessionState.signedIn);
+      expect(gateway.verifyOtpCalls.single.token, '12345678');
     });
   });
 

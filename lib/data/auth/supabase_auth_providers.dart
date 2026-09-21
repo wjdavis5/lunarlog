@@ -10,9 +10,12 @@ part of 'supabase_auth_service.dart';
 // move with the members they document.
 
 /// `emailRedirectTo` / `redirectTo` for the provider's emails: the custom
-/// scheme on native, the page origin on web (AS9).
+/// scheme on native, the page origin's `/auth/callback` on web (AS9; epic
+/// #831 slice 2 — a browser cannot open the custom scheme, so web links
+/// point at the app's own origin and the returned `?code=` is exchanged
+/// from the initial `Uri.base` off the same PKCE path).
 String resolveAuthRedirectUrl({required bool isWeb, required Uri base}) =>
-    isWeb ? base.origin : kAuthCallbackUrl;
+    isWeb ? '${base.origin}$kWebAuthCallbackPath' : kAuthCallbackUrl;
 
 /// Requests the Apple credential for a *hashed* nonce (KTD9). Injectable so
 /// tests never touch the platform channel.
