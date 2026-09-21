@@ -2951,6 +2951,12 @@ abstract class AppLocalizations {
   /// **'Period predictions off'**
   String get profileStatusPredictionsOff;
 
+  /// Issue #982: the one-line cycle status on a ProfileCard row for a stale-history profile (ActivePrediction.staleHistory, issue #859) — a neutral line replacing the rolled 'Cycle day N' count the same way the overview's stale card replaces it.
+  ///
+  /// In en, this message translates to:
+  /// **'No recent period logged'**
+  String get profileStatusNoRecentPeriod;
+
   /// Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.
   ///
   /// In en, this message translates to:
