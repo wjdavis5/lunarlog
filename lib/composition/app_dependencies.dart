@@ -27,6 +27,7 @@ import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart'
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
+import 'package:lunarlog/data/health/health_deviation_service.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
@@ -67,6 +68,9 @@ import 'package:lunarlog/data/sharing/supabase_ownership_transfer_service.dart';
 import 'package:lunarlog/data/sharing/supabase_prediction_connection_service.dart';
 import 'package:lunarlog/data/sharing/supabase_sharing_service.dart';
 import 'package:lunarlog/data/sharing/prediction_projection_publisher.dart';
+import 'package:lunarlog/data/widget/home_widget_data_store.dart';
+import 'package:lunarlog/data/widget/widget_quick_log_executor.dart';
+import 'package:lunarlog/data/widget/widget_state_publisher.dart';
 import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -102,6 +106,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -119,6 +124,10 @@ import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/domain/widget/widget_data_store.dart'
+    show WidgetDataStore;
+import 'package:lunarlog/domain/widget/widget_profile_options.dart'
+    show canQuickLogFor;
 
 /// An immutable bundle of the app's data-layer dependencies, typed as domain
 /// contracts. The optional cloud fields are null exactly when the build has
@@ -164,6 +173,7 @@ class AppDependencies {
     this.accountExportRemoteSource,
     this.reminderWindowUpsert,
     this.scheduler,
+    this.widgetDataStore,
   });
 
   final ProfilesRepository profiles;
@@ -241,6 +251,15 @@ class AppDependencies {
   /// without a push-capable Supabase client.
   final ReminderWindowRemote? reminderWindowUpsert;
 
+  /// The home-screen widget's container store (issue #141). Null wherever
+  /// no widget surface exists — and deliberately null in every test: the
+  /// store is built only when [buildAppDependencies] is called with
+  /// `buildHomeWidgetStore: true` (production `main.dart`, the same shape
+  /// as `buildDefaultScheduler`), because the flutter_test binding reports
+  /// `TargetPlatform.android` and a platform check alone would put the
+  /// real plugin's method channels behind every app-shell test.
+  final WidgetDataStore? widgetDataStore;
+
   /// The reminder scheduler (R9). Null disables reminders entirely (widget
   /// tests that pass none). The production platform default is built with
   /// its settings store constructor-injected, so no post-construction
@@ -270,9 +289,16 @@ AppDependencies buildAppDependencies({
   AccountExportRemoteSource? accountExportRemoteSource,
   ReminderWindowRemote? reminderWindowUpsert,
   ReminderScheduler? scheduler,
+  WidgetDataStore? widgetDataStore,
   String? Function()? currentUserIdProvider,
   bool pushEnabled = false,
   bool buildDefaultScheduler = false,
+  // Issue #141: builds the home_widget-backed store (and so arms the
+  // widget runtime). Production `main.dart` passes true next to
+  // `buildDefaultScheduler: true`; every test path keeps the default
+  // false — the flutter_test binding's `TargetPlatform.android` default
+  // would otherwise construct the real plugin store in app-shell tests.
+  bool buildHomeWidgetStore = false,
   // Issue LLA-070: null (the default here, and LunarLogRoot's own default
   // too) keeps CyclePredictionService's own timer-free default (tick
   // once, never again) -- the right choice for both
@@ -470,6 +496,10 @@ AppDependencies buildAppDependencies({
           ? NoopReminderScheduler()
           : FlutterLocalNotificationsScheduler(settingsStore: settings),
     ),
+    widgetDataStore: _resolveWidgetStore(
+      widgetDataStore,
+      buildHomeWidgetStore,
+    ),
   );
 }
 
@@ -477,6 +507,18 @@ AppDependencies buildAppDependencies({
 /// otherwise [build] runs only when [enabled] says its inputs are present.
 T? _resolve<T>(T? override, bool enabled, T Function() build) =>
     override ?? (enabled ? build() : null);
+
+/// The widget store's resolve (issue #141), split out of
+/// [buildAppDependencies] so its three-way gate keeps that method under
+/// the CRAP gate's complexity budget. Armed only by production `main.dart`
+/// (`buildHomeWidgetStore: true`), and then only where a widget surface
+/// exists — web never gets one.
+WidgetDataStore? _resolveWidgetStore(WidgetDataStore? override, bool armed) =>
+    _resolve(
+      override,
+      armed && !kIsWeb && hasHomeWidgetSurface,
+      () => HomeWidgetDataStore(),
+    );
 
 // ---------------------------------------------------------------------------
 // Issue #418 (AC2): lifecycle-coordinator construction sites.
@@ -510,6 +552,57 @@ ReminderActionExecutor buildReminderActionExecutor({
   dayEntries: dayEntries,
   observations: observations,
   configService: configService,
+  isUnlocked: isUnlocked,
+  addUnlockListener: addUnlockListener,
+  removeUnlockListener: removeUnlockListener,
+);
+
+// ---------------------------------------------------------------------------
+// Issue #141: the home-screen widget's payload publisher and gated
+// quick-log executor (the store itself is a bundle field, armed by
+// `buildHomeWidgetStore` above). Same shape as the reminder-action block:
+// pure construction with plain closures, the shell owns start()/dispose().
+
+/// Constructs the widget payload publisher (issue #141): keeps the
+/// discreet render payload current from the app's own data signals — the
+/// profile list, the selection setting, the selected profile's prediction
+/// stream, and its guardian rows. No timer anywhere.
+WidgetStatePublisher buildWidgetStatePublisher({
+  required WidgetDataStore store,
+  required ProfilesRepository profiles,
+  required SettingsStore settings,
+  required CyclePredictionService prediction,
+  required ProfileGuardiansRepository guardians,
+  required String? Function() currentUserId,
+}) => WidgetStatePublisher(
+  store: store,
+  profiles: profiles,
+  settings: settings,
+  predictionFor: prediction.watch,
+  guardians: guardians,
+  currentUserId: currentUserId,
+);
+
+/// Constructs the widget quick-log executor (issue #141) — the gated,
+/// idempotent write path mirroring [buildReminderActionExecutor]'s gate
+/// closures. The role check resolves the operator's accepted role against
+/// freshly read guardian rows at write time; the widget container's own
+/// flag is render-only and never authorizes anything.
+WidgetQuickLogExecutor buildWidgetQuickLogExecutor({
+  required DayEntriesRepository dayEntries,
+  required ProfilesRepository profiles,
+  required ProfileGuardiansRepository guardians,
+  required String? Function() currentUserId,
+  required bool Function()? isUnlocked,
+  required void Function(void Function() callback)? addUnlockListener,
+  required void Function(void Function() callback)? removeUnlockListener,
+}) => WidgetQuickLogExecutor(
+  dayEntries: dayEntries,
+  profiles: profiles,
+  canQuickLogNow: (profileId) async => canQuickLogFor(
+    guardians: await guardians.getForProfile(profileId),
+    currentUserId: currentUserId(),
+  ),
   isUnlocked: isUnlocked,
   addUnlockListener: addUnlockListener,
   removeUnlockListener: removeUnlockListener,
@@ -673,6 +766,38 @@ HealthImportRunner? buildHealthImportRunner({
     observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+  );
+}
+
+/// Constructs the device-local computed-cycle-deviation insight service
+/// (Issue #799, deferred from #217), or null when health sync is gated off —
+/// the same gate and wired platforms as [buildHealthImportRunner]. It shares
+/// that runner's read port, so the "Apple Health noticed…" snapshot is read
+/// over exactly the same guarded channel; it never gains a write surface.
+HealthDeviationInsights? buildHealthDeviationInsights({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  final importPlatform = _healthImportPlatforms[defaultTargetPlatform];
+  if (kIsWeb || importPlatform == null) return null;
+  final binding = HealthSyncBinding(settings);
+  return LocalHealthDeviationService(
+    source: createHealthImportSource(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: minorBindingAllowed,
+    ),
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+    profiles: profiles,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+    settings: settings,
   );
 }
 

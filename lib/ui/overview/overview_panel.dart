@@ -52,6 +52,7 @@ import 'package:lunarlog/domain/care_modes.dart';
 import 'package:lunarlog/domain/conceive.dart'
     show currentConceptionEstimate;
 import 'package:lunarlog/domain/episodes/episodes.dart' show bleedDatesOf;
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/logging/quick_log.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
@@ -91,6 +92,7 @@ import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
+import 'package:lunarlog/ui/overview/health_deviation_card.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:lunarlog/ui/profiles/mode_exit_exclusion.dart';
@@ -228,6 +230,18 @@ class _OverviewPanelState extends State<OverviewPanel>
     listen: false,
   );
 
+  /// Issue #799: the device-local deviation insight seam, or null on a
+  /// build without health sync (web/desktop, an unconfigured build, a test
+  /// tree). Null renders no card, exactly the pre-#799 view.
+  late final HealthDeviationInsights? _deviationInsights =
+      Provider.of<HealthDeviationInsights?>(context, listen: false);
+
+  /// The snapshot to render, or null while none is loaded / after a
+  /// dismissal. Loaded once on mount from the persisted device-local
+  /// snapshot — never a fresh health-store read here (the import flow owns
+  /// the read; this panel only renders what it wrote).
+  HealthDeviationSnapshot? _deviationSnapshot;
+
   /// Issue #192: the profile's life-stage mode row (null repository on a
   /// test/unwired tree — no Pregnancy card, exactly the pre-#192 view).
   late final ProfileModesRepository? _profileModes =
@@ -290,6 +304,28 @@ class _OverviewPanelState extends State<OverviewPanel>
     _watchGuardians();
     _watchSuggestionDismissed();
     _watchModeRow();
+    unawaited(_loadDeviationSnapshot());
+  }
+
+  /// Issue #799: loads the persisted deviation snapshot for this profile —
+  /// the service returns null unless the profile is the one currently bound
+  /// to this device's health store and the operator has not dismissed this
+  /// exact snapshot, so the import gate is enforced there, not here.
+  Future<void> _loadDeviationSnapshot() async {
+    final insights = _deviationInsights;
+    if (insights == null) return;
+    final snapshot = await insights.visibleSnapshot(widget.profileId);
+    if (!mounted || snapshot == null) return;
+    setState(() => _deviationSnapshot = snapshot);
+  }
+
+  /// Hides the card and records the dismissal, so the same snapshot stays
+  /// hidden on this device while a later, different one shows again.
+  Future<void> _dismissDeviation() async {
+    final snapshot = _deviationSnapshot;
+    if (snapshot == null) return;
+    setState(() => _deviationSnapshot = null);
+    await _deviationInsights?.dismiss(widget.profileId, snapshot);
   }
 
   /// Issue #192: watches the profile's `profile_modes` row so the
@@ -650,6 +686,11 @@ class _OverviewPanelState extends State<OverviewPanel>
           },
         ),
         _seeHistoryLink(context),
+        if (_deviationSnapshot case final snapshot?)
+          HealthDeviationCard(
+            snapshot: snapshot,
+            onDismiss: () => unawaited(_dismissDeviation()),
+          ),
         if (availability == NotificationAvailability.denied)
           const _ReminderHint(),
         ...widget.trailingChildren,

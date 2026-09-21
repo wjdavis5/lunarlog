@@ -41,11 +41,17 @@
 		  `unixFileSize`) calls `fstat()` to read the database file's size
 		  on every open, a well-documented reason app binaries bundling
 		  SQLite need this category declared.
-		- User Defaults (`NSPrivacyAccessedAPICategoryUserDefaults`, reason
-		  CA92.1, app-exclusive UserDefaults access, not an App Group):
+		- User Defaults (`NSPrivacyAccessedAPICategoryUserDefaults`):
 		  AppDelegate.swift's `HealthKitChannelHandler` reads/writes
 		  `UserDefaults.standard` directly (the `boundProfileId` guard
-		  state, issue #173); this app's own Swift code, not a plugin.
+		  state, issue #173) — reason CA92.1 (app-exclusive access, not
+		  an App Group); issue #141 adds reason CA92.2 (information
+		  shared between an app extension and its containing app) for
+		  the App Group suite the Dart side writes the home-screen
+		  widget's discreet render payload into
+		  (`lib/domain/widget/widget_cycle_state.dart` documents the
+		  exact, minimal field set; the widget extension's own manifest,
+		  ios/LunarLogWidget/PrivacyInfo.xcprivacy, declares CA92.2 too).
 		- NOT declared: System Boot Time, Disk Space, Active Keyboards.
 		  No first-party code (AppDelegate.swift, including the HealthKit
 		  and notification handling) or Flutter/Dart code calls any of
@@ -69,11 +75,14 @@
 		flow and spotting records, written into the OS HealthKit store on
 		this device), and #217 the user-initiated menstrual-flow import
 		(#781's owner decision reversing the earlier write-only posture).
-		The import reads only menstrualFlow, only on an explicit Settings
-		action, only for the bound profile, and only over a bounded 30-day
-		window; samples this app itself wrote are excluded by source
-		filtering, and Apple's four computed cycle-deviation types are never
-		requested, read, or written. The import keeps data on the device:
+		The import reads menstrual flow over the whole available
+		history (paged, issue #992), and (issue #799) Apple's four
+		computed cycle-deviation types as a read-only insight over a
+		bounded six-month window; both only on an explicit Settings
+		action and only for the bound profile. Samples this app itself
+		wrote are excluded by source filtering, and the four computed
+		deviation types are never written. The import keeps data on the
+		device:
 		the app itself never transmits HealthKit data off-device and no
 		third party receives it through this feature, so neither direction
 		is a new *collected* data type for App Store Connect purposes and
@@ -150,6 +159,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>CA92.2</string>
 			</array>
 		</dict>
 	</array>

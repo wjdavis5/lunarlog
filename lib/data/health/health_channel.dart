@@ -56,6 +56,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/services.dart';
 
 import '../../domain/health/day_boundary.dart';
+import '../../domain/health/health_deviation.dart';
 import '../../domain/health/health_import.dart';
 import '../../domain/health/health_platform.dart';
 import '../../domain/health/health_sync_binding.dart';
@@ -380,35 +381,45 @@ class MethodChannelHealthPlatform
         payloadArgs: () => {'recordIds': recordIds},
       );
 
-  /// The read/import half (Issue #217): the same guard ordering as every
-  /// write — the Dart binding is evaluated first and a deny returns
-  /// [HealthReadResult.refused] without any channel call — then the call
-  /// carries the same guard facts so the native handler re-evaluates its
-  /// mirrored predicate before issuing the query. A denial of *read
-  /// permission* never surfaces here as an error: HealthKit returns an
-  /// empty sample list for it, which decodes to
-  /// [HealthReadResult.samples] with no entries, exactly like "no data".
+  /// The read/import half (Issue #217, paged in #992): the same guard
+  /// ordering as every write — the Dart binding is evaluated first and a
+  /// deny returns [HealthReadResult.refused] without any channel call —
+  /// then the call carries the same guard facts so the native handler
+  /// re-evaluates its mirrored predicate before issuing the query, plus the
+  /// window, page size, and optional cursor. A denial of *read permission*
+  /// never surfaces here as an error: HealthKit returns an empty sample
+  /// list for it, which decodes to [HealthReadResult.samples] with no
+  /// entries, exactly like "no data".
   @override
-  Future<HealthReadResult> readMenstrualFlow(
+  Future<HealthReadResult> readMenstrualFlowPage(
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
+    required int pageSize,
+    String? cursor,
   }) async {
     final check = await _guardCheck(facts);
     if (!check.isAllowed) return HealthReadResult.refused(check);
     try {
-      final raw =
-          await channel.invokeMethod<Object?>(HealthChannelMethods.readMenstrualFlow, {
-        ...encodeGuardArgs(facts, minorBindingAllowed: minorBindingAllowed),
-        ...encodeReadWindowArgs(start, end),
-      });
+      final raw = await channel.invokeMethod<Object?>(
+        HealthChannelMethods.readMenstrualFlowPage,
+        {
+          ...encodeGuardArgs(facts, minorBindingAllowed: minorBindingAllowed),
+          ...encodeReadWindowArgs(
+            start,
+            end,
+            pageSize: pageSize,
+            cursor: cursor,
+          ),
+        },
+      );
       return decodeHealthReadResult(raw);
     } on PlatformException catch (error) {
       return _readPlatformFailure(error);
     } on MissingPluginException {
       return const HealthReadResult.unavailable();
     } on Exception catch (error) {
-      return HealthReadResult.failed('readMenstrualFlow failed: $error');
+      return HealthReadResult.failed('readMenstrualFlowPage failed: $error');
     }
   }
 
@@ -417,7 +428,52 @@ class MethodChannelHealthPlatform
         'unavailable' => const HealthReadResult.unavailable(),
         'permissionDenied' => const HealthReadResult.permissionDenied(),
         _ => HealthReadResult.failed(
-            'readMenstrualFlow failed (${error.code}): ${error.message}',
+            'readMenstrualFlowPage failed (${error.code}): ${error.message}',
+          ),
+      };
+
+  /// The computed cycle-deviation read (Issue #799): the same guard ordering
+  /// as every other guarded method — the Dart binding is evaluated first and
+  /// a deny returns [HealthDeviationReadResult.refused] with zero channel
+  /// invocations — then the identifiers and window cross for the native
+  /// handler to resolve against its own table and re-check its mirrored
+  /// binding. Read-only: nothing in this class can write a deviation type.
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final check = await _guardCheck(facts);
+    if (!check.isAllowed) return HealthDeviationReadResult.refused(check);
+    try {
+      final raw = await channel.invokeMethod<Object?>(
+        HealthChannelMethods.readCycleDeviations,
+        {
+          ...encodeGuardArgs(facts, minorBindingAllowed: minorBindingAllowed),
+          ...encodeDeviationReadArgs(start, end),
+        },
+      );
+      return decodeHealthDeviationReadResult(raw);
+    } on PlatformException catch (error) {
+      return _readDeviationPlatformFailure(error);
+    } on MissingPluginException {
+      return const HealthDeviationReadResult.unavailable();
+    } on Exception catch (error) {
+      return HealthDeviationReadResult.failed(
+        'readCycleDeviations failed: $error',
+      );
+    }
+  }
+
+  HealthDeviationReadResult _readDeviationPlatformFailure(
+    PlatformException error,
+  ) =>
+      switch (error.code) {
+        'unavailable' => const HealthDeviationReadResult.unavailable(),
+        'permissionDenied' => const HealthDeviationReadResult.permissionDenied(),
+        _ => HealthDeviationReadResult.failed(
+            'readCycleDeviations failed (${error.code}): ${error.message}',
           ),
       };
 }
@@ -508,12 +564,22 @@ class UnsupportedHealthPlatform
       const HealthPlatformResult.unavailable();
 
   @override
-  Future<HealthReadResult> readMenstrualFlow(
+  Future<HealthReadResult> readMenstrualFlowPage(
+    HealthGuardFacts facts, {
+    required DateTime start,
+    required DateTime end,
+    required int pageSize,
+    String? cursor,
+  }) async =>
+      const HealthReadResult.unavailable();
+
+  @override
+  Future<HealthDeviationReadResult> readCycleDeviations(
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
   }) async =>
-      const HealthReadResult.unavailable();
+      const HealthDeviationReadResult.unavailable();
 }
 
 /// Production wiring entry: the platform adapter for [platform]

@@ -295,6 +295,66 @@ enum HealthKitChannelHandler {
     HKCategoryTypeIdentifier.appetiteChanges.rawValue: .appetiteChanges,
   ]
 
+  /// Apple's four computed cycle-deviation category types (Issue #799,
+  /// deferred from #217), resolved by their canonical
+  /// `HKCategoryTypeIdentifier` **raw-value** strings rather than the enum
+  /// cases: the types are iOS 16-only while this target deploys to iOS 15,
+  /// and `init(rawValue:)` is available at the older floor.
+  ///
+  /// **These are read-only, permanently.** They are Apple-computed from the
+  /// user's own logged data, and App Review 5.1.3 forbids writing derived
+  /// data into HealthKit. This table is consumed only by the read path
+  /// (`readCycleDeviations`) and the read authorization set
+  /// (`deviationReadTypes`); it is deliberately absent from
+  /// `writtenCategoryTypeIdentifiers`, so no write or delete path can reach
+  /// it. The Dart side sends the same raw-value strings
+  /// (`HealthDeviationKind.healthKitIdentifier`), and
+  /// `test/release/health_deviation_read_types_test.dart` parses this table
+  /// and pins the two together.
+  static let deviationKinds: [(wire: String, identifier: String)] = [
+    (
+      wire: "irregularMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierIrregularMenstrualCycles"
+    ),
+    (
+      wire: "infrequentMenstrualCycles",
+      identifier: "HKCategoryTypeIdentifierInfrequentMenstrualCycles"
+    ),
+    (
+      wire: "prolongedMenstrualPeriods",
+      identifier: "HKCategoryTypeIdentifierProlongedMenstrualPeriods"
+    ),
+    (
+      wire: "persistentIntermenstrualBleeding",
+      identifier: "HKCategoryTypeIdentifierPersistentIntermenstrualBleeding"
+    ),
+  ]
+
+  /// The four deviation types as `HKCategoryType`s for the read
+  /// authorization set. The iOS 16-only identifiers resolve to nil (and are
+  /// dropped by `compactMap`) on an older OS, so the requested set is simply
+  /// smaller there. Never added to the write/share set.
+  static var deviationReadTypes: [HKCategoryType] {
+    deviationKinds.compactMap { entry in
+      HKObjectType.categoryType(
+        forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+    }
+  }
+
+  /// Resolves a wire name (or a canonical raw-value string) to its
+  /// `HKCategoryType`, or nil when the caller asked for something outside
+  /// the closed set — a protocol error the handler reports rather than
+  /// silently ignoring.
+  static func deviationCategoryType(forWire wire: String) -> HKCategoryType? {
+    guard
+      let entry = deviationKinds.first(where: {
+        $0.wire == wire || $0.identifier == wire
+      })
+    else { return nil }
+    return HKObjectType.categoryType(
+      forIdentifier: HKCategoryTypeIdentifier(rawValue: entry.identifier))
+  }
+
   /// Every HealthKit **category** type this app's write path can produce,
   /// as the `HKCategoryTypeIdentifier` case names the `write*` handlers
   /// resolve: #193' flow types, #238's symptom categories, and #228's
@@ -531,12 +591,18 @@ enum HealthKitChannelHandler {
       // The read set below is deliberately unchanged (issue #766 governs
       // reads).
       let toShare = Set(writtenSampleTypes)
-      // Issue #217: the read set is no longer empty. It carries only the
-      // menstrual-flow type the user-initiated import reads; the four
-      // Apple-computed cycle-deviation types are deliberately NOT requested
-      // and are never read or written. The one system sheet now covers both
-      // the write types and the read type.
-      let toRead: Set<HKObjectType> = [menstrualFlowType]
+      // Issue #217: the read set is no longer empty. It carries the
+      // menstrual-flow type the user-initiated import reads, plus (Issue
+      // #799) the four Apple-computed cycle-deviation types the overview
+      // insight reads. The deviation types are read-only, permanently:
+      // they are joined to `toRead` only and never to `toShare`, and no
+      // write/delete path resolves them. `deviationReadTypes` drops the
+      // iOS 16-only identifiers on an older OS, so the requested set is
+      // simply smaller there. The one system sheet covers both the write
+      // types and the read types.
+      let toRead: Set<HKObjectType> = Set(
+        [menstrualFlowType as HKObjectType]
+          + deviationReadTypes.map { $0 as HKObjectType })
       Task {
         do {
           // iOS's sheet reports completion, not the user's choice —
@@ -984,15 +1050,64 @@ enum HealthKitChannelHandler {
         }
       }
 
-    case "readMenstrualFlow":
-      // Issue #217 (#781's read decision): the user-initiated menstrual-flow
-      // import. Guarded identically to a write (the device-binding decision
-      // is the same), then a bounded sample query. Success returns an array
-      // of primitive maps (StandardMessageCodec), not a result string;
-      // authorization opacity means a denied read arrives here as an empty
-      // array, never an error.
+    case "readMenstrualFlowPage":
+      // Issue #217 (#781's read decision), paged for full history in Issue
+      // #992. Guarded identically to a write (the device-binding decision is
+      // the same), then one page of an `HKAnchoredObjectQuery`. Success
+      // returns a Map of `{samples, nextCursor?}` (StandardMessageCodec),
+      // not a result string; authorization opacity means a denied read
+      // arrives here as a page with an empty samples list, never an error.
       guard let g = args.flatMap(GuardArgs.init) else {
-        badArgs(result, "readMenstrualFlow requires guard args")
+        badArgs(result, "readMenstrualFlowPage requires guard args")
+        return
+      }
+      let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
+      guard decision == "allowed" else {
+        result(decision)
+        return
+      }
+      guard HKHealthStore.isHealthDataAvailable() else {
+        result("unavailable")
+        return
+      }
+      guard
+        let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
+        let endMs = (args?["endMs"] as? NSNumber)?.int64Value,
+        let pageSize = (args?["pageSize"] as? NSNumber)?.intValue,
+        pageSize > 0
+      else {
+        badArgs(result, "readMenstrualFlowPage requires startMs/endMs/pageSize")
+        return
+      }
+      let cursor = args?["cursor"] as? String
+      Task {
+        do {
+          let payload = try await readMenstrualFlowPage(
+            start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
+            end: Date(timeIntervalSince1970: Double(endMs) / 1000.0),
+            cursor: cursor,
+            pageSize: pageSize)
+          result(payload)
+        } catch {
+          result(
+            FlutterError(
+              code: "readFailed",
+              message: "readMenstrualFlowPage failed: \(error.localizedDescription)",
+              details: nil))
+        }
+      }
+
+    case "readCycleDeviations":
+      // Issue #799 (deferred from #217): Apple's four computed cycle-deviation
+      // types, read-only. Guarded identically to every other read/write (the
+      // device-binding decision is the same); the caller sends its closed kind
+      // list, resolved here against `deviationKinds` so an unknown wire name
+      // is a bad-args protocol error rather than a silent skip. Success
+      // returns an array of primitive maps (StandardMessageCodec), never a
+      // result string; authorization opacity means a denied read arrives as an
+      // empty array. Nothing here can write a deviation type.
+      guard let g = args.flatMap(GuardArgs.init) else {
+        badArgs(result, "readCycleDeviations requires guard args")
         return
       }
       let decision = guardDecision(boundProfileId: storedBoundProfileId, g)
@@ -1008,12 +1123,27 @@ enum HealthKitChannelHandler {
         let startMs = (args?["startMs"] as? NSNumber)?.int64Value,
         let endMs = (args?["endMs"] as? NSNumber)?.int64Value
       else {
-        badArgs(result, "readMenstrualFlow requires startMs/endMs")
+        badArgs(result, "readCycleDeviations requires startMs/endMs")
         return
+      }
+      let requested = (args?["kinds"] as? [String]) ?? []
+      var requestedPairs: [(wire: String, type: HKCategoryType)] = []
+      for wire in requested {
+        guard
+          let entry = deviationKinds.first(where: {
+            $0.wire == wire || $0.identifier == wire
+          }),
+          let type = deviationCategoryType(forWire: wire)
+        else {
+          badArgs(result, "readCycleDeviations unknown kind: \(wire)")
+          return
+        }
+        requestedPairs.append((wire: entry.wire, type: type))
       }
       Task {
         do {
-          let payload = try await readMenstrualFlowSamples(
+          let payload = try await readCycleDeviationSamples(
+            types: requestedPairs,
             start: Date(timeIntervalSince1970: Double(startMs) / 1000.0),
             end: Date(timeIntervalSince1970: Double(endMs) / 1000.0))
           result(payload)
@@ -1021,7 +1151,8 @@ enum HealthKitChannelHandler {
           result(
             FlutterError(
               code: "readFailed",
-              message: "readMenstrualFlow failed: \(error.localizedDescription)",
+              message:
+                "readCycleDeviations failed: \(error.localizedDescription)",
               details: nil))
         }
       }
@@ -1078,15 +1209,25 @@ enum HealthKitChannelHandler {
     )
   }
 
-  /// Reads menstrual-flow samples in `[start, end]` (Issue #217) and flattens
-  /// each into the primitive map `health_channel_codec.dart`'s
+  /// Reads ONE page of menstrual-flow samples in `[start, end]` (Issues
+  /// #217/#992) and returns the `{samples, nextCursor?}` map Dart's
   /// `decodeHealthReadResult` parses.
+  ///
+  /// **Paging.** An `HKAnchoredObjectQuery` seeded with the opaque `cursor`
+  /// anchor returns at most `pageSize` samples and a new anchor. A full page
+  /// means there may be more, so the new anchor is serialized into
+  /// `nextCursor`; a short (or empty) page means the query is exhausted and
+  /// no cursor is sent — the property the Dart loop relies on to terminate.
+  /// Because the anchor advances HealthKit's own cursor, re-running the same
+  /// request can never return the same page.
   ///
   /// **Echo prevention is mandatory here.** A sample lunarlog itself wrote
   /// (#193) comes back with `sourceRevision.source.bundleIdentifier` equal to
   /// this app's bundle id; re-importing it would duplicate every entry and
   /// loop the write and read directions, so any such sample is dropped before
-  /// it reaches Dart.
+  /// it reaches Dart. A page whose samples are ALL our own writes still
+  /// carries its `nextCursor` (the page itself advanced), so Dart does not
+  /// mistake it for exhaustion.
   ///
   /// The sample's own IANA zone rides `HKMetadataKeyTimeZone`; Dart resolves
   /// the civil date from it (day_boundary.dart's #180 contract) — never from
@@ -1099,55 +1240,183 @@ enum HealthKitChannelHandler {
   /// dropped. The device's UTC offset at the sample's instant is sent as
   /// `zoneOffsetSeconds` and flagged `zoneOffsetInferred`, so Dart places the
   /// row and reports it honestly as inferred from this phone's zone.
-  private static func readMenstrualFlowSamples(
+  static func readMenstrualFlowPage(
+    start: Date,
+    end: Date,
+    cursor: String?,
+    pageSize: Int
+  ) async throws -> [String: Any] {
+    let predicate = HKQuery.predicateForSamples(
+      withStart: start, end: end, options: [])
+    let page = try await anchoredQuery(
+      ofType: menstrualFlowType,
+      predicate: predicate,
+      anchor: decodeAnchor(cursor),
+      limit: pageSize)
+    let ownBundleId = Bundle.main.bundleIdentifier
+    var samples: [[String: Any]] = []
+    for case let sample as HKCategorySample in page.samples {
+      if let entry = samplePayload(sample, ownBundleId: ownBundleId) {
+        samples.append(entry)
+      }
+    }
+    var payload: [String: Any] = ["samples": samples]
+    // A full page means HealthKit may have more waiting behind the new
+    // anchor; a short page means the anchored query is exhausted.
+    if page.samples.count >= pageSize,
+      let next = cursorString(for: page.newAnchor)
+    {
+      payload["nextCursor"] = next
+    }
+    return payload
+  }
+
+  /// Reads Apple's computed cycle-deviation samples (Issue #799, read-only)
+  /// in `[start, end]` for each requested `(wire, type)` pair and flattens
+  /// each into the primitive map `health_channel_codec.dart`'s
+  /// `decodeHealthDeviationReadResult` parses.
+  ///
+  /// **No echo prevention is needed here.** lunarlog never writes these
+  /// types (App Review 5.1.3 — they are Apple's own derived data), so no
+  /// sample can be this app's own. Apple's computed samples carry no
+  /// `HKMetadataKeyTimeZone`, so each sample's zone is this device's UTC
+  /// offset at the sample's instant, flagged `zoneOffsetInferred` — the
+  /// same #902 contract the flow read uses, so Dart resolves and reports the
+  /// civil date honestly.
+  private static func readCycleDeviationSamples(
+    types: [(wire: String, type: HKCategoryType)],
     start: Date,
     end: Date
   ) async throws -> [[String: Any]] {
     let predicate = HKQuery.predicateForSamples(
       withStart: start, end: end, options: [])
-    let samples = try await querySamples(
-      ofType: menstrualFlowType, predicate: predicate)
-    let ownBundleId = Bundle.main.bundleIdentifier
     var payload: [[String: Any]] = []
-    for case let sample as HKCategorySample in samples {
-      if let ownBundleId,
-        sample.sourceRevision.source.bundleIdentifier == ownBundleId
-      {
-        continue
+    for pair in types {
+      let samples = try await querySamples(
+        ofType: pair.type, predicate: predicate)
+      for case let sample as HKCategorySample in samples {
+        var entry: [String: Any] = [
+          "kind": pair.wire,
+          "recordId": sample.uuid.uuidString,
+          "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+          "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+        ]
+        if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+          entry["tzName"] = tz
+        } else {
+          entry["zoneOffsetSeconds"] =
+            TimeZone.current.secondsFromGMT(for: sample.startDate)
+          entry["zoneOffsetInferred"] = true
+        }
+        payload.append(entry)
       }
-      guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
-        continue
-      }
-      var entry: [String: Any] = [
-        "recordId": sample.uuid.uuidString,
-        "flow": flow.wire,
-        "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
-        "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
-      ]
-      if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
-        entry["tzName"] = tz
-      } else {
-        // Issue #902: a menstruation sample entered by hand in Apple's own
-        // Health app (Browse > Cycle Tracking > Menstruation > +) carries no
-        // HKMetadataKeyTimeZone. Without a zone the Dart importer used to
-        // drop every such sample, which made the feature useless for the
-        // exact data it exists to bring over. Fall back to this device's UTC
-        // offset at the sample's instant — the zone the phone was in at that
-        // moment is the best available proxy — and flag it so Dart reports
-        // the row as inferred (placed using this phone's time zone) rather
-        // than as the sample's own recorded zone. Menstrual flow is a
-        // whole-day category sample, so a wrong offset can only shift the
-        // civil date by at most one day.
-        entry["zoneOffsetSeconds"] =
-          TimeZone.current.secondsFromGMT(for: sample.startDate)
-        entry["zoneOffsetInferred"] = true
-      }
-      if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
-        entry["externalUuid"] = external
-      }
-      payload.append(entry)
     }
     return payload
+  }
+
+  /// One `HKCategorySample`'s primitive map, or nil when it is this app's
+  /// own write or carries no known flow intensity.
+  private static func samplePayload(
+    _ sample: HKCategorySample,
+    ownBundleId: String?
+  ) -> [String: Any]? {
+    if let ownBundleId,
+      sample.sourceRevision.source.bundleIdentifier == ownBundleId
+    {
+      return nil
+    }
+    guard let flow = MenstrualFlowRawValue(rawValue: sample.value) else {
+      return nil
+    }
+    var entry: [String: Any] = [
+      "recordId": sample.uuid.uuidString,
+      "flow": flow.wire,
+      "startMs": Int64(sample.startDate.timeIntervalSince1970 * 1000.0),
+      "endMs": Int64(sample.endDate.timeIntervalSince1970 * 1000.0),
+    ]
+    if let tz = sample.metadata?[HKMetadataKeyTimeZone] as? String {
+      entry["tzName"] = tz
+    } else {
+      // Issue #902: a menstruation sample entered by hand in Apple's own
+      // Health app (Browse > Cycle Tracking > Menstruation > +) carries no
+      // HKMetadataKeyTimeZone. Without a zone the Dart importer used to
+      // drop every such sample, which made the feature useless for the
+      // exact data it exists to bring over. Fall back to this device's UTC
+      // offset at the sample's instant — the zone the phone was in at that
+      // moment is the best available proxy — and flag it so Dart reports
+      // the row as inferred (placed using this phone's time zone) rather
+      // than as the sample's own recorded zone. Menstrual flow is a
+      // whole-day category sample, so a wrong offset can only shift the
+      // civil date by at most one day.
+      entry["zoneOffsetSeconds"] =
+        TimeZone.current.secondsFromGMT(for: sample.startDate)
+      entry["zoneOffsetInferred"] = true
+    }
+    if let external = sample.metadata?[HKMetadataKeyExternalUUID] as? String {
+      entry["externalUuid"] = external
+    }
+    return entry
+  }
+
+  /// Serializes an anchored query's anchor for the wire — the opaque
+  /// `nextCursor` Dart passes back on the next page. `HKQueryAnchor`
+  /// conforms to `NSSecureCoding`; the base64 string is opaque to Dart.
+  static func cursorString(for anchor: HKQueryAnchor?) -> String? {
+    guard let anchor else { return nil }
+    guard
+      let data = try? NSKeyedArchiver.archivedData(
+        withRootObject: anchor, requiringSecureCoding: true)
+    else { return nil }
+    return encodeCursorData(data)
+  }
+
+  /// Base64 without line wrapping — separated from the anchor archive so the
+  /// codec's round-trip is unit-testable without an `HKQueryAnchor`, which
+  /// has no public initializer.
+  static func encodeCursorData(_ data: Data) -> String {
+    data.base64EncodedString()
+  }
+
+  /// The inverse of [encodeCursorData]; nil for nil/empty/malformed input.
+  static func decodeCursorData(_ cursor: String?) -> Data? {
+    guard let cursor, !cursor.isEmpty else { return nil }
+    return Data(base64Encoded: cursor)
+  }
+
+  /// Decodes an opaque cursor back into the anchor the anchored query wants,
+  /// or nil (start from the beginning) when the cursor is absent, empty, or
+  /// not an archived anchor this build understands.
+  static func decodeAnchor(_ cursor: String?) -> HKQueryAnchor? {
+    guard let data = decodeCursorData(cursor) else { return nil }
+    return try? NSKeyedUnarchiver.unarchivedObject(
+      ofClass: HKQueryAnchor.self, from: data)
+  }
+
+  /// Runs one `HKAnchoredObjectQuery` over `store` and awaits its page.
+  /// HealthKit has no async overload, so the callback-based query is bridged
+  /// through a `withCheckedThrowingContinuation`.
+  private static func anchoredQuery(
+    ofType sampleType: HKSampleType,
+    predicate: NSPredicate?,
+    anchor: HKQueryAnchor?,
+    limit: Int
+  ) async throws -> (samples: [HKSample], newAnchor: HKQueryAnchor?) {
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<([HKSample], HKQueryAnchor?), Error>) in
+      let query = HKAnchoredObjectQuery(
+        type: sampleType,
+        predicate: predicate,
+        anchor: anchor,
+        limit: limit
+      ) { _, samples, _, newAnchor, error in
+        if let error {
+          continuation.resume(throwing: error)
+        } else {
+          continuation.resume(returning: (samples ?? [], newAnchor))
+        }
+      }
+      store.execute(query)
+    }
   }
 
   /// Runs an `HKSampleQuery` over `store` and awaits its results. HealthKit

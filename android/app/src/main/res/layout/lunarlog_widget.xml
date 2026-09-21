@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget's layout (issue #141). Deliberately terse:
+     an app-name line, the discreet state ("Day 14" or an em dash), an
+     optional countdown, and the optional quick-log button. No surface for
+     a profile name or any health word — see LunarLogWidgetProvider.kt. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/lunarlog_widget_background">
+
+    <TextView
+        android:id="@+id/widget_app_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_app_label"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="12sp"
+        android:alpha="0.6" />
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/widget_state_placeholder"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/widget_on_surface"
+        android:textSize="13sp"
+        android:alpha="0.7" />
+
+    <Button
+        android:id="@+id/widget_quick_log"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/widget_quick_log_label"
+        android:textSize="12sp"
+        android:minHeight="0dp"
+        android:minWidth="0dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp" />
+</LinearLayout>

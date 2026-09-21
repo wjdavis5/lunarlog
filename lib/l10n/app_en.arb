@@ -1124,6 +1124,39 @@
       }
     }
   },
+  "healthSyncImportSummaryHeadline": "Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.",
+  "@healthSyncImportSummaryHeadline": {
+    "description": "Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).",
+    "placeholders": {
+      "imported": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncImportTileSubtitle": "Bring in all available menstrual flow and spotting.",
+  "@healthSyncImportTileSubtitle": {
+    "description": "Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history."
+  },
+  "healthSyncImportProgress": "Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.",
+  "@healthSyncImportProgress": {
+    "description": "Shown while a full-history health import runs (Issue #992): the running sample count, so a long pass shows progress rather than a bare spinner.",
+    "placeholders": {
+      "samples": {
+        "type": "int"
+      }
+    }
+  },
+  "healthSyncFullHistoryNote": "Imports everything the health store makes available, not a recent window. Background sync is not available yet.",
+  "@healthSyncFullHistoryNote": {
+    "description": "Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred."
+  },
+  "healthSyncImportStoppedEarly": "The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.",
+  "@healthSyncImportStoppedEarly": {
+    "description": "Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely."
+  },
   "healthSyncUnbindDialogTitle": "Stop syncing {name} to this phone?",
   "@healthSyncUnbindDialogTitle": {
     "description": "Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.",
@@ -1206,6 +1239,22 @@
   "settingsSectionCalendar": "Calendar",
   "@settingsSectionCalendar": {
     "description": "Header of the Settings 'Calendar' section (Issue #226): week start, date format, predictions, measurement units."
+  },
+  "settingsSectionHomeWidget": "Home-screen widget",
+  "@settingsSectionHomeWidget": {
+    "description": "Header of the Settings 'Home-screen widget' section (Issue #141): which profile the widget shows. iOS/Android only."
+  },
+  "settingsHomeWidgetProfileTitle": "Widget profile",
+  "@settingsHomeWidgetProfileTitle": {
+    "description": "Tile title (Issue #141): which profile the home-screen widget renders; the subtitle names the current choice."
+  },
+  "settingsHomeWidgetFollowActive": "Follow the app's current profile",
+  "@settingsHomeWidgetFollowActive": {
+    "description": "Picker option (Issue #141): the widget tracks whatever profile the app currently has open, instead of pinning one."
+  },
+  "settingsHomeWidgetDisclosure": "The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.",
+  "@settingsHomeWidgetDisclosure": {
+    "description": "Privacy disclosure under the picker (Issue #141): the discreet default render, the gated quick-log behavior, and the viewer-role exclusion."
   },
   "settingsSectionFamilySharing": "Family & sharing",
   "@settingsSectionFamilySharing": {
@@ -3112,6 +3161,67 @@
   "accountReauthFailed": "Couldn't confirm it's you — try again",
   "@accountReauthFailed": {
     "description": "Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop."
+  },
+  "healthDeviationCardTitle": "Apple Health noticed…",
+  "@healthDeviationCardTitle": {
+    "description": "Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming."
+  },
+  "healthDeviationCardSubtitle": "These are Apple's own estimates from your Health data — separate from lunarlog's prediction.",
+  "@healthDeviationCardSubtitle": {
+    "description": "Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged."
+  },
+  "healthDeviationDismiss": "Dismiss",
+  "@healthDeviationDismiss": {
+    "description": "Issue #799: tooltip on the deviation card's dismiss button."
+  },
+  "healthDeviationKindIrregular": "irregular cycles",
+  "@healthDeviationKindIrregular": {
+    "description": "Issue #799: label for Apple's irregularMenstrualCycles deviation."
+  },
+  "healthDeviationKindInfrequent": "infrequent cycles",
+  "@healthDeviationKindInfrequent": {
+    "description": "Issue #799: label for Apple's infrequentMenstrualCycles deviation."
+  },
+  "healthDeviationKindProlonged": "prolonged periods",
+  "@healthDeviationKindProlonged": {
+    "description": "Issue #799: label for Apple's prolongedMenstrualPeriods deviation."
+  },
+  "healthDeviationKindPersistentIntermenstrualBleeding": "bleeding between periods",
+  "@healthDeviationKindPersistentIntermenstrualBleeding": {
+    "description": "Issue #799: label for Apple's persistentIntermenstrualBleeding deviation."
+  },
+  "healthDeviationLine": "Possible {kind} ({range})",
+  "@healthDeviationLine": {
+    "description": "Issue #799: one deviation line on the card, e.g. 'Possible irregular cycles (Aug 1 – Aug 30)'.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRange": "{start} – {end}",
+  "@healthDeviationRange": {
+    "description": "Issue #799: the date span of a deviation interval; both placeholders are already-formatted local dates.",
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "healthDeviationRangeSingle": "{date}",
+  "@healthDeviationRangeSingle": {
+    "description": "Issue #799: a deviation whose interval starts and ends on the same civil day; the placeholder is an already-formatted local date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
   },
   "accountDeleteDialogBody": "This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.",
   "@accountDeleteDialogBody": {

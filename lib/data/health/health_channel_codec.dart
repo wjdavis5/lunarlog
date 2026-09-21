@@ -23,9 +23,17 @@
 /// | `deleteRecords` | guard + `recordIds` | result string |
 /// | `permissionStatus` | none | one of `granted` / `notAsked` / `denied` / `unavailable` |
 /// | `openPermissionSettings` | none | `null` |
-/// | `readMenstrualFlow` | guard + `startMs` + `endMs` | a `List` of sample maps, or a result string |
+/// | `readMenstrualFlowPage` | guard + `startMs` + `endMs` + `pageSize` + `cursor?` | a page `Map` (`samples` list + `nextCursor`), or a result string |
+/// | `readCycleDeviations` | guard + `startMs` + `endMs` + `kinds` (list of wire names) | a `List` of deviation maps, or a result string |
 ///
-/// *Sample maps* (`readMenstrualFlow`): `recordId`, `startMs`, `endMs`, and
+/// *Page result* (`readMenstrualFlowPage`, Issue #992): a `Map` with
+/// `'samples'` — a `List` of the sample maps below — and `'nextCursor'` —
+/// the opaque cursor string for the next page, omitted or null when the
+/// stream is exhausted. A bare `List` is also still accepted by
+/// [decodeHealthReadResult] as a legacy single-page/exhausted success, so a
+/// result-string protocol error is never silently read as data.
+///
+/// *Sample maps* (`readMenstrualFlowPage`): `recordId`, `startMs`, `endMs`, and
 /// either an iOS-only `tzName` (the sample's IANA zone, #217) or an
 /// Android-only `zoneOffsetSeconds` (Health Connect's raw `zoneOffset`,
 /// #458) — the #180 "resolve the civil date from the sample's own zone"
@@ -82,18 +90,19 @@
 /// [PlatformException] on the Dart side) instead, carrying the
 /// diagnostic message.
 ///
-/// **Deferred permissions (issue #186, AC9):** `READ_HEALTH_DATA_HISTORY`
-/// (full-history import) and `READ_HEALTH_DATA_IN_BACKGROUND` (background
-/// reads) are deliberately NOT declared for v1. Reads are limited to the
-/// last 30 days (Health Connect's change-token window) with a
-/// user-initiated sync plus a foreground-resume sync — the same
-/// background-delivery deferral rationale as #156 (HS-2) — so the Play
-/// form needs no extra permission justification. Both the Settings copy
-/// and this comment record that decision; the Settings screen states the
-/// 30-day limit explicitly rather than silently truncating.
+/// **Permissions (Issue #992):** `READ_HEALTH_DATA_HISTORY` IS declared
+/// and requested on Android as of #992, so the user-initiated import can
+/// read the whole Health Connect history rather than the platform's
+/// default 30-day pre-grant window. `READ_HEALTH_DATA_IN_BACKGROUND`
+/// (background reads) remains deliberately NOT declared — background
+/// delivery stays deferred (#156/HS-2), so the import is still
+/// user-initiated only and there is no Play background-read declaration to
+/// make. On iOS there is no history/background split: the read set is the
+/// single menstrual-flow type, and full history is simply the query range.
 library;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_policy.dart';
@@ -124,10 +133,15 @@ abstract final class HealthChannelMethods {
   static const openPermissionSettings = 'openPermissionSettings';
 
 
-  /// The read/import method (Issue #217). Its success result is a `List` of
-  /// sample maps rather than a result string — see
-  /// [decodeHealthReadResult].
-  static const readMenstrualFlow = 'readMenstrualFlow';
+  /// The read/import method (Issue #217, paged in #992). Its success
+  /// result is a page `Map` (`samples` + `nextCursor`) rather than a result
+  /// string — see [decodeHealthReadResult].
+  static const readMenstrualFlowPage = 'readMenstrualFlowPage';
+
+  /// The computed cycle-deviation read (Issue #799). Its success result is
+  /// a `List` of deviation maps rather than a result string — see
+  /// [decodeHealthDeviationReadResult].
+  static const readCycleDeviations = 'readCycleDeviations';
 }
 
 /// The canonical Apple SDK raw integer for each [HealthFlowValue], per
@@ -239,44 +253,84 @@ HealthPermissionStatus decodeHealthPermissionStatus(Object? raw) =>
         : HealthPermissionStatus.unavailable;
 
 
-/// Parses a `readMenstrualFlow` result into the typed [HealthReadResult].
-/// Two wire shapes are accepted: a `List` of sample maps (success) and a
-/// result `String` (`unavailable` / `permissionDenied` / a
-/// [HealthSyncCheck] deny name). Total — an unrecognised shape or a
-/// malformed sample map becomes [HealthReadResult.failed], never a silent
-/// empty success (a protocol error must surface).
+/// Parses a `readMenstrualFlowPage` result into the typed [HealthReadResult].
+/// Two wire shapes are accepted: a page `Map` (`samples` list plus an
+/// optional `nextCursor` string) or a bare `List` of sample maps (a
+/// legacy/no-cursor success), and a result `String` (`unavailable` /
+/// `permissionDenied` / a [HealthSyncCheck] deny name). Total — an
+/// unrecognised shape, a non-string cursor, or a malformed sample map
+/// becomes [HealthReadResult.failed], never a silent empty success (a
+/// protocol error must surface).
 HealthReadResult decodeHealthReadResult(Object? raw) {
-  if (raw is List) {
-    final samples = <HealthFlowSample>[];
-    for (final entry in raw) {
-      final sample = _decodeFlowSample(entry);
-      if (sample == null) {
-        return HealthReadResult.failed('malformed readMenstrualFlow sample');
-      }
-      samples.add(sample);
-    }
-    return HealthReadResult.samples(samples);
-  }
-  if (raw is String) {
-    switch (raw) {
-      case 'unavailable':
-        return const HealthReadResult.unavailable();
-      case 'permissionDenied':
-        return const HealthReadResult.permissionDenied();
-      default:
-        final check = _checkFromWire(raw);
-        if (check != null && check != HealthSyncCheck.allowed) {
-          return HealthReadResult.refused(check);
-        }
-        return HealthReadResult.failed('unknown readMenstrualFlow result: $raw');
-    }
-  }
+  if (raw is Map) return _decodeReadPage(raw);
+  if (raw is List) return _decodeSampleList(raw, nextCursor: null);
+  if (raw is String) return _decodeReadString(raw);
   return HealthReadResult.failed(
-    'unexpected readMenstrualFlow result (${raw.runtimeType}): $raw',
+    'unexpected readMenstrualFlowPage result (${raw.runtimeType}): $raw',
   );
 }
 
-/// One sample map from `readMenstrualFlow`, or null when a required key is
+/// The page-Map branch of [decodeHealthReadResult] (split out to keep both
+/// functions' complexity low enough for the quality gate).
+HealthReadResult _decodeReadPage(Map<Object?, Object?> raw) {
+  final rawSamples = raw['samples'];
+  if (rawSamples is! List) {
+    return HealthReadResult.failed(
+      'readMenstrualFlowPage result has no samples list',
+    );
+  }
+  final cursor = raw['nextCursor'];
+  if (cursor != null && cursor is! String) {
+    return HealthReadResult.failed(
+      'readMenstrualFlowPage cursor is not a string: $cursor',
+    );
+  }
+  // A cursor, when present, must be a non-empty string. An empty string is
+  // treated as "no cursor" (some SDKs spell exhaustion that way) so a native
+  // side that sends '' instead of null cannot trap the Dart loop in a
+  // repeated-cursor stop on the first page.
+  final cursorText = cursor as String?;
+  final nextCursor =
+      (cursorText == null || cursorText.isEmpty) ? null : cursorText;
+  return _decodeSampleList(rawSamples, nextCursor: nextCursor);
+}
+
+/// The result-String branch of [decodeHealthReadResult] (`unavailable` /
+/// `permissionDenied` / a deny name).
+HealthReadResult _decodeReadString(String raw) {
+  switch (raw) {
+    case 'unavailable':
+      return const HealthReadResult.unavailable();
+    case 'permissionDenied':
+      return const HealthReadResult.permissionDenied();
+    default:
+      final check = _checkFromWire(raw);
+      if (check != null && check != HealthSyncCheck.allowed) {
+        return HealthReadResult.refused(check);
+      }
+      return HealthReadResult.failed(
+        'unknown readMenstrualFlowPage result: $raw',
+      );
+  }
+}
+
+/// Decodes a list of sample maps into [HealthReadSamples], carrying
+/// [nextCursor] through. A single malformed map fails the whole page rather
+/// than dropping it silently.
+HealthReadResult _decodeSampleList(Object? raw, {String? nextCursor}) {
+  if (raw is! List) return HealthReadResult.failed('samples is not a list');
+  final samples = <HealthFlowSample>[];
+  for (final entry in raw) {
+    final sample = _decodeFlowSample(entry);
+    if (sample == null) {
+      return HealthReadResult.failed('malformed readMenstrualFlowPage sample');
+    }
+    samples.add(sample);
+  }
+  return HealthReadResult.samples(samples, nextCursor: nextCursor);
+}
+
+/// One sample map from `readMenstrualFlowPage`, or null when a required key is
 /// missing/typed wrong. Optional keys (`tzName`, `zoneOffsetSeconds`,
 /// `zoneOffsetInferred`, `externalUuid`) are genuinely nullable. [start]/[end]
 /// cross as epoch-millisecond numbers and become UTC instants; the sample's
@@ -315,14 +369,110 @@ HealthFlowSample? _decodeFlowSample(Object? entry) {
   );
 }
 
-/// The window-args half of `readMenstrualFlow`: the absolute query bounds as
-/// epoch milliseconds. Widened by the caller (`health_import_service.dart`)
-/// so a sample recorded in any zone inside the civil window is returned; the
-/// precise civil-date filter happens in Dart against the sample's own zone.
-Map<String, Object?> encodeReadWindowArgs(DateTime start, DateTime end) => {
+/// The window-args half of `readMenstrualFlowPage` (Issue #992): the
+/// absolute query bounds as epoch milliseconds, the page size, and the
+/// optional opaque cursor. The bounds are the full import range
+/// (`health_import_service.dart` widens the upper edge so a sample recorded
+/// in any zone today is returned); the precise civil-date filter happens in
+/// Dart against the sample's own zone. `pageSize` is always sent so both
+/// native halves use the Dart-declared value, and `cursor` rides as a plain
+/// optional string (absent/null on the first page).
+Map<String, Object?> encodeReadWindowArgs(
+  DateTime start,
+  DateTime end, {
+  required int pageSize,
+  String? cursor,
+}) => {
       'startMs': start.millisecondsSinceEpoch,
       'endMs': end.millisecondsSinceEpoch,
+      'pageSize': pageSize,
+      'cursor': ?cursor,
     };
+
+/// The args half of `readCycleDeviations` (Issue #799): the same absolute
+/// `startMs`/`endMs` instants as the flow window (but no `pageSize`/`cursor`
+/// — deviations are four category types, never a paged stream), plus the
+/// closed list of deviation `kinds` this Dart side asks for, as their
+/// canonical raw identifier strings
+/// ([HealthDeviationKind.healthKitIdentifier]). Sending the identifiers
+/// explicitly — and resolving them on the Swift side through its own table —
+/// is the #916 lesson applied here: the two languages cannot share the type
+/// table, so the strings crossing the boundary are pinned by
+/// `test/release/health_deviation_read_types_test.dart`.
+Map<String, Object?> encodeDeviationReadArgs(DateTime start, DateTime end) => {
+      'startMs': start.millisecondsSinceEpoch,
+      'endMs': end.millisecondsSinceEpoch,
+      'kinds': [
+        for (final kind in HealthDeviationKind.values) kind.healthKitIdentifier,
+      ],
+    };
+
+/// Parses a `readCycleDeviations` result into the typed
+/// [HealthDeviationReadResult] (Issue #799). Two wire shapes are accepted:
+/// a `List` of deviation maps (success) and a result `String`
+/// (`unavailable` / `permissionDenied` / a [HealthSyncCheck] deny name).
+/// Total — an unrecognised shape or a malformed map becomes
+/// [HealthDeviationReadResult.failed], never a silent empty success.
+HealthDeviationReadResult decodeHealthDeviationReadResult(Object? raw) {
+  if (raw is List) {
+    final samples = <HealthDeviationSample>[];
+    for (final entry in raw) {
+      final sample = _decodeDeviationSample(entry);
+      if (sample == null) {
+        return const HealthDeviationReadResult.failed(
+          'malformed readCycleDeviations sample',
+        );
+      }
+      samples.add(sample);
+    }
+    return HealthDeviationReadResult.samples(samples);
+  }
+  if (raw is String) {
+    switch (raw) {
+      case 'unavailable':
+        return const HealthDeviationReadResult.unavailable();
+      case 'permissionDenied':
+        return const HealthDeviationReadResult.permissionDenied();
+      default:
+        final check = _checkFromWire(raw);
+        if (check != null && check != HealthSyncCheck.allowed) {
+          return HealthDeviationReadResult.refused(check);
+        }
+        return HealthDeviationReadResult.failed(
+          'unknown readCycleDeviations result: $raw',
+        );
+    }
+  }
+  return HealthDeviationReadResult.failed(
+    'unexpected readCycleDeviations result (${raw.runtimeType}): $raw',
+  );
+}
+
+/// One deviation map from `readCycleDeviations`, or null when a required
+/// key is missing/typed wrong. [HealthDeviationSample.start]/[end] cross as
+/// epoch-millisecond numbers and become UTC instants; the sample's own zone
+/// rides `tzName` (iOS IANA) or `zoneOffsetSeconds` (+
+/// `zoneOffsetInferred`), exactly like the flow read's #180/#902 contract.
+HealthDeviationSample? _decodeDeviationSample(Object? entry) {
+  if (entry is! Map) return null;
+  final kind = HealthDeviationKind.fromWire(entry['kind'] as String?);
+  final recordId = entry['recordId'];
+  final startMs = (entry['startMs'] as num?)?.toInt();
+  final endMs = (entry['endMs'] as num?)?.toInt();
+  if (kind == null || recordId is! String || startMs == null || endMs == null) {
+    return null;
+  }
+  final offsetSeconds = (entry['zoneOffsetSeconds'] as num?)?.toInt();
+  return HealthDeviationSample(
+    kind: kind,
+    recordId: recordId,
+    start: DateTime.fromMillisecondsSinceEpoch(startMs, isUtc: true),
+    end: DateTime.fromMillisecondsSinceEpoch(endMs, isUtc: true),
+    tzName: entry['tzName'] as String?,
+    offset: offsetSeconds == null ? null : Duration(seconds: offsetSeconds),
+    offsetInferred: entry['zoneOffsetInferred'] as bool? ?? false,
+  );
+}
 
 /// The guard-args half of every guarded call. [minorBindingAllowed] is
 /// passed in by the adapter (sourced from

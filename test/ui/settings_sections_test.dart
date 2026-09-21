@@ -106,7 +106,10 @@ Future<void> pumpSettings(
 }) async {
   settings ??= FakeSettingsStore();
   addTearDown(settings.close);
-  tester.view.physicalSize = const Size(800, 2400);
+  // Issue #141 added the home-screen widget section; the taller viewport
+  // keeps the About section inside the ListView's built extent so the
+  // ordering assertion still sees every section key.
+  tester.view.physicalSize = const Size(800, 3000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -175,7 +178,7 @@ Future<PackageInfo> _failingPackageInfo() async => throw Exception('no channel')
 
 void main() {
   testWidgets(
-      "Issue #226/#458: renders the nine sections, in the issue's order, each "
+      "Issue #226/#458/#141: renders the ten sections, in order, each "
       'headed by the shared SettingsSection component', (tester) async {
     await pumpSettings(
       tester,
@@ -192,6 +195,9 @@ void main() {
         // for the import direction; it renders whenever the repos are wired.
         'health',
         'appearance',
+        // Issue #141: the home-screen widget section (this test platform
+        // is Android, where the widget surface exists).
+        'home-widget',
         'reminders',
         'calendar',
         'family-sharing',
@@ -205,6 +211,7 @@ void main() {
       'Your data',
       'Health',
       'Appearance',
+      'Home-screen widget',
       'Reminders',
       'Calendar',
       'Family & sharing',
@@ -215,8 +222,8 @@ void main() {
       expect(find.text(title), findsOneWidget, reason: '$title header');
     }
     // Issue #813: every section head renders through the one shared
-    // component (one per section, nine sections here).
-    expect(find.byType(ListSectionHeader), findsNWidgets(9),
+    // component (one per section, ten sections here).
+    expect(find.byType(ListSectionHeader), findsNWidgets(10),
         reason: 'each section is headed by the shared ListSectionHeader');
   });
 

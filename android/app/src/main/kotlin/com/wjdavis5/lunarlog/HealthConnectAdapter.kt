@@ -22,6 +22,7 @@ import androidx.health.connect.client.units.Temperature
 import androidx.health.connect.client.records.metadata.Metadata as HcMetadata
 import androidx.health.connect.client.request.ChangesTokenRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.response.ChangesResponse
 import androidx.health.connect.client.time.TimeRangeFilter
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -31,6 +32,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.Base64
 import java.util.Calendar
 import kotlin.reflect.KClass
 
@@ -139,9 +141,15 @@ class HealthConnectAdapter(context: Context) {
     // types are read; the request sheet carries both sets at once, the
     // Android counterpart of #217's single `requestAuthorization(toShare:,
     // read:)` call. Nothing derived or predicted is ever read or written.
+    // Issue #992: READ_HEALTH_DATA_HISTORY lifts Health Connect's default
+    // 30-day pre-grant read cap so the import can read the whole history.
+    // It is a permission constant rather than a per-record permission, so
+    // it rides this set as-is. READ_HEALTH_DATA_IN_BACKGROUND is still
+    // deliberately absent — the import stays user-initiated only.
     private val readPermissions = setOf(
         HealthPermission.getReadPermission(MenstruationFlowRecord::class),
         HealthPermission.getReadPermission(IntermenstrualBleedingRecord::class),
+        HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY,
     )
 
     private val allPermissions = writePermissions + readPermissions
@@ -732,15 +740,16 @@ class HealthConnectAdapter(context: Context) {
                 }
             }
 
-            "readMenstrualFlow" -> {
-                // Issue #458 (#781's read decision): the user-initiated
-                // import. Guarded identically to a write (the device-binding
-                // decision is the same), then a bounded read over the two
-                // user-recorded menstrual types. Success returns an array of
-                // primitive maps (StandardMessageCodec), not a result string.
+            "readMenstrualFlowPage" -> {
+                // Issue #458 (#781's read decision), paged for full history
+                // in Issue #992: the user-initiated import. Guarded
+                // identically to a write (the device-binding decision is the
+                // same), then one page over the two user-recorded menstrual
+                // types. Success returns `{samples, nextCursor?}` primitive
+                // maps (StandardMessageCodec), not a result string.
                 val g = GuardArgs.parse(args)
                     ?: return result.error(
-                        "bad_args", "readMenstrualFlow requires guard args", null)
+                        "bad_args", "readMenstrualFlowPage requires guard args", null)
                 val decision = guardDecision(storedBoundProfileId, g)
                 if (decision != "allowed") {
                     result.success(decision)
@@ -753,14 +762,20 @@ class HealthConnectAdapter(context: Context) {
                 }
                 val startMs = GuardArgs.number(args, "startMs")
                 val endMs = GuardArgs.number(args, "endMs")
-                if (startMs == null || endMs == null) {
+                val pageSize = GuardArgs.number(args, "pageSize")?.toInt() ?: 0
+                if (startMs == null || endMs == null || pageSize <= 0) {
                     return result.error(
-                        "bad_args", "readMenstrualFlow requires startMs/endMs", null)
+                        "bad_args",
+                        "readMenstrualFlowPage requires startMs/endMs/pageSize",
+                        null)
                 }
+                val cursor = args?.get("cursor") as? String
                 CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
                     try {
                         result.success(
-                            readSamples(client, g.profileId, startMs, endMs))
+                            readSamples(
+                                client, g.profileId, startMs, endMs, pageSize,
+                                cursor))
                     } catch (e: SecurityException) {
                         // Read permission revoked or never granted on this
                         // install — distinct from a read failure. The Dart
@@ -801,88 +816,175 @@ class HealthConnectAdapter(context: Context) {
         }
     }
 
-    // Issue #458: the read/import half. Reads the requested window through
-    // the Changes API when a stored token exists (an incremental pass),
-    // recovering from an expired token (connect-client 1.1.0 surfaces this
-    // as ChangesPage.changesTokenExpired, not a thrown exception) with a
-    // full window read, and directly when no token exists (the first import
-    // backfill). A fresh token for the next pass is stored either way.
-    // Records this app itself wrote are dropped by dataOrigin — the
-    // mandatory loop-breaker.
+    // Issue #458/#992: the read/import half. One call returns ONE page, then
+    // an opaque cursor for the next. The first pass of a profile with no
+    // stored change token is a full-range read from epoch, paged by Health
+    // Connect's ReadRecordsResponse.pageToken; once that completes a change
+    // token is minted so later passes are incremental through the Changes
+    // API, itself paged by ChangesResponse.nextChangesToken. An expired
+    // change token (connect-client 1.1.0 surfaces this as
+    // ChangesResponse.changesTokenExpired, not a thrown exception) is
+    // cleared and recovered with a fresh full-range read rather than failing
+    // the pass. Records this app itself wrote are dropped by dataOrigin — the
+    // mandatory loop-breaker. A malformed cursor starts over from the
+    // beginning rather than failing (Dart's own repeated-cursor guard would
+    // otherwise have nothing to compare).
     private suspend fun readSamples(
         client: HealthConnectClient,
         profileId: String,
         startMs: Long,
         endMs: Long,
-    ): List<Map<String, Any>> {
-        val start = Instant.ofEpochMilli(startMs)
-        val end = Instant.ofEpochMilli(endMs)
-        val tokenKey = changesTokenKey(profileId)
-        val storedToken = prefs.getString(tokenKey, null)
-        val records = LinkedHashMap<String, Record>()
-        if (storedToken == null) {
-            records.putAll(readWindow(client, start, end))
+        pageSize: Int,
+        cursor: String?,
+    ): Map<String, Any> {
+        val decoded = cursor?.let { HealthImportCursor.decode(it) }
+        // A stored change token means an incremental pass: the first page
+        // (no cursor) uses it, and every later changes page carries its own
+        // next token in the cursor.
+        val changesMode = if (decoded != null) {
+            HealthImportCursor.isChanges(decoded.mode)
         } else {
-            val page = client.getChanges(storedToken)
-            if (page.changesTokenExpired) {
-                // Health Connect tokens expire after 30 days: clear the
-                // stale anchor and recover with the same full window read a
-                // first import uses, rather than failing the pass.
-                prefs.edit().remove(tokenKey).apply()
-                records.putAll(readWindow(client, start, end))
-            } else {
-                for (change in page.changes) {
-                    if (change is UpsertionChange) {
-                        records[change.record.metadata.id] = change.record
-                    }
+            prefs.getString(changesTokenKey(profileId), null) != null
+        }
+        if (changesMode) {
+            val token = decoded?.token
+                ?: prefs.getString(changesTokenKey(profileId), null)
+            if (token != null) {
+                val page = client.getChanges(token)
+                if (page.changesTokenExpired) {
+                    // Health Connect tokens expire after 30 days: clear the
+                    // stale anchor and recover with the same full-range read
+                    // a first import uses, rather than failing the pass.
+                    prefs.edit().remove(changesTokenKey(profileId)).apply()
+                    return readRangePage(
+                        client, profileId, startMs, endMs, pageSize,
+                        HealthImportCursor.FLOW, null)
                 }
+                return changesPage(client, profileId, page, startMs, endMs)
             }
         }
-        // Mint the next incremental anchor. Best-effort: a token failure
-        // must not fail a pass that already read its data.
-        storeChangesToken(client, tokenKey)
-        return records.values.mapNotNull { sampleFor(it, start, end) }
+        val mode = decoded?.mode ?: HealthImportCursor.FLOW
+        return readRangePage(
+            client, profileId, startMs, endMs, pageSize, mode, decoded?.token)
     }
 
-    // A full time-range read over the two user-recorded menstrual types.
-    private suspend fun readWindow(
+    // One page of the Changes API (an incremental pass), filtered to the
+    // requested window and this app's own writes. A `hasMore` page carries
+    // its next token; the final page stores that token (or mints one) as the
+    // anchor for the NEXT pass.
+    private suspend fun changesPage(
         client: HealthConnectClient,
-        start: Instant,
-        end: Instant,
-    ): Map<String, Record> {
+        profileId: String,
+        page: ChangesResponse,
+        startMs: Long,
+        endMs: Long,
+    ): Map<String, Any> {
+        val start = Instant.ofEpochMilli(startMs)
+        val end = Instant.ofEpochMilli(endMs)
         val records = LinkedHashMap<String, Record>()
-        val filter = TimeRangeFilter.between(start, end)
-        for (record in client.readRecords(
-            ReadRecordsRequest(MenstruationFlowRecord::class, filter)
-        ).records) {
-            records[record.metadata.id] = record
+        for (change in page.changes) {
+            if (change is UpsertionChange) {
+                records[change.record.metadata.id] = change.record
+            }
         }
-        for (record in client.readRecords(
-            ReadRecordsRequest(IntermenstrualBleedingRecord::class, filter)
-        ).records) {
-            records[record.metadata.id] = record
+        val payload = mutableMapOf<String, Any>(
+            "samples" to records.values.mapNotNull { sampleFor(it, start, end) },
+        )
+        val next = page.nextChangesToken
+        if (page.hasMore && next.isNotEmpty()) {
+            payload["nextCursor"] = HealthImportCursor.changes(next)
+        } else if (next.isNotEmpty()) {
+            // Last changes page: continue from the page's own next token on
+            // the NEXT pass. Best-effort: a token-write failure must not fail
+            // a pass that already read its data.
+            prefs.edit().putString(changesTokenKey(profileId), next).apply()
+        } else {
+            // No next token at all: mint a fresh "now" anchor, best effort.
+            mintChangesToken(client)?.let {
+                prefs.edit().putString(changesTokenKey(profileId), it).apply()
+            }
         }
-        return records
+        return payload
     }
 
-    // Stores a token representing "now" for the next incremental pass.
-    private suspend fun storeChangesToken(
+    // One page of a full time-range read for one record type. The cursor's
+    // mode says which type this page belongs to and carries that type's
+    // pageToken; when the flow type is exhausted the next cursor starts the
+    // intermenstrual-bleeding type, and when that is exhausted the page
+    // carries no cursor at all (the Dart loop's termination condition) and a
+    // fresh change token is minted for the next incremental pass.
+    private suspend fun readRangePage(
         client: HealthConnectClient,
-        tokenKey: String,
-    ) {
-        val token = try {
-            client.getChangesToken(
-                ChangesTokenRequest(
-                    setOf(
-                        MenstruationFlowRecord::class,
-                        IntermenstrualBleedingRecord::class,
-                    ),
-                ),
+        profileId: String,
+        startMs: Long,
+        endMs: Long,
+        pageSize: Int,
+        mode: String,
+        token: String?,
+    ): Map<String, Any> {
+        val start = Instant.ofEpochMilli(startMs)
+        val end = Instant.ofEpochMilli(endMs)
+        val filter = TimeRangeFilter.between(start, end)
+        if (HealthImportCursor.isFlow(mode)) {
+            val response = client.readRecords(
+                ReadRecordsRequest(
+                    MenstruationFlowRecord::class,
+                    filter,
+                    pageSize = pageSize,
+                    pageToken = token,
+                ))
+            val payload = mutableMapOf<String, Any>(
+                "samples" to response.records.mapNotNull {
+                    sampleFor(it, start, end)
+                },
             )
-        } catch (e: Exception) {
-            null
+            // Flow exhausted -> start the intermenstrual-bleeding type with
+            // no token rather than ending the pass.
+            payload["nextCursor"] = response.pageToken
+                ?.let { HealthImportCursor.flow(it) }
+                ?: HealthImportCursor.intermenstrual(null)
+            return payload
         }
-        if (token != null) prefs.edit().putString(tokenKey, token).apply()
+        // Intermenstrual-bleeding page (the second and final type).
+        val response = client.readRecords(
+            ReadRecordsRequest(
+                IntermenstrualBleedingRecord::class,
+                filter,
+                pageSize = pageSize,
+                pageToken = token,
+            ))
+        val payload = mutableMapOf<String, Any>(
+            "samples" to response.records.mapNotNull { sampleFor(it, start, end) },
+        )
+        if (response.pageToken != null) {
+            payload["nextCursor"] = HealthImportCursor.intermenstrual(
+                response.pageToken)
+        } else {
+            // Both types exhausted: this pass is done, and the next pass
+            // should be incremental. Mint a "now" anchor, best effort.
+            val next = mintChangesToken(client)
+            if (next != null) {
+                prefs.edit()
+                    .putString(changesTokenKey(profileId), next)
+                    .apply()
+            }
+        }
+        return payload
+    }
+
+    private suspend fun mintChangesToken(
+        client: HealthConnectClient,
+    ): String? = try {
+        client.getChangesToken(
+            ChangesTokenRequest(
+                setOf(
+                    MenstruationFlowRecord::class,
+                    IntermenstrualBleedingRecord::class,
+                ),
+            ),
+        )
+    } catch (e: Exception) {
+        null
     }
 
     // One record's primitive sample map, or null when it is our own write,
@@ -1065,5 +1167,67 @@ class HealthConnectAdapter(context: Context) {
             "sleepChanges",
             "appetiteChanges",
         )
+    }
+}
+
+/**
+ * The opaque paging cursor codec for the #992 full-history read.
+ *
+ * A cursor is `<mode>:<base64url token>`, where the mode names which stage
+ * of the read the token belongs to:
+ *
+ *  * `flow` — a full-range `readRecords` page for `MenstruationFlowRecord`;
+ *  * `ib`   — a full-range `readRecords` page for
+ *               `IntermenstrualBleedingRecord`;
+ *  * `chg`  — a `getChanges` page (the incremental pass).
+ *
+ * The flow stage's final page emits an `ib:` cursor (empty token) so the
+ * read moves on to the second record type; the ib stage's final page emits
+ * no cursor at all, which is the Dart loop's termination condition. Dart
+ * never parses this — it only compares cursors for equality to prove
+ * progress — so the format is free to change here, but a repeated cursor or
+ * a malformed one must never trap the loop. Deliberately free of Health
+ * Connect types (only `Base64` and strings) so it is unit-testable on the
+ * JVM, mirroring the Swift `cursorString`/`decodeCursorData` pair.
+ */
+internal object HealthImportCursor {
+    const val FLOW = "flow"
+    const val INTERMENSTRUAL = "ib"
+    const val CHANGES = "chg"
+
+    private const val SEPARATOR = ':'
+
+    class Decoded(val mode: String, val token: String?)
+
+    fun flow(token: String?): String = encode(FLOW, token)
+    fun intermenstrual(token: String?): String = encode(INTERMENSTRUAL, token)
+    fun changes(token: String): String = encode(CHANGES, token)
+
+    fun isFlow(mode: String): Boolean = mode == FLOW
+    fun isIntermenstrual(mode: String): Boolean = mode == INTERMENSTRUAL
+    fun isChanges(mode: String): Boolean = mode == CHANGES
+
+    private fun encode(mode: String, token: String?): String {
+        val payload = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString((token ?: "").toByteArray(Charsets.UTF_8))
+        return mode + SEPARATOR + payload
+    }
+
+    /** Decodes a cursor; null for anything malformed or an unknown mode. */
+    fun decode(cursor: String): Decoded? {
+        val index = cursor.indexOf(SEPARATOR)
+        if (index <= 0) return null
+        val mode = cursor.substring(0, index)
+        if (!isFlow(mode) && !isIntermenstrual(mode) && !isChanges(mode)) {
+            return null
+        }
+        val payload = cursor.substring(index + 1)
+        if (payload.isEmpty()) return Decoded(mode, null)
+        val token = try {
+            String(Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
+        } catch (e: IllegalArgumentException) {
+            return null
+        }
+        return Decoded(mode, token.ifEmpty { null })
     }
 }
