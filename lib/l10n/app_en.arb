@@ -3697,5 +3697,194 @@
   "sharingNotificationPreferencesClearQuietHours": "Clear quiet hours",
   "@sharingNotificationPreferencesClearQuietHours": {
     "description": "Issue #1004 (tranche 1): clear-quiet-hours action."
+  },
+  "sharingPredictionConnectionsTitle": "Shared with me",
+  "@sharingPredictionConnectionsTitle": {
+    "description": "Issue #1004 (tranche 1): incoming prediction-connections app-bar title."
+  },
+  "sharingPredictionConnectionsStopTitle": "Stop receiving these predictions?",
+  "@sharingPredictionConnectionsStopTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection."
+  },
+  "sharingPredictionConnectionsStopBody": "You will stop seeing this profile's shared cycle calendar. The sharer can invite you again at any time.",
+  "@sharingPredictionConnectionsStopBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection."
+  },
+  "sharingPredictionConnectionsCancel": "Cancel",
+  "@sharingPredictionConnectionsCancel": {
+    "description": "Issue #1004 (tranche 1): prediction-connections generic cancel action."
+  },
+  "sharingPredictionConnectionsStopAction": "Stop receiving",
+  "@sharingPredictionConnectionsStopAction": {
+    "description": "Issue #1004 (tranche 1): destructive action to leave a received prediction connection."
+  },
+  "sharingPredictionConnectionsStopped": "Stopped receiving predictions",
+  "@sharingPredictionConnectionsStopped": {
+    "description": "Issue #1004 (tranche 1): snackbar after leaving a received prediction connection."
+  },
+  "sharingPredictionConnectionsStopFailed": "Could not stop receiving. Check connection.",
+  "@sharingPredictionConnectionsStopFailed": {
+    "description": "Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails."
+  },
+  "sharingPredictionConnectionsFailed": "Connection failed.",
+  "@sharingPredictionConnectionsFailed": {
+    "description": "Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason."
+  },
+  "sharingPredictionConnectionsEnterCode": "Enter code",
+  "@sharingPredictionConnectionsEnterCode": {
+    "description": "Issue #1004 (tranche 1): manual code entry action."
+  },
+  "sharingPredictionConnectionsLoadError": "Could not load connections.",
+  "@sharingPredictionConnectionsLoadError": {
+    "description": "Issue #1004 (tranche 1): inline error when incoming connections fail to load."
+  },
+  "sharingPredictionConnectionsEmptyTitle": "No shared predictions yet",
+  "@sharingPredictionConnectionsEmptyTitle": {
+    "description": "Issue #1004 (tranche 1): empty incoming-connections title."
+  },
+  "sharingPredictionConnectionsEmptyBody": "When someone shares their cycle predictions with you, their calendar appears here.",
+  "@sharingPredictionConnectionsEmptyBody": {
+    "description": "Issue #1004 (tranche 1): empty incoming-connections body."
+  },
+  "sharingPredictionConnectionsCyclePredictions": "Cycle predictions",
+  "@sharingPredictionConnectionsCyclePredictions": {
+    "description": "Issue #1004 (tranche 1): incoming connection row title and calendar fallback name."
+  },
+  "sharingPredictionConnectionsSharedSubtitle": "Shared {date} • phases only",
+  "@sharingPredictionConnectionsSharedSubtitle": {
+    "description": "Issue #1004 (tranche 1): incoming connection row subtitle.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingPredictionConnectionsStopTooltip": "Stop receiving",
+  "@sharingPredictionConnectionsStopTooltip": {
+    "description": "Issue #1004 (tranche 1): tooltip on the leave-connection icon."
+  },
+  "sharingPredictionConnectionsEnterCodeTitle": "Enter connection code",
+  "@sharingPredictionConnectionsEnterCodeTitle": {
+    "description": "Issue #1004 (tranche 1): manual code entry dialog title."
+  },
+  "sharingPredictionConnectionsCodeHint": "Paste the code you received",
+  "@sharingPredictionConnectionsCodeHint": {
+    "description": "Issue #1004 (tranche 1): manual code entry field hint."
+  },
+  "sharingPredictionConnectionsConnect": "Connect",
+  "@sharingPredictionConnectionsConnect": {
+    "description": "Issue #1004 (tranche 1): manual code entry confirm action."
+  },
+  "sharingPredictionCalendarLoadError": "Could not load the shared predictions.",
+  "@sharingPredictionCalendarLoadError": {
+    "description": "Issue #1004 (tranche 1): inline error when the shared predictions fail to load."
+  },
+  "sharingPredictionCalendarWaitingTitle": "Waiting for the first update",
+  "@sharingPredictionCalendarWaitingTitle": {
+    "description": "Issue #1004 (tranche 1): phase calendar waiting state title."
+  },
+  "sharingPredictionCalendarWaitingBody": "You're connected, but {profileName}'s app hasn't shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.",
+  "@sharingPredictionCalendarWaitingBody": {
+    "description": "Issue #1004 (tranche 1): phase calendar waiting state body.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingPredictionCalendarEndedTitle": "Connection ended",
+  "@sharingPredictionCalendarEndedTitle": {
+    "description": "Issue #1004 (tranche 1): phase calendar ended state title."
+  },
+  "sharingPredictionCalendarEndedBody": "This prediction connection is no longer active.",
+  "@sharingPredictionCalendarEndedBody": {
+    "description": "Issue #1004 (tranche 1): phase calendar ended state body."
+  },
+  "sharingPredictionCalendarConfidence": "Estimate confidence: {tierLabel}",
+  "@sharingPredictionCalendarConfidence": {
+    "description": "Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.",
+    "placeholders": {
+      "tierLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingPredictionCalendarLegendPeriod": "Period",
+  "@sharingPredictionCalendarLegendPeriod": {
+    "description": "Issue #1004 (tranche 1): phase legend entry for period days."
+  },
+  "sharingPredictionCalendarLegendFertile": "Fertile",
+  "@sharingPredictionCalendarLegendFertile": {
+    "description": "Issue #1004 (tranche 1): phase legend entry for fertile days."
+  },
+  "sharingPredictionCalendarLegendOvulation": "Ovulation",
+  "@sharingPredictionCalendarLegendOvulation": {
+    "description": "Issue #1004 (tranche 1): phase legend entry for ovulation days."
+  },
+  "sharingPredictionCalendarLegendPms": "PMS",
+  "@sharingPredictionCalendarLegendPms": {
+    "description": "Issue #1004 (tranche 1): phase legend entry for PMS days."
+  },
+  "sharingSharePredictionsCreateFailed": "Failed to create the connection. Please check your connection and try again.",
+  "@sharingSharePredictionsCreateFailed": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog unexpected create failure."
+  },
+  "sharingSharePredictionsCreatedTitle": "Connection created",
+  "@sharingSharePredictionsCreatedTitle": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state title."
+  },
+  "sharingSharePredictionsSendLink": "Send this single-use link to the person who should see {profileName}'s predictions:",
+  "@sharingSharePredictionsSendLink": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state share line.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingSharePredictionsCreatedBody": "They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. The code expires in 72 hours and can be redeemed once.",
+  "@sharingSharePredictionsCreatedBody": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog generated-state body."
+  },
+  "sharingSharePredictionsCopied": "Copied to clipboard",
+  "@sharingSharePredictionsCopied": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation."
+  },
+  "sharingSharePredictionsDone": "Done",
+  "@sharingSharePredictionsDone": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog done action."
+  },
+  "sharingSharePredictionsCopyLink": "Copy Link",
+  "@sharingSharePredictionsCopyLink": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog copy-link action."
+  },
+  "sharingSharePredictionsTitle": "Share predictions of {profileName}",
+  "@sharingSharePredictionsTitle": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingSharePredictionsBody": "Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.",
+  "@sharingSharePredictionsBody": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog explanatory body."
+  },
+  "sharingSharePredictionsNicknameLabel": "Nickname / Label (Optional)",
+  "@sharingSharePredictionsNicknameLabel": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field label."
+  },
+  "sharingSharePredictionsNicknameHint": "e.g. Partner, Aunt",
+  "@sharingSharePredictionsNicknameHint": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog nickname field hint."
+  },
+  "sharingSharePredictionsCancel": "Cancel",
+  "@sharingSharePredictionsCancel": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog cancel action."
+  },
+  "sharingSharePredictionsCreateLink": "Create Link",
+  "@sharingSharePredictionsCreateLink": {
+    "description": "Issue #1004 (tranche 1): share-predictions dialog create-link action."
   }
 }

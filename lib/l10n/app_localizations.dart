@@ -4635,6 +4635,252 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Clear quiet hours'**
   String get sharingNotificationPreferencesClearQuietHours;
+
+  /// Issue #1004 (tranche 1): incoming prediction-connections app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get sharingPredictionConnectionsTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving these predictions?'**
+  String get sharingPredictionConnectionsStopTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'You will stop seeing this profile\'s shared cycle calendar. The sharer can invite you again at any time.'**
+  String get sharingPredictionConnectionsStopBody;
+
+  /// Issue #1004 (tranche 1): prediction-connections generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingPredictionConnectionsCancel;
+
+  /// Issue #1004 (tranche 1): destructive action to leave a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopAction;
+
+  /// Issue #1004 (tranche 1): snackbar after leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped receiving predictions'**
+  String get sharingPredictionConnectionsStopped;
+
+  /// Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not stop receiving. Check connection.'**
+  String get sharingPredictionConnectionsStopFailed;
+
+  /// Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed.'**
+  String get sharingPredictionConnectionsFailed;
+
+  /// Issue #1004 (tranche 1): manual code entry action.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter code'**
+  String get sharingPredictionConnectionsEnterCode;
+
+  /// Issue #1004 (tranche 1): inline error when incoming connections fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load connections.'**
+  String get sharingPredictionConnectionsLoadError;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections title.
+  ///
+  /// In en, this message translates to:
+  /// **'No shared predictions yet'**
+  String get sharingPredictionConnectionsEmptyTitle;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections body.
+  ///
+  /// In en, this message translates to:
+  /// **'When someone shares their cycle predictions with you, their calendar appears here.'**
+  String get sharingPredictionConnectionsEmptyBody;
+
+  /// Issue #1004 (tranche 1): incoming connection row title and calendar fallback name.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle predictions'**
+  String get sharingPredictionConnectionsCyclePredictions;
+
+  /// Issue #1004 (tranche 1): incoming connection row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared {date} • phases only'**
+  String sharingPredictionConnectionsSharedSubtitle(String date);
+
+  /// Issue #1004 (tranche 1): tooltip on the leave-connection icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopTooltip;
+
+  /// Issue #1004 (tranche 1): manual code entry dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter connection code'**
+  String get sharingPredictionConnectionsEnterCodeTitle;
+
+  /// Issue #1004 (tranche 1): manual code entry field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the code you received'**
+  String get sharingPredictionConnectionsCodeHint;
+
+  /// Issue #1004 (tranche 1): manual code entry confirm action.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingPredictionConnectionsConnect;
+
+  /// Issue #1004 (tranche 1): inline error when the shared predictions fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the shared predictions.'**
+  String get sharingPredictionCalendarLoadError;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the first update'**
+  String get sharingPredictionCalendarWaitingTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state body.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re connected, but {profileName}\'s app hasn\'t shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.'**
+  String sharingPredictionCalendarWaitingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): phase calendar ended state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection ended'**
+  String get sharingPredictionCalendarEndedTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar ended state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This prediction connection is no longer active.'**
+  String get sharingPredictionCalendarEndedBody;
+
+  /// Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimate confidence: {tierLabel}'**
+  String sharingPredictionCalendarConfidence(String tierLabel);
+
+  /// Issue #1004 (tranche 1): phase legend entry for period days.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get sharingPredictionCalendarLegendPeriod;
+
+  /// Issue #1004 (tranche 1): phase legend entry for fertile days.
+  ///
+  /// In en, this message translates to:
+  /// **'Fertile'**
+  String get sharingPredictionCalendarLegendFertile;
+
+  /// Issue #1004 (tranche 1): phase legend entry for ovulation days.
+  ///
+  /// In en, this message translates to:
+  /// **'Ovulation'**
+  String get sharingPredictionCalendarLegendOvulation;
+
+  /// Issue #1004 (tranche 1): phase legend entry for PMS days.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get sharingPredictionCalendarLegendPms;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create the connection. Please check your connection and try again.'**
+  String get sharingSharePredictionsCreateFailed;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection created'**
+  String get sharingSharePredictionsCreatedTitle;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Send this single-use link to the person who should see {profileName}\'s predictions:'**
+  String sharingSharePredictionsSendLink(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. The code expires in 72 hours and can be redeemed once.'**
+  String get sharingSharePredictionsCreatedBody;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingSharePredictionsCopied;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog done action.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingSharePredictionsDone;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog copy-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingSharePredictionsCopyLink;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions of {profileName}'**
+  String sharingSharePredictionsTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog explanatory body.
+  ///
+  /// In en, this message translates to:
+  /// **'Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.'**
+  String get sharingSharePredictionsBody;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingSharePredictionsNicknameLabel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Partner, Aunt'**
+  String get sharingSharePredictionsNicknameHint;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingSharePredictionsCancel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog create-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingSharePredictionsCreateLink;
 }
 
 class _AppLocalizationsDelegate

@@ -2901,4 +2901,154 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sharingNotificationPreferencesClearQuietHours =>
       'Clear quiet hours';
+
+  @override
+  String get sharingPredictionConnectionsTitle => 'Shared with me';
+
+  @override
+  String get sharingPredictionConnectionsStopTitle =>
+      'Stop receiving these predictions?';
+
+  @override
+  String get sharingPredictionConnectionsStopBody =>
+      'You will stop seeing this profile\'s shared cycle calendar. The sharer can invite you again at any time.';
+
+  @override
+  String get sharingPredictionConnectionsCancel => 'Cancel';
+
+  @override
+  String get sharingPredictionConnectionsStopAction => 'Stop receiving';
+
+  @override
+  String get sharingPredictionConnectionsStopped =>
+      'Stopped receiving predictions';
+
+  @override
+  String get sharingPredictionConnectionsStopFailed =>
+      'Could not stop receiving. Check connection.';
+
+  @override
+  String get sharingPredictionConnectionsFailed => 'Connection failed.';
+
+  @override
+  String get sharingPredictionConnectionsEnterCode => 'Enter code';
+
+  @override
+  String get sharingPredictionConnectionsLoadError =>
+      'Could not load connections.';
+
+  @override
+  String get sharingPredictionConnectionsEmptyTitle =>
+      'No shared predictions yet';
+
+  @override
+  String get sharingPredictionConnectionsEmptyBody =>
+      'When someone shares their cycle predictions with you, their calendar appears here.';
+
+  @override
+  String get sharingPredictionConnectionsCyclePredictions =>
+      'Cycle predictions';
+
+  @override
+  String sharingPredictionConnectionsSharedSubtitle(String date) {
+    return 'Shared $date • phases only';
+  }
+
+  @override
+  String get sharingPredictionConnectionsStopTooltip => 'Stop receiving';
+
+  @override
+  String get sharingPredictionConnectionsEnterCodeTitle =>
+      'Enter connection code';
+
+  @override
+  String get sharingPredictionConnectionsCodeHint =>
+      'Paste the code you received';
+
+  @override
+  String get sharingPredictionConnectionsConnect => 'Connect';
+
+  @override
+  String get sharingPredictionCalendarLoadError =>
+      'Could not load the shared predictions.';
+
+  @override
+  String get sharingPredictionCalendarWaitingTitle =>
+      'Waiting for the first update';
+
+  @override
+  String sharingPredictionCalendarWaitingBody(String profileName) {
+    return 'You\'re connected, but $profileName\'s app hasn\'t shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.';
+  }
+
+  @override
+  String get sharingPredictionCalendarEndedTitle => 'Connection ended';
+
+  @override
+  String get sharingPredictionCalendarEndedBody =>
+      'This prediction connection is no longer active.';
+
+  @override
+  String sharingPredictionCalendarConfidence(String tierLabel) {
+    return 'Estimate confidence: $tierLabel';
+  }
+
+  @override
+  String get sharingPredictionCalendarLegendPeriod => 'Period';
+
+  @override
+  String get sharingPredictionCalendarLegendFertile => 'Fertile';
+
+  @override
+  String get sharingPredictionCalendarLegendOvulation => 'Ovulation';
+
+  @override
+  String get sharingPredictionCalendarLegendPms => 'PMS';
+
+  @override
+  String get sharingSharePredictionsCreateFailed =>
+      'Failed to create the connection. Please check your connection and try again.';
+
+  @override
+  String get sharingSharePredictionsCreatedTitle => 'Connection created';
+
+  @override
+  String sharingSharePredictionsSendLink(String profileName) {
+    return 'Send this single-use link to the person who should see $profileName\'s predictions:';
+  }
+
+  @override
+  String get sharingSharePredictionsCreatedBody =>
+      'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. The code expires in 72 hours and can be redeemed once.';
+
+  @override
+  String get sharingSharePredictionsCopied => 'Copied to clipboard';
+
+  @override
+  String get sharingSharePredictionsDone => 'Done';
+
+  @override
+  String get sharingSharePredictionsCopyLink => 'Copy Link';
+
+  @override
+  String sharingSharePredictionsTitle(String profileName) {
+    return 'Share predictions of $profileName';
+  }
+
+  @override
+  String get sharingSharePredictionsBody =>
+      'Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.';
+
+  @override
+  String get sharingSharePredictionsNicknameLabel =>
+      'Nickname / Label (Optional)';
+
+  @override
+  String get sharingSharePredictionsNicknameHint => 'e.g. Partner, Aunt';
+
+  @override
+  String get sharingSharePredictionsCancel => 'Cancel';
+
+  @override
+  String get sharingSharePredictionsCreateLink => 'Create Link';
 }

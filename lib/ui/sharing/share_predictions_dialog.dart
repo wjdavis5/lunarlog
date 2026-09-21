@@ -80,9 +80,8 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error =
-              'Failed to create the connection. Please check your connection '
-              'and try again.';
+          _error = AppLocalizations.of(context)
+              .sharingSharePredictionsCreateFailed;
           _loading = false;
         });
       }
@@ -100,18 +99,18 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
 
     if (_invite != null) {
       return AlertDialog(
-        title: const Text('Connection created'),
+        title: Text(l10n.sharingSharePredictionsCreatedTitle),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Send this single-use link to the person who should see '
-                '${widget.profileName}\'s predictions:',
+                l10n.sharingSharePredictionsSendLink(widget.profileName),
               ),
               const SizedBox(height: 12),
               Container(
@@ -129,9 +128,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               ),
               const SizedBox(height: 12),
               Text(
-                'They will see estimated period, fertile, ovulation, and PMS '
-                'days on a read-only calendar — no notes or logs. The code '
-                'expires in 72 hours and can be redeemed once.',
+                l10n.sharingSharePredictionsCreatedBody,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -153,7 +150,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Copied to clipboard',
+                        l10n.sharingSharePredictionsCopied,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.primary,
                         ),
@@ -169,29 +166,25 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
           TextButton(
             key: const ValueKey('share-predictions-done'),
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
+            child: Text(l10n.sharingSharePredictionsDone),
           ),
           FilledButton.icon(
             onPressed: _copyCode,
             icon: const Icon(Icons.copy, size: 16),
-            label: const Text('Copy Link'),
+            label: Text(l10n.sharingSharePredictionsCopyLink),
           ),
         ],
       );
     }
 
     return AlertDialog(
-      title: Text('Share predictions of ${widget.profileName}'),
+      title: Text(l10n.sharingSharePredictionsTitle(widget.profileName)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Creates a read-only connection that sees estimated period, '
-              'fertile, ovulation, and PMS days — never notes, tags, or '
-              'logs. One connection per profile.',
-            ),
+            Text(l10n.sharingSharePredictionsBody),
             const SizedBox(height: 12),
             if (_error != null) ...[
               InlineError(
@@ -209,9 +202,9 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
               onSubmitted: (_) {
                 if (!_loading) unawaited(_createConnection());
               },
-              decoration: const InputDecoration(
-                labelText: 'Nickname / Label (Optional)',
-                hintText: 'e.g. Partner, Aunt',
+              decoration: InputDecoration(
+                labelText: l10n.sharingSharePredictionsNicknameLabel,
+                hintText: l10n.sharingSharePredictionsNicknameHint,
               ),
             ),
           ],
@@ -220,7 +213,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
       actions: [
         TextButton(
           onPressed: _loading ? null : () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.sharingSharePredictionsCancel),
         ),
         FilledButton(
           onPressed: _loading ? null : _createConnection,
@@ -230,7 +223,7 @@ class _SharePredictionsDialogState extends State<SharePredictionsDialog> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Create Link'),
+              : Text(l10n.sharingSharePredictionsCreateLink),
         ),
       ],
     );
