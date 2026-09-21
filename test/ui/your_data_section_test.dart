@@ -685,11 +685,33 @@ void main() {
       expect(service.purgeCalls, 1);
       expect(
         find.text(
-          "Only that profile's primary guardian can purge its data.",
+          "Only that profile's primary guardian can remove its imported data.",
         ),
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'an unknown failure no longer borrows the network advice (issue #1005)',
+      (tester) async {
+        final profiles = FakeProfilesRepository([_profile('p1')]);
+        final service = _FakeProfileErasureService()
+          ..counts = {PurgeableImportSource.clueImport: 1}
+          ..purgeError = const ProfileErasureFailure.other();
+        await _pump(tester, profiles: profiles, profileErasureService: service);
+
+        await tester.tap(key('your-data-purge-imported'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(DestructiveButton, 'Purge'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text("Couldn't remove the imported data. Try again."),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Check your connection'), findsNothing);
+      },
+    );
 
     testWidgets(
       'the count preview names exactly how many rows the selected '
@@ -829,7 +851,7 @@ void main() {
         expect(service.purgeCalls, 1);
         expect(find.textContaining('Purged'), findsOneWidget);
         expect(
-          find.text("Only that profile's primary guardian can purge its data."),
+          find.text("Only that profile's primary guardian can remove its imported data."),
           findsNothing,
         );
         expect(key('your-data-purge-error'), findsNothing);
@@ -857,11 +879,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.text('Sign in to your account to purge imported data.'),
+          find.text('Sign in to your account to remove imported data.'),
           findsOneWidget,
         );
         expect(
-          find.text("Only that profile's primary guardian can purge its data."),
+          find.text("Only that profile's primary guardian can remove its imported data."),
           findsNothing,
         );
       },

@@ -7,10 +7,10 @@
 /// actual logging history (`lib/domain/logging/tag_recents.dart` — device-
 /// local, per profile, no new sync table), and one collapsible section per
 /// curated category. An option-set-unverified category
-/// ([kUnverifiedTagCategories]) still renders the "unverified — pin before
-/// shipping" caption instead of chips while not searching, exactly as the
-/// day sheet did before this issue (and is simply skipped, like an
-/// unmatched attested category, while a search is active).
+/// ([kUnverifiedTagCategories]) carries no codes, so it is hidden entirely
+/// until its option set is pinned (issue #997 — the old behaviour rendered
+/// the developer placeholder "Unverified — pin before shipping" to users,
+/// and an empty heading teaches nothing).
 ///
 /// Selection/toggle state is fully owned by the caller — this widget is a
 /// pure view over [selected] plus its own ephemeral search text and
@@ -55,7 +55,6 @@ class CategoryPicker extends StatefulWidget {
     this.searchSemanticsLabel = 'Search tags',
     this.clearSearchTooltip = 'Clear search',
     this.recentLabel = 'Recent',
-    this.unverifiedNote = 'Unverified — pin before shipping',
     this.trailingBuilder,
     this.customTags = const [],
     this.customLabel = 'Custom tags',
@@ -90,7 +89,6 @@ class CategoryPicker extends StatefulWidget {
   final String searchSemanticsLabel;
   final String clearSearchTooltip;
   final String recentLabel;
-  final String unverifiedNote;
 
   /// Optional extra content rendered directly under one category's chip
   /// [Wrap] — the day sheet uses this to keep its pain graded-intensity
@@ -248,48 +246,43 @@ class _CategoryPickerState extends State<CategoryPicker> {
     TagCategory category, {
     required bool searching,
   }) {
-    final unverified = kUnverifiedTagCategories.contains(category);
-    final tags = unverified
-        ? const <TagCode>[]
-        : [
-            for (final tag in kTagTaxonomy)
-              if (tag.category == category && _matches(tag)) tag,
-          ];
-    // While searching, an attested category with nothing matching (and any
-    // unverified category, which never matches by definition — `tags` is
-    // always empty for one) drops out entirely rather than showing an
-    // empty heading or the "unverified" caption.
+    // Issue #997: an option-set-unverified category carries no codes, so
+    // its section is hidden entirely until its option set is pinned — the
+    // old placeholder caption was developer copy ("Unverified — pin before
+    // shipping") that must never reach a user, and an empty heading would
+    // teach nothing.
+    if (kUnverifiedTagCategories.contains(category)) return const [];
+    final tags = [
+      for (final tag in kTagTaxonomy)
+        if (tag.category == category && _matches(tag)) tag,
+    ];
+    // While searching, an attested category with nothing matching drops
+    // out entirely rather than showing an empty heading.
     if (searching && tags.isEmpty) return const [];
     final expanded = searching || !_collapsed.contains(category);
     final label = widget.categoryLabel(category);
     return [
       _sectionHeader(theme, category, label, expanded: expanded, searching: searching),
-      if (expanded)
-        if (unverified)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(widget.unverifiedNote, style: theme.textTheme.bodySmall),
-          )
-        else ...[
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final tag in tags)
-                _tagChip(
-                  tag,
-                  group: label,
-                  keyPrefix: 'category-picker-tag',
-                  // Issue #880: search results are a flat, cross-category
-                  // result set, so they use the qualified label; a normally
-                  // rendered section (searching == false) is under its own
-                  // heading and keeps the bare display.
-                  flat: searching,
-                ),
-            ],
-          ),
-          ...?widget.trailingBuilder?.call(category),
-        ],
+      if (expanded) ...[
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            for (final tag in tags)
+              _tagChip(
+                tag,
+                group: label,
+                keyPrefix: 'category-picker-tag',
+                // Issue #880: search results are a flat, cross-category
+                // result set, so they use the qualified label; a normally
+                // rendered section (searching == false) is under its own
+                // heading and keeps the bare display.
+                flat: searching,
+              ),
+          ],
+        ),
+        ...?widget.trailingBuilder?.call(category),
+      ],
     ];
   }
 

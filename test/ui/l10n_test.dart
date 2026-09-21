@@ -401,8 +401,8 @@ void main() {
       expect(
         l10n.firstRunCycleCaption,
         'A few optional questions to set this profile up — every one can '
-        'be skipped. The goal and birth-control answers can be changed '
-        'later when editing the profile.',
+        'be skipped. The life-stage mode and birth-control answers can be '
+        'changed later from Edit profile.',
       );
       expect(l10n.firstRunCycleLastPeriodLabel, 'Last period start');
       expect(l10n.firstRunCycleChooseDate, 'Choose date');
@@ -419,7 +419,7 @@ void main() {
       expect(l10n.firstRunPeriodLengthRangeError,
           'Enter a number between 1 and 14');
       expect(l10n.firstRunCycleBirthControlLabel, 'Birth-control method');
-      expect(l10n.firstRunCycleGoalLabel, 'Goal / mode');
+      expect(l10n.firstRunCycleGoalLabel, 'Life-stage mode');
       expect(l10n.lifeStageModeLabel, 'Life-stage mode');
       expect(l10n.birthControlNotAnswered, 'Not answered');
       expect(l10n.birthControlNone, 'None');
