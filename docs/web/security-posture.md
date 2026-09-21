@@ -125,8 +125,36 @@ authorization model.
 - **Sign-in is enabled.** On web the available methods are email/password and
   passwordless email (`signInWithOtp` + `verifyOTP`). Google and Apple are
   hidden on web by construction (`AppConfig.hasGoogle` and the Apple
-  availability both require `!kIsWeb`), and passkeys are off on web
-  (`AppConfig.hasPasskeys` excludes web).
+  availability both require `!kIsWeb`, and passkeys are off on web
+  (`AppConfig.hasPasskeys` excludes web). Both the account section and the
+  sign-in screen derive Apple availability from the shared, unit-tested
+  `computeAppleSignInAvailable(isWeb:, isIos:)` rule, so the browser can
+  never render it.
+- **Email links redirect to the page origin, not the custom scheme (slice 2).**
+  Native mail goes to `lunarlog://auth-callback`; a browser cannot open that
+  scheme, so a web build sends confirmation, passwordless, and password-reset
+  mail to `https://<origin>/auth/callback` (`resolveAuthRedirectUrl` in
+  `lib/data/auth/supabase_auth_providers.dart`) and `SupabaseAuthService`
+  exchanges the returned `?code=` from the initial `Uri.base` over the same
+  PKCE path (`detectSessionInUri` stays `false`; the app, not the SDK,
+  performs the exchange so a cold-start recovery link is latched before any
+  widget exists). The emailed 8-digit code (`verifyOTP`) is
+  redirect-independent and works on web unchanged. **Owner step:** the
+  deployed origin's callback — `https://app.lunarlog.app/auth/callback` —
+  must be added to the Supabase dashboard's Auth **redirect allow-list**
+  before web sign-in links resolve; this is a dashboard action, not a code
+  change (see `docs/ops/supabase-go-live.md`). The hosting must also serve
+  the built single page for that path so `Uri.base` carries the code (a
+  normal SPA fallback).
+- **Sign out clears the browser session.** On web the bootstrap passes no
+  custom `localStorage`/`pkceAsyncStorage` (`buildAuthClientOptions` in
+  `lib/startup/supabase_bootstrap.dart`), so the session and PKCE verifier
+  live in gotrue's own browser storage, which gotrue's `signOut` clears with
+  the session. The app's sign-out paths run the one device reset
+  (`resetDevice`), which signs out locally and, on web, wipes the drift
+  IndexedDB store (`db.wipeAllData()`); both are pinned in
+  `test/architecture/web_auth_seam_test.dart` and
+  `test/ui/device_reset_test.dart`.
 - **RLS still applies, precisely.** Every request is a normal authenticated
   PostgREST/Realtime call carrying the user's JWT. Row-Level Security policies
   scoped to `auth.uid()` and the caller's `profile_guardians` memberships
@@ -197,9 +225,12 @@ never permanently separated from the disclosure that real data is present.
   in scope or explicitly deferred is an epic-level product decision not made
   here.
 - **Web push.** `AppConfig.hasPush` is false on web by construction.
-- **Auth flows on web beyond email/password and passwordless email.** Native
-  Google/Apple and passkeys are hidden; deciding whether any of them should
-  work in a browser is separate work.
+- **Auth flows on web beyond email/password and passwordless email.** Slice 2
+  landed the web redirect target (`<origin>/auth/callback`) and the
+  `Uri.base` PKCE exchange, so email/password, passwordless email, password
+  recovery, and the emailed code all work in a browser, and Google/Apple/
+  passkeys are pinned hidden there. Making any of the native providers work
+  in a browser (a popup OAuth flow, WebAuthn) is separate work.
 - **Trusted Types, a CSP report collector, and nonce/hash-based `script-src`**
   (dropping `'unsafe-inline'` from `style-src`, tightening the wasm allowance).
   Worth revisiting once hosting exists and real-browser verification is
@@ -212,8 +243,83 @@ never permanently separated from the disclosure that real data is present.
 - Epic #831 — "deploy the Flutter web app at lunarlog.app".
 - `lib/config.dart` — `webSyncEnabled`, `hasSupabase` (web requires the flag).
 - `lib/startup/supabase_bootstrap.dart` — where the web session storage is
-  chosen.
+  chosen (`buildAuthClientOptions`).
+- `lib/data/auth/supabase_auth_service.dart` /
+  `lib/data/auth/supabase_auth_providers.dart` — the web `<origin>/auth/callback`
+  redirect target and the `Uri.base` PKCE exchange.
 - `lib/data/db/web_db.dart` — web drift/WASM/IndexedDB wiring.
 - `lib/ui/web/dev_banner.dart` — the banner and first-run acknowledgement.
 - `web/_headers` — the deployed policy.
+- `test/architecture/web_auth_seam_test.dart` — the web-storage and
+  redirect pin.
+- `docs/ops/supabase-go-live.md` — the dashboard redirect allow-list owner step.
 - `PRIVACY.md` §6/§7 — the public security and retention disclosure.
+
+---
+
+## 8. Hosting (slice 3)
+
+**Status:** slice 3 of epic #831 lands the deploy path **in code**. What
+remains is owner provisioning — the Cloudflare project, the two secrets, the
+custom domain, and the Supabase redirect allow-list — plus the PWA decision
+below. The §6 "Hosting, deploy automation, DNS" follow-up is superseded for
+the code half; the DNS/provisioning half is the checklist at the end of this
+section.
+
+- **Deploy path.** `.github/workflows/web-deploy.yml` builds
+  `flutter build web --release` with the same eleven client-safe
+  dart-defines ci.yml's `Verify` job passes **plus
+  `LUNARLOG_WEB_SYNC=true`** (the deployed page is the signed-in web
+  client), verifies the output with
+  `.github/scripts/check-web-build-output.sh` — which fails closed unless
+  `build/web/_headers` carries the CSP and `build/web/_redirects` carries
+  the status-200 SPA fallback — and publishes `build/web` to the
+  `lunarlog-app` Cloudflare Pages project with a pinned
+  `cloudflare/wrangler-action`. It runs on push to `main` when a path the
+  web client depends on changes (`lib/`, `web/`, `assets/`, `pubspec.*`,
+  `l10n.yaml`, the workflow, the check script), or on `workflow_dispatch`.
+  A `web-deploy` concurrency group serialises runs and never cancels one
+  mid-upload.
+- **Inert until provisioned.** The deploy step is gated on both
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Without them the run
+  prints a `::warning::` and skips the upload — it never fails — so a fork
+  or an unprovisioned checkout still produces a verified build artifact.
+- **Origin and the redirect allow-list.** The served origin is
+  `https://app.lunarlog.app` (the apex stays for the marketing site, #830).
+  Because slice 2's web sign-in links redirect to `<origin>/auth/callback`,
+  that exact URL must be in the Supabase Auth redirect allow-list, and
+  `web/_redirects` is what makes the path serve the app rather than 404. Both
+  are owner steps below.
+
+### Installability / offline is deferred
+
+`web/manifest.json` is left **exactly as is**. The app is not marketed as
+installable and this epic adds no service worker or offline cache:
+
+- **Installability (A2HS) is deferred.** A home-screen icon that opens a
+  cached page whose drift/IndexedDB state can silently diverge is precisely
+  the kind of half-online surface this posture refuses to promise.
+- **Offline execution in the browser is deferred.** Sign-in and sync need
+  the network, and Flutter's default web build registers no service worker.
+  A future slice can add one, subject to the same disclosure and CSP review
+  that governs everything else on this origin.
+- **`manifest.json`'s placeholder `name`/`description` are not corrected
+  here either** — that copy belongs with the installability/offline
+  decision, not before it.
+
+### Owner checklist (slice 3)
+
+1. Create the Cloudflare Pages project named `lunarlog-app`
+   (Workers & Pages → Create → Pages → **Direct Upload**; no Git connection
+   is needed — CI uploads the build).
+2. Add repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
+   **Cloudflare Pages: Edit** permission) and `CLOUDFLARE_ACCOUNT_ID`.
+   Until both exist, `web-deploy.yml` warns and skips the upload.
+3. Point `app.lunarlog.app` at the Pages project (Custom domains → Set up a
+   custom domain). `web/_headers` and `web/_redirects` ship with every
+   deploy.
+4. Add `https://app.lunarlog.app/auth/callback` to the Supabase Auth
+   redirect allow-list (Authentication → URL Configuration) so the slice-2
+   email links resolve. This is the same checkbox recorded under "Web
+   hosting" in `docs/ops/supabase-go-live.md`.
+

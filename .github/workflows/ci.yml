@@ -80,6 +80,13 @@ jobs:
       - name: Run check-ios-widget-signing tests
         if: always()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
+      - name: Run check-web-build-output tests
+        # Epic #831 slice 3: proves the web-build deploy gate fails closed on
+        # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
+        # app with the same defines and gates the Pages upload on the two
+        # Cloudflare secrets.
+        if: always()
+        run: bash .github/scripts/tests/check-web-build-output.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: always()
@@ -251,6 +258,13 @@ jobs:
       - name: Run check-ios-widget-signing tests
         if: always()
         run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
+      - name: Run check-web-build-output tests
+        # Epic #831 slice 3: proves the web-build deploy gate fails closed on
+        # a missing CSP/`_redirects`, and that web-deploy.yml builds the sync
+        # app with the same defines and gates the Pages upload on the two
+        # Cloudflare secrets.
+        if: always()
+        run: bash .github/scripts/tests/check-web-build-output.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: always()
