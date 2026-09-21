@@ -307,6 +307,8 @@ void main() {
     final service = FakeNotificationPreferencesService();
 
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       // Explicitly 24h -- proves the rendered text now actually depends
       // on the ambient MediaQuery instead of the screen's old hand-rolled,
       // always-12h formatter.

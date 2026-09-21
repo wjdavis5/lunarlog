@@ -127,7 +127,8 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to generate invite. Please check your connection and try again.';
+          _error = AppLocalizations.of(context)
+              .sharingInviteGuardianGenerateFailed;
           _loading = false;
         });
       }
@@ -178,7 +179,7 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Role:'),
+          Text(AppLocalizations.of(context).sharingInviteGuardianRoleLabel),
           const SizedBox(height: 4),
           DropdownButton<_InvitePreset>(
             key: const ValueKey('invite-preset-dropdown'),
@@ -192,19 +193,25 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                     }
                   },
             items: [
-              const DropdownMenuItem(
+              DropdownMenuItem(
                 value: _InvitePreset.coParent,
                 child: Text(
-                  'Co-Parent (Can log, edit profile & invite)',
+                  AppLocalizations.of(context)
+                      .sharingInviteGuardianPresetCoParent,
                 ),
               ),
-              const DropdownMenuItem(
+              DropdownMenuItem(
                 value: _InvitePreset.caregiver,
-                child: Text('Caregiver (Can log symptoms & periods)'),
+                child: Text(
+                  AppLocalizations.of(context)
+                      .sharingInviteGuardianPresetCaregiver,
+                ),
               ),
-              const DropdownMenuItem(
+              DropdownMenuItem(
                 value: _InvitePreset.viewer,
-                child: Text('Viewer (Read-only access)'),
+                child: Text(
+                  AppLocalizations.of(context).sharingInviteGuardianPresetViewer,
+                ),
               ),
               // Issue #802: offered (and preselected) only
               // for a profile that is the invitee's own.
@@ -251,7 +258,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Invitation Created', style: theme.textTheme.titleLarge),
+              Text(
+                AppLocalizations.of(context).sharingInviteGuardianCreatedTitle,
+                style: theme.textTheme.titleLarge,
+              ),
               const SizedBox(height: 12),
               Flexible(
                 child: SingleChildScrollView(
@@ -274,7 +284,8 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'Expires in 48 hours. Can be redeemed once.',
+                        AppLocalizations.of(context)
+                            .sharingInviteGuardianExpiry,
                         style: theme.textTheme.bodySmall
                             ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                       ),
@@ -293,7 +304,8 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Copied to clipboard',
+                                AppLocalizations.of(context)
+                                    .sharingInviteGuardianCopied,
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.primary,
                                 ),
@@ -315,17 +327,23 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                   TextButton(
                     key: const ValueKey('invite-done'),
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Done'),
+                    child: Text(
+                      AppLocalizations.of(context).sharingInviteGuardianDone,
+                    ),
                   ),
                   FilledButton.icon(
                     onPressed: _copyLink,
                     icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('Copy Link'),
+                    label: Text(
+                      AppLocalizations.of(context).sharingInviteGuardianCopyLink,
+                    ),
                   ),
                   OutlinedButton.icon(
                     onPressed: _shareLink,
                     icon: const Icon(Icons.share, size: 16),
-                    label: const Text('Share'),
+                    label: Text(
+                      AppLocalizations.of(context).sharingInviteGuardianShare,
+                    ),
                   ),
                 ],
               ),
@@ -348,7 +366,8 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Invite guardian to ${widget.profileName}',
+              AppLocalizations.of(context)
+                  .sharingInviteGuardianTitle(widget.profileName),
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 12),
@@ -383,15 +402,18 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                       onSubmitted: (_) {
                         if (!_loading) unawaited(_createInvite());
                       },
-                      decoration: const InputDecoration(
-                        labelText: 'Nickname / Label (Optional)',
-                        hintText: 'e.g. Dad, Grandma, School Nurse',
+                      decoration: InputDecoration(
+                        labelText: AppLocalizations.of(context)
+                            .sharingInviteGuardianNicknameLabel,
+                        hintText: AppLocalizations.of(context)
+                            .sharingInviteGuardianNicknameHint,
                       ),
                     ),
                     // Issue #139: contextual entry point to the invitations card.
-                    const HelpCardLink(
+                    HelpCardLink(
                       cardId: 'invitations',
-                      label: 'How do invitations work?',
+                      label: AppLocalizations.of(context)
+                          .sharingInviteGuardianHelpLabel,
                     ),
                   ],
                 ),
@@ -405,7 +427,9 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
               children: [
                 TextButton(
                   onPressed: _loading ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+                  child: Text(
+                    AppLocalizations.of(context).sharingInviteGuardianCancel,
+                  ),
                 ),
                 FilledButton(
                   onPressed: _loading ? null : _createInvite,
@@ -415,7 +439,10 @@ class _InviteGuardianDialogState extends State<InviteGuardianDialog> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Create Link'),
+                      : Text(
+                          AppLocalizations.of(context)
+                              .sharingInviteGuardianCreateLink,
+                        ),
                 ),
               ],
             ),

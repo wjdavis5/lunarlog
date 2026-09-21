@@ -102,13 +102,14 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     final role = _selectedRole;
     if (role == null) return;
 
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Transfer ownership?'),
+        title: Text(l10n.sharingTransferOwnershipConfirmTitle),
         content: SingleChildScrollView(
           child: Text(
-            AppLocalizations.of(context).transferOwnershipConfirmBody(
+            l10n.transferOwnershipConfirmBody(
               widget.profile.displayName,
               role.label,
             ),
@@ -117,11 +118,11 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.sharingTransferOwnershipCancel),
           ),
           DestructiveButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Transfer'),
+            child: Text(l10n.sharingTransferOwnershipTransferAction),
           ),
         ],
       ),
@@ -233,7 +234,12 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           _loading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pending transfer cancelled')),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context)
+                  .sharingTransferOwnershipPendingCancelled,
+            ),
+          ),
         );
       }
     } on TransferFailure catch (f) {
@@ -270,7 +276,11 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           _loading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Transfer cancelled')),
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).sharingTransferOwnershipCancelled,
+            ),
+          ),
         );
       }
     } on TransferFailure catch (f) {
@@ -295,7 +305,11 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     if (transfer == null) return;
     unawaited(Clipboard.setData(ClipboardData(text: transfer.claimUri.toString())));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transfer link copied to clipboard')),
+      SnackBar(
+        content: Text(
+          AppLocalizations.of(context).sharingTransferOwnershipLinkCopied,
+        ),
+      ),
     );
   }
 
@@ -314,7 +328,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Transfer ${widget.profile.displayName}'s Profile"),
+        title: Text(
+          AppLocalizations.of(context)
+              .sharingTransferOwnershipScreenTitle(widget.profile.displayName),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -345,21 +362,21 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('What changes', style: theme.textTheme.titleMedium),
+        Text(
+          l10n.sharingTransferOwnershipWhatChanges,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         _bullet(
           l10n.transferOwnershipBecomesGuardian(widget.profile.displayName),
         ),
-        _bullet('You keep the role you choose below.'),
-        _bullet('They can remove your access at any time.'),
-        _bullet(
-          "If they later delete their account, this profile's history goes "
-          'with it.',
-        ),
+        _bullet(l10n.sharingTransferOwnershipBulletKeepRole),
+        _bullet(l10n.sharingTransferOwnershipBulletRemoveAccess),
+        _bullet(l10n.sharingTransferOwnershipBulletDeleteAccount),
         // Issue #139: contextual entry point to the transfer card.
-        const HelpCardLink(
+        HelpCardLink(
           cardId: 'ownership-transfer',
-          label: 'How does the transfer work?',
+          label: l10n.sharingTransferOwnershipHelpLabel,
         ),
         const SizedBox(height: 20),
         if (_error != null) ...[
@@ -371,7 +388,10 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           ),
           const SizedBox(height: 12),
         ],
-        Text('Your role after the transfer', style: theme.textTheme.titleMedium),
+        Text(
+          l10n.sharingTransferOwnershipRoleAfterTitle,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         SegmentedButton<ParentPostTransferRole>(
           segments: [
@@ -408,9 +428,9 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
           // Ownership action (guarded exactly like the button below).
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _submitFromLabelField(),
-          decoration: const InputDecoration(
-            labelText: 'Recipient label (optional)',
-            hintText: 'e.g. Sam',
+          decoration: InputDecoration(
+            labelText: l10n.sharingTransferOwnershipRecipientLabel,
+            hintText: l10n.sharingTransferOwnershipRecipientHint,
           ),
         ),
         const SizedBox(height: 20),
@@ -425,7 +445,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Transfer Ownership'),
+              : Text(l10n.sharingTransferOwnershipAction),
         ),
       ],
     );
@@ -448,21 +468,24 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
   /// no link to show, only a way out: cancel it, then arm a fresh one.
   Widget _orphanedTransferBody(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final active = _activeTransfer!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('A Transfer Is Already Pending', style: theme.textTheme.titleMedium),
+        Text(
+          l10n.sharingTransferOwnershipPendingTitle,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Text(
-          'A transfer for ${widget.profile.displayName} is already pending, '
-          'but its link is not available on this screen (it may have been '
-          'created earlier or on another device). Cancel it to start a new '
-          'one.',
+          l10n.sharingTransferOwnershipPendingBody(widget.profile.displayName),
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(context, active.expiresAt)}',
+          l10n.sharingTransferOwnershipExpires(
+            formatTransferExpiry(context, active.expiresAt),
+          ),
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
@@ -482,7 +505,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Cancel Pending Transfer'),
+              : Text(l10n.sharingTransferOwnershipCancelPending),
         ),
       ],
     );
@@ -490,13 +513,19 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
 
   Widget _liveTransferBody(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final transfer = _transfer!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Transfer Ready', style: theme.textTheme.titleMedium),
+        Text(
+          l10n.sharingTransferOwnershipReadyTitle,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
-        Text('Share this single-use link with ${widget.profile.displayName}:'),
+        Text(
+          l10n.sharingTransferOwnershipShareLink(widget.profile.displayName),
+        ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(8),
@@ -511,7 +540,9 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Expires ${formatTransferExpiry(context, transfer.expiresAt)}',
+          l10n.sharingTransferOwnershipExpires(
+            formatTransferExpiry(context, transfer.expiresAt),
+          ),
           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
@@ -529,12 +560,12 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
             FilledButton.icon(
               onPressed: _loading ? null : _copyLink,
               icon: const Icon(Icons.copy, size: 16),
-              label: const Text('Copy Link'),
+              label: Text(l10n.sharingTransferOwnershipCopyLink),
             ),
             OutlinedButton.icon(
               onPressed: _loading ? null : _shareLink,
               icon: const Icon(Icons.share, size: 16),
-              label: const Text('Share'),
+              label: Text(l10n.sharingTransferOwnershipShare),
             ),
           ],
         ),
@@ -548,7 +579,7 @@ class _TransferOwnershipScreenState extends State<TransferOwnershipScreen> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Cancel transfer'),
+              : Text(l10n.sharingTransferOwnershipCancelTransfer),
         ),
       ],
     );

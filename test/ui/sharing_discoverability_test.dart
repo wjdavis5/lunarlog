@@ -298,6 +298,8 @@ void main() {
         ..pendingByProfile['p-1'] = [_invite('p-1', 'a'), _invite('p-1', 'b')];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -319,6 +321,8 @@ void main() {
       final sharing = FakeSharing126();
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -336,6 +340,8 @@ void main() {
         ..listError = const SharingFailure.network();
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -356,6 +362,8 @@ void main() {
       int token = 0;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: StatefulBuilder(
               builder: (context, setState) => Column(
@@ -390,6 +398,8 @@ void main() {
         ..pendingByProfile['p-1'] = [_invite('p-1', 'a')];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -401,6 +411,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-2', sharingService: sharing),
@@ -418,6 +430,8 @@ void main() {
       final second = FakeSharing126();
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: first),
@@ -429,6 +443,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: second),
@@ -445,6 +461,8 @@ void main() {
         ..pendingByProfile['p-1'] = [_expiredInvite('p-1', 'a')];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -477,6 +495,8 @@ void main() {
         ];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -503,6 +523,8 @@ void main() {
         ];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: PendingInviteBadge(
                 profileId: 'p-1', sharingService: sharing),
@@ -532,6 +554,8 @@ void main() {
       var tapped = false;
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ProfileSharingTile(
               profile: _profile('p-1', 'Alice'),
@@ -564,6 +588,8 @@ void main() {
         ..pendingByProfile['p-1'] = [_invite('p-1', 'a')];
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ProfileSharingTile(
               profile: _profile('p-1', 'Zoe'),
@@ -588,6 +614,8 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ProfileSharingTile(
               profile: _profile('p-1', 'Solo'),

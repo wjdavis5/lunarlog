@@ -4127,6 +4127,1282 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
   String get claimProfileBody;
+
+  /// Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces.
+  ///
+  /// In en, this message translates to:
+  /// **'An unexpected error occurred.'**
+  String get sharingUnexpectedError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to join {profileName}\'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.'**
+  String sharingAcceptInvitePreviewIntro(String profileName, String roleLabel);
+
+  /// Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.'**
+  String get sharingAcceptInviteNeutralIntro;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status while loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading invite details…'**
+  String get sharingAcceptInvitePreviewLoading;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load invite details, but you can still continue.'**
+  String get sharingAcceptInvitePreviewError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview.
+  ///
+  /// In en, this message translates to:
+  /// **'This invite link may have expired or already been used.'**
+  String get sharingAcceptInvitePreviewUnavailable;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Join Shared Profile'**
+  String get sharingAcceptInviteTitle;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptInviteDecline;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet accept button.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept & Sync'**
+  String get sharingAcceptInviteAccept;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Your display name (e.g. Dad, Mom, Grandma)'**
+  String get sharingAcceptInviteNameLabel;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when you log entries'**
+  String get sharingAcceptInviteNameHint;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to cycle predictions'**
+  String get sharingAcceptPredictionTitle;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet body.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.'**
+  String get sharingAcceptPredictionBody;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptPredictionDecline;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet connect button.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingAcceptPredictionConnect;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Become the Owner'**
+  String get sharingClaimProfileTitle;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingClaimProfileDecline;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Child\'s display name (optional)'**
+  String get sharingClaimProfileChildNameLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows on the profile'**
+  String get sharingClaimProfileChildNameHint;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Label for the parent (optional)'**
+  String get sharingClaimProfileParentLabelLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when they log entries'**
+  String get sharingClaimProfileParentLabelHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to generate invite. Please check your connection and try again.'**
+  String get sharingInviteGuardianGenerateFailed;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog preset picker label.
+  ///
+  /// In en, this message translates to:
+  /// **'Role:'**
+  String get sharingInviteGuardianRoleLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent (Can log, edit profile & invite)'**
+  String get sharingInviteGuardianPresetCoParent;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver (Can log symptoms & periods)'**
+  String get sharingInviteGuardianPresetCaregiver;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer (Read-only access)'**
+  String get sharingInviteGuardianPresetViewer;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation Created'**
+  String get sharingInviteGuardianCreatedTitle;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires in 48 hours. Can be redeemed once.'**
+  String get sharingInviteGuardianExpiry;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingInviteGuardianCopied;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingInviteGuardianDone;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog copy-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingInviteGuardianCopyLink;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog share button.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingInviteGuardianShare;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian to {profileName}'**
+  String sharingInviteGuardianTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingInviteGuardianNicknameLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Dad, Grandma, School Nurse'**
+  String get sharingInviteGuardianNicknameHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How do invitations work?'**
+  String get sharingInviteGuardianHelpLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingInviteGuardianCancel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog create-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingInviteGuardianCreateLink;
+
+  /// Issue #1004 (tranche 1): manage-guardians screen generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingManageGuardiansCancel;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End prediction sharing?'**
+  String get sharingManageGuardiansEndPredictionTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'They will immediately lose the shared predictions calendar. You can create a new connection any time.'**
+  String get sharingManageGuardiansEndPredictionBody;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End sharing'**
+  String get sharingManageGuardiansEndSharing;
+
+  /// Issue #1004 (tranche 1): snackbar after a prediction connection is revoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing ended'**
+  String get sharingManageGuardiansPredictionSharingEnded;
+
+  /// Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to end sharing. Check connection.'**
+  String get sharingManageGuardiansEndSharingFailed;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {profileName} permanently?'**
+  String sharingManageGuardiansDeleteProfileTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian\'s access to it — including your own. Synced copies on every device are erased too.'**
+  String get sharingManageGuardiansDeleteProfileStep1Body;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation continue action.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get sharingManageGuardiansContinue;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you absolutely sure?'**
+  String get sharingManageGuardiansDeleteProfileStep2Title;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName}\'s history will be gone permanently, for every guardian on this profile. There is no undo.'**
+  String sharingManageGuardiansDeleteProfileStep2Body(String profileName);
+
+  /// Issue #1004 (tranche 1): final destructive delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete permanently'**
+  String get sharingManageGuardiansDeletePermanently;
+
+  /// Issue #1004 (tranche 1): delete-profile failure while offline.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t delete while offline. Check your connection and try again.'**
+  String get sharingManageGuardiansDeleteOffline;
+
+  /// Issue #1004 (tranche 1): generic delete-profile failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete profile. Check connection and try again.'**
+  String get sharingManageGuardiansDeleteFailed;
+
+  /// Issue #1004 (tranche 1): error when the sole primary guardian tries to leave.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re now the only primary guardian, so you can\'t leave. Add another primary guardian first, then try again.'**
+  String get sharingManageGuardiansSolePrimaryLeave;
+
+  /// Issue #1004 (tranche 1): generic revoke-guardian failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to remove guardian. Check connection.'**
+  String get sharingManageGuardiansRemoveFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String sharingManageGuardiansRemoveTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body when the caller removes herself.
+  ///
+  /// In en, this message translates to:
+  /// **'You will leave this profile and no longer receive updates or sync its entries.'**
+  String get sharingManageGuardiansLeaveBody;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when removing another guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'This guardian will lose access to {profileName}\'s calendar and entries.'**
+  String sharingManageGuardiansRemoveBody(String profileName);
+
+  /// Issue #1004 (tranche 1): destructive remove-guardian action.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get sharingManageGuardiansRemove;
+
+  /// Issue #1004 (tranche 1): snackbar after a guardian is removed.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed {name}'**
+  String sharingManageGuardiansRemoved(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel invitation for {name}?'**
+  String sharingManageGuardiansCancelInviteTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'The invite link will stop working immediately. You can send a new one any time.'**
+  String get sharingManageGuardiansCancelInviteBody;
+
+  /// Issue #1004 (tranche 1): decline action for the cancel-invitation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Invitation'**
+  String get sharingManageGuardiansKeepInvitation;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Invitation'**
+  String get sharingManageGuardiansCancelInvitation;
+
+  /// Issue #1004 (tranche 1): snackbar when cancelling an invitation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to cancel invitation. Check connection.'**
+  String get sharingManageGuardiansCancelInviteFailed;
+
+  /// Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load pending invitations.'**
+  String get sharingManageGuardiansPendingLoadError;
+
+  /// Issue #1004 (tranche 1): empty state for the pending-invitations section.
+  ///
+  /// In en, this message translates to:
+  /// **'No pending invitations'**
+  String get sharingManageGuardiansNoPending;
+
+  /// Issue #1004 (tranche 1): pending-invitations section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending invitations'**
+  String get sharingManageGuardiansPendingTitle;
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • Expired'**
+  String sharingManageGuardiansPendingSubtitleExpired(String kindLabel);
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • {expiry}'**
+  String sharingManageGuardiansPendingSubtitle(String kindLabel, String expiry);
+
+  /// Issue #1004 (tranche 1): resend action on an expired pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend'**
+  String get sharingManageGuardiansResend;
+
+  /// Issue #1004 (tranche 1): expiry label once an invitation has lapsed.
+  ///
+  /// In en, this message translates to:
+  /// **'expired'**
+  String get sharingManageGuardiansExpiryExpired;
+
+  /// Issue #1004 (tranche 1): expiry label rounded to hours.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {hours}h'**
+  String sharingManageGuardiansExpiryHours(int hours);
+
+  /// Issue #1004 (tranche 1): expiry label rounded to minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {minutes}m'**
+  String sharingManageGuardiansExpiryMinutes(int minutes);
+
+  /// Issue #1004 (tranche 1): manage-guardians app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Guardians'**
+  String sharingManageGuardiansScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian floating action label.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian'**
+  String get sharingManageGuardiansInviteAction;
+
+  /// Issue #1004 (tranche 1): empty guardian list title.
+  ///
+  /// In en, this message translates to:
+  /// **'No guardians linked yet'**
+  String get sharingManageGuardiansNoGuardiansTitle;
+
+  /// Issue #1004 (tranche 1): empty guardian list body.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite another guardian to sync and share tracking.'**
+  String get sharingManageGuardiansNoGuardiansBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions-only sharing'**
+  String get sharingManageGuardiansPredictionsSectionTitle;
+
+  /// Issue #1004 (tranche 1): prediction-connection section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.'**
+  String get sharingManageGuardiansPredictionsSectionBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection notice on a minor's profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing is not available for a minor\'s profile.'**
+  String get sharingManageGuardiansPredictionsMinor;
+
+  /// Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions only...'**
+  String get sharingManageGuardiansSharePredictionsAction;
+
+  /// Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian can share predictions.'**
+  String get sharingManageGuardiansPredictionsPrimaryOnly;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile title once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing predictions'**
+  String get sharingManageGuardiansSharingPredictions;
+
+  /// Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile.
+  ///
+  /// In en, this message translates to:
+  /// **'pending'**
+  String get sharingManageGuardiansPendingBadge;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile subtitle once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Phases-only calendar • not a guardian'**
+  String get sharingManageGuardiansPhasesOnlyCalendar;
+
+  /// Issue #1004 (tranche 1): danger-zone section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Danger zone'**
+  String get sharingManageGuardiansDangerZoneTitle;
+
+  /// Issue #1004 (tranche 1): danger-zone section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.'**
+  String get sharingManageGuardiansDangerZoneBody;
+
+  /// Issue #1004 (tranche 1): danger-zone delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete profile permanently'**
+  String get sharingManageGuardiansDeleteProfileAction;
+
+  /// Issue #1004 (tranche 1): generic role-update failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update role. Check connection.'**
+  String get sharingManageGuardiansRoleUpdateFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role to {newRoleLabel}?'**
+  String sharingManageGuardiansChangeRoleTitle(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.'**
+  String sharingManageGuardiansChangeRoleBody(
+    String name,
+    String currentRoleLabel,
+    String consequence,
+  );
+
+  /// Issue #1004 (tranche 1): confirm action for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role'**
+  String get sharingManageGuardiansChangeRoleAction;
+
+  /// Issue #1004 (tranche 1): snackbar after a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Role updated to {newRoleLabel}'**
+  String sharingManageGuardiansRoleUpdated(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): suffix marking the caller's own guardian row.
+  ///
+  /// In en, this message translates to:
+  /// **'(you)'**
+  String get sharingManageGuardiansYouSuffix;
+
+  /// Issue #1004 (tranche 1): notification-preferences app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get sharingNotificationPreferencesTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone?'**
+  String get sharingNotificationPreferencesSaveWithoutTzTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?'**
+  String get sharingNotificationPreferencesSaveWithoutTzBody;
+
+  /// Issue #1004 (tranche 1): notification-preferences dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingNotificationPreferencesCancel;
+
+  /// Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone'**
+  String get sharingNotificationPreferencesSaveWithoutTz;
+
+  /// Issue #1004 (tranche 1): cadence selector title for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Log alert delivery'**
+  String get sharingNotificationPreferencesLogDeliveryTitle;
+
+  /// Issue #1004 (tranche 1): cadence selector subtitle for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest'**
+  String get sharingNotificationPreferencesLogDeliverySubtitle;
+
+  /// Issue #1004 (tranche 1): cadence selector title for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle-start alert delivery'**
+  String get sharingNotificationPreferencesCycleStartDelivery;
+
+  /// Issue #1004 (tranche 1): cadence selector title for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'High-severity alert delivery'**
+  String get sharingNotificationPreferencesHighSeverityDelivery;
+
+  /// Issue #1004 (tranche 1): digest-time tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest time'**
+  String get sharingNotificationPreferencesDigestTimeTitle;
+
+  /// Issue #1004 (tranche 1): digest-time tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When daily digests are delivered in your time zone'**
+  String get sharingNotificationPreferencesDigestTimeSubtitle;
+
+  /// Issue #1004 (tranche 1): inline error when notification preferences fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your notification settings.'**
+  String get sharingNotificationPreferencesLoadError;
+
+  /// Issue #1004 (tranche 1): discretion note at the top of notification preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts never show what was logged - just a generic reminder to open lunarlog.'**
+  String get sharingNotificationPreferencesDiscretion;
+
+  /// Issue #1004 (tranche 1): master alert toggle label.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when {profileName} logs an entry'**
+  String sharingNotificationPreferencesNotifyOnLog(String profileName);
+
+  /// Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Only notify on cycle start'**
+  String get sharingNotificationPreferencesCycleStartOnly;
+
+  /// Issue #1004 (tranche 1): narrowing toggle for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify on high-severity days'**
+  String get sharingNotificationPreferencesHighSeverity;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed-entry reminder'**
+  String get sharingNotificationPreferencesMissedEntryTitle;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check in when no entry has been logged for a while'**
+  String get sharingNotificationPreferencesMissedEntrySubtitle;
+
+  /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get sharingNotificationPreferencesOff;
+
+  /// Issue #1004 (tranche 1): one-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'1 day'**
+  String get sharingNotificationPreferencesOneDay;
+
+  /// Issue #1004 (tranche 1): two-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'2 days'**
+  String get sharingNotificationPreferencesTwoDays;
+
+  /// Issue #1004 (tranche 1): three-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'3 days'**
+  String get sharingNotificationPreferencesThreeDays;
+
+  /// Issue #1004 (tranche 1): quiet-hours start tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours start'**
+  String get sharingNotificationPreferencesQuietStart;
+
+  /// Issue #1004 (tranche 1): quiet-hours end tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours end'**
+  String get sharingNotificationPreferencesQuietEnd;
+
+  /// Issue #1004 (tranche 1): clear-quiet-hours action.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear quiet hours'**
+  String get sharingNotificationPreferencesClearQuietHours;
+
+  /// Issue #1004 (tranche 1): incoming prediction-connections app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get sharingPredictionConnectionsTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving these predictions?'**
+  String get sharingPredictionConnectionsStopTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'You will stop seeing this profile\'s shared cycle calendar. The sharer can invite you again at any time.'**
+  String get sharingPredictionConnectionsStopBody;
+
+  /// Issue #1004 (tranche 1): prediction-connections generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingPredictionConnectionsCancel;
+
+  /// Issue #1004 (tranche 1): destructive action to leave a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopAction;
+
+  /// Issue #1004 (tranche 1): snackbar after leaving a received prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped receiving predictions'**
+  String get sharingPredictionConnectionsStopped;
+
+  /// Issue #1004 (tranche 1): snackbar when leaving a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not stop receiving. Check connection.'**
+  String get sharingPredictionConnectionsStopFailed;
+
+  /// Issue #1004 (tranche 1): snackbar when redeeming a prediction code fails without a typed reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed.'**
+  String get sharingPredictionConnectionsFailed;
+
+  /// Issue #1004 (tranche 1): inline error when incoming connections fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load connections.'**
+  String get sharingPredictionConnectionsLoadError;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections title.
+  ///
+  /// In en, this message translates to:
+  /// **'No shared predictions yet'**
+  String get sharingPredictionConnectionsEmptyTitle;
+
+  /// Issue #1004 (tranche 1): empty incoming-connections body.
+  ///
+  /// In en, this message translates to:
+  /// **'When someone shares their cycle predictions with you, their calendar appears here.'**
+  String get sharingPredictionConnectionsEmptyBody;
+
+  /// Issue #1004 (tranche 1): incoming connection row title and calendar fallback name.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle predictions'**
+  String get sharingPredictionConnectionsCyclePredictions;
+
+  /// Issue #1004 (tranche 1): incoming connection row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared {date} • phases only'**
+  String sharingPredictionConnectionsSharedSubtitle(String date);
+
+  /// Issue #1004 (tranche 1): tooltip on the leave-connection icon.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop receiving'**
+  String get sharingPredictionConnectionsStopTooltip;
+
+  /// Issue #1004 (tranche 1): manual code entry confirm action.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingPredictionConnectionsConnect;
+
+  /// Issue #1004 (tranche 1): inline error when the shared predictions fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load the shared predictions.'**
+  String get sharingPredictionCalendarLoadError;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the first update'**
+  String get sharingPredictionCalendarWaitingTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar waiting state body.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re connected, but {profileName}\'s app hasn\'t shared its first predictions yet. They appear here automatically once it does - tap refresh to check again.'**
+  String sharingPredictionCalendarWaitingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): phase calendar ended state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection ended'**
+  String get sharingPredictionCalendarEndedTitle;
+
+  /// Issue #1004 (tranche 1): phase calendar ended state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This prediction connection is no longer active.'**
+  String get sharingPredictionCalendarEndedBody;
+
+  /// Issue #1004 (tranche 1): confidence tier line in the phase calendar disclaimer banner.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimate confidence: {tierLabel}'**
+  String sharingPredictionCalendarConfidence(String tierLabel);
+
+  /// Issue #1004 (tranche 1): phase legend entry for period days.
+  ///
+  /// In en, this message translates to:
+  /// **'Period'**
+  String get sharingPredictionCalendarLegendPeriod;
+
+  /// Issue #1004 (tranche 1): phase legend entry for fertile days.
+  ///
+  /// In en, this message translates to:
+  /// **'Fertile'**
+  String get sharingPredictionCalendarLegendFertile;
+
+  /// Issue #1004 (tranche 1): phase legend entry for ovulation days.
+  ///
+  /// In en, this message translates to:
+  /// **'Ovulation'**
+  String get sharingPredictionCalendarLegendOvulation;
+
+  /// Issue #1004 (tranche 1): phase legend entry for PMS days.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS'**
+  String get sharingPredictionCalendarLegendPms;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to create the connection. Please check your connection and try again.'**
+  String get sharingSharePredictionsCreateFailed;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection created'**
+  String get sharingSharePredictionsCreatedTitle;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Send this single-use link to the person who should see {profileName}\'s predictions:'**
+  String sharingSharePredictionsSendLink(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog generated-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'They will see estimated period, fertile, ovulation, and PMS days on a read-only calendar — no notes or logs. {expiry}'**
+  String sharingSharePredictionsCreatedBody(String expiry);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingSharePredictionsCopied;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog done action.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingSharePredictionsDone;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions of {profileName}'**
+  String sharingSharePredictionsTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): share-predictions dialog explanatory body.
+  ///
+  /// In en, this message translates to:
+  /// **'Creates a read-only connection that sees estimated period, fertile, ovulation, and PMS days — never notes, tags, or logs. One connection per profile.'**
+  String get sharingSharePredictionsBody;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingSharePredictionsNicknameLabel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Partner, Aunt'**
+  String get sharingSharePredictionsNicknameHint;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingSharePredictionsCancel;
+
+  /// Issue #1004 (tranche 1): share-predictions dialog create-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingSharePredictionsCreateLink;
+
+  /// Issue #1004 (tranche 1): transfer-ownership app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer {profileName}\'s Profile'**
+  String sharingTransferOwnershipScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): confirm dialog title before arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership?'**
+  String get sharingTransferOwnershipConfirmTitle;
+
+  /// Issue #1004 (tranche 1): transfer-ownership generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingTransferOwnershipCancel;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for arming a transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer'**
+  String get sharingTransferOwnershipTransferAction;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling an orphaned transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending transfer cancelled'**
+  String get sharingTransferOwnershipPendingCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after cancelling a generated transfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer cancelled'**
+  String get sharingTransferOwnershipCancelled;
+
+  /// Issue #1004 (tranche 1): snackbar after copying a transfer link.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer link copied to clipboard'**
+  String get sharingTransferOwnershipLinkCopied;
+
+  /// Issue #1004 (tranche 1): armable-state section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'What changes'**
+  String get sharingTransferOwnershipWhatChanges;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'You keep the role you choose below.'**
+  String get sharingTransferOwnershipBulletKeepRole;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'They can remove your access at any time.'**
+  String get sharingTransferOwnershipBulletRemoveAccess;
+
+  /// Issue #1004 (tranche 1): armable-state bullet.
+  ///
+  /// In en, this message translates to:
+  /// **'If they later delete their account, this profile\'s history goes with it.'**
+  String get sharingTransferOwnershipBulletDeleteAccount;
+
+  /// Issue #1004 (tranche 1): transfer help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How does the transfer work?'**
+  String get sharingTransferOwnershipHelpLabel;
+
+  /// Issue #1004 (tranche 1): post-transfer role picker heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Your role after the transfer'**
+  String get sharingTransferOwnershipRoleAfterTitle;
+
+  /// Issue #1004 (tranche 1): recipient label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Recipient label (optional)'**
+  String get sharingTransferOwnershipRecipientLabel;
+
+  /// Issue #1004 (tranche 1): recipient label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Sam'**
+  String get sharingTransferOwnershipRecipientHint;
+
+  /// Issue #1004 (tranche 1): arm-transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ownership'**
+  String get sharingTransferOwnershipAction;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'A Transfer Is Already Pending'**
+  String get sharingTransferOwnershipPendingTitle;
+
+  /// Issue #1004 (tranche 1): orphaned-transfer state body.
+  ///
+  /// In en, this message translates to:
+  /// **'A transfer for {profileName} is already pending, but its link is not available on this screen (it may have been created earlier or on another device). Cancel it to start a new one.'**
+  String sharingTransferOwnershipPendingBody(String profileName);
+
+  /// Issue #1004 (tranche 1): transfer expiry line.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {date}'**
+  String sharingTransferOwnershipExpires(String date);
+
+  /// Issue #1004 (tranche 1): cancel an orphaned transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Pending Transfer'**
+  String get sharingTransferOwnershipCancelPending;
+
+  /// Issue #1004 (tranche 1): generated-transfer state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer Ready'**
+  String get sharingTransferOwnershipReadyTitle;
+
+  /// Issue #1004 (tranche 1): generated-transfer state share line.
+  ///
+  /// In en, this message translates to:
+  /// **'Share this single-use link with {profileName}:'**
+  String sharingTransferOwnershipShareLink(String profileName);
+
+  /// Issue #1004 (tranche 1): copy-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingTransferOwnershipCopyLink;
+
+  /// Issue #1004 (tranche 1): share-transfer-link action.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingTransferOwnershipShare;
+
+  /// Issue #1004 (tranche 1): cancel a generated transfer action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel transfer'**
+  String get sharingTransferOwnershipCancelTransfer;
+
+  /// Issue #1004 (tranche 1): activity-feed app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Activity'**
+  String sharingActivityFeedScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Just you for now'**
+  String get sharingActivityFeedJustYouTitle;
+
+  /// Issue #1004 (tranche 1): single-guardian empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has one guardian, so there is no shared activity to review. When a second guardian joins, both of your changes appear here.'**
+  String get sharingActivityFeedJustYouBody;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'No activity yet'**
+  String get sharingActivityFeedNoActivityTitle;
+
+  /// Issue #1004 (tranche 1): no-activity empty-state body.
+  ///
+  /// In en, this message translates to:
+  /// **'Changes either guardian makes to this profile will appear here.'**
+  String get sharingActivityFeedNoActivityBody;
+
+  /// Issue #1004 (tranche 1): activity-feed list caption.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest first. Each row shows a day’s latest change — earlier edits by the same guardian are not recorded separately.'**
+  String get sharingActivityFeedCaption;
+
+  /// Issue #1004 (tranche 1): activity row verb for a logged entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged'**
+  String get sharingActivityFeedVerbLogged;
+
+  /// Issue #1004 (tranche 1): activity row verb for an updated entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated'**
+  String get sharingActivityFeedVerbUpdated;
+
+  /// Issue #1004 (tranche 1): activity row verb for a removed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get sharingActivityFeedVerbRemoved;
+
+  /// Issue #1004 (tranche 1): activity row title with an attributed actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{verb} by {actor}'**
+  String sharingActivityFeedByLineActor(String verb, String actor);
+
+  /// Issue #1004 (tranche 1): activity row title for an unattributed entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Entry {verb}'**
+  String sharingActivityFeedByLineNoActor(String verb);
+
+  /// Issue #1004 (tranche 1): merge-outcome row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept one version'**
+  String get sharingActivityFeedMergeKeptOne;
+
+  /// Issue #1004 (tranche 1): merge-outcome row title with a possessive actor.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync merge kept {possessive} version'**
+  String sharingActivityFeedMergeKeptPossessive(String possessive);
+
+  /// Issue #1004 (tranche 1): access-removed row title without an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'A guardian no longer has access'**
+  String get sharingActivityFeedAccessRemovedNoActor;
+
+  /// Issue #1004 (tranche 1): access-removed row title with an actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{actor} no longer has access'**
+  String sharingActivityFeedAccessRemovedActor(String actor);
+
+  /// Issue #1004 (tranche 1): access-removed row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access to this profile was removed'**
+  String get sharingActivityFeedAccessRemovedSubtitle;
+
+  /// Issue #1004 (tranche 1): entry subtitle date fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'for {date}'**
+  String sharingActivityFeedForDate(String date);
+
+  /// Issue #1004 (tranche 1): entry subtitle original-logger fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'logged by {actor}'**
+  String sharingActivityFeedLoggedBy(String actor);
+
+  /// Issue #1004 (tranche 1): entry subtitle tag-count fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tag} other{{count} tags}}'**
+  String sharingActivityFeedTagCount(int count);
+
+  /// Issue #1004 (tranche 1): entry subtitle note-presence fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note'**
+  String get sharingActivityFeedNote;
+
+  /// Issue #1004 (tranche 1): fallback actor label for a merge-outcome row.
+  ///
+  /// In en, this message translates to:
+  /// **'one guardian'**
+  String get sharingActivityFeedOneGuardian;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow and note values were'**
+  String get sharingActivityFeedDiscardedFlowAndNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'note was'**
+  String get sharingActivityFeedDiscardedNote;
+
+  /// Issue #1004 (tranche 1): merge-outcome subtitle fragment.
+  ///
+  /// In en, this message translates to:
+  /// **'flow value was'**
+  String get sharingActivityFeedDiscardedFlow;
+
+  /// Issue #1004 (tranche 1): merge-outcome row subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'{possessive} {what} discarded in a same-date merge'**
+  String sharingActivityFeedMergeDiscarded(String possessive, String what);
+
+  /// Issue #1004 (tranche 1): New chip on an unseen activity row.
+  ///
+  /// In en, this message translates to:
+  /// **'New'**
+  String get sharingActivityFeedNewBadge;
+
+  /// Issue #1004 (tranche 1): possessive form when the actor is the current user.
+  ///
+  /// In en, this message translates to:
+  /// **'your'**
+  String get sharingActivityFeedPossessiveYou;
+
+  /// Issue #1004 (tranche 1): possessive form for a named actor.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s'**
+  String sharingActivityFeedPossessiveName(String name);
+
+  /// Issue #1004 (tranche 1): co-managed indicator tooltip on a profile sharing row.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String sharingProfileSharingSharedTooltip(int count);
+
+  /// Issue #1004 (tranche 1): pending-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 pending invitation} other{{count} pending invitations}}'**
+  String sharingPendingInviteBadgePendingCount(int count);
+
+  /// Issue #1004 (tranche 1): expired-invitation badge tooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
+  String sharingPendingInviteBadgeExpiredCount(int count);
 }
 
 class _AppLocalizationsDelegate
