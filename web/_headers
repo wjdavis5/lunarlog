@@ -1,0 +1,35 @@
+# Static security headers for the lunarlog web build (epic #831, slice 1).
+#
+# Cloudflare Pages / Netlify-style `_headers`. Every rule below is part of the
+# web security posture recorded in `docs/web/security-posture.md`; the
+# non-negotiable directives are pinned by
+# `test/architecture/web_headers_test.dart`, so this file and that test move
+# together.
+#
+# Notes on the policy:
+#   * `script-src 'self'` — Flutter's engine, fonts, and `sqlite3.wasm` are all
+#     bundled into the build (no CDN). `'wasm-unsafe-eval'` lets the engine
+#     compile the bundled WASM without enabling general `eval`.
+#   * `style-src 'unsafe-inline'` — the Flutter engine injects inline style for
+#     its view; this is far narrower than an unsafe script source.
+#   * `worker-src`/`child-src blob:` — `drift_worker.js` and the engine's
+#     workers may be created from blob URLs.
+#   * `connect-src` — the app origin, the Supabase project (HTTPS for PostgREST
+#     and WSS for Realtime), and Sentry's ingest host when crash reporting is
+#     configured. Nothing else.
+#   * Cross-origin isolation (COOP/COEP) lets drift's WASM executor use
+#     shared-memory modes; without them it safely falls back to IndexedDB
+#     (`lib/data/db/web_db.dart`).
+#   * `frame-ancestors 'none'` plus `X-Frame-Options: DENY` — this app is never
+#     framed.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: https://dleexnnevuuddcgcpztq.supabase.co wss://dleexnnevuuddcgcpztq.supabase.co https://*.ingest.sentry.io https://*.ingest.us.sentry.io; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), usb=(), xr-spatial-tracking=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
