@@ -73,10 +73,11 @@ const Set<String> _sharingNamedUiArgs = {
 ///
 /// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero, so those
 /// entries are gone and the recorded size dropped by the same amount:
-/// 355 (main, after the widget/health/#1003 work) - 134 = 221. Every
-/// remaining entry is another directory's backlog, owned by a different
-/// tranche.
-const int _initialAllowlistSize = 221;
+/// 355 (main, after the widget/health/#1003 work) - 134 = 221, then
+/// - 8 when epic #831 (slice 1) moved `lib/ui/web/dev_banner.dart` fully
+/// onto `AppLocalizations`: 213. Every remaining entry is another
+/// directory's backlog, owned by a different tranche.
+const int _initialAllowlistSize = 213;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -125,7 +126,6 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
   'lib/ui/startup/fail_closed_screen.dart': 2,
-  'lib/ui/web/dev_banner.dart': 8,
 };
 
 void main() {
