@@ -15,6 +15,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/settings/crash_smoke_trigger.dart';
 import 'package:lunarlog/ui/startup/qa_build_banner.dart'
     show kQaBuildVersionSuffix;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -30,7 +31,12 @@ typedef AboutPackageInfoReader = Future<PackageInfo> Function();
 Future<PackageInfo> _defaultPackageInfoReader() => PackageInfo.fromPlatform();
 
 class AboutSection extends StatefulWidget {
-  const AboutSection({super.key, this.packageInfoReader, this.qaBuild});
+  const AboutSection({
+    super.key,
+    this.packageInfoReader,
+    this.qaBuild,
+    this.crashSmoke,
+  });
 
   /// Injectable for tests; null means the real platform read.
   final AboutPackageInfoReader? packageInfoReader;
@@ -42,6 +48,14 @@ class AboutSection extends StatefulWidget {
   /// build without hunting for the banner.
   final bool? qaBuild;
 
+  /// Issue #973: whether to render the dev-only crash-report smoke trigger,
+  /// resolved once through [AppConfig.crashSmokeEnabled] — the same
+  /// null-means-AppConfig injection idiom as [qaBuild], so widget tests
+  /// exercise both values in one default-off run. That constant is
+  /// `LUNARLOG_CRASH_SMOKE=true` *and* `kDebugMode`, so this is false in
+  /// every store and QA build and the trigger tree-shakes out.
+  final bool? crashSmoke;
+
   @override
   State<AboutSection> createState() => _AboutSectionState();
 }
@@ -51,6 +65,9 @@ class _AboutSectionState extends State<AboutSection> {
 
   /// Issue #739: the resolved QA-build flag for this section's render.
   late final bool _qaBuild = widget.qaBuild ?? AppConfig.qaBuild;
+
+  /// Issue #973: the resolved crash-smoke flag for this section's render.
+  late final bool _crashSmoke = widget.crashSmoke ?? AppConfig.crashSmokeEnabled;
 
   @override
   void initState() {
@@ -109,6 +126,9 @@ class _AboutSectionState extends State<AboutSection> {
           trailing: const Icon(Icons.chevron_right),
           onTap: _openLicenses,
         ),
+        // Issue #973: the dev-only crash-report smoke trigger. Compile-time
+        // absent from every store and QA build (see [crashSmoke]).
+        if (_crashSmoke) const CrashSmokeTiles(),
       ],
     );
   }

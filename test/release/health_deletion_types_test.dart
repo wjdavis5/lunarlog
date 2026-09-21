@@ -236,4 +236,51 @@ void main() {
       expect(kotlin, contains('for (recordType in writtenRecordTypes)'));
     });
   });
+
+  // Issue #959: the OS permission state is write-only for a reason — iOS
+  // read authorization is opaque by Apple's design and must never be
+  // reported as a refusal. These guards keep the native `permissionStatus`
+  // handlers on the write types / requested set, so a future edit that
+  // consults read access fails here rather than shipping a false denial.
+  group('iOS permissionStatus consults only the write types (#959)', () {
+    late String swift;
+
+    setUpAll(() {
+      swift = _stripLineComments(readRepoFile(_appDelegatePath));
+    });
+
+    test('authorizationStatus is queried over writtenSampleTypes', () {
+      expect(swift, contains('store.authorizationStatus(for: type)'));
+      expect(swift, contains('for type in writtenSampleTypes'));
+    });
+
+    test('the read type is never the subject of an authorizationStatus query',
+        () {
+      // The read set is the single menstrual-flow type; it must not appear
+      // in an authorizationStatus call (the regression this guards).
+      expect(
+        swift,
+        isNot(contains('authorizationStatus(for: menstrualFlowType)')),
+      );
+      expect(swift, contains('UIApplication.openSettingsURLString'));
+    });
+  });
+
+  group('Android permissionStatus compares the requested set (#959)', () {
+    late String kotlin;
+
+    setUpAll(() {
+      kotlin = _stripLineComments(readRepoFile(_adapterPath));
+    });
+
+    test('the status is the SDK check plus getGrantedPermissions over '
+        'allPermissions', () {
+      expect(kotlin, contains('permissionController.getGrantedPermissions()'));
+      expect(kotlin, contains('granted.containsAll(allPermissions)'));
+    });
+
+    test('the settings deep link is Health Connect settings', () {
+      expect(kotlin, contains('ACTION_HEALTH_CONNECT_SETTINGS'));
+    });
+  });
 }

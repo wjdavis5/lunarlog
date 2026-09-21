@@ -68,6 +68,7 @@ class FakeSharing126 implements SharingService {
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 48),
   }) =>
       throw UnimplementedError('not exercised by issue #126 tests');
@@ -106,6 +107,7 @@ class _FakePredictionConnection151 implements PredictionConnectionService {
   Future<GeneratedPredictionInvite> createConnection({
     required String profileId,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 72),
   }) =>
       throw UnimplementedError('not exercised by issue #126 tests');
@@ -724,6 +726,71 @@ void main() {
         expect(
             find.byKey(ValueKey('pending-invite-badge-${ids.zoe}')),
             findsNothing);
+      } finally {
+        await _disposeApp(tester, db);
+      }
+    });
+
+    testWidgets(
+        'a subject membership moves the profile into "My profiles" '
+        '(Issue #802, AC2)',
+        (tester) async {
+      final auth = _signedInAs('user-mom');
+      addTearDown(auth.dispose);
+      final sharing = FakeSharing126();
+      final db = await _pumpApp(tester, auth: auth, sharing: sharing);
+      try {
+        final ids = await _seedFamily(db);
+        // A third profile stays genuinely shared so both headers render
+        // and the subject row's bucket is observable, not implied.
+        final wendy = await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Wendy', isMinor: false);
+        await db.storage.applyRemoteRows([
+          _row(wendy.id, 0, 'user-y', 'primary_guardian', 'Y'),
+          _row(wendy.id, 1, 'user-mom', 'viewer', 'Mom'),
+        ]);
+        await tester.pumpAndSettle();
+
+        // Baseline: Zoe is shared with Mom (viewer).
+        expect(find.text('Shared with me · Viewer'), findsNWidgets(2));
+
+        // The server re-stamps Mom's Zoe membership: caregiver + the
+        // #802 subject marker (a higher server_version, exactly how the
+        // pull would deliver the accept RPC's upsert).
+        await db.storage.applyRemoteRows([
+          RemoteProfileGuardianRow(
+            id: 'g-${ids.zoe}-1',
+            profileId: ids.zoe,
+            userId: 'user-mom',
+            role: 'caregiver',
+            status: 'accepted',
+            displayName: 'Mom',
+            invitedBy: null,
+            createdAt: DateTime.utc(2026, 1, 1),
+            updatedAt: DateTime.utc(2026, 1, 2),
+            serverVersion: 5,
+            isSubject: true,
+          ),
+        ]);
+        await tester.pumpAndSettle();
+
+        // Zoe now reads as Mom's own: the subject subtitle, never the
+        // caregiver role label the preset granted...
+        expect(find.text('This is your profile'), findsOneWidget);
+        expect(find.text('Shared with me · Caregiver'), findsNothing);
+        // ...and her row sits under "My profiles", above the shared
+        // section, which Wendy alone now occupies.
+        final myY =
+            tester.getTopLeft(find.byKey(const ValueKey('my-profiles-header'))).dy;
+        final zoeY = tester
+            .getTopLeft(find.byKey(ValueKey('profile-row-${ids.zoe}')))
+            .dy;
+        final sharedY = tester
+            .getTopLeft(find.byKey(const ValueKey('shared-with-me-header')))
+            .dy;
+        expect(myY, lessThan(zoeY));
+        expect(zoeY, lessThan(sharedY));
+        expect(find.text('Shared with me · Viewer'), findsOneWidget);
       } finally {
         await _disposeApp(tester, db);
       }

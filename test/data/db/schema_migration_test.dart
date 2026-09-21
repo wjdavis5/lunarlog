@@ -47,19 +47,20 @@ import 'package:lunarlog/data/sync/row_codec.dart' show encodeDayEntry, encodePr
 
 import 'generated_migrations/schema.dart';
 import 'generated_migrations/schema_v18.dart' as v18;
+import 'generated_migrations/schema_v27.dart' as v27;
 import 'generated_migrations/schema_v7.dart' as v7;
 
 /// The current schema version, kept in lockstep with
 /// `LunarLogDatabase.schemaVersion` and the highest `drift_schemas/*.json`
 /// dump. A mismatch here is caught by the `schema version is 20` assertion
 /// in `db_test.dart`, not by this file.
-const int _kCurrentSchemaVersion = 27;
+const int _kCurrentSchemaVersion = 29;
 
 /// Every schema version older than [_kCurrentSchemaVersion] that has a dump
 /// under `drift_schemas/` — i.e. every version this harness can start an
 /// upgrade from. Step 4 of the regeneration procedure above is: add the new
 /// pre-bump version here.
-const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26];
+const List<int> _kOlderSchemaVersions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28];
 
 void main() {
   // Several tests below open more than one LunarLogDatabase instance across
@@ -729,6 +730,50 @@ void main() {
         flow: FlowLevel.light,
       );
       expect(freshEntry.pmsUnconfirmed, isNot(true));
+    });
+  });
+
+  group('issue #853: v28 adds profiles.irregular_framing and folds the '
+      'legacy rival mode', () {
+    test('a v27 device with stored mode=irregular rows converges to '
+        'standard + irregular_framing=1; every other row keeps its mode '
+        'and reads irregular_framing=null (engine default)', () async {
+      final schema = await verifier.schemaAt(27);
+      final seedDb = v27.DatabaseAtV27(schema.newConnection());
+      await seedDb.customStatement(
+        "INSERT INTO profiles (id, display_name, is_minor, mode, "
+        "created_at, updated_at, dirty) VALUES "
+        "('01J000000000000000000000I1', 'Legacy Irregular', 0, "
+        "'irregular', '2026-01-01T00:00:00.000000Z', "
+        "'2026-01-01T00:00:00.000000Z', 0)",
+      );
+      await seedDb.customStatement(
+        "INSERT INTO profiles (id, display_name, is_minor, mode, "
+        "created_at, updated_at, dirty) VALUES "
+        "('01J000000000000000000000I2', 'Teen', 1, "
+        "'teen', '2026-01-01T00:00:00.000000Z', "
+        "'2026-01-01T00:00:00.000000Z', 0)",
+      );
+      await seedDb.close();
+
+      final testedDb = LunarLogDatabase(schema.newConnection());
+      addTearDown(testedDb.close);
+      await verifier.migrateAndValidate(testedDb, _kCurrentSchemaVersion);
+
+      final legacy =
+          await testedDb.storage.getProfile('01J000000000000000000000I1');
+      expect(legacy!.mode, 'standard',
+          reason: 'the legacy rival value must not survive the upgrade');
+      expect(legacy.irregularFraming, isTrue,
+          reason: 'the fold must preserve the framing the stored value '
+              'selected');
+
+      final teen =
+          await testedDb.storage.getProfile('01J000000000000000000000I2');
+      expect(teen!.mode, 'teen');
+      expect(teen.irregularFraming, isNull,
+          reason: 'a never-set flag stays null (engine default), never a '
+              'silent false');
     });
   });
 }

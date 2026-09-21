@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/insights/cycle_recap.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
-import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/statistic_change.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart'
     show CycleConfidence;
@@ -67,7 +66,7 @@ CycleRecap buildRecap({
 Future<void> pumpCard(
   WidgetTester tester,
   CycleRecap recap, {
-  ProfileMode mode = ProfileMode.standard,
+  bool irregularFraming = false,
   VoidCallback? onDismiss,
   VoidCallback? onCompare,
 }) {
@@ -78,7 +77,7 @@ Future<void> pumpCard(
       home: Scaffold(
         body: CycleRecapCard(
           recap: recap,
-          mode: mode,
+          irregularFraming: irregularFraming,
           onDismiss: onDismiss ?? () {},
           onCompare: onCompare,
         ),
@@ -240,13 +239,13 @@ void main() {
     expect(find.byKey(const ValueKey('cycle-recap-compare')), findsNothing);
   });
 
-  testWidgets('irregular mode suppresses range, comparison, and the compare '
-      'action without dropping the logged length', (tester) async {
+  testWidgets('irregular framing suppresses range, comparison, and the '
+      'compare action without dropping the logged length', (tester) async {
     var compared = false;
     await pumpCard(
       tester,
       buildRecap(),
-      mode: ProfileMode.irregular,
+      irregularFraming: true,
       onCompare: () => compared = true,
     );
 

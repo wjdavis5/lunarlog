@@ -59,6 +59,7 @@ import '../support/fake_auth_service.dart';
 /// Fixed "today" so every derived number is deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
+
 /// Materializes a server-authored guardian row locally (mirrors
 /// `test/ui/logging_test.dart`'s helper of the same name -- each suite
 /// keeps its own tiny copy rather than sharing one, matching the existing
@@ -135,6 +136,21 @@ final List<LocalDate> kLateStarts = [
   LocalDate(2026, 7, 5),
 ];
 
+/// Issue #853: seven steady 28-day episodes ending 2026-08-01 -- SIX
+/// completed valid cycles (the full kAverageWindowCycles window) at zero
+/// spread, so the tier reads `high` (the one state that lifts a teen's
+/// engine-default irregular framing). The estimate lands on 2026-08-29,
+/// one day past kToday -- inside the 2-day grace, so nothing is late.
+final List<LocalDate> kSteadyHighStarts = [
+  LocalDate(2026, 2, 14),
+  LocalDate(2026, 3, 14),
+  LocalDate(2026, 4, 11),
+  LocalDate(2026, 5, 9),
+  LocalDate(2026, 6, 6),
+  LocalDate(2026, 7, 4),
+  LocalDate(2026, 8, 1),
+];
+
 /// Four 30-day episodes ending 2026-06-26: 15 days past the original
 /// July 27 estimate by 2026-08-11 (more than the 2-day grace) rolls it
 /// forward one 30-day mean cycle to August 26. Feeds the interactive
@@ -183,6 +199,28 @@ final List<LocalDate> kRegularLongOpenStarts = [
   LocalDate(2026, 3, 29), // 29, open
 ];
 final LocalDate kRegularLongOpenToday = LocalDate(2026, 6, 1);
+
+/// Issue #859: the issue's own 2½-year-stale shape — mean 29.33, last logged
+/// start 2024-04-27. Paired with [kStaleToday] (2026-10-13) the open cycle
+/// is 899 days, far past `staleHistoryThresholdDays` (~120 for this mean).
+final List<LocalDate> kStaleStarts = [
+  LocalDate(2024, 1, 30),
+  LocalDate(2024, 2, 28),
+  LocalDate(2024, 3, 28),
+  LocalDate(2024, 4, 27),
+];
+final LocalDate kStaleToday = LocalDate(2026, 10, 13);
+
+/// Issue #859 regression fixture: mean 30, last start 2026-06-21 → 70 days
+/// open on `kToday` (2026-08-30). Past `kMaxOpenCycleDays` (60) but well
+/// under `staleHistoryThresholdDays(30)` (~120), so it must keep rendering
+/// today's long-cycle prompt unchanged.
+final List<LocalDate> kLongOpen70Starts = [
+  LocalDate(2026, 3, 23),
+  LocalDate(2026, 4, 22),
+  LocalDate(2026, 5, 23),
+  LocalDate(2026, 6, 21),
+];
 
 class Harness {
   Harness(this.db, this.profile, this.profiles, this.entries, this._settings);
@@ -271,6 +309,7 @@ Future<Harness> pumpOverview(
   WidgetTester tester, {
   NotificationAvailability availability = NotificationAvailability.available,
   ProfileMode mode = ProfileMode.standard,
+  bool? irregularFraming,
   RequestNotificationPermissionCallback? requestPermission,
   LocalDate? today,
   bool readOnly = false,
@@ -293,7 +332,10 @@ Future<Harness> pumpOverview(
   final settings = DriftSettingsStore(db.storage);
   final entries = DriftDayEntriesRepository(db.storage);
   final profile = await profiles.create(
-      displayName: 'Alice', isMinor: false, mode: mode);
+      displayName: 'Alice',
+      isMinor: false,
+      mode: mode,
+      irregularFraming: irregularFraming);
   if (seed != null) {
     await seed(entries, profile.id);
   }
@@ -661,6 +703,68 @@ void main() {
         reason: 'exclude feeds the same exclusion list as manual omit / '
             'the resolver\'s skip',
       );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #859: a 70-day open cycle (past kMaxOpenCycleDays, '
+        'under the stale threshold) still renders the long-cycle prompt '
+        'unchanged', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLongOpen70Starts),
+      );
+
+      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
+          reason: 'the ordinary active card, not the stale replacement');
+      expect(find.byKey(const ValueKey('overview-stale-history')),
+          findsNothing);
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsOneWidget);
+      expect(find.text('This cycle is unusually long'), findsOneWidget);
+      expect(find.text('Exclude this cycle'), findsOneWidget);
+      expect(find.text('Turn off predictions'), findsOneWidget);
+      // The rolled estimate, the late resolver, and the days-late count all
+      // stay exactly as they were before #859.
+      expect(find.byKey(const ValueKey('overview-next-period')), findsOneWidget);
+      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
+      expect(find.text('40 days late'), findsOneWidget);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #859: a years-stale history shows the calm stale '
+        'card — no days-late count, no rolled estimate, no long-cycle '
+        'prompt, and an actionable next step', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        today: kStaleToday,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kStaleStarts),
+      );
+
+      expect(find.byKey(const ValueKey('overview-stale-history')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey('overview-active')), findsNothing);
+      // Nothing derived from the 2½-year-old date survives.
+      expect(find.byKey(const ValueKey('overview-days-until')), findsNothing,
+          reason: 'no days-late hero number');
+      expect(find.byKey(const ValueKey('overview-next-period')), findsNothing,
+          reason: 'no rolled-forward next-period estimate');
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
+          reason: 'no red late resolver / "Remind me in 3 days"');
+      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
+          findsNothing,
+          reason: 'the stale state replaces the long-cycle prompt entirely');
+      expect(find.textContaining('days late'), findsNothing);
+      // Never silent (#221): the screen explains the situation and offers a
+      // way forward.
+      expect(find.text('Your history is out of date'), findsOneWidget);
+      expect(find.byKey(const ValueKey('stale-history-log')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('stale-history-predictions-off')),
+        findsOneWidget,
+      );
+      expectNoFertilityVocabulary(tester, 'stale history');
       await disposeOverview(tester, h);
     });
 
@@ -1382,22 +1486,25 @@ void main() {
       await disposeOverview(tester, longCycle);
     });
 
-    testWidgets('teen mode keeps the standard resolver when late (teen is '
-        'not a reduced app, and honest late framing still applies)',
-        (tester) async {
+    testWidgets('teen mode with the framing explicitly OFF keeps the '
+        'standard resolver when late (teen is not a reduced app, and the '
+        'operator chose the adult framing)', (tester) async {
       final h = await pumpOverview(
         tester,
         mode: ProfileMode.teen,
+        irregularFraming: false,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kLateStarts),
       );
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget,
-          reason: 'only irregular silences the resolver');
+          reason: 'an explicit choice overrides the engine default');
       expect(
         find.text('Your next period is estimated around: August 30, 2026'),
         findsOneWidget,
         reason: 'issue #221: rolled forward one 28-day mean cycle',
       );
+      // The wheel's overdue unit keeps the plain framing vocabulary.
+      expect(find.text('28 days late'), findsOneWidget);
       await disposeOverview(tester, h);
     });
 
@@ -1460,6 +1567,92 @@ void main() {
           findsNothing,
           reason: 'irregular mode silences the tier caption (#131/#213)');
       expectNoFertilityVocabulary(tester, 'irregular late');
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #853: a teen profile with the framing unset never '
+        'shows the late resolver -- the quiet line and its one action '
+        'render instead, and the wheel never says late', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        // unset: the engine default applies (kLateStarts reads `learning`,
+        // not `high`, so the framing is ON)
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLateStarts),
+      );
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
+          reason: 'teen never sees the error-styled banner out of the box');
+      expect(find.text('Skip this cycle'), findsNothing);
+      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
+          findsOneWidget);
+      expect(find.textContaining('cycles often vary'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
+        findsOneWidget,
+        reason: 'the teen quiet line carries exactly one action',
+      );
+      expect(find.text('Log it when it comes'), findsOneWidget);
+      expect(
+        find.text('Your next period may start around: August 30, 2026'),
+        findsOneWidget,
+        reason: 'teen voice, range-style estimate framing',
+      );
+      // The wheel's overdue unit names the estimate, never "late" (the
+      // count and unit are two Text widgets).
+      expect(find.text('days past estimate'), findsOneWidget);
+      expect(find.text('days late'), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #853: a teen profile whose cycles reach high '
+        'confidence gets the plain framing back, with no write needed',
+        (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        // unset: the engine default applies, and kSteadyHighStarts reads
+        // `high` -- the framing lifts itself
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kSteadyHighStarts),
+      );
+      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
+          findsNothing);
+      expect(
+        find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
+        findsNothing,
+      );
+      expect(
+        find.text('Your next period is estimated around: August 29, 2026'),
+        findsOneWidget,
+        reason: 'high confidence keeps the plain single-date framing',
+      );
+      // And the wheel's overdue unit is back to the plain vocabulary.
+      expect(find.text('day late'), findsOneWidget);
+      expect(find.text('day past estimate'), findsNothing);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('issue #853: the composed framing silences the resolver for '
+        'an adult profile too (explicit flag on)', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.standard,
+        irregularFraming: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kLateStarts),
+      );
+      expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
+      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
+          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
+        findsNothing,
+        reason: 'only the teen composition carries the one action; the '
+            'adult composition stays a text-only line',
+      );
+      expect(find.textContaining('variation like this is common'),
+          findsOneWidget);
       await disposeOverview(tester, h);
     });
 

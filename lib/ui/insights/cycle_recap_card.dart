@@ -18,15 +18,16 @@
 ///
 /// The card says only what [CycleRecap] carries: below the engine's estimate
 /// threshold it shows the logged length and an explicit "still learning"
-/// line, and in `irregular` mode it never uses range or this-vs-last
-/// comparison language (the false-precision posture `CareModeCopy` already
-/// takes for the late banner and the tier caption).
+/// line, and under effective irregular framing — the composed mode +
+/// `Profile.irregularFraming` flag (issue #853), which reaches this card as
+/// the caller's resolved [irregularFraming] — it never uses range or
+/// this-vs-last comparison language (the false-precision posture
+/// `CareModeCopy` already takes for the late banner and the tier caption).
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../domain/insights/cycle_recap.dart';
-import '../../domain/models/profile_mode.dart';
 import '../../l10n/app_localizations.dart';
 import '../overview/cycle_history_section.dart' show formatDays;
 import '../theme/tokens.dart';
@@ -35,16 +36,19 @@ class CycleRecapCard extends StatelessWidget {
   const CycleRecapCard({
     super.key,
     required this.recap,
-    required this.mode,
+    required this.irregularFraming,
     required this.onDismiss,
     this.onCompare,
   });
 
   final CycleRecap recap;
 
-  /// The profile's care mode; `irregular` suppresses range and comparison
-  /// language, per this file's doc comment.
-  final ProfileMode mode;
+  /// The profile's *effective* irregular framing, resolved by the caller
+  /// with `irregularFramingInEffect` (issue #853: mode composed with the
+  /// stored flag and the engine tier, never the raw `ProfileMode` axis).
+  /// True suppresses range and comparison language, per this file's doc
+  /// comment.
+  final bool irregularFraming;
 
   /// Records the dismissal and hides the card.
   final VoidCallback onDismiss;
@@ -55,7 +59,7 @@ class CycleRecapCard extends StatelessWidget {
   final VoidCallback? onCompare;
 
   bool get _suppressComparison =>
-      mode == ProfileMode.irregular || recap.lengthChangeDays == null;
+      irregularFraming || recap.lengthChangeDays == null;
 
   @override
   Widget build(BuildContext context) {

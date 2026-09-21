@@ -99,6 +99,13 @@ class _FakePlatform implements HealthPlatformStore {
   Future<bool> isAvailable() async => true;
 
   @override
+  Future<HealthPermissionStatus> permissionStatus() async =>
+      HealthPermissionStatus.granted;
+
+  @override
+  Future<void> openPermissionSettings() async {}
+
+  @override
   Future<HealthPlatformResult> bindProfile(HealthGuardFacts facts) async =>
       const HealthPlatformAllowed();
 

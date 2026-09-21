@@ -88,6 +88,18 @@
 /// degradation curve (`_forecastSpreadFor`'s `sqrt(cycleIndex)` widening
 /// and one-step tier degradation) is unchanged — it simply extends across
 /// as many cycles as the horizon needs.
+///
+/// Issue #859 adds [ActivePrediction.staleHistory]: once the open cycle runs
+/// past [staleHistoryThresholdDays] (a few of the profile's own mean cycles,
+/// floored at [kMinStaleHistoryDays]) the history is too old for the
+/// #221 roll-forward to say anything useful. The prediction still carries
+/// its rolled estimate and forecast (no consumer loses them structurally),
+/// but UI branches on the flag to replace the days-late count, the rolled
+/// estimate, and any derived fertile window with a calm explanation and a
+/// way forward. It is deliberately a separate flag, not a new
+/// [CycleConfidence] tier (#858) and not a repurposing of
+/// [ActivePrediction.unusuallyLongCycle], which stays set between
+/// [kMaxOpenCycleDays] and the stale threshold exactly as before.
 library;
 
 import 'dart:math' show sqrt;
@@ -183,6 +195,38 @@ const int kAverageWindowCycles = 6;
 /// [CycleConfidence.irregular], whose copy asserts observed
 /// cycle-to-cycle variability a long open cycle does not demonstrate.
 const int kMaxOpenCycleDays = 60;
+
+/// Issue #859: how many of the profile's own mean cycle lengths the open
+/// cycle must run past the last logged start before its history reads
+/// *stale* — too old for the roll-forward machinery to say anything
+/// meaningful. #221's "never go silent" forward roll ([_rollLateEstimate])
+/// is right for a cycle days-to-weeks late, but it was never designed for a
+/// gap of several cycles: at that scale it produces a days-late count in the
+/// hundreds and a next-period estimate rolled many cycles into the future,
+/// numbers that read as broken rather than as a warning. Four mean cycles is
+/// the point at which the estimate has already rolled past three whole
+/// predicted cycles with no new log, so the next roll says nothing the last
+/// one didn't.
+const int kStaleHistoryCycleMultiplier = 4;
+
+/// Issue #859: the floor under [staleHistoryThresholdDays]. Deliberately
+/// twice [kMaxOpenCycleDays] so a profile whose mean cycle is short (or whose
+/// average is itself noisy) cannot flag stale before it has clearly cleared
+/// the existing "unusually long" band — stale is always a further step
+/// beyond that state, never a replacement for it.
+const int kMinStaleHistoryDays = kMaxOpenCycleDays * 2;
+
+/// Issue #859: the open-cycle length, in days since
+/// [ActivePrediction.lastEpisodeStart], past which a rolled-forward estimate
+/// reads as stale history for a profile whose mean cycle is
+/// [meanCycleLengthDays]. Expressed in the profile's own average rather than
+/// a bare constant (issue #859's own instruction) — [kStaleHistoryCycleMultiplier]
+/// mean cycles — with [kMinStaleHistoryDays] as a floor so the state can
+/// never overlap the long-cycle band.
+int staleHistoryThresholdDays(double meanCycleLengthDays) {
+  final scaled = (meanCycleLengthDays * kStaleHistoryCycleMultiplier).round();
+  return scaled > kMinStaleHistoryDays ? scaled : kMinStaleHistoryDays;
+}
 
 /// Fallback bleed length used only when the period-length window carries
 /// no episodes at all (see `computePrediction`'s use, below) — unreachable
@@ -616,6 +660,7 @@ class ActivePrediction extends CyclePrediction {
     this.tier = CycleConfidence.learning,
     this.forecast = const [],
     this.unusuallyLongCycle = false,
+    this.staleHistory = false,
     this.pms,
     this.basis = PredictionBasis.statistical,
   });
@@ -709,6 +754,21 @@ class ActivePrediction extends CyclePrediction {
   /// predictions) alongside it. Issue #858: it lowers [tier] at most one
   /// rung (never into [CycleConfidence.irregular]) rather than forcing it.
   final bool unusuallyLongCycle;
+
+  /// Issue #859: true once the open cycle has run past
+  /// [staleHistoryThresholdDays] for this profile's own mean cycle length —
+  /// the history is too old for the rolled estimate to mean anything. This
+  /// is a strictly further step than [unusuallyLongCycle] (which stays set
+  /// on the same prediction): consumers branch on this first and replace the
+  /// days-late count, the rolled next-period estimate, and any derived
+  /// fertile window with a calm "this history is out of date" explanation
+  /// plus a way forward. Deliberately a flag on the prediction (issue #859)
+  /// rather than a UI date comparison, and deliberately not overloaded onto
+  /// [tier] (issue #858: [CycleConfidence] carries variability semantics).
+  /// Never true on the pack-schedule branch ([basis] is
+  /// [PredictionBasis.regimenSchedule]): that estimate is a fixed pack
+  /// cadence, not a statistical history average.
+  final bool staleHistory;
 
   /// The predicted PMS phase (Issue #220): averages over the logged
   /// first-class PMS marker plus the concrete band before
@@ -909,6 +969,10 @@ CyclePrediction computePrediction({
     lastStart: lastStart,
     omittedCycleStarts: omittedCycleStarts,
   );
+  // Issue #859: stale is measured on the same open-cycle span as
+  // [unusuallyLongCycle] but against the profile's own mean cycle length —
+  // see [staleHistoryThresholdDays].
+  final staleHistory = openDays > staleHistoryThresholdDays(estimate.mean);
   final rolledStart = _rollLateEstimate(
     original: estimate.firstEstimateStart,
     today: today,
@@ -977,6 +1041,7 @@ CyclePrediction computePrediction({
     tier: tier,
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
+    staleHistory: staleHistory,
     pms: pms,
   );
 }
@@ -1477,6 +1542,10 @@ CyclePrediction seedProvisionalPrediction({
 
   final openDays = today.difference(lastStart);
   final unusuallyLongCycle = openDays > kMaxOpenCycleDays;
+  // Issue #859: a seeded answer can go stale exactly like a logged history —
+  // the supplied cycle length stands in for the mean here.
+  final staleHistory =
+      openDays > staleHistoryThresholdDays(cycleDays.toDouble());
   // The supplied period length is clamped the same way the computed path
   // clamps its episode-length average (never longer than the cycle, at
   // least one day); an unsupplied answer falls back to the same named
@@ -1523,6 +1592,7 @@ CyclePrediction seedProvisionalPrediction({
     tier: tier,
     forecast: forecast,
     unusuallyLongCycle: unusuallyLongCycle,
+    staleHistory: staleHistory,
   );
 }
 

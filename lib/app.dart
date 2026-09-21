@@ -25,6 +25,7 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/data/notifications/reminder_window_publisher.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
+import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/birth_control.dart';
@@ -334,6 +335,7 @@ class _LunarLogAppState extends State<LunarLogApp>
   HealthFlowWriteCoordinator? _healthFlowCoordinator;
   HealthSyncTombstoneCoordinator? _healthSyncTombstoneCoordinator;
   HealthImportRunner? _healthImporter;
+  HealthPermissionProbe? _healthPermissionProbe;
   AuthController? _authController;
   StreamSubscription<Uri>? _inviteSub;
   String? _pendingInviteCode;
@@ -422,6 +424,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     _initHealthFlowWriter();
     _initHealthSyncTombstonePropagation();
     _initHealthImporter();
+    _initHealthPermissionProbe();
     _buildReminderCoordinator();
     _initReminderWindowPublisher();
     // Issue #373: started on its own, never nested inside the push-gated
@@ -650,6 +653,17 @@ class _LunarLogAppState extends State<LunarLogApp>
       observations: _observations,
       guardiansForProfile: _profileGuardians.getForProfile,
       signedInUserId: () => confirmedHealthSyncUserId(_authController),
+      minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
+    );
+  }
+
+  /// Issue #959: the OS-permission probe the Health sync screen reads. AC2:
+  /// construction (and the platform gating) lives in
+  /// `lib/composition/`; this only holds the instance the Settings screen
+  /// reads through a provider. It is stateless — no start/dispose.
+  void _initHealthPermissionProbe() {
+    _healthPermissionProbe = buildHealthPermissionProbe(
+      settings: _settings,
       minorBindingAllowed: AppConfig.healthSyncMinorBindingAllowed,
     );
   }
@@ -1133,6 +1147,8 @@ class _LunarLogAppState extends State<LunarLogApp>
         Provider<ClueImportRunner>.value(value: _clueImportRunner),
         if (_healthImporter != null)
           Provider<HealthImportRunner>.value(value: _healthImporter!),
+        if (_healthPermissionProbe != null)
+          Provider<HealthPermissionProbe>.value(value: _healthPermissionProbe!),
         if (_deps.sharingService != null)
           Provider<SharingService>.value(value: _deps.sharingService!),
         if (_deps.ownershipTransferService != null)

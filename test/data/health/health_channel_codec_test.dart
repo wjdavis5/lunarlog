@@ -479,4 +479,60 @@ void main() {
       );
     });
   });
+
+  // Issue #959: the exact wire vocabulary the native halves send for the OS
+  // permission state — pinned here because the Swift/Kotlin halves cannot be
+  // compiled or run under `flutter test`. A drift between this table and
+  // either native side must fail this test.
+  group('HealthPermissionStatus wire values (Issue #959)', () {
+    test('toWire pins the exact strings the native halves send', () {
+      expect(HealthPermissionStatus.granted.toWire(), 'granted');
+      expect(HealthPermissionStatus.notAsked.toWire(), 'notAsked');
+      expect(HealthPermissionStatus.denied.toWire(), 'denied');
+      expect(HealthPermissionStatus.unavailable.toWire(), 'unavailable');
+    });
+
+    test('fromWire round-trips every value and rejects anything else', () {
+      for (final status in HealthPermissionStatus.values) {
+        expect(HealthPermissionStatus.fromWire(status.toWire()), status);
+      }
+      // There is deliberately no read-status wire value: Apple's read
+      // authorization is opaque and must never be represented.
+      expect(HealthPermissionStatus.fromWire('readDenied'), isNull);
+      expect(HealthPermissionStatus.fromWire(null), isNull);
+    });
+
+    test('decodeHealthPermissionStatus maps unknown shapes to unavailable', () {
+      expect(
+        decodeHealthPermissionStatus('granted'),
+        HealthPermissionStatus.granted,
+      );
+      expect(
+        decodeHealthPermissionStatus('notAsked'),
+        HealthPermissionStatus.notAsked,
+      );
+      expect(
+        decodeHealthPermissionStatus('denied'),
+        HealthPermissionStatus.denied,
+      );
+      expect(
+        decodeHealthPermissionStatus('unavailable'),
+        HealthPermissionStatus.unavailable,
+      );
+      // A newer native side, corruption, or the wrong type degrades to
+      // "can't tell" — never to a denial.
+      expect(
+        decodeHealthPermissionStatus('somethingNew'),
+        HealthPermissionStatus.unavailable,
+      );
+      expect(
+        decodeHealthPermissionStatus(null),
+        HealthPermissionStatus.unavailable,
+      );
+      expect(
+        decodeHealthPermissionStatus(42),
+        HealthPermissionStatus.unavailable,
+      );
+    });
+  });
 }

@@ -144,7 +144,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// creation, changeable later from the profile's edit dialog.
   ProfileMode _mode = ProfileMode.standard;
 
-  /// The cycle-questions step (#216): shown between the name form and
+  /// Cycle-questions step (#216): shown between the name form and
   /// profile creation, so the home gate's zero-profiles decision (which
   /// would unmount this screen the moment a profile exists) is untouched.
   bool _cycleQuestionsPending = false;
@@ -373,6 +373,13 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         displayName: _nameController.text,
         isMinor: _isMinor,
         mode: _mode,
+        // Issue #853: creation always leaves the flag at the engine default
+        // (null) — ON for a teen profile until `CycleConfidence.high`, OFF
+        // otherwise, with no control on this form: the explicit tri-state
+        // lives in the profile edit dialog
+        // (`ProfileDialogs`' irregular-framing-toggle), which is also where
+        // the framing is visible and changeable later.
+        irregularFraming: null,
         // Issue #530: the three cycle answers feed provisional seeding —
         // captured here, not just in the recorder.
         facts: CycleFacts(
@@ -693,7 +700,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       onChanged: (value) =>
                           setState(() => _mode = value ?? ProfileMode.standard),
                       items: [
-                        for (final mode in ProfileMode.values)
+                        // Issue #853: `irregular` is a legacy wire value,
+                        // not a choice — the framing is the composed flag
+                        // (editable later from the profile's edit dialog),
+                        // never a rival entry in this dropdown.
+                        for (final mode in ProfileMode.choosableModes)
                           DropdownMenuItem<ProfileMode>(
                             value: mode,
                             child: Text(mode.label),

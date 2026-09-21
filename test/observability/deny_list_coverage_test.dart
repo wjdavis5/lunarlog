@@ -121,6 +121,8 @@ const Map<String, String> _waivedKeys = {
   'p_profile_id': 'opaque profile id RPC parameter',
   'p_target_user_id': 'opaque auth user id RPC parameter',
   'p_transfer_id': 'opaque ownership-transfer id RPC parameter',
+  'p_subject':
+      'boolean subject-preset RPC parameter (issue #802) - closed set, not content',
 
   // Device-local sync/lifecycle bookkeeping — timestamps, counters, flags.
   'sort_order': 'device-local display ordering, not content',
@@ -129,6 +131,8 @@ const Map<String, String> _waivedKeys = {
   'updated_at': 'sync bookkeeping timestamp, not content',
   'deleted_at': 'tombstone bookkeeping timestamp, not content',
   'dirty': 'device-local sync flag, not content',
+  'is_subject':
+      'closed-set boolean membership-identity flag (issue #802), not content',
   'local_rev': 'device-local sync revision counter, not content',
   'transferred_at': 'ownership-transfer bookkeeping timestamp, not content',
   'observed_at': 'observation timestamp, not content by itself',

@@ -131,6 +131,7 @@ class AnalysisTab extends StatefulWidget {
     super.key,
     required this.profileId,
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.guardiansRepository,
@@ -158,6 +159,11 @@ class AnalysisTab extends StatefulWidget {
   /// The profile's care mode (issue #131): selects the headline-stat
   /// vocabulary below, same as [OverviewPanel].
   final ProfileMode mode;
+
+  /// Issue #853: the profile's stored irregular-framing tri-state (null =
+  /// engine default), resolved against the live prediction's tier by
+  /// [_copyFor] — same rule as [OverviewPanel.irregularFraming].
+  final bool? irregularFraming;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -246,7 +252,20 @@ class _AnalysisTabState extends State<AnalysisTab>
   CycleInsightsReport? _recapReport;
   CycleRecapState? _recapStateUsed;
 
-  CareModeCopy get _copy => careModeCopyFor(widget.mode);
+  /// Issue #853: the composed copy — mode composed with the effective
+  /// irregular framing (stored tri-state resolved against [prediction]'s
+  /// tier; a null tier — not-enough-history/suppressed/disabled — keeps a
+  /// teen's framing ON). Same rule as [OverviewPanel._copyFor]. Replaces
+  /// the pre-#853 single-axis getter: every copy read here flows through
+  /// the composition, never the raw mode axis.
+  CareModeCopy _copyFor(CyclePrediction prediction) => careModeCopyFor(
+        widget.mode,
+        irregularFraming: irregularFramingInEffect(
+          mode: widget.mode,
+          stored: widget.irregularFraming,
+          tier: prediction is ActivePrediction ? prediction.tier : null,
+        ),
+      );
 
   @override
   void initState() {
@@ -654,21 +673,32 @@ class _AnalysisTabState extends State<AnalysisTab>
     return [_recapCard(context, recap), const SizedBox(height: LLSpace.space3)];
   }
 
-  Widget _recapCard(BuildContext context, CycleRecap recap) => CycleRecapCard(
-        recap: recap,
+  Widget _recapCard(BuildContext context, CycleRecap recap) {
+    final prediction = _prediction;
+    return CycleRecapCard(
+      recap: recap,
+      // Issue #853: the recap's suppression follows the composed irregular
+      // framing, not the raw mode axis, so a migrated legacy `irregular`
+      // profile and a teen whose cycles are still settling both keep the
+      // false-precision language off.
+      irregularFraming: irregularFramingInEffect(
         mode: widget.mode,
-        onDismiss: () => _dismissRecap(recap),
-        onCompare: recap.previousCycleStart == null
-            ? null
-            : () => Navigator.of(context).push(
-                  CycleComparisonScreen.route(
-                    profileId: widget.profileId,
-                    cycleAStart: recap.previousCycleStart!,
-                    cycleBStart: recap.cycleStart,
-                    todayProvider: widget.todayProvider,
-                  ),
+        stored: widget.irregularFraming,
+        tier: prediction is ActivePrediction ? prediction.tier : null,
+      ),
+      onDismiss: () => _dismissRecap(recap),
+      onCompare: recap.previousCycleStart == null
+          ? null
+          : () => Navigator.of(context).push(
+                CycleComparisonScreen.route(
+                  profileId: widget.profileId,
+                  cycleAStart: recap.previousCycleStart!,
+                  cycleBStart: recap.cycleStart,
+                  todayProvider: widget.todayProvider,
                 ),
-      );
+              ),
+    );
+  }
 
   /// Issue #245: the BBT chart card — data shaping is
   /// [bbt.deriveBbtChartData] (pure, `lib/domain/insights/bbt_chart.dart`),
@@ -722,8 +752,8 @@ class _AnalysisTabState extends State<AnalysisTab>
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: LLSpace.space2),
-            ..._headlineStats(context, theme, l10n, prediction),
-            ..._fertileWindowSection(context, theme, l10n, prediction),
+            ..._headlineStats(context, theme, l10n, prediction, _copyFor(prediction)),
+            ..._fertileWindowSection(context, theme, l10n, prediction, _copyFor(prediction)),
             const SizedBox(height: LLSpace.space3),
             Text(
               kEstimateDisclaimer,
@@ -749,6 +779,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
+    CareModeCopy copy,
   ) {
     return [
       _statRow(
@@ -770,14 +801,18 @@ class _AnalysisTabState extends State<AnalysisTab>
         theme,
         'analysis-variability',
         'Variability',
-        _variabilityText(l10n, prediction),
+        _variabilityText(l10n, prediction, copy),
       ),
     ];
   }
 
-  String _variabilityText(AppLocalizations l10n, ActivePrediction prediction) {
+  String _variabilityText(
+    AppLocalizations l10n,
+    ActivePrediction prediction,
+    CareModeCopy copy,
+  ) {
     final spread = '±${prediction.spreadDays.round()} days';
-    if (!_copy.showsTierCaption) return spread;
+    if (!copy.showsTierCaption) return spread;
     return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
 
@@ -799,8 +834,9 @@ class _AnalysisTabState extends State<AnalysisTab>
     ThemeData theme,
     AppLocalizations l10n,
     ActivePrediction prediction,
+    CareModeCopy copy,
   ) {
-    if (!_copy.showsFertileWindow) return const [];
+    if (!copy.showsFertileWindow) return const [];
     final fertile = currentFertileWindow(prediction);
     if (fertile == null) return const [];
     return [
@@ -808,8 +844,8 @@ class _AnalysisTabState extends State<AnalysisTab>
         context,
         theme,
         'analysis-fertile-window',
-        _copy.fertileWindowLabel,
-        _fertileWindowText(l10n, fertile),
+        copy.fertileWindowLabel,
+        _fertileWindowText(l10n, fertile, copy),
       ),
       const SizedBox(height: LLSpace.space1),
       Text(
@@ -827,10 +863,11 @@ class _AnalysisTabState extends State<AnalysisTab>
   String _fertileWindowText(
     AppLocalizations l10n,
     FertileWindowEstimate fertile,
+    CareModeCopy copy,
   ) {
     final range =
         '${_formatDate(fertile.windowStart)} – ${_formatDate(fertile.windowEnd)}';
-    if (!_copy.showsTierCaption) return range;
+    if (!copy.showsTierCaption) return range;
     return '${tierLabel(l10n, fertile.tier)} ($range)';
   }
 
@@ -916,6 +953,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// vague "a few cycles".
   Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
+    final copy = _copyFor(prediction);
     return Card(
       key: const ValueKey('analysis-not-enough'),
       child: Padding(
@@ -924,8 +962,8 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             EmptyState(
-              title: _copy.notEnoughTitle,
-              body: _copy.notEnoughBody(
+              title: copy.notEnoughTitle,
+              body: copy.notEnoughBody(
                 prediction.usableCycleCount,
                 kMinCompletedValidCycles,
               ),

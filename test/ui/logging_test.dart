@@ -4305,7 +4305,7 @@ group('tracking preferences read path (Issue #259)', () {
     final taxonomyOrder = [
       for (final category in TagCategory.values)
         if (category != TagCategory.feelings)
-          careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+          careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(category),
       // Issue #457: the standalone "Measurements" (BBT/weight) heading
       // always renders last, after every curated/taxonomy category.
       'Measurements',
@@ -4325,7 +4325,7 @@ group('tracking preferences read path (Issue #259)', () {
     final headers = sheetCategoryHeaders(tester);
     final expected = [
       for (final category in TagCategory.values)
-        careModeCopyFor(ProfileMode.standard).categoryLabel(category),
+        careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(category),
       // Issue #457: the standalone "Measurements" heading always renders
       // last.
       'Measurements',
@@ -4345,9 +4345,9 @@ group('tracking preferences read path (Issue #259)', () {
 
     final headers = sheetCategoryHeaders(tester);
     final partyingLabel =
-        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+        careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(TagCategory.partying);
     final sexLifeLabel =
-        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.sexLife);
+        careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(TagCategory.sexLife);
     expect(headers, isNot(contains(partyingLabel)),
         reason: 'partying defaults hidden on a minor profile');
     expect(headers, isNot(contains(sexLifeLabel)),
@@ -4378,7 +4378,7 @@ group('tracking preferences read path (Issue #259)', () {
 
     final headers = sheetCategoryHeaders(tester);
     final partyingLabel =
-        careModeCopyFor(ProfileMode.standard).categoryLabel(TagCategory.partying);
+        careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(TagCategory.partying);
     expect(headers, contains(partyingLabel),
         reason: 'the stored explicit enable wins over the minor default');
   });

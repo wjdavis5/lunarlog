@@ -7,6 +7,19 @@
 /// from [Profile.birthYear] or `isMinor`, and neither of those fields gates
 /// anything automatically.
 ///
+/// Issue #853 demotes `irregular` from a rival mode to a composed flag: a
+/// profile is no longer *in* "irregular mode" — it carries a life-stage
+/// mode (`standard`/`teen`/`caregiver`) plus the independent
+/// `Profile.irregularFraming` flag, and the two compose (`careModeCopyFor`
+/// in `lib/domain/care_modes.dart`). The enum member survives as a
+/// **legacy wire value** only: the server CHECK (`profiles_mode_check`)
+/// still accepts it and every read boundary maps it to
+/// `standard` + `irregularFraming: true` (the server data migration in
+/// `20260920110000_profile_irregular_framing.sql`, the read-time mapping
+/// in `row_codec.dart`'s `decodeProfile`, and the local v28 Drift step),
+/// so an old client's push can never wedge a new one. It is never offered
+/// as a picker choice ([choosableModes]).
+///
 /// Pure Dart with no drift/Flutter imports (R14/R16) — `test/architecture/`
 /// `layering_test.dart` enforces that.
 library;
@@ -38,6 +51,16 @@ enum ProfileMode {
         _ => standard,
       };
 
+  /// The modes a picker may offer (Issue #853): everything except the
+  /// legacy `irregular` wire value, which is expressed as
+  /// `standard` + `Profile.irregularFraming = true` instead of chosen as a
+  /// mode.
+  static const List<ProfileMode> choosableModes = [
+    standard,
+    teen,
+    caregiver,
+  ];
+
   String get label => switch (this) {
         standard => 'Standard',
         teen => 'Teen',
@@ -46,7 +69,10 @@ enum ProfileMode {
       };
 
   /// One-line picker hint naming who the mode is for — copy is part of the
-  /// deliverable (Issue #131: "copy review is part of this work").
+  /// deliverable (Issue #131: "copy review is part of this work"). The
+  /// `irregular` hint survives only for the read-path mappings of legacy
+  /// rows; the picker never renders it (Issue #853 — the same framing is
+  /// the `irregularFraming` toggle's hint instead).
   String get hint => switch (this) {
         standard => 'Adult tracking with the default vocabulary.',
         teen => 'Framing for someone building body literacy for the first '

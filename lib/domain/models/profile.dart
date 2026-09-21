@@ -44,6 +44,7 @@ class Profile {
     required this.displayName,
     required this.isMinor,
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.sortOrder = 0,
     this.archivedAt,
     required this.createdAt,
@@ -83,7 +84,31 @@ class Profile {
   /// do feed the #153 health-sync minor gate — see [birthYear] and
   /// [transferredToUserId] — which is a permission, but one this field
   /// never consults.) Chosen at creation or later from profile settings.
+  ///
+  /// Since Issue #853 this axis never carries `ProfileMode.irregular` as a
+  /// stored choice: that value survives as a legacy wire value mapped to
+  /// `standard` + [irregularFraming] `true` at every read boundary.
   final ProfileMode mode;
+
+  /// Irregular-cycles framing (Issue #853), composed with [mode] rather
+  /// than rival to it: range-style estimates, a quiet non-alarm status line
+  /// instead of the error-styled late resolver, no fertile-window
+  /// false precision, and no "late" reminder nags.
+  ///
+  /// Tri-state, nullable by design:
+  /// * `null` — never explicitly chosen; the engine default applies
+  ///   (`irregularFramingInEffect` in `lib/domain/care_modes.dart`): `true`
+  ///   for a `teen`-mode profile until its prediction reaches
+  ///   `CycleConfidence.high`, `false` for every other mode. Derived from
+  ///   the engine, never from age ("birth year never gates").
+  /// * `true` / `false` — the operator's explicit choice, which overrides
+  ///   the default in both directions.
+  ///
+  /// Presentation only, exactly like [mode]: never consulted by any
+  /// authorization path. Synced as the nullable `irregular_framing`
+  /// `profiles` column; pushed only when non-null (a null is "let the app
+  /// decide", not an instruction to clear a co-guardian's explicit choice).
+  final bool? irregularFraming;
 
   /// UTC instant when the profile was archived, or null when live.
   final DateTime? archivedAt;
@@ -189,6 +214,7 @@ class Profile {
     String? displayName,
     bool? isMinor,
     ProfileMode? mode,
+    Object? irregularFraming = _unset,
     int? sortOrder,
     Object? archivedAt = _unset,
     DateTime? createdAt,
@@ -210,6 +236,8 @@ class Profile {
         displayName: displayName ?? this.displayName,
         isMinor: isMinor ?? this.isMinor,
         mode: mode ?? this.mode,
+        irregularFraming:
+            _resolveNullable(irregularFraming, this.irregularFraming),
         sortOrder: sortOrder ?? this.sortOrder,
         archivedAt: _resolveNullable(archivedAt, this.archivedAt),
         createdAt: createdAt ?? this.createdAt,
@@ -270,7 +298,8 @@ class Profile {
       other.lastPeriodStart == lastPeriodStart &&
       other.typicalCycleLengthDays == typicalCycleLengthDays &&
       other.typicalPeriodLengthDays == typicalPeriodLengthDays &&
-      other.trackingPreferences == trackingPreferences;
+      other.trackingPreferences == trackingPreferences &&
+      other.irregularFraming == irregularFraming;
 
   /// Issue #255's two display-unit preferences, split out for the same
   /// reason as [_sameSubjectMetadata].
@@ -291,6 +320,7 @@ class Profile {
         displayName,
         isMinor,
         mode,
+        irregularFraming,
         sortOrder,
         archivedAt,
         createdAt,
