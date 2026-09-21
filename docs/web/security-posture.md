@@ -281,3 +281,72 @@ never permanently separated from the disclosure that real data is present.
   and platform-split pins.
 - `docs/ops/supabase-go-live.md` — the dashboard redirect allow-list owner step.
 - `PRIVACY.md` §6/§7 — the public security and retention disclosure.
+
+---
+
+## 8. Hosting (slice 3)
+
+**Status:** slice 3 of epic #831 lands the deploy path **in code**. What
+remains is owner provisioning — the Cloudflare project, the two secrets, the
+custom domain, and the Supabase redirect allow-list — plus the PWA decision
+below. The §6 "Hosting, deploy automation, DNS" follow-up is superseded for
+the code half; the DNS/provisioning half is the checklist at the end of this
+section.
+
+- **Deploy path.** `.github/workflows/web-deploy.yml` builds
+  `flutter build web --release` with the same eleven client-safe
+  dart-defines ci.yml's `Verify` job passes **plus
+  `LUNARLOG_WEB_SYNC=true`** (the deployed page is the signed-in web
+  client), verifies the output with
+  `.github/scripts/check-web-build-output.sh` — which fails closed unless
+  `build/web/_headers` carries the CSP and `build/web/_redirects` carries
+  the status-200 SPA fallback — and publishes `build/web` to the
+  `lunarlog-app` Cloudflare Pages project with a pinned
+  `cloudflare/wrangler-action`. It runs on push to `main` when a path the
+  web client depends on changes (`lib/`, `web/`, `assets/`, `pubspec.*`,
+  `l10n.yaml`, the workflow, the check script), or on `workflow_dispatch`.
+  A `web-deploy` concurrency group serialises runs and never cancels one
+  mid-upload.
+- **Inert until provisioned.** The deploy step is gated on both
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Without them the run
+  prints a `::warning::` and skips the upload — it never fails — so a fork
+  or an unprovisioned checkout still produces a verified build artifact.
+- **Origin and the redirect allow-list.** The served origin is
+  `https://app.lunarlog.app` (the apex stays for the marketing site, #830).
+  Because slice 2's web sign-in links redirect to `<origin>/auth/callback`,
+  that exact URL must be in the Supabase Auth redirect allow-list, and
+  `web/_redirects` is what makes the path serve the app rather than 404. Both
+  are owner steps below.
+
+### Installability / offline is deferred
+
+`web/manifest.json` is left **exactly as is**. The app is not marketed as
+installable and this epic adds no service worker or offline cache:
+
+- **Installability (A2HS) is deferred.** A home-screen icon that opens a
+  cached page whose drift/IndexedDB state can silently diverge is precisely
+  the kind of half-online surface this posture refuses to promise.
+- **Offline execution in the browser is deferred.** Sign-in and sync need
+  the network, and Flutter's default web build registers no service worker.
+  A future slice can add one, subject to the same disclosure and CSP review
+  that governs everything else on this origin.
+- **`manifest.json`'s placeholder `name`/`description` are not corrected
+  here either** — that copy belongs with the installability/offline
+  decision, not before it.
+
+### Owner checklist (slice 3)
+
+1. Create the Cloudflare Pages project named `lunarlog-app`
+   (Workers & Pages → Create → Pages → **Direct Upload**; no Git connection
+   is needed — CI uploads the build).
+2. Add repository secrets `CLOUDFLARE_API_TOKEN` (account-scoped, with
+   **Cloudflare Pages: Edit** permission) and `CLOUDFLARE_ACCOUNT_ID`.
+   Until both exist, `web-deploy.yml` warns and skips the upload.
+3. Point `app.lunarlog.app` at the Pages project (Custom domains → Set up a
+   custom domain). `web/_headers` and `web/_redirects` ship with every
+   deploy.
+4. Add `https://app.lunarlog.app/auth/callback` to the Supabase Auth
+   redirect allow-list (Authentication → URL Configuration) so the slice-2
+   email links resolve. This is the same checkbox recorded under "Web
+   hosting" in `docs/ops/supabase-go-live.md`.
+
