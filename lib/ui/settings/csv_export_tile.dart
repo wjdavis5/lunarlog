@@ -19,6 +19,7 @@ import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
 import '../../domain/repositories/settings_store.dart';
+import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import 'entry_existence_watch_mixin.dart';
 
@@ -111,7 +112,7 @@ class _CsvExportTileState extends State<CsvExportTile>
         ListTile(
           key: const ValueKey('csv-export-tile'),
           leading: const Icon(Icons.table_view_outlined),
-          title: const Text('Export as CSV'),
+          title: Text(AppLocalizations.of(context).settingsCsvExportTitle),
           subtitle: Text(
             _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
           ),
@@ -154,7 +155,7 @@ class _CsvExportTileState extends State<CsvExportTile>
       showDialog<Profile>(
         context: context,
         builder: (dialogContext) => SimpleDialog(
-          title: const Text('Export CSV data for'),
+          title: Text(AppLocalizations.of(dialogContext).settingsCsvExportForTitle),
           children: [
             for (final profile in liveProfiles)
               SimpleDialogOption(

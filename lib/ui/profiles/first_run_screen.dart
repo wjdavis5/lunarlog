@@ -540,7 +540,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _createError = 'Could not create the profile. Please try again.';
+          _createError = l10n.firstRunCreateError;
         });
       }
     } finally {

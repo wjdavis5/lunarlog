@@ -3424,4 +3424,969 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get gateLockScreenAppTitle => 'lunarlog';
+
+  @override
+  String get gateLockScreenTitle => 'lunarlog is locked';
+
+  @override
+  String get gateLockScreenProtectedBody =>
+      'Everything logged on this device stays protected. Unlock to continue.';
+
+  @override
+  String get gateLockScreenDeniedBody =>
+      'Not unlocked. The profiles on this device stay hidden until the device credential is accepted.';
+
+  @override
+  String get gateLockScreenUnlockButton => 'Unlock';
+
+  @override
+  String get gateLockScreenNoCredentialBody =>
+      'This device has no screen lock set. lunarlog protects your family\'s data using your device\'s own screen lock, so it can\'t open until you add one — a passcode, PIN, pattern, or biometric lock all work.';
+
+  @override
+  String get gateLockScreenOpenDeviceSettings => 'Open device settings';
+
+  @override
+  String get gateLockScreenTryAgain => 'Try again';
+
+  @override
+  String get gatePinAuthorizationUseDeviceCredential =>
+      'Use device credential instead';
+
+  @override
+  String get gatePinAuthorizationCancel => 'Cancel';
+
+  @override
+  String get gatePinSettingsRemoveCancel => 'Cancel';
+
+  @override
+  String get feedbackAttachmentConsentTitle => 'Attach a screenshot?';
+
+  @override
+  String get feedbackAttachmentConsentBody =>
+      'Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.';
+
+  @override
+  String get feedbackAttachmentConsentCancel => 'Cancel';
+
+  @override
+  String get feedbackAttachmentConsentContinue => 'Continue';
+
+  @override
+  String get feedbackAttachmentAddScreenshot => 'Add screenshot';
+
+  @override
+  String get feedbackScreenTitle => 'Send feedback';
+
+  @override
+  String get feedbackScreenCategoryLabel => 'Category';
+
+  @override
+  String get feedbackScreenMessageLabel => 'What happened?';
+
+  @override
+  String get feedbackScreenReplyEmailLabel => 'Reply email';
+
+  @override
+  String get feedbackScreenDiagnosticsTitle => 'Include diagnostics';
+
+  @override
+  String get feedbackScreenDiagnosticsSubtitle =>
+      'App version, OS, device model, and recent activity.';
+
+  @override
+  String get feedbackScreenDiagnosticsPreview => 'See what will be attached';
+
+  @override
+  String get feedbackScreenSendButton => 'Send feedback';
+
+  @override
+  String get feedbackScreenMessageTooLong =>
+      'Message must be 4000 characters or fewer.';
+
+  @override
+  String get feedbackScreenReplyEmailInvalid =>
+      'Enter a valid reply email address.';
+
+  @override
+  String feedbackScreenThanks(String email) {
+    return 'Thanks — we\'ll get back to you at $email.';
+  }
+
+  @override
+  String get supportHistoryTitle => 'Support history';
+
+  @override
+  String get supportHistoryEmptyTitle => 'No feedback yet';
+
+  @override
+  String get supportHistoryEmptyBody =>
+      'Reports you send from Settings appear here.';
+
+  @override
+  String get supportHistoryRetry => 'Retry';
+
+  @override
+  String get supportHistoryReplyLabel => 'Reply';
+
+  @override
+  String get supportHistorySend => 'Send';
+
+  @override
+  String get profileDetailUnarchive => 'Unarchive';
+
+  @override
+  String get profileDetailOverviewTab => 'Overview';
+
+  @override
+  String get profileDetailCalendarTab => 'Calendar';
+
+  @override
+  String get profileDetailArchivedSuffix => ' (archived)';
+
+  @override
+  String profileDetailSharedGuardians(int count) {
+    return 'Shared · $count guardians';
+  }
+
+  @override
+  String get profilePickerTitle => 'Profiles';
+
+  @override
+  String get profilePickerEmptyTitle => 'No profiles yet';
+
+  @override
+  String get profilePickerEmptyBody => 'Add a profile to start tracking.';
+
+  @override
+  String get profilePickerEmptyAddAction => 'Add profile';
+
+  @override
+  String profilePickerArchivedHeader(int count) {
+    return 'Archived ($count)';
+  }
+
+  @override
+  String profilePickerCreated(String date) {
+    return 'Created $date';
+  }
+
+  @override
+  String get profilePickerMyProfilesHeader => 'My profiles';
+
+  @override
+  String get profilePickerSharedWithMeHeader => 'Shared with me';
+
+  @override
+  String get profilePickerMenuGuardians => 'Guardians';
+
+  @override
+  String get profileArchive => 'Archive';
+
+  @override
+  String get profileDialogCountsAsMinor =>
+      'Counts as a minor (derived from birth year)';
+
+  @override
+  String get profileDialogCountsAsAdult =>
+      'Counts as an adult (derived from birth year)';
+
+  @override
+  String get profileDialogAddTitle => 'Add profile';
+
+  @override
+  String get profileDialogBirthYearLabel => 'Birth year (optional)';
+
+  @override
+  String get profileDialogRelationshipNone => 'None';
+
+  @override
+  String get profileDialogCancel => 'Cancel';
+
+  @override
+  String get profileDialogCreate => 'Create';
+
+  @override
+  String get profileDialogSave => 'Save';
+
+  @override
+  String profileArchiveConfirmTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String get profileArchiveConfirmBody =>
+      'The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.';
+
+  @override
+  String get profileArchiveConfirmCancel => 'Cancel';
+
+  @override
+  String get profileArchiveConfirmButton => 'Archive';
+
+  @override
+  String get firstRunCreateError =>
+      'Could not create the profile. Please try again.';
+
+  @override
+  String careNotesTitle(String name) {
+    return '$name Care';
+  }
+
+  @override
+  String get careNotesReadOnlyArchived => 'This profile is archived.';
+
+  @override
+  String get careNotesSectionTitle => 'Care notes';
+
+  @override
+  String get careNotesEmpty => 'No care notes yet.';
+
+  @override
+  String get careNotesAddLabel => 'Add a care note';
+
+  @override
+  String get careNotesAddHint =>
+      'Standing notes for everyone caring for this profile';
+
+  @override
+  String get careNotesAddButton => 'Add note';
+
+  @override
+  String get careNotesDeleteTitle => 'Delete this care note?';
+
+  @override
+  String get careNotesDeleteBody =>
+      'Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.';
+
+  @override
+  String get careNotesDeleteCancel => 'Cancel';
+
+  @override
+  String get careNotesDeleteConfirm => 'Delete';
+
+  @override
+  String get careNotesActorYou => 'you';
+
+  @override
+  String get careNotesActorGuardian => 'Guardian';
+
+  @override
+  String get careNotesSaveError => 'Could not save the care note.';
+
+  @override
+  String get careNotesAddPrepError => 'Could not add the prep item.';
+
+  @override
+  String get careNotesAddSupplyError => 'Could not add the supply item.';
+
+  @override
+  String get careNotesUpdatePrepError => 'Could not update the prep item.';
+
+  @override
+  String get careNotesRemovePrepError => 'Could not remove the prep item.';
+
+  @override
+  String get careNotesRemoveNoteError => 'Could not remove the care note.';
+
+  @override
+  String get careNotesClearCheckedError => 'Could not clear the checked items.';
+
+  @override
+  String get careNotesClearStockedError => 'Could not clear the stocked items.';
+
+  @override
+  String get careVisitPrepSectionTitle => 'Visit prep';
+
+  @override
+  String get careVisitPrepEmpty => 'No prep items yet.';
+
+  @override
+  String careVisitPrepClearChecked(int count) {
+    return 'Clear checked ($count)';
+  }
+
+  @override
+  String get careVisitPrepAddLabel => 'Add a prep item';
+
+  @override
+  String get careVisitPrepAddHint =>
+      'A question or to-bring for the next appointment';
+
+  @override
+  String get careVisitPrepAddButton => 'Add item';
+
+  @override
+  String get careVisitPrepCheckedVerb => 'Checked by';
+
+  @override
+  String get careSuppliesSectionTitle => 'Supplies';
+
+  @override
+  String get careSuppliesEmpty => 'No supplies tracked yet.';
+
+  @override
+  String careSuppliesClearStocked(int count) {
+    return 'Clear stocked ($count)';
+  }
+
+  @override
+  String get careSuppliesAddLabel => 'Add a supply item';
+
+  @override
+  String get careSuppliesAddHint => 'Something to keep stocked, e.g. liners';
+
+  @override
+  String get careSuppliesAddButton => 'Add supply';
+
+  @override
+  String get careSuppliesStockedVerb => 'Stocked by';
+
+  @override
+  String careRestockBefore(String date) {
+    return 'Restock before $date';
+  }
+
+  @override
+  String get guardianNotesFieldLabel => 'Your note for this day';
+
+  @override
+  String get guardianNotesGuardianFallback => 'Guardian';
+
+  @override
+  String get webBannerDevCopy => 'Development build — not for real data.';
+
+  @override
+  String get webBannerSyncedCopy =>
+      'Browser build — this browser stores a copy of the signed-in profiles\' data unencrypted, plus your sign-in. Signing out clears it.';
+
+  @override
+  String get webBrowserNoticeDismissTooltip => 'Dismiss';
+
+  @override
+  String get webWipeAction => 'Wipe local data';
+
+  @override
+  String get webWipeConfirmTitle => 'Erase all local data?';
+
+  @override
+  String get webWipeConfirmDevBody =>
+      'Erases all data stored in this browser. This cannot be undone.';
+
+  @override
+  String get webWipeConfirmSyncedBody =>
+      'Erases all data stored in this browser and signs out. This cannot be undone here; data already in your account stays there.';
+
+  @override
+  String get webWipeCancel => 'Cancel';
+
+  @override
+  String get webWipeConfirmAction => 'Erase everything';
+
+  @override
+  String get webWipeDone => 'All local data erased.';
+
+  @override
+  String get webFirstRunDevTitle => 'Development build';
+
+  @override
+  String get webFirstRunDevBody =>
+      'This is a development build, not for real data. Data in this browser is not encrypted and not backed up.';
+
+  @override
+  String get webFirstRunSyncedTitle => 'Using lunarlog in this browser';
+
+  @override
+  String get webFirstRunSyncedBody =>
+      'This browser keeps an unencrypted copy of the profiles you can see — including synced family data — and your sign-in. Anyone who uses this browser can read it. Signing out removes the copy from this browser; your account\'s data stays in your account and can sync again later.';
+
+  @override
+  String get webFirstRunAcknowledge => 'I understand';
+
+  @override
+  String get accountMismatchTitle => 'Different account';
+
+  @override
+  String get accountMismatchBodyNoEmail =>
+      'This device holds data that belongs to a different account than the one you just signed in to.';
+
+  @override
+  String accountMismatchBodyWithEmail(String email) {
+    return 'This device holds data that belongs to a different account than $email.';
+  }
+
+  @override
+  String get accountMismatchExplainer =>
+      'This device is set up for a different account. This happens when Apple\'s Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.';
+
+  @override
+  String get accountMismatchSwitchAccount => 'Switch account';
+
+  @override
+  String get accountMismatchSwitchAccountSubtitle =>
+      'Signs out and keeps everything on this device.';
+
+  @override
+  String get accountMismatchRemoveData => 'Remove this device\'s data';
+
+  @override
+  String get accountMismatchRemoveDialogTitle => 'Remove this device\'s data?';
+
+  @override
+  String get accountMismatchRemoveDialogBody =>
+      'Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.';
+
+  @override
+  String get accountMismatchCancel => 'Cancel';
+
+  @override
+  String get accountMismatchRemoveConfirm => 'Remove and sign out';
+
+  @override
+  String get accountMismatchSwitchError =>
+      'Could not switch accounts. Please try again.';
+
+  @override
+  String get accountMismatchRemoveError =>
+      'Could not remove this device\'s data. Please try again.';
+
+  @override
+  String get accountUploadConsentTitle => 'Upload to your account?';
+
+  @override
+  String accountUploadConsentBody(int profileCount, int entryCount) {
+    String _temp0 = intl.Intl.pluralLogic(
+      profileCount,
+      locale: localeName,
+      other: '$profileCount profiles',
+      one: '1 profile',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      entryCount,
+      locale: localeName,
+      other: '$entryCount entries',
+      one: '1 entry',
+    );
+    return 'This device holds $_temp0 and $_temp1 that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.';
+  }
+
+  @override
+  String get accountUploadConsentLoadingBody =>
+      'This device holds data that is not in your account yet.';
+
+  @override
+  String get accountUploadConsentDuplicateNote =>
+      'If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.';
+
+  @override
+  String get accountUploadConsentUploadAction => 'Upload to my account';
+
+  @override
+  String get accountUploadConsentNotNow => 'Not now';
+
+  @override
+  String get accountRestoringScreenBody => 'Restoring your data…';
+
+  @override
+  String get accountRestoreErrorTitle => 'Unable to restore data';
+
+  @override
+  String get accountRestoreErrorBody =>
+      'We could not restore your account data from the cloud. Please check your internet connection and try again.';
+
+  @override
+  String get accountRestoreErrorRetry => 'Retry';
+
+  @override
+  String get accountRestoreErrorContinue => 'Continue without syncing';
+
+  @override
+  String get accountRestoreErrorSignOut => 'Sign out';
+
+  @override
+  String get accountPasswordRecoveryTitle => 'Set a new password';
+
+  @override
+  String get accountPasswordRecoveryIntro =>
+      'You opened a password reset link. Choose a new password for your account.';
+
+  @override
+  String get accountPasswordRecoveryNewLabel => 'New password';
+
+  @override
+  String accountPasswordRecoveryLengthHelper(int length) {
+    return 'At least $length characters';
+  }
+
+  @override
+  String get accountPasswordRecoveryConfirmLabel => 'Confirm password';
+
+  @override
+  String get accountPasswordRecoveryShow => 'Show password';
+
+  @override
+  String get accountPasswordRecoveryHide => 'Hide password';
+
+  @override
+  String accountPasswordRecoveryLengthError(int length) {
+    return 'Use at least $length characters for the password.';
+  }
+
+  @override
+  String get accountPasswordRecoveryMismatchError => 'Passwords do not match.';
+
+  @override
+  String get accountPasswordRecoverySave => 'Save password';
+
+  @override
+  String get accountPasswordRecoveryNotNow => 'Not now';
+
+  @override
+  String get accountMfaSettingsCancel => 'Cancel';
+
+  @override
+  String get accountMfaStepUpCancel => 'Cancel';
+
+  @override
+  String get accountSyncStatusTapToRetry => 'Tap to retry';
+
+  @override
+  String get accountSyncStatusSettingsAction => 'Settings';
+
+  @override
+  String get accountSignInEmbeddedIntro =>
+      'An account keeps a copy of this device\'s data so it can be restored on another device. You can also keep everything on this device only.';
+
+  @override
+  String get accountSignInPasskeyAction => 'Sign in with a passkey';
+
+  @override
+  String get accountSignInOr => 'or';
+
+  @override
+  String get accountSignInEmailLabel => 'Email';
+
+  @override
+  String get accountSignInPasswordLabel => 'Password';
+
+  @override
+  String get accountSignInCreateAccountAction => 'Create account';
+
+  @override
+  String get accountSignInAction => 'Sign in';
+
+  @override
+  String get accountSignInForgotPasswordAction => 'Forgot password';
+
+  @override
+  String get accountSignInCodeLabel => 'Code from the email';
+
+  @override
+  String get accountSignInCodeHint => '6-10 digits';
+
+  @override
+  String get accountSignInVerifyCodeAction => 'Sign in with code';
+
+  @override
+  String get accountSignInNotNow => 'Not now';
+
+  @override
+  String get accountSignInTitle => 'Sign in';
+
+  @override
+  String get accountSignInTitleCreate => 'Create an account';
+
+  @override
+  String accountSignInUseAtLeast(int length) {
+    return 'Use at least $length characters for the password.';
+  }
+
+  @override
+  String get accountSignInConfirmEmailInfo =>
+      'Check your email to confirm the account, then open the link on this device.';
+
+  @override
+  String get accountSignInResetInfo =>
+      'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).';
+
+  @override
+  String get accountSignInMagicLinkInfo =>
+      'Check your email for a sign-in link or code.';
+
+  @override
+  String accountSignInPasswordLengthHelper(int length) {
+    return 'At least $length characters';
+  }
+
+  @override
+  String get accountSignInShowPassword => 'Show password';
+
+  @override
+  String get accountSignInHidePassword => 'Hide password';
+
+  @override
+  String get accountSignInToggleHaveAccount => 'I already have an account';
+
+  @override
+  String get accountSignInToggleCreateInstead => 'Create an account instead';
+
+  @override
+  String get accountSignInMagicLinkCreate =>
+      'Email me a link to create my account';
+
+  @override
+  String get accountSignInMagicLinkSignIn => 'Email me a sign-in link';
+
+  @override
+  String get accountDeleteDialogTitle => 'Delete account?';
+
+  @override
+  String get accountDeleteDialogGuardianNote =>
+      'Entries you logged as a guardian on someone else\'s profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device\'s own health store - account deletion does not remove them.';
+
+  @override
+  String get accountDeleteDialogAck =>
+      'I understand this removes access for other guardians and deletes any minor profiles I own.';
+
+  @override
+  String get accountDeleteDialogCancel => 'Cancel';
+
+  @override
+  String get accountDeleteDialogTransferFirst => 'Transfer ownership first';
+
+  @override
+  String get accountDeleteDialogExportFirst => 'Export first';
+
+  @override
+  String get accountDeleteDialogConfirm => 'Delete account';
+
+  @override
+  String get accountDeleteDialogExportError =>
+      'Could not export your data. Please try again.';
+
+  @override
+  String accountDeleteDialogBlastRadiusProfiles(int count, String names) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return 'This will also permanently delete $_temp0 you own ($names).';
+  }
+
+  @override
+  String accountDeleteDialogBlastRadiusGuardians(
+    int count,
+    String names,
+    int guardianCount,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      guardianCount,
+      locale: localeName,
+      other: '$guardianCount other guardians',
+      one: '1 other guardian',
+    );
+    return 'This will also permanently delete $_temp0 you own ($names) and remove access for $_temp1.';
+  }
+
+  @override
+  String get accountSectionTitle => 'Account';
+
+  @override
+  String accountSectionSignInMethods(String methods) {
+    return 'Sign-in methods: $methods';
+  }
+
+  @override
+  String get accountSectionSignedIn => 'Signed in';
+
+  @override
+  String accountSectionSignedInAs(String email) {
+    return 'Signed in as $email';
+  }
+
+  @override
+  String get accountSectionAddApple => 'Add Apple';
+
+  @override
+  String get accountSectionAddGoogle => 'Add Google';
+
+  @override
+  String get accountSectionAddPasskey => 'Add a passkey';
+
+  @override
+  String get accountSectionSyncSubtitle =>
+      'Sync this device\'s data to an account.';
+
+  @override
+  String get accountSectionSignInAgain => 'Sign in again';
+
+  @override
+  String get accountSectionSignIn => 'Sign in';
+
+  @override
+  String get accountSectionSyncNow => 'Sync now';
+
+  @override
+  String get accountSectionSignOut => 'Sign out';
+
+  @override
+  String get accountSectionSignOutSubtitle =>
+      'Removes the data from this device.';
+
+  @override
+  String get accountSectionSignOutEverywhere => 'Sign out everywhere';
+
+  @override
+  String get accountSectionSignOutEverywhereSubtitle =>
+      'Signs out all devices, though others may take up to an hour to notice.';
+
+  @override
+  String get accountSectionDelete => 'Delete account';
+
+  @override
+  String get accountSectionLinkSubtitle =>
+      'Sign in to this account another way.';
+
+  @override
+  String accountSectionRemoveProvider(String provider) {
+    return 'Remove $provider';
+  }
+
+  @override
+  String get accountSectionRemoveSubtitle =>
+      'Stop using this to sign in to this account.';
+
+  @override
+  String accountSectionRemoveTitle(String provider) {
+    return 'Remove $provider?';
+  }
+
+  @override
+  String accountSectionRemoveBody(String provider) {
+    return 'You will no longer be able to sign in to this account with $provider. Your data and your other sign-in methods are unchanged.';
+  }
+
+  @override
+  String get accountSectionCancel => 'Cancel';
+
+  @override
+  String get accountSectionRemove => 'Remove';
+
+  @override
+  String get accountSectionUnsyncedTitle => 'Unsynced changes';
+
+  @override
+  String accountSectionUnsyncedBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other:
+          '$count changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.',
+      one: '1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get accountSectionDiscardAndSignOut =>
+      'Discard unsynced changes and sign out';
+
+  @override
+  String get accountSectionSignOutTitle => 'Sign out?';
+
+  @override
+  String get accountSectionSignOutEverywhereTitle => 'Sign out everywhere?';
+
+  @override
+  String get accountSectionSignOutBody =>
+      'This removes the data from this device. It stays in your account.';
+
+  @override
+  String accountSectionOtherDevicesNotSignedOut(String failureCopy) {
+    return '$failureCopy Other devices were not signed out.';
+  }
+
+  @override
+  String get settingsExportRangeTitle => 'Export range';
+
+  @override
+  String get settingsExportRangeCancel => 'Cancel';
+
+  @override
+  String get settingsExportRangeConfirm => 'Export';
+
+  @override
+  String get settingsExportRangeStartDate => 'Start date';
+
+  @override
+  String get settingsExportRangeEndDate => 'End date';
+
+  @override
+  String get settingsClinicalExportFhirTitle =>
+      'Export clinical summary (FHIR)';
+
+  @override
+  String get settingsCsvExportTitle => 'Export as CSV';
+
+  @override
+  String get settingsCsvExportForTitle => 'Export CSV data for';
+
+  @override
+  String healthSyncBindTitle(String name) {
+    return 'Sync $name to this phone?';
+  }
+
+  @override
+  String healthSyncBindWriteBody(String name) {
+    return 'Only $name\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  }
+
+  @override
+  String healthSyncBindImportBody(String name) {
+    return 'Only $name\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  }
+
+  @override
+  String get healthSyncBindCancel => 'Cancel';
+
+  @override
+  String healthSyncSyncFailed(String name) {
+    return 'Couldn\'t sync $name — try again.';
+  }
+
+  @override
+  String get healthSyncImportFailed =>
+      'Couldn\'t finish the import. Please try again.';
+
+  @override
+  String get healthSyncLoadFailed => 'Couldn\'t load profiles for health sync.';
+
+  @override
+  String get healthSyncRetry => 'Retry';
+
+  @override
+  String healthSyncImporting(String source) {
+    return 'Importing from $source…';
+  }
+
+  @override
+  String get healthSyncFlowCollapseNote =>
+      'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.';
+
+  @override
+  String get healthSyncRevocationNote =>
+      'Turning sync off, or later revoking this phone\'s Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.';
+
+  @override
+  String healthSyncImportFrom(String source) {
+    return 'Import from $source';
+  }
+
+  @override
+  String get healthSyncUnbindAction => 'Stop syncing to this phone';
+
+  @override
+  String get importScreenTitle => 'Import from file';
+
+  @override
+  String get importScreenPickBody =>
+      'Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.';
+
+  @override
+  String get importScreenChooseFileAction => 'Choose file';
+
+  @override
+  String get importScreenImportAction => 'Import';
+
+  @override
+  String get importScreenCancel => 'Cancel';
+
+  @override
+  String get importScreenDone => 'Done';
+
+  @override
+  String get reminderNoProfile => 'Create a profile to set up reminders.';
+
+  @override
+  String get reminderPrivacyNote =>
+      'Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.';
+
+  @override
+  String get reminderProfileLabel => 'Profile';
+
+  @override
+  String get reminderCadenceLabel => 'Cadence';
+
+  @override
+  String get reminderTimeLabel => 'Time';
+
+  @override
+  String get reminderQuietHoursTitle => 'Quiet hours';
+
+  @override
+  String get reminderQuietHoursSubtitle =>
+      'A reminder that lands inside the window waits until it ends';
+
+  @override
+  String get reminderQuietStart => 'Starts';
+
+  @override
+  String get reminderQuietEnd => 'Ends';
+
+  @override
+  String get yourDataExportTitle => 'Export my data';
+
+  @override
+  String get yourDataExportSubtitleSignedIn =>
+      'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account\'s server data.';
+
+  @override
+  String get yourDataExportSubtitleLocal =>
+      'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.';
+
+  @override
+  String get yourDataImportTitle => 'Import from file';
+
+  @override
+  String get yourDataImportSubtitle =>
+      'Restore from a JSON backup, or bring in a Clue export (.zip).';
+
+  @override
+  String get yourDataPurgeTitle => 'Purge imported data';
+
+  @override
+  String get yourDataPurgeSubtitle =>
+      'Remove only the entries a specific import brought in — manually logged data is never touched.';
+
+  @override
+  String yourDataPurgedSnack(String source) {
+    return 'Purged $source data';
+  }
+
+  @override
+  String get yourDataPurgeDialogBody =>
+      'Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.';
+
+  @override
+  String get yourDataPurgeProfileLabel => 'Profile';
+
+  @override
+  String get yourDataPurgeCancel => 'Cancel';
+
+  @override
+  String get yourDataPurgeConfirm => 'Purge';
+
+  @override
+  String get yourDataImportSourceLabel => 'Import source';
 }

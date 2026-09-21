@@ -1,32 +1,36 @@
-/// Web guardrails (KTD9): the web build is deliberately insecure, so it
-/// carries its own warnings and an escape hatch — a non-dismissible
-/// development banner and a confirm-guarded wipe-local-data action. The
-/// one-time first-profile acknowledgment lives in
-/// [showWebFirstRunAcknowledgment] (called from the first-run screen).
+/// Web guardrails (KTD9; resolved by epic #831's Option A — web is a
+/// first-class client): the browser build ships with its own disclosures and
+/// an escape hatch.
 ///
-/// Route naming (U2 Approach 2b): both `showDialog` calls here (the
-/// erase-local-data confirm and the non-dismissible dev-build notice) are
-/// deliberately left unnamed — informational or trivial confirm/cancel,
-/// not distinct destinations.
+/// Two honest states, selected by whether the build opted into sync with
+/// `LUNARLOG_WEB_SYNC=true` ([AppConfig.webSyncEnabled]):
+///
+/// * **Sync off** (today's default): no account, no token, no synced rows.
+///   The banner is the non-dismissible "development build — not for real
+///   data" warning and the confirm-guarded wipe action, unchanged.
+/// * **Sync on**: the browser holds the signed-in profiles' data unencrypted
+///   alongside the session, so the banner is a truthful, *per-session
+///   dismissible* browser-build notice that says exactly that and that
+///   signing out clears it. It must never say "not for real data".
+///
+/// The one-time first-profile acknowledgement ([showWebFirstRunAcknowledgment])
+/// is rewritten for the same two states rather than deleted.
+///
+/// Route naming (U2 Approach 2b): the banner's dialogs are deliberately left
+/// unnamed — informational or trivial confirm/cancel, not distinct
+/// destinations.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/config.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 
-/// Banner copy for the default web build (no account, no sync).
-const String kWebBannerCopy = 'Development build — not for real data.';
-
-/// Banner copy when the build opted into web sync (AS9, U6 Approach 11):
-/// a signed-in browser holds the account's rows and a bearer token.
-const String kWebBannerSyncCopy = 'Development build — this browser holds '
-    'your synced family data unencrypted. Not for real data.';
-
-/// Persistent, non-dismissible banner for the web build. [onWipe] performs
-/// the actual erase (the app passes the device reset, KTD16); it is always
-/// behind a confirmation dialog that names the consequence.
-class WebDevBanner extends StatelessWidget {
+/// Persistent banner for the web build. [onWipe] performs the actual erase
+/// (the app passes the device reset, KTD16); it is always behind a
+/// confirmation dialog that names the consequence.
+class WebDevBanner extends StatefulWidget {
   const WebDevBanner({
     super.key,
     required this.onWipe,
@@ -47,25 +51,56 @@ class WebDevBanner extends StatelessWidget {
   @visibleForTesting
   static const Key wipeButtonKey = Key('web-wipe-local-data');
 
+  /// The dismiss control only exists on the sync-on browser-build notice.
+  @visibleForTesting
+  static const Key dismissButtonKey = Key('web-browser-notice-dismiss');
+
+  @override
+  State<WebDevBanner> createState() => _WebDevBannerState();
+}
+
+class _WebDevBannerState extends State<WebDevBanner> {
+  /// Per-session only: a page reload (or a fresh mount) brings the notice
+  /// back. Never persisted — dismissing it is not consent to hide the
+  /// disclosure for future sessions.
+  bool _dismissed = false;
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (widget.webSyncEnabled && _dismissed) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
     return Material(
-      color: Theme.of(context).colorScheme.errorContainer,
+      // The sync-on notice is informational (primaryContainer); the sync-off
+      // warning keeps the errorContainer role it always had.
+      color: widget.webSyncEnabled
+          ? colorScheme.primaryContainer
+          : colorScheme.errorContainer,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: [
             Expanded(
               child: Text(
-                webSyncEnabled ? kWebBannerSyncCopy : kWebBannerCopy,
+                widget.webSyncEnabled
+                    ? l10n.webBannerSyncedCopy
+                    : l10n.webBannerDevCopy,
                 key: const ValueKey('web-dev-banner'),
                 style: LLType.labelLarge.toTextStyle(),
               ),
             ),
+            if (widget.webSyncEnabled)
+              IconButton(
+                key: WebDevBanner.dismissButtonKey,
+                tooltip: l10n.webBrowserNoticeDismissTooltip,
+                onPressed: () => setState(() => _dismissed = true),
+                icon: const Icon(Icons.close),
+                visualDensity: VisualDensity.compact,
+              ),
             TextButton(
-              key: wipeButtonKey,
+              key: WebDevBanner.wipeButtonKey,
               onPressed: () => _confirmWipe(context),
-              child: const Text('Wipe local data'),
+              child: Text(l10n.webWipeAction),
             ),
           ],
         ),
@@ -74,40 +109,39 @@ class WebDevBanner extends StatelessWidget {
   }
 
   Future<void> _confirmWipe(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final dialogContext = Navigator.maybeOf(context) != null
         ? context
-        : (navigatorKey?.currentContext ?? context);
+        : (widget.navigatorKey?.currentContext ?? context);
     final confirmed = await showDialog<bool>(
       context: dialogContext,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Erase all local data?'),
+        title: Text(l10n.webWipeConfirmTitle),
         content: SingleChildScrollView(
           child: Text(
-            webSyncEnabled
-                ? 'Erases all data stored in this browser and signs out. '
-                    'This cannot be undone here; data already in your account '
-                    'stays there.'
-                : 'Erases all data stored in this browser. This cannot be undone.',
+            widget.webSyncEnabled
+                ? l10n.webWipeConfirmSyncedBody
+                : l10n.webWipeConfirmDevBody,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.webWipeCancel),
           ),
           DestructiveButton(
             key: const Key('web-wipe-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Erase everything'),
+            child: Text(l10n.webWipeConfirmAction),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
-    await onWipe();
+    await widget.onWipe();
     if (!context.mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('All local data erased.')),
+      SnackBar(content: Text(l10n.webWipeDone)),
     );
   }
 }
@@ -151,30 +185,42 @@ class WebGuardrails extends StatelessWidget {
 /// One-time, non-dismissible acknowledgment shown on the web build before
 /// the first profile is created (KTD9). Persists via the caller-returned
 /// acknowledge callback; returns whether the acknowledgment was needed.
+///
+/// The copy follows the same two honest states as [WebDevBanner]: a
+/// sync-off build keeps the "not for real data" warning, a sync-on build
+/// states the real browser-storage story instead. [webSyncEnabled] defaults
+/// to the build's own [AppConfig.webSyncEnabled] and is injectable for tests.
 Future<bool> showWebFirstRunAcknowledgment(
   BuildContext context, {
   required bool alreadyAcknowledged,
   required Future<void> Function() onAcknowledged,
+  bool webSyncEnabled = AppConfig.webSyncEnabled,
 }) async {
   if (alreadyAcknowledged) return false;
+  final l10n = AppLocalizations.of(context);
   await showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) => PopScope(
       canPop: false,
       child: AlertDialog(
-        title: const Text('Development build'),
-        content: const SingleChildScrollView(
+        title: Text(
+          webSyncEnabled
+              ? l10n.webFirstRunSyncedTitle
+              : l10n.webFirstRunDevTitle,
+        ),
+        content: SingleChildScrollView(
           child: Text(
-            'This is a development build, not for real data. Data in this '
-            'browser is not encrypted and not backed up.',
+            webSyncEnabled
+                ? l10n.webFirstRunSyncedBody
+                : l10n.webFirstRunDevBody,
           ),
         ),
         actions: [
           FilledButton(
             key: const Key('web-acknowledge'),
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('I understand'),
+            child: Text(l10n.webFirstRunAcknowledge),
           ),
         ],
       ),

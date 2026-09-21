@@ -63,11 +63,13 @@ class _AttachmentFieldState extends State<AttachmentField> {
   /// shown the rejection.
   FeedbackAttachment? _validate(FeedbackAttachment picked) {
     if (picked.sizeBytes > kMaxAttachmentBytes) {
-      _rejectWith('That image is too large. Choose one under 5 MB.');
+      _rejectWith(
+          AppLocalizations.of(context).feedbackFailureAttachmentTooLarge);
       return null;
     }
     if (!kAllowedAttachmentMimeTypes.contains(picked.mimeType)) {
-      _rejectWith('That file type is not supported. Choose a PNG, JPEG, or WebP image.');
+      _rejectWith(
+          AppLocalizations.of(context).feedbackFailureAttachmentRejected);
       return null;
     }
     return picked;
@@ -104,25 +106,23 @@ class _AttachmentFieldState extends State<AttachmentField> {
   /// gate-suppressed system-UI window, so disposal here does not depend on
   /// the gate's generation changing (contrast `_pickImage`'s guard below).
   Future<bool> _confirmConsent() async {
+    final l10n = AppLocalizations.of(context);
     final consented = await showDialog<bool>(
       context: context,
       routeSettings: const RouteSettings(name: kRouteAttachmentConsentDialog),
       builder: (context) => AlertDialog(
-        title: const Text('Attach a screenshot?'),
-        content: const Text(
-          'Screenshots of this app usually contain cycle data for a family '
-          'member. Only attach one if it helps explain the issue.',
-        ),
+        title: Text(l10n.feedbackAttachmentConsentTitle),
+        content: Text(l10n.feedbackAttachmentConsentBody),
         actions: [
           TextButton(
             key: const ValueKey('feedback-attachment-consent-cancel'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.feedbackAttachmentConsentCancel),
           ),
           FilledButton(
             key: const ValueKey('feedback-attachment-consent-continue'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Continue'),
+            child: Text(l10n.feedbackAttachmentConsentContinue),
           ),
         ],
       ),
@@ -156,7 +156,8 @@ class _AttachmentFieldState extends State<AttachmentField> {
       // pre-read check.
       if (!mounted) return null;
       if (gate != null && gate.generation != generation) return null;
-      _rejectWith('That image is too large. Choose one under 5 MB.');
+      _rejectWith(
+          AppLocalizations.of(context).feedbackFailureAttachmentTooLarge);
       return null;
     }
     // LLA-009: the picker await is the long-lived one (it can hold open for
@@ -195,6 +196,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
   @override
   Widget build(BuildContext context) {
     final attachment = _attachment;
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -203,7 +205,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
             key: const ValueKey('feedback-add-screenshot'),
             onPressed: _addScreenshot,
             icon: const Icon(Icons.attach_file),
-            label: const Text('Add screenshot'),
+            label: Text(l10n.feedbackAttachmentAddScreenshot),
           )
         else
           ListTile(
