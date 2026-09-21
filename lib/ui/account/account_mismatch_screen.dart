@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:lunarlog/app_lifecycle.dart'
     show RemovePushRegistrationCallback;
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/device_reset_callback.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
@@ -52,7 +53,7 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = 'Could not switch accounts. Please try again.';
+          _error = AppLocalizations.of(context).accountMismatchSwitchError;
           _retry = _switchAccount;
         });
       }
@@ -75,23 +76,27 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
       context: context,
       routeSettings: const RouteSettings(name: kRouteAccountMismatchDialog),
       builder: (dialogContext) => AlertDialog(
-        title: const Text("Remove this device's data?"),
-        content: const SingleChildScrollView(
+        title: Text(
+          AppLocalizations.of(dialogContext).accountMismatchRemoveDialogTitle,
+        ),
+        content: SingleChildScrollView(
           child: Text(
-            'Erases every profile and entry stored on this device and signs '
-            'out. The data stays in the account it belongs to; it is not '
-            'deleted there.',
+            AppLocalizations.of(dialogContext).accountMismatchRemoveDialogBody,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(
+              AppLocalizations.of(dialogContext).accountMismatchCancel,
+            ),
           ),
           DestructiveButton(
             key: const ValueKey('mismatch-remove-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Remove and sign out'),
+            child: Text(
+              AppLocalizations.of(dialogContext).accountMismatchRemoveConfirm,
+            ),
           ),
         ],
       ),
@@ -107,7 +112,7 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          _error = "Could not remove this device's data. Please try again.";
+          _error = AppLocalizations.of(context).accountMismatchRemoveError;
           _retry = _removeData;
         });
       }
@@ -119,9 +124,10 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
   @override
   Widget build(BuildContext context) {
     final email = Provider.of<AuthController?>(context)?.currentUser?.email;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Different account'),
+        title: Text(l10n.accountMismatchTitle),
         automaticallyImplyLeading: false,
       ),
       body: ListView(
@@ -129,34 +135,27 @@ class _AccountMismatchScreenState extends State<AccountMismatchScreen> {
         children: [
           Text(
             email == null
-                ? 'This device holds data that belongs to a different account '
-                    'than the one you just signed in to.'
-                : 'This device holds data that belongs to a different account '
-                    'than $email.',
+                ? l10n.accountMismatchBodyNoEmail
+                : l10n.accountMismatchBodyWithEmail(email),
           ),
           const SizedBox(height: 12),
-          const Text(
-            'This device is set up for a different account. This happens '
-            "when Apple's Hide My Email created a new account, or when you "
-            'chose a different Google account. Nothing has been uploaded or '
-            'changed.',
-          ),
+          Text(l10n.accountMismatchExplainer),
           const SizedBox(height: 24),
           FilledButton(
             key: const ValueKey('mismatch-switch-account'),
             onPressed: _busy ? null : _switchAccount,
-            child: const Text('Switch account'),
+            child: Text(l10n.accountMismatchSwitchAccount),
           ),
           const SizedBox(height: 4),
           Text(
-            'Signs out and keeps everything on this device.',
+            l10n.accountMismatchSwitchAccountSubtitle,
             style: LLType.bodySmall.toTextStyle(),
           ),
           const SizedBox(height: 16),
           OutlinedButton(
             key: const ValueKey('mismatch-remove-data'),
             onPressed: _busy ? null : _removeData,
-            child: const Text("Remove this device's data"),
+            child: Text(l10n.accountMismatchRemoveData),
           ),
           if (_error != null) ...[
             const SizedBox(height: 16),

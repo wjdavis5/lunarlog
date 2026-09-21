@@ -8,6 +8,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/theme/tokens.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +41,7 @@ class RestoreErrorScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasSignOut =
         onSignOut != null || Provider.of<AuthController?>(context) != null;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       key: const ValueKey('restore-error'),
       body: SafeArea(
@@ -56,7 +58,7 @@ class RestoreErrorScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'Unable to restore data',
+                  l10n.accountRestoreErrorTitle,
                   style: LLType.headlineSmall.toTextStyle(),
                   textAlign: TextAlign.center,
                 ),
@@ -68,9 +70,7 @@ class RestoreErrorScreen extends StatelessWidget {
                   liveRegion: true,
                   container: true,
                   child: Text(
-                    message ??
-                        'We could not restore your account data from the cloud. '
-                            'Please check your internet connection and try again.',
+                    message ?? l10n.accountRestoreErrorBody,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -80,14 +80,14 @@ class RestoreErrorScreen extends StatelessWidget {
                   key: const ValueKey('restore-retry-button'),
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Retry'),
+                  label: Text(l10n.accountRestoreErrorRetry),
                 ),
                 if (onContinueWithoutSyncing != null) ...[
                   const SizedBox(height: 12),
                   OutlinedButton(
                     key: const ValueKey('restore-continue-button'),
                     onPressed: onContinueWithoutSyncing,
-                    child: const Text('Continue without syncing'),
+                    child: Text(l10n.accountRestoreErrorContinue),
                   ),
                 ],
                 if (hasSignOut) ...[
@@ -95,7 +95,7 @@ class RestoreErrorScreen extends StatelessWidget {
                   TextButton(
                     key: const ValueKey('restore-sign-out-button'),
                     onPressed: () => _handleSignOut(context),
-                    child: const Text('Sign out'),
+                    child: Text(l10n.accountRestoreErrorSignOut),
                   ),
                 ],
               ],
