@@ -64,6 +64,7 @@ class FakeProfilesRepository implements ProfilesRepository {
     required bool isMinor,
     int sortOrder = 0,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     LocalDate? lastPeriodStart,

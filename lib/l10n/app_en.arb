@@ -727,6 +727,18 @@
   "@overviewLongCyclePredictionsOff": {
     "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
+  "overviewStaleHistoryTitle": "Your history is out of date",
+  "@overviewStaleHistoryTitle": {
+    "description": "Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything."
+  },
+  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.",
+  "@overviewStaleHistoryBody": {
+    "description": "Issue #859: calm, non-alarming body of the stale-history overview card."
+  },
+  "overviewStaleHistoryLog": "Log a period",
+  "@overviewStaleHistoryLog": {
+    "description": "Issue #859: primary action on the stale-history card, logging a period start for today."
+  },
   "overviewReminderHint": "Reminders unavailable — notifications are off",
   "@overviewReminderHint": {
     "description": "Hint line shown when notification permission is denied."
@@ -759,6 +771,23 @@
     "description": "Unit label beneath the days-late count in the cycle wheel centre when overdue.",
     "placeholders": {
       "count": {"type": "int"}
+    }
+  },
+  "cycleWheelDaysPastEstimateUnit": "{count, plural, =1{day past estimate} other{days past estimate}}",
+  "@cycleWheelDaysPastEstimateUnit": {
+    "description": "Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.",
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "cycleWheelSemanticsPastEstimate": "{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
+  "@cycleWheelSemanticsPastEstimate": {
+    "description": "Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.",
+    "placeholders": {
+      "daysPast": {"type": "int"},
+      "cycleDay": {"type": "int"},
+      "cycleDays": {"type": "int"},
+      "periodDays": {"type": "int"}
     }
   },
   "cycleWheelBleedDayHero": "Day {day}",
@@ -928,6 +957,46 @@
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
     "description": "Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it."
+  },
+  "healthSyncPermissionGranted": "{source} access: granted",
+  "@healthSyncPermissionGranted": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionNotAsked": "{source} access: not yet asked",
+  "@healthSyncPermissionNotAsked": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS permission sheet has not been answered yet.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionDenied": "{source} access: denied — open Settings to change",
+  "@healthSyncPermissionDenied": {
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionUnavailable": "{source} access is not available on this device.",
+  "@healthSyncPermissionUnavailable": {
+    "description": "Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "healthSyncPermissionOpenSettings": "Open Settings",
+  "@healthSyncPermissionOpenSettings": {
+    "description": "The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959)."
   },
   "healthSyncImportUpdatedDays": "Updated {count, plural, =1{1 day} other{{count} days}} from {source}.",
   "@healthSyncImportUpdatedDays": {
@@ -2608,6 +2677,101 @@
   "guardianNotesUpdate": "Update note",
   "@guardianNotesUpdate": {
     "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
+  },
+  "inviteSubjectOption": "Invite {name} to log her own profile",
+  "@inviteSubjectOption": {
+    "description": "Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as hers on her device",
+  "@inviteSubjectOptionDetail": {
+    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteCreatedShareGuardian": "Share this single-use link with the guardian for {profile}:",
+  "@inviteCreatedShareGuardian": {
+    "description": "Invite dialog, generated state: what to do with a helper invitation link.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteCreatedShareSubject": "Share this single-use link with {name} - she'll use it to join and log her own profile:",
+  "@inviteCreatedShareSubject": {
+    "description": "Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "acceptInviteSubjectIntro": "This is your profile. {profile}'s cycle calendar and health logs will sync to this device - the guardians already sharing it can see and log it too.",
+  "@acceptInviteSubjectIntro": {
+    "description": "Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "profilePickerSubjectSubtitle": "This is your profile",
+  "@profilePickerSubjectSubtitle": {
+    "description": "Profile picker / sharing subtitle (Issue #802): the operator's own profile held via a subject membership - never the caregiver role label the preset granted."
+  },
+  "manageGuardiansSubjectBadge": "(her profile)",
+  "@manageGuardiansSubjectBadge": {
+    "description": "Manage guardians row (Issue #802): badge marking the member who is the profile's subject, distinguishing her row from every guardian's without reading a uuid."
+  },
+  "manageGuardiansPendingSubjectLabel": "Her own profile",
+  "@manageGuardiansPendingSubjectLabel": {
+    "description": "Manage guardians pending-invitation row (Issue #802): replaces the role label for an invitation created with the 'her own profile' preset."
+  },
+  "subjectTeenModeDialogTitle": "Switch {name} to Teen mode?",
+  "@subjectTeenModeDialogTitle": {
+    "description": "Manage guardians (Issue #802): title of the one-time suggestion shown when a minor subject joins a profile still in Standard care mode. Suggested, never forced.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subjectTeenModeDialogBody": "{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.",
+  "@subjectTeenModeDialogBody": {
+    "description": "Manage guardians (Issue #802): body of the Teen-mode suggestion dialog.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "subjectTeenModeDialogAccept": "Switch to Teen",
+  "@subjectTeenModeDialogAccept": {
+    "description": "Manage guardians (Issue #802): accepting button of the Teen-mode suggestion dialog - writes the profile's care mode to teen."
+  },
+  "subjectTeenModeDialogDecline": "Keep Standard",
+  "@subjectTeenModeDialogDecline": {
+    "description": "Manage guardians (Issue #802): declining button of the Teen-mode suggestion dialog - leaves the care mode untouched."
+  },
+  "subjectTeenModeDoneSnack": "Switched to Teen mode",
+  "@subjectTeenModeDoneSnack": {
+    "description": "Manage guardians (Issue #802): confirmation snackbar after accepting the Teen-mode suggestion."
+  },
+  "profileIrregularFramingLabel": "Irregular cycles",
+  "@profileIrregularFramingLabel": {
+    "description": "Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form."
+  },
+  "profileIrregularFramingHint": "Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.",
+  "@profileIrregularFramingHint": {
+    "description": "Issue #853: the composed irregular-framing toggle's hint, shown under the label."
   }
 
 }

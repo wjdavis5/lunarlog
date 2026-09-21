@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # Reads `supabase db advisors --type security --level warn --output-format
 # json` (stdin) and fails (exit 1, listing what remains) on any finding, at
-# WARN level or above, after excluding exactly three narrow, named cases --
+# WARN level or above, after excluding exactly two narrow, named cases --
 # every other finding, INCLUDING a lint name this script has never seen
 # before, still fails closed:
 #
@@ -35,14 +35,16 @@ set -euo pipefail
 #     entirely, so the exclusion stops matching and can then be deleted.
 #     ANY OTHER extension_in_public finding (a different extension, or
 #     pg_net misreported under some other metadata shape) still fails.
-#   * auth_leaked_password_protection -- a dashboard-only Auth setting
-#     (Supabase dashboard: Authentication -> Policies), confirmed OFF in
-#     production as of this PR, and already on the owner's manual
-#     post-deploy auth checklist (issue #694). Remove this exclusion once
-#     that checklist item is done -- this script cannot check or flip a
-#     dashboard setting itself.
 #
-# Separately from those three, any finding whose level is exactly INFO
+# `auth_leaked_password_protection` was the third exclusion until issue
+# #972: the owner completed the issue #18 dashboard checklist on
+# 2026-09-20 and turned leaked-password protection ON, so the finding is
+# gone from production and the exclusion was removed. It is deliberately
+# NOT re-added here -- if a future advisor run reports it again, the
+# dashboard toggle has been turned back off, and that must fail the gate
+# and reopen issue #18, not be silently excused.
+#
+# Separately from those two, any finding whose level is exactly INFO
 # (case-insensitive) is also dropped, regardless of its name -- production
 # carries 7 by-design INFO-level rls_enabled_no_policy findings (RLS
 # enabled with no policy, on purpose, for service-only tables) that this
@@ -76,7 +78,6 @@ if ! remaining="$(printf '%s' "$input" | jq -c '
       | select(
           (.name == "authenticated_security_definer_function_executable")
           or (.name == "extension_in_public" and .metadata.name == "pg_net")
-          or (.name == "auth_leaked_password_protection")
           or (((.level // "") | tostring | ascii_upcase) == "INFO")
           | not
         )

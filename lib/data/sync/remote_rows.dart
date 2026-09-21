@@ -68,6 +68,7 @@ final class RemoteProfileRow extends RemoteRow {
     required this.deletedAt,
     this.serverVersion = 0,
     this.mode = 'standard',
+    this.irregularFraming,
     this.bbtUnit = 'celsius',
     this.weightUnit = 'kg',
     this.birthYear,
@@ -102,6 +103,17 @@ final class RemoteProfileRow extends RemoteRow {
   /// so a row built directly (tests) with a raw, unvalidated string still
   /// degrades safely.
   final String mode;
+
+  /// Issue #853: the irregular-cycles framing flag, the nullable tri-state
+  /// exactly as the domain model carries it (`null` = never explicitly
+  /// chosen; the engine default applies). `row_codec.dart`'s
+  /// `decodeProfile` has ALREADY folded a legacy `mode = 'irregular'` wire
+  /// value into `mode = 'standard'` + `irregularFraming = true` before
+  /// constructing this row, so [mode] never reads `'irregular'` here and
+  /// the flag is non-null only when the payload carried it (or the legacy
+  /// mapping produced it). Pushed only when locally non-null, like
+  /// [trackingPreferences].
+  final bool? irregularFraming;
 
   /// Issue #4 R1. Raw, undecoded: only `row_codec.dart`'s decode reads it
   /// off the wire; converting to a domain type happens in `mappers.dart`.
@@ -230,6 +242,7 @@ final class RemoteProfileGuardianRow extends RemoteRow {
     required this.createdAt,
     required this.updatedAt,
     this.serverVersion = 0,
+    this.isSubject = false,
   });
 
   @override
@@ -247,6 +260,11 @@ final class RemoteProfileGuardianRow extends RemoteRow {
   final DateTime? deletedAt = null;
   @override
   final int serverVersion;
+
+  /// Issue #802: this member is the profile's subject. Decodes a
+  /// missing/null key as false (a pre-#802 server, or a helper row) —
+  /// identity metadata, never a field a pull should fail over.
+  final bool isSubject;
 
   @override
   SyncTable get table => SyncTable.profileGuardians;

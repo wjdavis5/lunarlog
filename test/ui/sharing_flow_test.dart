@@ -42,6 +42,7 @@ class FakeSharingService implements SharingService {
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 48),
   }) async {
     lastCreatedRole = role.toDb();
@@ -187,6 +188,7 @@ class FakeOwnershipTransferService implements OwnershipTransferService {
     required String profileId,
     required ParentPostTransferRole parentPostTransferRole,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 72),
   }) async {
     throw UnimplementedError('not exercised by these tests');
@@ -241,6 +243,7 @@ class _ThrowingSharingService implements SharingService {
     required String profileId,
     required GuardianRole role,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 48),
   }) async => throw failure;
 
@@ -342,6 +345,11 @@ void main() {
     ) async {
       await tester.pumpWidget(
         MaterialApp(
+          // Issue #802: the generated-link copy is localized
+          // (inviteCreatedShareGuardian/Subject), so this pump needs the
+          // delegates like every other one in this group.
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: InviteGuardianDialog(
               profileId: testProfile.id,

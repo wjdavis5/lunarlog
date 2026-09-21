@@ -18,6 +18,12 @@
 ///   `profiles.mode` (Issue #131) gets the same closed-set treatment except
 ///   that it is non-null by default: an absent or unrecognised value
 ///   normalises to `standard` (presentation-only, never a security field).
+///   Issue #853: the legacy `irregular` value additionally folds into the
+///   composed axis at decode time — it reads as `standard` plus
+///   `irregular_framing = true` — and the nullable `profiles
+///   .irregular_framing` key is decoded as-is when present, emitted on
+///   encode ONLY when locally non-null (a null is "engine default", not a
+///   clear instruction — the `tracking_preferences` shape).
 ///   `profiles.transferred_at` (R5) and
 ///   `profiles.transferred_to_user_id` (Issue #296) are pulled but never
 ///   pushed — server-owned, written only by `accept_ownership_transfer`.
@@ -239,6 +245,14 @@ JsonRow encodeProfile(Profile row) {
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
     'mode': row.mode,
+    // Issue #853: the composed irregular-framing flag, emitted ONLY when
+    // locally non-null — the tracking_preferences shape. A null here is
+    // "let the app decide" (the engine default), not an instruction to
+    // clear a co-guardian's explicit choice; the key's absence leaves the
+    // server's stored value alone (its `?` containment guard), and the
+    // next pull converges this device onto it.
+    if (row.irregularFraming != null)
+      'irregular_framing': row.irregularFraming,
     // Issue #255 / #637 LLA-039: already the raw `toDb()` string on the
     // drift row (the enum normalisation happens in
     // `mappers.dart`/`decodeProfile`, never here) — but emitted ONLY once
@@ -598,6 +612,20 @@ JsonRow encodeObservation(Observation row) {
 RemoteProfileRow decodeProfile(JsonRow json) {
   const table = SyncTable.profiles;
   final r = _Reader(json, table);
+  // Issue #853: the legacy rival-mode wire value folds into the composed
+  // axis at this, the read boundary — `mode = 'irregular'` (an old
+  // client's push that landed after the server-side data migration, or a
+  // server this device pulled before that migration ran) reads as
+  // `standard` + `irregularFraming = true`, exactly what the migrations
+  // convert stored rows to. The explicit `irregular_framing` key, when the
+  // payload carries one, wins over the legacy mapping (a new client's
+  // explicit `false` on a row that still says `irregular` is the newer
+  // fact); absent key + legacy mode produces `true`.
+  final parsedMode = ProfileMode.fromDb(r.stringOrNull('mode'));
+  final legacyIrregularMode = parsedMode == ProfileMode.irregular;
+  final bool? framing = json['irregular_framing'] == null
+      ? (legacyIrregularMode ? true : null)
+      : r.boolean('irregular_framing');
   return RemoteProfileRow(
     id: r.ulid('id'),
     displayName: r.string('display_name'),
@@ -608,7 +636,8 @@ RemoteProfileRow decodeProfile(JsonRow json) {
     updatedAt: r.timestamp('updated_at'),
     deletedAt: r.timestampOrNull('deleted_at'),
     serverVersion: r.integerOr('server_version', 0),
-    mode: ProfileMode.fromDb(r.stringOrNull('mode')).toDb(),
+    mode: (legacyIrregularMode ? ProfileMode.standard : parsedMode).toDb(),
+    irregularFraming: framing,
     // Issue #255: same closed-set normalisation as `mode` above — an
     // absent or unrecognised value degrades to the column default rather
     // than surfacing garbage (or crashing a pull) for a presentation-only
@@ -697,6 +726,10 @@ RemoteProfileGuardianRow decodeProfileGuardian(JsonRow json) {
     createdAt: r.timestamp('created_at'),
     updatedAt: r.timestamp('updated_at'),
     serverVersion: r.integerOr('server_version', 0),
+    // Issue #802: absent key (a pre-#802 server row) decodes to false —
+    // the subject marker is membership metadata, not an identity field a
+    // pull should reject over.
+    isSubject: json['is_subject'] == null ? false : r.boolean('is_subject'),
   );
 }
 

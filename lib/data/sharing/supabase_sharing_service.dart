@@ -39,6 +39,7 @@ class SupabaseSharingService implements SharingService {
     required GuardianRole role,
     String? recipientLabel,
     Duration ttl = const Duration(hours: 48),
+    bool subject = false,
   }) async {
     // 1. Generate 32 bytes of secure random entropy (256 bits).
     final bytes = List<int>.generate(32, (_) => _random.nextInt(256));
@@ -47,7 +48,10 @@ class SupabaseSharingService implements SharingService {
     // 2. Compute SHA-256 hash in hex format.
     final tokenHash = sha256.convert(utf8.encode(rawToken)).toString();
 
-    // 3. Call Supabase RPC create_guardian_invitation.
+    // 3. Call Supabase RPC create_guardian_invitation. Issue #802:
+    // p_subject selects the "her own profile" preset (server-side it must
+    // pair with the caregiver role, which the invite dialog enforces and
+    // the RPC re-checks).
     try {
       final res = await client.rpc<dynamic>('create_guardian_invitation', params: {
         'p_profile_id': profileId,
@@ -55,6 +59,7 @@ class SupabaseSharingService implements SharingService {
         'p_recipient_label': recipientLabel,
         'p_token_hash': tokenHash,
         'p_ttl_hours': ttl.inHours,
+        'p_subject': subject,
       });
 
       if (res is! Map) {
@@ -119,6 +124,8 @@ class SupabaseSharingService implements SharingService {
         profileId: profileId,
         profileName: profileName,
         role: role,
+        // Issue #802: absent on a pre-#802 server — an ordinary invite.
+        isSubject: res['is_subject'] == true,
       );
     } catch (e) {
       final failure = _mapError(e);
@@ -162,6 +169,8 @@ class SupabaseSharingService implements SharingService {
         profileDisplayName: profileDisplayName,
         role: role,
         expiresAt: expiresAt,
+        // Issue #802: absent on a pre-#802 server — an ordinary invite.
+        isSubject: res['is_subject'] == true,
       );
     } catch (e) {
       throw _mapError(e);
@@ -200,7 +209,7 @@ class SupabaseSharingService implements SharingService {
           .toIso8601String();
       final rows = await client
           .from('guardian_invitations')
-          .select('id, profile_id, role, recipient_label, created_at, expires_at')
+          .select('id, profile_id, role, recipient_label, created_at, expires_at, is_subject')
           .eq('profile_id', profileId)
           .isFilter('accepted_at', null)
           .isFilter('revoked_at', null)
@@ -217,6 +226,9 @@ class SupabaseSharingService implements SharingService {
             recipientLabel: row['recipient_label'] as String?,
             createdAt: DateTime.parse(row['created_at'] as String).toUtc(),
             expiresAt: DateTime.parse(row['expires_at'] as String).toUtc(),
+            // Issue #802: the "her own profile" preset flag (null-safe for
+            // a column a pre-#802 server would not return).
+            subject: row['is_subject'] == true,
           ),
       ];
     } catch (e) {

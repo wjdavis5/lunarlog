@@ -125,7 +125,28 @@ class Profiles extends Table {
   /// irregular`). Non-null, defaulting to `standard`; an unrecognised value
   /// decodes to `standard` rather than throwing (see `row_codec.dart`).
   /// Presentation only — never consulted by any authorization path.
+  /// Issue #853: the `irregular` value is a legacy wire value only — never
+  /// stored by this client (the v28 migration converts any stored copy to
+  /// `standard` + [irregularFraming], and `decodeProfile` maps any that an
+  /// old client re-pushes), though the server CHECK still accepts it.
   TextColumn get mode => text().withDefault(const Constant('standard'))();
+
+  /// Irregular-cycles framing (Issue #853), mirrored by
+  /// `domain.Profile.irregularFraming` and the server's nullable
+  /// `profiles.irregular_framing` boolean. Nullable tri-state BY DESIGN —
+  /// null means "never explicitly chosen; the engine default applies"
+  /// (`irregularFramingInEffect` in `lib/domain/care_modes.dart`: true for
+  /// a `teen`-mode profile until `CycleConfidence.high`, false otherwise),
+  /// while `true`/`false` are the operator's explicit override. Nullable
+  /// (not non-null-with-default, the [unitsUnconfirmed] precedent) so every
+  /// existing direct `Profile(...)` test fixture keeps compiling without
+  /// passing the field. Presentation only — never consulted by any
+  /// authorization path. Never synced as a null: `encodeProfile` emits the
+  /// key only when non-null, so a never-chosen device can't clobber a
+  /// co-guardian's explicit choice (the server's `?` containment guard
+  /// backstops it).
+  BoolColumn get irregularFraming =>
+      boolean().named('irregular_framing').nullable()();
 
   /// Instant this profile's ownership last moved via
   /// `accept_ownership_transfer`, or null if it never has (R5). Never
@@ -377,6 +398,19 @@ class ProfileGuardians extends Table {
   /// column instead — see `conflict_rules.dart`'s `remoteWinsByVersion`.
   IntColumn get serverVersion =>
       integer().named('server_version').withDefault(const Constant(0))();
+
+  /// Issue #802: this member is the person the profile is about (the
+  /// subject). Server-stamped by the subject invitation path or
+  /// `accept_ownership_transfer` only — never client-writable on either
+  /// side — and synced with the row (durable, unlike #518's client-side
+  /// flag). Membership identity, orthogonal to both [role] (the only
+  /// capability model) and the profile's own `is_minor`/`birth_year`
+  /// (#295). NOT NULL DEFAULT FALSE locally so the v29 `addColumn`
+  /// backfills every pre-#802 row as a plain helper membership in one
+  /// catalog-only step; a pulled null (a server row never re-stamped since
+  /// the column landed) decodes to false before it reaches storage.
+  BoolColumn get isSubject =>
+      boolean().named('is_subject').withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

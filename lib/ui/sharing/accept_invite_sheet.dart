@@ -122,10 +122,24 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
   /// adults share one adult's profile, so this stays neutral rather than
   /// assuming a minor's profile. [_PreviewState.ready] replaces it
   /// entirely with the fetched name and role instead of layering on top.
+  ///
+  /// Issue #802: a subject invitation (the "her own profile" preset)
+  /// replaces the role sentence with the plain-language promise #800
+  /// decided on - "this is your profile, and the guardians on it can see
+  /// and log it too" - instead of labelling the recipient a caregiver of
+  /// her own cycle. The fallback states still cannot know the preset
+  /// (no preview, no marker), so they stay neutral.
   Widget _buildIntro(BuildContext context, TextTheme textTheme) {
     final preview = _preview;
     if (_previewState == _PreviewState.ready && preview != null) {
       final l10n = AppLocalizations.of(context);
+      if (preview.isSubject) {
+        return Text(
+          key: const ValueKey('accept-invite-subject-ready'),
+          l10n.acceptInviteSubjectIntro(preview.profileDisplayName),
+          style: textTheme.bodyMedium,
+        );
+      }
       final roleLabel = guardianRoleLabel(l10n, preview.role);
       return Text(
         key: const ValueKey('accept-invite-preview-ready'),

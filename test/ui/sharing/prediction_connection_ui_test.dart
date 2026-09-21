@@ -85,6 +85,7 @@ class _FakePredictionConnectionService implements PredictionConnectionService {
   Future<GeneratedPredictionInvite> createConnection({
     required String profileId,
     String? recipientLabel,
+    bool subject = false,
     Duration ttl = const Duration(hours: 72),
   }) async {
     final failure = createFailure;
