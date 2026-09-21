@@ -79,7 +79,7 @@ class _PinSettingsScreenState extends State<PinSettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.gatePinSettingsRemoveCancel),
           ),
           FilledButton(
             key: const ValueKey('pin-remove-confirm'),

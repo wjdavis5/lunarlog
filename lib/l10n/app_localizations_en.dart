@@ -3423,6 +3423,337 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get gateLockScreenAppTitle => 'lunarlog';
+
+  @override
+  String get gateLockScreenTitle => 'lunarlog is locked';
+
+  @override
+  String get gateLockScreenProtectedBody =>
+      'Everything logged on this device stays protected. Unlock to continue.';
+
+  @override
+  String get gateLockScreenDeniedBody =>
+      'Not unlocked. The profiles on this device stay hidden until the device credential is accepted.';
+
+  @override
+  String get gateLockScreenUnlockButton => 'Unlock';
+
+  @override
+  String get gateLockScreenNoCredentialBody =>
+      'This device has no screen lock set. lunarlog protects your family\'s data using your device\'s own screen lock, so it can\'t open until you add one — a passcode, PIN, pattern, or biometric lock all work.';
+
+  @override
+  String get gateLockScreenOpenDeviceSettings => 'Open device settings';
+
+  @override
+  String get gateLockScreenTryAgain => 'Try again';
+
+  @override
+  String get gatePinAuthorizationUseDeviceCredential =>
+      'Use device credential instead';
+
+  @override
+  String get gatePinAuthorizationCancel => 'Cancel';
+
+  @override
+  String get gatePinSettingsRemoveCancel => 'Cancel';
+
+  @override
+  String get feedbackAttachmentConsentTitle => 'Attach a screenshot?';
+
+  @override
+  String get feedbackAttachmentConsentBody =>
+      'Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.';
+
+  @override
+  String get feedbackAttachmentConsentCancel => 'Cancel';
+
+  @override
+  String get feedbackAttachmentConsentContinue => 'Continue';
+
+  @override
+  String get feedbackAttachmentAddScreenshot => 'Add screenshot';
+
+  @override
+  String get feedbackScreenTitle => 'Send feedback';
+
+  @override
+  String get feedbackScreenCategoryLabel => 'Category';
+
+  @override
+  String get feedbackScreenMessageLabel => 'What happened?';
+
+  @override
+  String get feedbackScreenReplyEmailLabel => 'Reply email';
+
+  @override
+  String get feedbackScreenDiagnosticsTitle => 'Include diagnostics';
+
+  @override
+  String get feedbackScreenDiagnosticsSubtitle =>
+      'App version, OS, device model, and recent activity.';
+
+  @override
+  String get feedbackScreenDiagnosticsPreview => 'See what will be attached';
+
+  @override
+  String get feedbackScreenSendButton => 'Send feedback';
+
+  @override
+  String get feedbackScreenMessageTooLong =>
+      'Message must be 4000 characters or fewer.';
+
+  @override
+  String get feedbackScreenReplyEmailInvalid =>
+      'Enter a valid reply email address.';
+
+  @override
+  String feedbackScreenThanks(String email) {
+    return 'Thanks — we\'ll get back to you at $email.';
+  }
+
+  @override
+  String get supportHistoryTitle => 'Support history';
+
+  @override
+  String get supportHistoryEmptyTitle => 'No feedback yet';
+
+  @override
+  String get supportHistoryEmptyBody =>
+      'Reports you send from Settings appear here.';
+
+  @override
+  String get supportHistoryRetry => 'Retry';
+
+  @override
+  String get supportHistoryReplyLabel => 'Reply';
+
+  @override
+  String get supportHistorySend => 'Send';
+
+  @override
+  String get profileDetailUnarchive => 'Unarchive';
+
+  @override
+  String get profileDetailOverviewTab => 'Overview';
+
+  @override
+  String get profileDetailCalendarTab => 'Calendar';
+
+  @override
+  String get profileDetailArchivedSuffix => ' (archived)';
+
+  @override
+  String profileDetailSharedGuardians(int count) {
+    return 'Shared · $count guardians';
+  }
+
+  @override
+  String get profilePickerTitle => 'Profiles';
+
+  @override
+  String get profilePickerEmptyTitle => 'No profiles yet';
+
+  @override
+  String get profilePickerEmptyBody => 'Add a profile to start tracking.';
+
+  @override
+  String get profilePickerEmptyAddAction => 'Add profile';
+
+  @override
+  String profilePickerArchivedHeader(int count) {
+    return 'Archived ($count)';
+  }
+
+  @override
+  String profilePickerCreated(String date) {
+    return 'Created $date';
+  }
+
+  @override
+  String get profilePickerMyProfilesHeader => 'My profiles';
+
+  @override
+  String get profilePickerSharedWithMeHeader => 'Shared with me';
+
+  @override
+  String get profilePickerMenuGuardians => 'Guardians';
+
+  @override
+  String get profileArchive => 'Archive';
+
+  @override
+  String get profileDialogCountsAsMinor =>
+      'Counts as a minor (derived from birth year)';
+
+  @override
+  String get profileDialogCountsAsAdult =>
+      'Counts as an adult (derived from birth year)';
+
+  @override
+  String get profileDialogAddTitle => 'Add profile';
+
+  @override
+  String get profileDialogBirthYearLabel => 'Birth year (optional)';
+
+  @override
+  String get profileDialogRelationshipNone => 'None';
+
+  @override
+  String get profileDialogCancel => 'Cancel';
+
+  @override
+  String get profileDialogCreate => 'Create';
+
+  @override
+  String get profileDialogSave => 'Save';
+
+  @override
+  String profileArchiveConfirmTitle(String name) {
+    return 'Archive $name?';
+  }
+
+  @override
+  String get profileArchiveConfirmBody =>
+      'The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.';
+
+  @override
+  String get profileArchiveConfirmCancel => 'Cancel';
+
+  @override
+  String get profileArchiveConfirmButton => 'Archive';
+
+  @override
+  String get firstRunCreateError =>
+      'Could not create the profile. Please try again.';
+
+  @override
+  String careNotesTitle(String name) {
+    return '$name Care';
+  }
+
+  @override
+  String get careNotesReadOnlyArchived => 'This profile is archived.';
+
+  @override
+  String get careNotesSectionTitle => 'Care notes';
+
+  @override
+  String get careNotesEmpty => 'No care notes yet.';
+
+  @override
+  String get careNotesAddLabel => 'Add a care note';
+
+  @override
+  String get careNotesAddHint =>
+      'Standing notes for everyone caring for this profile';
+
+  @override
+  String get careNotesAddButton => 'Add note';
+
+  @override
+  String get careNotesDeleteTitle => 'Delete this care note?';
+
+  @override
+  String get careNotesDeleteBody =>
+      'Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.';
+
+  @override
+  String get careNotesDeleteCancel => 'Cancel';
+
+  @override
+  String get careNotesDeleteConfirm => 'Delete';
+
+  @override
+  String get careNotesActorYou => 'you';
+
+  @override
+  String get careNotesActorGuardian => 'Guardian';
+
+  @override
+  String get careNotesSaveError => 'Could not save the care note.';
+
+  @override
+  String get careNotesAddPrepError => 'Could not add the prep item.';
+
+  @override
+  String get careNotesAddSupplyError => 'Could not add the supply item.';
+
+  @override
+  String get careNotesUpdatePrepError => 'Could not update the prep item.';
+
+  @override
+  String get careNotesRemovePrepError => 'Could not remove the prep item.';
+
+  @override
+  String get careNotesRemoveNoteError => 'Could not remove the care note.';
+
+  @override
+  String get careNotesClearCheckedError => 'Could not clear the checked items.';
+
+  @override
+  String get careNotesClearStockedError => 'Could not clear the stocked items.';
+
+  @override
+  String get careVisitPrepSectionTitle => 'Visit prep';
+
+  @override
+  String get careVisitPrepEmpty => 'No prep items yet.';
+
+  @override
+  String careVisitPrepClearChecked(int count) {
+    return 'Clear checked ($count)';
+  }
+
+  @override
+  String get careVisitPrepAddLabel => 'Add a prep item';
+
+  @override
+  String get careVisitPrepAddHint =>
+      'A question or to-bring for the next appointment';
+
+  @override
+  String get careVisitPrepAddButton => 'Add item';
+
+  @override
+  String get careVisitPrepCheckedVerb => 'Checked by';
+
+  @override
+  String get careSuppliesSectionTitle => 'Supplies';
+
+  @override
+  String get careSuppliesEmpty => 'No supplies tracked yet.';
+
+  @override
+  String careSuppliesClearStocked(int count) {
+    return 'Clear stocked ($count)';
+  }
+
+  @override
+  String get careSuppliesAddLabel => 'Add a supply item';
+
+  @override
+  String get careSuppliesAddHint => 'Something to keep stocked, e.g. liners';
+
+  @override
+  String get careSuppliesAddButton => 'Add supply';
+
+  @override
+  String get careSuppliesStockedVerb => 'Stocked by';
+
+  @override
+  String careRestockBefore(String date) {
+    return 'Restock before $date';
+  }
+
+  @override
+  String get guardianNotesFieldLabel => 'Your note for this day';
+
+  @override
+  String get guardianNotesGuardianFallback => 'Guardian';
+
+  @override
   String get accountMismatchTitle => 'Different account';
 
   @override

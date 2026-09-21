@@ -45,13 +45,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'hardcoded_ui_strings_scanner.dart';
 
-/// The named-argument identifiers the `lib/ui/` tranche checks
-/// (issue #1004) treat as user-facing copy. The global backlog scan leaves
-/// this empty; a directory-specific fully-migrated test opts in so
-/// `labelText:`, `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
+/// The named-argument identifiers every fully-migrated directory check
+/// (issue #1004) treats as user-facing copy. The global backlog scan leaves
+/// this empty; the directory-specific tests opt in so `labelText:`,
+/// `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
 /// `semanticLabel:` and friends cannot hide a literal the positional
 /// `Text(`/`Tooltip(` scanner never looks at.
-const Set<String> _trancheNamedUiArgs = {
+const Set<String> _migratedNamedUiArgs = {
   'labelText',
   'hintText',
   'helperText',
@@ -71,30 +71,24 @@ const Set<String> _trancheNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 burned three directories down to zero: `lib/ui/sharing/`
-/// (tranche 1, -134) and `lib/ui/account/` + `lib/ui/settings/`
-/// (tranche 2, -113). Those entries are gone and the recorded size dropped
-/// by the same amount: 355 (main, after the widget/health/#1003 work) -
-/// 134 - 113 = 108. Every remaining entry is another directory's backlog,
+/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/account/` and
+/// `lib/ui/settings/` (tranche 2), and `lib/ui/profiles/`, `lib/ui/feedback/`,
+/// `lib/ui/gate/`, `lib/ui/care/` (tranche 3) down to zero, so those entries
+/// are gone and the recorded size dropped by the same amount: 355 (main,
+/// after the widget/health/#1003 work) - 134 (tranche 1) - 113 (tranche 2) -
+/// 56 (tranche 3) = 52. Every remaining entry is another directory's backlog,
 /// owned by a different tranche.
-const int _initialAllowlistSize = 108;
+const int _initialAllowlistSize = 52;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
-  'lib/ui/care/care_notes_screen.dart': 14,
   'lib/ui/components/app_shell.dart': 2,
   'lib/ui/components/inline_error.dart': 1,
   'lib/ui/components/today_log_fab.dart': 1,
   'lib/ui/content/cycle_literacy_article_sheet.dart': 4,
   'lib/ui/content/cycle_literacy_library_screen.dart': 2,
-  'lib/ui/feedback/attachment_field.dart': 5,
-  'lib/ui/feedback/feedback_screen.dart': 6,
-  'lib/ui/feedback/support_history_screen.dart': 5,
-  'lib/ui/gate/lock_screen.dart': 5,
-  'lib/ui/gate/pin_authorization_dialog.dart': 2,
-  'lib/ui/gate/pin_settings_screen.dart': 1,
   'lib/ui/help/help_card_view.dart': 2,
   'lib/ui/help/help_library_screen.dart': 1,
   'lib/ui/insights/analysis_tab.dart': 3,
@@ -104,51 +98,45 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/logging/month_calendar.dart': 1,
   'lib/ui/overview/cycle_history_section.dart': 7,
   'lib/ui/overview/late_resolver.dart': 2,
-  'lib/ui/profiles/profile_detail_screen.dart': 4,
-  'lib/ui/profiles/profile_dialogs.dart': 9,
-  'lib/ui/profiles/profile_picker_screen.dart': 5,
   'lib/ui/startup/fail_closed_screen.dart': 2,
   'lib/ui/web/dev_banner.dart': 8,
 };
 
-/// Scans [dir] with the stricter named-argument mode and asserts every
-/// user-facing literal has been moved to `AppLocalizations`, and that no
-/// file from the directory has been re-allowlisted (issue #1004: a
-/// migrated directory is held to a zero-literal bar, not merely a
-/// non-growing one).
-void _expectDirectoryFullyLocalized(String dir) {
-  final files = Directory(dir)
+/// Asserts [directory] has no user-facing literals left, under both the
+/// positional `Text(`/`Tooltip(` scan and [\_migratedNamedUiArgs], and that
+/// none of its files reappeared in the allowlist.
+void expectDirectoryFullyLocalized(String directory, String label) {
+  final files = Directory(directory)
       .listSync(recursive: true)
       .whereType<File>()
       .where((f) => f.path.endsWith('.dart'))
       .toList();
-  expect(files, isNotEmpty, reason: 'scanned zero files under $dir');
+  expect(files, isNotEmpty, reason: 'scanned zero files under $directory');
 
   final problems = <String>[];
   for (final file in files) {
     final path = file.path.replaceAll('\\', '/');
     final found = scanHardcodedUiStrings(
       file.readAsStringSync(),
-      namedArgs: _trancheNamedUiArgs,
+      namedArgs: _migratedNamedUiArgs,
     );
     problems.addAll(found.map((h) => '$path:${h.line}: ${h.value}'));
   }
 
-  final allowlistEntries = _allowedHardcodedUiLiterals.keys
-      .where((k) => k.startsWith('$dir/'))
-      .toList();
+  final allowlistEntries =
+      _allowedHardcodedUiLiterals.keys.where((k) => k.startsWith('$directory/'));
   expect(
     problems,
     isEmpty,
-    reason: '$dir must read every user-facing literal from '
+    reason: '$directory must read every user-facing literal from '
         'AppLocalizations (lib/l10n/app_en.arb + `flutter gen-l10n`). '
         'Problems:\n${problems.join('\n')}',
   );
   expect(
     allowlistEntries,
     isEmpty,
-    reason: '$dir is fully migrated — do not re-allowlist one of its '
-        'files; add an ARB key instead. Entries:\n'
+    reason: '$directory is fully migrated — do not re-allowlist a $label '
+        'file; add an ARB key instead. Entries:\n'
         '${allowlistEntries.join('\n')}',
   );
 }
@@ -228,25 +216,36 @@ void main() {
     );
   });
 
-  // Issue #1004: every migrated directory is held to a stricter bar than
-  // the rest of `lib/ui/`. The global scan above only sees positional
-  // `Text(`/`Tooltip(` literals; these also catch named-argument copy the
-  // scanner's default mode ignores (`labelText:`, `hintText:`, `title:`,
-  // `subtitle:`, `label:`, `message:`, `semanticLabel:`), and they forbid
-  // the directory from reappearing in the allowlist at all — so a new
-  // literal fails even if someone tries to re-allowlist the file instead
-  // of adding an ARB key.
-  test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)', () {
-    _expectDirectoryFullyLocalized('lib/ui/sharing');
-  });
+  // Issue #1004: each fully-migrated directory is held to a stricter bar
+  // than the rest of `lib/ui/`. The global scan above only sees positional
+  // `Text(`/`Tooltip(` literals; this one also catches named-argument copy
+  // the scanner's default mode ignores (`labelText:`, `hintText:`, `title:`,
+  // `subtitle:`, `label:`, `message:`, `semanticLabel:`), and it forbids the
+  // directory from reappearing in the allowlist at all — so a new literal
+  // fails even if someone tries to re-allowlist the file instead of adding
+  // an ARB key. Tranche 1 did `lib/ui/sharing/`; tranche 2 did `account/`
+  // and `settings/`; tranche 3 did `profiles/`, `feedback/`, `gate/`, and
+  // `care/`.
+  test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)',
+      () => expectDirectoryFullyLocalized('lib/ui/sharing', 'sharing'));
 
-  test('lib/ui/account stays fully localized (issue #1004 tranche 2)', () {
-    _expectDirectoryFullyLocalized('lib/ui/account');
-  });
+  test('lib/ui/account stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/account', 'account'));
 
-  test('lib/ui/settings stays fully localized (issue #1004 tranche 2)', () {
-    _expectDirectoryFullyLocalized('lib/ui/settings');
-  });
+  test('lib/ui/settings stays fully localized (issue #1004 tranche 2)',
+      () => expectDirectoryFullyLocalized('lib/ui/settings', 'settings'));
+
+  test('lib/ui/profiles stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/profiles', 'profiles'));
+
+  test('lib/ui/feedback stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/feedback', 'feedback'));
+
+  test('lib/ui/gate stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/gate', 'gate'));
+
+  test('lib/ui/care stays fully localized (issue #1004 tranche 3)',
+      () => expectDirectoryFullyLocalized('lib/ui/care', 'care'));
 
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
