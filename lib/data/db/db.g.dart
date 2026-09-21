@@ -7312,6 +7312,16 @@ class $VisitPrepItemsTable extends VisitPrepItems
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('visit_prep'),
+  );
   static const VerificationMeta _isCheckedMeta = const VerificationMeta(
     'isChecked',
   );
@@ -7423,6 +7433,7 @@ class $VisitPrepItemsTable extends VisitPrepItems
     id,
     profileId,
     body,
+    kind,
     isChecked,
     checkedByUserId,
     checkedAt,
@@ -7465,6 +7476,12 @@ class $VisitPrepItemsTable extends VisitPrepItems
       );
     } else if (isInserting) {
       context.missing(_bodyMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
     }
     if (data.containsKey('is_checked')) {
       context.handle(
@@ -7552,6 +7569,10 @@ class $VisitPrepItemsTable extends VisitPrepItems
         DriftSqlType.string,
         data['${effectivePrefix}body'],
       )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
       isChecked: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_checked'],
@@ -7609,7 +7630,15 @@ class VisitPrepItemData extends DataClass
   /// `kMaxVisitPrepItemLength`, cleared on a tombstone).
   final String body;
 
-  /// Whether the item has been checked off. Checking never deletes.
+  /// Issue #851: the row's list — `visit_prep` (the Issue #128 prep
+  /// checklist, the default so a pre-#851 row reads correctly) or `supply`
+  /// (a household stock item, where [isChecked] reads as "stocked"). Stored
+  /// as the raw wire string; an unrecognised value decodes to `visitPrep`
+  /// rather than throwing (the `row_codec.dart` discipline).
+  final String kind;
+
+  /// Whether the item has been checked off (or, for a supply item,
+  /// stocked). Checking never deletes.
   final bool isChecked;
 
   /// The auth user who checked the item (AC3), null while unchecked.
@@ -7637,6 +7666,7 @@ class VisitPrepItemData extends DataClass
     required this.id,
     required this.profileId,
     required this.body,
+    required this.kind,
     required this.isChecked,
     this.checkedByUserId,
     this.checkedAt,
@@ -7653,6 +7683,7 @@ class VisitPrepItemData extends DataClass
     map['id'] = Variable<String>(id);
     map['profile_id'] = Variable<String>(profileId);
     map['body'] = Variable<String>(body);
+    map['kind'] = Variable<String>(kind);
     map['is_checked'] = Variable<bool>(isChecked);
     if (!nullToAbsent || checkedByUserId != null) {
       map['checked_by_user_id'] = Variable<String>(checkedByUserId);
@@ -7680,6 +7711,7 @@ class VisitPrepItemData extends DataClass
       id: Value(id),
       profileId: Value(profileId),
       body: Value(body),
+      kind: Value(kind),
       isChecked: Value(isChecked),
       checkedByUserId: checkedByUserId == null && nullToAbsent
           ? const Value.absent()
@@ -7711,6 +7743,7 @@ class VisitPrepItemData extends DataClass
       id: serializer.fromJson<String>(json['id']),
       profileId: serializer.fromJson<String>(json['profileId']),
       body: serializer.fromJson<String>(json['body']),
+      kind: serializer.fromJson<String>(json['kind']),
       isChecked: serializer.fromJson<bool>(json['isChecked']),
       checkedByUserId: serializer.fromJson<String?>(json['checkedByUserId']),
       checkedAt: serializer.fromJson<DateTime?>(json['checkedAt']),
@@ -7731,6 +7764,7 @@ class VisitPrepItemData extends DataClass
       'id': serializer.toJson<String>(id),
       'profileId': serializer.toJson<String>(profileId),
       'body': serializer.toJson<String>(body),
+      'kind': serializer.toJson<String>(kind),
       'isChecked': serializer.toJson<bool>(isChecked),
       'checkedByUserId': serializer.toJson<String?>(checkedByUserId),
       'checkedAt': serializer.toJson<DateTime?>(checkedAt),
@@ -7747,6 +7781,7 @@ class VisitPrepItemData extends DataClass
     String? id,
     String? profileId,
     String? body,
+    String? kind,
     bool? isChecked,
     Value<String?> checkedByUserId = const Value.absent(),
     Value<DateTime?> checkedAt = const Value.absent(),
@@ -7760,6 +7795,7 @@ class VisitPrepItemData extends DataClass
     id: id ?? this.id,
     profileId: profileId ?? this.profileId,
     body: body ?? this.body,
+    kind: kind ?? this.kind,
     isChecked: isChecked ?? this.isChecked,
     checkedByUserId: checkedByUserId.present
         ? checkedByUserId.value
@@ -7781,6 +7817,7 @@ class VisitPrepItemData extends DataClass
       id: data.id.present ? data.id.value : this.id,
       profileId: data.profileId.present ? data.profileId.value : this.profileId,
       body: data.body.present ? data.body.value : this.body,
+      kind: data.kind.present ? data.kind.value : this.kind,
       isChecked: data.isChecked.present ? data.isChecked.value : this.isChecked,
       checkedByUserId: data.checkedByUserId.present
           ? data.checkedByUserId.value
@@ -7805,6 +7842,7 @@ class VisitPrepItemData extends DataClass
           ..write('id: $id, ')
           ..write('profileId: $profileId, ')
           ..write('body: $body, ')
+          ..write('kind: $kind, ')
           ..write('isChecked: $isChecked, ')
           ..write('checkedByUserId: $checkedByUserId, ')
           ..write('checkedAt: $checkedAt, ')
@@ -7823,6 +7861,7 @@ class VisitPrepItemData extends DataClass
     id,
     profileId,
     body,
+    kind,
     isChecked,
     checkedByUserId,
     checkedAt,
@@ -7840,6 +7879,7 @@ class VisitPrepItemData extends DataClass
           other.id == this.id &&
           other.profileId == this.profileId &&
           other.body == this.body &&
+          other.kind == this.kind &&
           other.isChecked == this.isChecked &&
           other.checkedByUserId == this.checkedByUserId &&
           other.checkedAt == this.checkedAt &&
@@ -7855,6 +7895,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
   final Value<String> id;
   final Value<String> profileId;
   final Value<String> body;
+  final Value<String> kind;
   final Value<bool> isChecked;
   final Value<String?> checkedByUserId;
   final Value<DateTime?> checkedAt;
@@ -7869,6 +7910,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
     this.id = const Value.absent(),
     this.profileId = const Value.absent(),
     this.body = const Value.absent(),
+    this.kind = const Value.absent(),
     this.isChecked = const Value.absent(),
     this.checkedByUserId = const Value.absent(),
     this.checkedAt = const Value.absent(),
@@ -7884,6 +7926,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
     required String id,
     required String profileId,
     required String body,
+    this.kind = const Value.absent(),
     this.isChecked = const Value.absent(),
     this.checkedByUserId = const Value.absent(),
     this.checkedAt = const Value.absent(),
@@ -7902,6 +7945,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
     Expression<String>? id,
     Expression<String>? profileId,
     Expression<String>? body,
+    Expression<String>? kind,
     Expression<bool>? isChecked,
     Expression<String>? checkedByUserId,
     Expression<DateTime>? checkedAt,
@@ -7917,6 +7961,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
       if (id != null) 'id': id,
       if (profileId != null) 'profile_id': profileId,
       if (body != null) 'body': body,
+      if (kind != null) 'kind': kind,
       if (isChecked != null) 'is_checked': isChecked,
       if (checkedByUserId != null) 'checked_by_user_id': checkedByUserId,
       if (checkedAt != null) 'checked_at': checkedAt,
@@ -7935,6 +7980,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
     Value<String>? id,
     Value<String>? profileId,
     Value<String>? body,
+    Value<String>? kind,
     Value<bool>? isChecked,
     Value<String?>? checkedByUserId,
     Value<DateTime?>? checkedAt,
@@ -7950,6 +7996,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
       id: id ?? this.id,
       profileId: profileId ?? this.profileId,
       body: body ?? this.body,
+      kind: kind ?? this.kind,
       isChecked: isChecked ?? this.isChecked,
       checkedByUserId: checkedByUserId ?? this.checkedByUserId,
       checkedAt: checkedAt ?? this.checkedAt,
@@ -7974,6 +8021,9 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
     }
     if (body.present) {
       map['body'] = Variable<String>(body.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
     }
     if (isChecked.present) {
       map['is_checked'] = Variable<bool>(isChecked.value);
@@ -8016,6 +8066,7 @@ class VisitPrepItemsCompanion extends UpdateCompanion<VisitPrepItemData> {
           ..write('id: $id, ')
           ..write('profileId: $profileId, ')
           ..write('body: $body, ')
+          ..write('kind: $kind, ')
           ..write('isChecked: $isChecked, ')
           ..write('checkedByUserId: $checkedByUserId, ')
           ..write('checkedAt: $checkedAt, ')
@@ -17715,6 +17766,7 @@ typedef $$VisitPrepItemsTableCreateCompanionBuilder =
       required String id,
       required String profileId,
       required String body,
+      Value<String> kind,
       Value<bool> isChecked,
       Value<String?> checkedByUserId,
       Value<DateTime?> checkedAt,
@@ -17731,6 +17783,7 @@ typedef $$VisitPrepItemsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> profileId,
       Value<String> body,
+      Value<String> kind,
       Value<bool> isChecked,
       Value<String?> checkedByUserId,
       Value<DateTime?> checkedAt,
@@ -17790,6 +17843,11 @@ class $$VisitPrepItemsTableFilterComposer
 
   ColumnFilters<String> get body => $composableBuilder(
     column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17881,6 +17939,11 @@ class $$VisitPrepItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isChecked => $composableBuilder(
     column: $table.isChecked,
     builder: (column) => ColumnOrderings(column),
@@ -17964,6 +18027,9 @@ class $$VisitPrepItemsTableAnnotationComposer
 
   GeneratedColumn<String> get body =>
       $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
 
   GeneratedColumn<bool> get isChecked =>
       $composableBuilder(column: $table.isChecked, builder: (column) => column);
@@ -18055,6 +18121,7 @@ class $$VisitPrepItemsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> profileId = const Value.absent(),
                 Value<String> body = const Value.absent(),
+                Value<String> kind = const Value.absent(),
                 Value<bool> isChecked = const Value.absent(),
                 Value<String?> checkedByUserId = const Value.absent(),
                 Value<DateTime?> checkedAt = const Value.absent(),
@@ -18069,6 +18136,7 @@ class $$VisitPrepItemsTableTableManager
                 id: id,
                 profileId: profileId,
                 body: body,
+                kind: kind,
                 isChecked: isChecked,
                 checkedByUserId: checkedByUserId,
                 checkedAt: checkedAt,
@@ -18085,6 +18153,7 @@ class $$VisitPrepItemsTableTableManager
                 required String id,
                 required String profileId,
                 required String body,
+                Value<String> kind = const Value.absent(),
                 Value<bool> isChecked = const Value.absent(),
                 Value<String?> checkedByUserId = const Value.absent(),
                 Value<DateTime?> checkedAt = const Value.absent(),
@@ -18099,6 +18168,7 @@ class $$VisitPrepItemsTableTableManager
                 id: id,
                 profileId: profileId,
                 body: body,
+                kind: kind,
                 isChecked: isChecked,
                 checkedByUserId: checkedByUserId,
                 checkedAt: checkedAt,

@@ -404,6 +404,9 @@ JsonRow encodeVisitPrepItem(VisitPrepItemData row) {
     'id': row.id,
     'profile_id': row.profileId,
     'body': row.body,
+    // Issue #851: the row's list ('visit_prep' | 'supply'). Emitted as the
+    // stored wire string; the server bounds the set with a CHECK.
+    'kind': row.kind,
     'is_checked': row.isChecked,
     'updated_at': encodeTimestamp(row.updatedAt),
     'deleted_at': _encodeNullable(row.deletedAt),
@@ -823,6 +826,9 @@ RemoteVisitPrepItemRow decodeVisitPrepItem(JsonRow json) {
     id: r.ulid('id'),
     profileId: r.ulid('profile_id'),
     body: r.string('body'),
+    // Issue #851: absent on a pre-#851 server row (or an old payload) —
+    // defaults to visit_prep, matching the column default.
+    kind: r.stringOrNull('kind') ?? 'visit_prep',
     isChecked: json['is_checked'] == null ? false : r.boolean('is_checked'),
     checkedByUserId: r.stringOrNull('checked_by_user_id'),
     checkedAt: r.timestampOrNull('checked_at'),

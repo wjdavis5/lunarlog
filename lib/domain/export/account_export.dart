@@ -525,9 +525,12 @@ Map<String, Object?> _exportCareNote(CareNote note) => {
 /// Issue #128 (kAccountExportSchemaVersion v6): one visit-prep checklist
 /// item, including its check state — the clinician-facing export carries
 /// the prep list. `checkedByUserId` stays out per this file's R9 rule.
+/// Issue #851 adds the `kind` field so a supplies item round-trips as a
+/// supply rather than being re-imported as a prep item.
 Map<String, Object?> _exportVisitPrepItem(VisitPrepItem item) => {
       'id': item.id,
       'body': item.body,
+      'kind': item.kind.toDb(),
       'isChecked': item.isChecked,
       'checkedAt': item.checkedAt?.toUtc().toIso8601String(),
       'updatedAt': item.updatedAt.toUtc().toIso8601String(),

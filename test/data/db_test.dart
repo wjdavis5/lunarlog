@@ -345,10 +345,10 @@ void main() {
       addTearDown(() => db.close());
     });
 
-    test('schema version is 27 and database opens with the expected tables',
+    test('schema version is 28 and database opens with the expected tables',
         () async {
-      expect(db.schemaVersion, 27);
-      expect(await userVersion(db), 27);
+      expect(db.schemaVersion, 28);
+      expect(await userVersion(db), 28);
 
       final tables = (await db
               .customSelect(

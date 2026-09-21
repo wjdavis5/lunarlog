@@ -485,6 +485,7 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
     required this.id,
     required this.profileId,
     required this.body,
+    this.kind = 'visit_prep',
     this.isChecked = false,
     this.checkedByUserId,
     this.checkedAt,
@@ -501,6 +502,11 @@ final class RemoteVisitPrepItemRow extends RemoteRow {
 
   /// The item/question text. Empty on a tombstone.
   final String body;
+
+  /// Issue #851: the row's list wire string ('visit_prep' | 'supply'). Kept
+  /// raw here (the storage layer has no domain enum); a tombstone preserves
+  /// it — identity, not health content.
+  final String kind;
   final bool isChecked;
   final String? checkedByUserId;
   final DateTime? checkedAt;

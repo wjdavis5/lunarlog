@@ -1301,6 +1301,7 @@ export type Database = {
           deleted_at: string | null
           id: string
           is_checked: boolean
+          kind: string
           last_modified_by_user_id: string | null
           logged_by_user_id: string | null
           profile_id: string
@@ -1315,6 +1316,7 @@ export type Database = {
           deleted_at?: string | null
           id: string
           is_checked?: boolean
+          kind?: string
           last_modified_by_user_id?: string | null
           logged_by_user_id?: string | null
           profile_id: string
@@ -1329,6 +1331,7 @@ export type Database = {
           deleted_at?: string | null
           id?: string
           is_checked?: boolean
+          kind?: string
           last_modified_by_user_id?: string | null
           logged_by_user_id?: string | null
           profile_id?: string

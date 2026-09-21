@@ -20,15 +20,20 @@
 /// notifications of its own.
 library;
 
-import 'dart:async' show unawaited;
+import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/limits.dart';
+import 'package:lunarlog/domain/logistics/restock_nudge.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
+import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart'
+    show ActivePrediction, CyclePrediction;
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -75,13 +80,23 @@ class CareNotesScreen extends StatefulWidget {
 class _CareNotesScreenState extends State<CareNotesScreen> {
   late final Stream<List<CareNote>> _notesStream;
   late final Stream<List<VisitPrepItem>> _prepStream;
+  late final Stream<List<VisitPrepItem>> _supplyStream;
   late final Stream<List<ProfileGuardian>> _guardiansStream;
   final TextEditingController _noteController = TextEditingController();
   final TextEditingController _itemController = TextEditingController();
+  final TextEditingController _supplyController = TextEditingController();
   String? _currentUserId;
   AuthController? _auth;
+  StreamSubscription<CyclePrediction>? _predictionSub;
+
+  /// Issue #851: the profile's next estimated period start, feeding the
+  /// restock nudge. Null when predictions are unavailable (no service in
+  /// the tree, insufficient history, or suppressed) — [restockNudgeFor]
+  /// never guesses a date from null.
+  LocalDate? _estimatedNextStart;
   bool _savingNote = false;
   bool _savingItem = false;
+  bool _savingSupply = false;
   String? _error;
 
   @override
@@ -89,6 +104,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     super.initState();
     _notesStream = widget.repository.watchCareNotes(widget.profile.id);
     _prepStream = widget.repository.watchPrepItems(widget.profile.id);
+    _supplyStream = widget.repository.watchSupplyItems(widget.profile.id);
     _guardiansStream = watchGuardiansForProfileSafely(
       widget.guardiansRepository,
       widget.profile.id,
@@ -99,14 +115,30 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       auth.addListener(_onAuthChanged);
       _auth = auth;
     }
+    final predictionService = context.read<CyclePredictionService?>();
+    if (predictionService != null) {
+      _predictionSub = predictionService.watch(widget.profile.id).listen(
+        _onPrediction,
+      );
+    }
+  }
+
+  void _onPrediction(CyclePrediction prediction) {
+    final start =
+        prediction is ActivePrediction ? prediction.estimatedNextStart : null;
+    if (mounted && start != _estimatedNextStart) {
+      setState(() => _estimatedNextStart = start);
+    }
   }
 
   @override
   void dispose() {
+    unawaited(_predictionSub?.cancel());
     _auth?.removeListener(_onAuthChanged);
     _auth = null;
     _noteController.dispose();
     _itemController.dispose();
+    _supplyController.dispose();
     super.dispose();
   }
 
@@ -187,6 +219,21 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
                 onDelete: _deleteItem,
                 onClearChecked: _clearChecked,
               ),
+              const SizedBox(height: 24),
+              _SuppliesSection(
+                supplyStream: _supplyStream,
+                guardians: guardians,
+                currentUserId: _currentUserId,
+                canWrite: !effectiveReadOnly,
+                controller: _supplyController,
+                saving: _savingSupply,
+                estimatedNextStart: _estimatedNextStart,
+                today: LocalDate.today(),
+                onAdd: _addSupply,
+                onToggle: _toggleItem,
+                onDelete: _deleteItem,
+                onClearChecked: _clearCheckedSupplies,
+              ),
             ],
           );
         },
@@ -235,6 +282,29 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       }
     } finally {
       if (mounted) setState(() => _savingItem = false);
+    }
+  }
+
+  Future<void> _addSupply() async {
+    final body = _supplyController.text.trim();
+    if (body.isEmpty || _savingSupply) return;
+    setState(() {
+      _savingSupply = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.addPrepItem(
+        profileId: widget.profile.id,
+        body: body,
+        kind: VisitPrepItemKind.supply,
+      );
+      _supplyController.clear();
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not add the supply item.');
+      }
+    } finally {
+      if (mounted) setState(() => _savingSupply = false);
     }
   }
 
@@ -313,6 +383,20 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
     } catch (_) {
       if (mounted) {
         setState(() => _error = 'Could not clear the checked items.');
+      }
+    }
+  }
+
+  Future<void> _clearCheckedSupplies() async {
+    setState(() => _error = null);
+    try {
+      await widget.repository.clearCheckedPrepItems(
+        widget.profile.id,
+        kind: VisitPrepItemKind.supply,
+      );
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not clear the stocked items.');
       }
     }
   }
@@ -624,6 +708,8 @@ class _VisitPrepRow extends StatelessWidget {
     required this.canWrite,
     required this.onToggle,
     required this.onDelete,
+    this.keyPrefix = 'visit-prep',
+    this.checkedVerb = 'Checked by',
   });
 
   final VisitPrepItem item;
@@ -632,6 +718,14 @@ class _VisitPrepRow extends StatelessWidget {
   final bool canWrite;
   final Future<void> Function(VisitPrepItem item, bool checked) onToggle;
   final Future<void> Function(VisitPrepItem item) onDelete;
+
+  /// Widget-key prefix, so the supplies list (Issue #851) reuses this row
+  /// without colliding with the visit-prep keys in a test or semantics tree.
+  final String keyPrefix;
+
+  /// The attribution line's verb: "Checked by" for prep items, "Stocked by"
+  /// for supply items.
+  final String checkedVerb;
 
   @override
   Widget build(BuildContext context) {
@@ -644,7 +738,7 @@ class _VisitPrepRow extends StatelessWidget {
           )
         : null;
     return CheckboxListTile(
-      key: ValueKey('visit-prep-check-${item.id}'),
+      key: ValueKey('$keyPrefix-check-${item.id}'),
       value: item.isChecked,
       onChanged: canWrite
           ? (checked) => onToggle(item, checked ?? false)
@@ -653,17 +747,169 @@ class _VisitPrepRow extends StatelessWidget {
       subtitle: checkedBy == null
           ? null
           : Text(
-              'Checked by $checkedBy',
-              key: ValueKey('visit-prep-checked-by-${item.id}'),
+              '$checkedVerb $checkedBy',
+              key: ValueKey('$keyPrefix-checked-by-${item.id}'),
             ),
       secondary: canWrite
           ? IconButton(
-              key: ValueKey('visit-prep-delete-${item.id}'),
+              key: ValueKey('$keyPrefix-delete-${item.id}'),
               tooltip: AppLocalizations.of(context).careNotesRemoveItemTooltip,
               icon: const Icon(Icons.delete_outline),
               onPressed: () => onDelete(item),
             )
           : null,
+    );
+  }
+}
+
+/// Issue #851: the profile's household supplies list — a `kind == supply`
+/// view over the same checklist substrate the visit-prep section uses. The
+/// list lives on the profile and is visible to every guardian, including
+/// the subject.
+class _SuppliesSection extends StatelessWidget {
+  const _SuppliesSection({
+    required this.supplyStream,
+    required this.guardians,
+    required this.currentUserId,
+    required this.canWrite,
+    required this.controller,
+    required this.saving,
+    required this.estimatedNextStart,
+    required this.today,
+    required this.onAdd,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onClearChecked,
+  });
+
+  final Stream<List<VisitPrepItem>> supplyStream;
+  final List<ProfileGuardian> guardians;
+  final String? currentUserId;
+  final bool canWrite;
+  final TextEditingController controller;
+  final bool saving;
+  final LocalDate? estimatedNextStart;
+  final LocalDate today;
+  final Future<void> Function() onAdd;
+  final Future<void> Function(VisitPrepItem item, bool checked) onToggle;
+  final Future<void> Function(VisitPrepItem item) onDelete;
+  final Future<void> Function() onClearChecked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const ListSectionHeader(
+          title: 'Supplies',
+          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ),
+        StreamBuilder<List<VisitPrepItem>>(
+          stream: supplyStream,
+          builder: (context, snapshot) {
+            final items = snapshot.data ?? const [];
+            final nudge = restockNudgeFor(
+              supplies: items,
+              estimatedNextStart: estimatedNextStart,
+              today: today,
+            );
+            final stockedCount = items.where((i) => i.isChecked).length;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (nudge != null) _RestockNudgeBanner(nudge: nudge),
+                if (items.isEmpty)
+                  const Text(
+                    'No supplies tracked yet.',
+                    key: ValueKey('supplies-empty'),
+                  )
+                else
+                  Card(
+                    key: const ValueKey('supplies-card'),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < items.length; i++) ...[
+                          if (i > 0) const Divider(height: 1),
+                          _VisitPrepRow(
+                            key: ValueKey('supply-${items[i].id}'),
+                            item: items[i],
+                            guardians: guardians,
+                            currentUserId: currentUserId,
+                            canWrite: canWrite,
+                            onToggle: onToggle,
+                            onDelete: onDelete,
+                            keyPrefix: 'supply',
+                            checkedVerb: 'Stocked by',
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                if (canWrite && stockedCount > 0)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      key: const ValueKey('supplies-clear-stocked'),
+                      onPressed: onClearChecked,
+                      child: Text('Clear stocked ($stockedCount)'),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+        if (canWrite) ...[
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('supplies-field'),
+            controller: controller,
+            maxLength: kMaxVisitPrepItemLength,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!saving) unawaited(onAdd());
+            },
+            decoration: const InputDecoration(
+              labelText: 'Add a supply item',
+              hintText: 'Something to keep stocked, e.g. liners',
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              key: const ValueKey('supplies-add'),
+              onPressed: saving ? null : onAdd,
+              child: const Text('Add supply'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Issue #851: the in-app restock nudge derived by [restockNudgeFor]. It is
+/// not a notification — it names the profile's own items and the estimate
+/// date, which is exactly what an in-app card may do (the outbox/push copy
+/// stays content-free and is a separate, unbuilt concern).
+class _RestockNudgeBanner extends StatelessWidget {
+  const _RestockNudgeBanner({required this.nudge});
+
+  final RestockNudge nudge;
+
+  @override
+  Widget build(BuildContext context) {
+    final names = nudge.items.map((item) => item.body).join(', ');
+    final date = dates.formatLocalDateMonthDayYear(
+      nudge.dueBy,
+      locale: dates.calendarLocale(context),
+    );
+    return Card(
+      key: const ValueKey('supplies-restock-nudge'),
+      child: ListTile(
+        leading: const Icon(Icons.shopping_cart_outlined),
+        title: Text('Restock before $date'),
+        subtitle: Text(names),
+      ),
     );
   }
 }

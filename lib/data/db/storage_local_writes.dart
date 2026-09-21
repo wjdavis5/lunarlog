@@ -1765,8 +1765,10 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
 
   // ---------------------------------------------------------- visit prep list
 
-  /// Adds a visit-prep item (Issue #128), keyed by [id] (a fresh ULID is
-  /// generated when omitted). A new item always lands unchecked
+  /// Adds a checklist item (Issue #128), keyed by [id] (a fresh ULID is
+  /// generated when omitted). [kind] selects the list (Issue #851): the
+  /// default `visit_prep` is the visit-prep checklist; `supply` is a
+  /// household stock item. A new item always lands unchecked
   /// (`checked_by`/`checked_at` null) — checking is [setVisitPrepItemChecked]'s
   /// job, never this one's. Marks the row dirty and bumps `local_rev`.
   /// Throws [ArgumentError] for a [body] over [kMaxVisitPrepItemLength].
@@ -1774,6 +1776,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     String? id,
     required String profileId,
     required String body,
+    String kind = 'visit_prep',
     DateTime? updatedAt,
   }) async {
     // Async so validation failures surface as failed futures.
@@ -1785,6 +1788,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
             id: rowId,
             profileId: profileId,
             body: body,
+            kind: Value(kind),
             updatedAt: now,
             dirty: const Value(true),
             localRev: const Value(1),
@@ -1880,9 +1884,16 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   /// means "we covered these", not "drop the whole list". Returns the
   /// number of items cleared. Each tombstone is marked dirty (the clear
   /// itself syncs); already-tombstoned rows are untouched.
-  Future<int> clearCheckedVisitPrepItems(String profileId) async {
+  ///
+  /// [kind] scopes the clear to one list (Issue #851): the default
+  /// `visit_prep` is the historical behavior (before #851 every row was a
+  /// prep item); `supply` clears only the supplies list.
+  Future<int> clearCheckedVisitPrepItems(
+    String profileId, {
+    String kind = 'visit_prep',
+  }) async {
     return db.transaction(() async {
-      final checked = await (_carePrepCheckedQuery(profileId)).get();
+      final checked = await (_carePrepCheckedQuery(profileId, kind: kind)).get();
       for (final row in checked) {
         final at = _afterStored(_now(), row.updatedAt);
         await (db.update(db.visitPrepItems)

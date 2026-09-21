@@ -208,12 +208,13 @@ domain.CycleOverride cycleOverrideToDomain(db.CycleOverrideData row) =>
     );
 
 /// Issue #128: drift-row -> domain [domain.VisitPrepItem]. Mirrors
-/// [careNoteToDomain]'s shape, plus the check state.
+/// [careNoteToDomain]'s shape, plus the kind (Issue #851) and check state.
 domain.VisitPrepItem visitPrepItemToDomain(db.VisitPrepItemData row) =>
     domain.VisitPrepItem(
       id: row.id,
       profileId: row.profileId,
       body: row.body,
+      kind: domain.VisitPrepItemKind.fromDb(row.kind),
       isChecked: row.isChecked,
       checkedByUserId: row.checkedByUserId,
       checkedAt: row.checkedAt,
