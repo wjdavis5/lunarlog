@@ -283,8 +283,12 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   never pushed). NOT NULL DEFAULT FALSE, so the one `addColumn` is
   ///   also the whole backfill: every pre-#802 membership (helper or
   ///   owner-creator) reads as a plain non-subject row.
+  /// * 30 — `visit_prep_items.kind` (Issue #851, the household supplies
+  ///   kit: a `visit_prep` visit-prep item or a `supply` stock item,
+  ///   sharing one table/sync/RLS path). Defaults to `visit_prep`, so a
+  ///   pre-#851 row reads as a prep item and no backfill is needed.
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -593,6 +597,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV28(m, from);
     // Issue #802's v29 step, same shape again.
     await _upgradeToV29(m, from);
+    // Issue #851's v30 step, same shape again.
+    await _upgradeToV30(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1204,6 +1210,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
       await customStatement(kHealthExportLedgerProfileIndexSql);
       await migrationStepHook?.call('health_export_ledger.profile_id_index');
       await _advanceSchemaVersion(27);
+    });
+  }
+
+  /// The v30 upgrade step (Issue #851): the supplies-kit `kind` column on
+  /// `visit_prep_items`. Same standalone-method shape as [_upgradeToV24]
+  /// (`visit_prep_items` has existed since v11 on every real device, so the
+  /// addColumn is always safe regardless of `from`); the `kind` column
+  /// itself carries a `visit_prep` default, so every existing row reads as
+  /// a prep item with no backfill.
+  Future<void> _upgradeToV30(Migrator m, int from) async {
+    if (from >= 30) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the sibling column
+      // steps use, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('visit_prep_items', 'kind')) {
+        await m.addColumn(visitPrepItems, visitPrepItems.kind);
+        await migrationStepHook?.call('visit_prep_items.kind');
+      }
+      await _advanceSchemaVersion(30);
     });
   }
 

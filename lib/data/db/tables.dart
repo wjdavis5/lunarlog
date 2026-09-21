@@ -754,7 +754,15 @@ class VisitPrepItems extends Table {
   /// `kMaxVisitPrepItemLength`, cleared on a tombstone).
   TextColumn get body => text()();
 
-  /// Whether the item has been checked off. Checking never deletes.
+  /// Issue #851: the row's list — `visit_prep` (the Issue #128 prep
+  /// checklist, the default so a pre-#851 row reads correctly) or `supply`
+  /// (a household stock item, where [isChecked] reads as "stocked"). Stored
+  /// as the raw wire string; an unrecognised value decodes to `visitPrep`
+  /// rather than throwing (the `row_codec.dart` discipline).
+  TextColumn get kind => text().withDefault(const Constant('visit_prep'))();
+
+  /// Whether the item has been checked off (or, for a supply item,
+  /// stocked). Checking never deletes.
   BoolColumn get isChecked =>
       boolean().named('is_checked').withDefault(const Constant(false))();
 

@@ -67,6 +67,7 @@ void main() {
     String id, {
     String profileId = 'p1',
     String body = 'Ask about iron levels.',
+    String kind = 'visit_prep',
     bool isChecked = false,
     String? checkedByUserId,
     DateTime? checkedAt,
@@ -78,6 +79,7 @@ void main() {
         id: id,
         profileId: profileId,
         body: body,
+        kind: kind,
         isChecked: isChecked,
         checkedByUserId: checkedByUserId,
         checkedAt: checkedAt,
@@ -554,6 +556,77 @@ void main() {
       expect(items.single.isChecked, isFalse);
       expect(items.single.checkedByUserId, isNull);
       expect(items.single.dirty, isFalse);
+    });
+  });
+
+  group('supplies kit (Issue #851)', () {
+    test('add defaults to visit_prep; a supply kind round-trips', () async {
+      final prep = await storage.addVisitPrepItem(
+          profileId: 'p1', body: 'Ask about iron levels.');
+      final supply = await storage.addVisitPrepItem(
+          profileId: 'p1', body: 'Panty liners', kind: 'supply');
+
+      expect(prep.kind, 'visit_prep');
+      expect(supply.kind, 'supply');
+      expect(
+        (await storage.getVisitPrepItemsForProfile('p1',
+                kind: 'visit_prep'))
+            .map((r) => r.id),
+        [prep.id],
+      );
+      expect(
+        (await storage.getVisitPrepItemsForProfile('p1', kind: 'supply'))
+            .map((r) => r.id),
+        [supply.id],
+      );
+      // The unscoped read is the sync-fidelity shape: every row.
+      expect(
+          await storage.getVisitPrepItemsForProfile('p1'), hasLength(2));
+    });
+
+    test('clearChecked on the supply kind leaves the prep list untouched',
+        () async {
+      final prep = await storage.addVisitPrepItem(
+          profileId: 'p1', body: 'Ask about iron levels.');
+      await storage.setVisitPrepItemChecked(id: prep.id, checked: true);
+      final supply = await storage.addVisitPrepItem(
+          profileId: 'p1', body: 'Panty liners', kind: 'supply');
+      await storage.setVisitPrepItemChecked(id: supply.id, checked: true);
+
+      final cleared = await storage.clearCheckedVisitPrepItems('p1',
+          kind: 'supply');
+      expect(cleared, 1);
+      expect(
+        await storage.getVisitPrepItemsForProfile('p1', kind: 'supply'),
+        isEmpty,
+      );
+      expect(
+        (await storage.getVisitPrepItemsForProfile('p1', kind: 'visit_prep'))
+            .single
+            .isChecked,
+        isTrue,
+      );
+    });
+
+    test('a remote supply row applies its kind; a tombstone preserves it',
+        () async {
+      await storage.applyRemoteVisitPrepItem(
+          remoteItem('s-1', kind: 'supply', updatedAt: t1));
+      final inserted = (await storage.getVisitPrepItemsForProfile('p1'))
+          .single;
+      expect(inserted.kind, 'supply');
+
+      await storage.applyRemoteVisitPrepItem(remoteItem(
+        's-1',
+        kind: 'supply',
+        updatedAt: t2,
+        deletedAt: t2,
+      ));
+      final tombstoned = (await storage.getVisitPrepItemsForProfile('p1',
+              includeTombstones: true))
+          .single;
+      expect(tombstoned.kind, 'supply');
+      expect(tombstoned.body, isEmpty);
     });
   });
 }

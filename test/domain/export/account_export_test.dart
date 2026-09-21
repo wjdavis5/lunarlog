@@ -1249,6 +1249,7 @@ void main() {
               id: 'i2',
               profileId: 'p-1',
               body: 'Bring the growth chart.',
+              kind: VisitPrepItemKind.supply,
               updatedAt: DateTime.utc(2026, 9, 1),
             ),
           ],
@@ -1263,11 +1264,14 @@ void main() {
       final first = items[0] as Map;
       expect(first['id'], 'i1');
       expect(first['body'], 'Ask about iron levels.');
+      expect(first['kind'], 'visit_prep');
       expect(first['isChecked'], isTrue);
       expect(first['checkedAt'], '2026-09-02T00:00:00.000Z');
       expect(first.containsKey('checkedByUserId'), isFalse,
           reason: 'R9: an auth identifier is not family data');
       final second = items[1] as Map;
+      expect(second['kind'], 'supply',
+          reason: 'Issue #851: a supply item round-trips as a supply');
       expect(second['isChecked'], isFalse);
       expect(second['checkedAt'], isNull);
     });

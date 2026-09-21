@@ -131,10 +131,19 @@ class FakeCareContentRepository implements CareContentRepository {
       Stream.value(prepItemsByProfile[profileId] ?? const []);
 
   @override
+  Future<List<VisitPrepItem>> listSupplyItems(String profileId) async =>
+      const [];
+
+  @override
+  Stream<List<VisitPrepItem>> watchSupplyItems(String profileId) =>
+      Stream.value(const []);
+
+  @override
   Future<VisitPrepItem> addPrepItem({
     String? id,
     required String profileId,
     required String body,
+    VisitPrepItemKind kind = VisitPrepItemKind.visitPrep,
   }) async =>
       throw UnimplementedError();
 
@@ -157,7 +166,11 @@ class FakeCareContentRepository implements CareContentRepository {
   Future<void> deletePrepItem(String id) async {}
 
   @override
-  Future<int> clearCheckedPrepItems(String profileId) async => 0;
+  Future<int> clearCheckedPrepItems(
+    String profileId, {
+    VisitPrepItemKind kind = VisitPrepItemKind.visitPrep,
+  }) async =>
+      0;
 }
 
 class FakeAccountDeletionService implements AccountDeletionService {
