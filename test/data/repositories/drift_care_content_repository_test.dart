@@ -9,6 +9,7 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
+import 'package:lunarlog/domain/models/visit_prep_item.dart';
 
 void main() {
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
@@ -128,6 +129,63 @@ void main() {
       });
       addTearDown(sub.cancel);
       await repository.addPrepItem(profileId: 'p1', body: 'One.');
+      await pumpEventQueue();
+      expect(emissions.last, 1);
+    });
+  });
+
+  group('supplies (Issue #851)', () {
+    test('a supply add/list stays off the visit-prep list', () async {
+      final supply = await repository.addPrepItem(
+        profileId: 'p1',
+        body: 'Panty liners',
+        kind: VisitPrepItemKind.supply,
+      );
+      expect(supply.kind, VisitPrepItemKind.supply);
+
+      expect(await repository.listPrepItems('p1'), isEmpty);
+      final listed = await repository.listSupplyItems('p1');
+      expect(listed, hasLength(1));
+      expect(listed.single, supply);
+    });
+
+    test('clearCheckedPrepItems is scoped to the kind', () async {
+      final prep = await repository.addPrepItem(
+          profileId: 'p1', body: 'Ask about iron levels.');
+      await repository.setPrepItemChecked(id: prep.id, checked: true);
+      final supply = await repository.addPrepItem(
+        profileId: 'p1',
+        body: 'Panty liners',
+        kind: VisitPrepItemKind.supply,
+      );
+      await repository.setPrepItemChecked(id: supply.id, checked: true);
+
+      // The default kind is the visit-prep list, so the supply survives.
+      expect(await repository.clearCheckedPrepItems('p1'), 1);
+      expect(await repository.listPrepItems('p1'), isEmpty);
+      expect(await repository.listSupplyItems('p1'), hasLength(1));
+
+      expect(
+        await repository.clearCheckedPrepItems(
+          'p1',
+          kind: VisitPrepItemKind.supply,
+        ),
+        1,
+      );
+      expect(await repository.listSupplyItems('p1'), isEmpty);
+    });
+
+    test('watchSupplyItems emits reactively', () async {
+      final emissions = <int>[];
+      final sub = repository.watchSupplyItems('p1').listen((rows) {
+        emissions.add(rows.length);
+      });
+      addTearDown(sub.cancel);
+      await repository.addPrepItem(
+        profileId: 'p1',
+        body: 'Heat patch',
+        kind: VisitPrepItemKind.supply,
+      );
       await pumpEventQueue();
       expect(emissions.last, 1);
     });
