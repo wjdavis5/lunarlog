@@ -125,8 +125,36 @@ authorization model.
 - **Sign-in is enabled.** On web the available methods are email/password and
   passwordless email (`signInWithOtp` + `verifyOTP`). Google and Apple are
   hidden on web by construction (`AppConfig.hasGoogle` and the Apple
-  availability both require `!kIsWeb`), and passkeys are off on web
-  (`AppConfig.hasPasskeys` excludes web).
+  availability both require `!kIsWeb`, and passkeys are off on web
+  (`AppConfig.hasPasskeys` excludes web). Both the account section and the
+  sign-in screen derive Apple availability from the shared, unit-tested
+  `computeAppleSignInAvailable(isWeb:, isIos:)` rule, so the browser can
+  never render it.
+- **Email links redirect to the page origin, not the custom scheme (slice 2).**
+  Native mail goes to `lunarlog://auth-callback`; a browser cannot open that
+  scheme, so a web build sends confirmation, passwordless, and password-reset
+  mail to `https://<origin>/auth/callback` (`resolveAuthRedirectUrl` in
+  `lib/data/auth/supabase_auth_providers.dart`) and `SupabaseAuthService`
+  exchanges the returned `?code=` from the initial `Uri.base` over the same
+  PKCE path (`detectSessionInUri` stays `false`; the app, not the SDK,
+  performs the exchange so a cold-start recovery link is latched before any
+  widget exists). The emailed 8-digit code (`verifyOTP`) is
+  redirect-independent and works on web unchanged. **Owner step:** the
+  deployed origin's callback — `https://app.lunarlog.app/auth/callback` —
+  must be added to the Supabase dashboard's Auth **redirect allow-list**
+  before web sign-in links resolve; this is a dashboard action, not a code
+  change (see `docs/ops/supabase-go-live.md`). The hosting must also serve
+  the built single page for that path so `Uri.base` carries the code (a
+  normal SPA fallback).
+- **Sign out clears the browser session.** On web the bootstrap passes no
+  custom `localStorage`/`pkceAsyncStorage` (`buildAuthClientOptions` in
+  `lib/startup/supabase_bootstrap.dart`), so the session and PKCE verifier
+  live in gotrue's own browser storage, which gotrue's `signOut` clears with
+  the session. The app's sign-out paths run the one device reset
+  (`resetDevice`), which signs out locally and, on web, wipes the drift
+  IndexedDB store (`db.wipeAllData()`); both are pinned in
+  `test/architecture/web_auth_seam_test.dart` and
+  `test/ui/device_reset_test.dart`.
 - **RLS still applies, precisely.** Every request is a normal authenticated
   PostgREST/Realtime call carrying the user's JWT. Row-Level Security policies
   scoped to `auth.uid()` and the caller's `profile_guardians` memberships
@@ -197,9 +225,12 @@ never permanently separated from the disclosure that real data is present.
   in scope or explicitly deferred is an epic-level product decision not made
   here.
 - **Web push.** `AppConfig.hasPush` is false on web by construction.
-- **Auth flows on web beyond email/password and passwordless email.** Native
-  Google/Apple and passkeys are hidden; deciding whether any of them should
-  work in a browser is separate work.
+- **Auth flows on web beyond email/password and passwordless email.** Slice 2
+  landed the web redirect target (`<origin>/auth/callback`) and the
+  `Uri.base` PKCE exchange, so email/password, passwordless email, password
+  recovery, and the emailed code all work in a browser, and Google/Apple/
+  passkeys are pinned hidden there. Making any of the native providers work
+  in a browser (a popup OAuth flow, WebAuthn) is separate work.
 - **Trusted Types, a CSP report collector, and nonce/hash-based `script-src`**
   (dropping `'unsafe-inline'` from `style-src`, tightening the wasm allowance).
   Worth revisiting once hosting exists and real-browser verification is
@@ -212,8 +243,14 @@ never permanently separated from the disclosure that real data is present.
 - Epic #831 — "deploy the Flutter web app at lunarlog.app".
 - `lib/config.dart` — `webSyncEnabled`, `hasSupabase` (web requires the flag).
 - `lib/startup/supabase_bootstrap.dart` — where the web session storage is
-  chosen.
+  chosen (`buildAuthClientOptions`).
+- `lib/data/auth/supabase_auth_service.dart` /
+  `lib/data/auth/supabase_auth_providers.dart` — the web `<origin>/auth/callback`
+  redirect target and the `Uri.base` PKCE exchange.
 - `lib/data/db/web_db.dart` — web drift/WASM/IndexedDB wiring.
 - `lib/ui/web/dev_banner.dart` — the banner and first-run acknowledgement.
 - `web/_headers` — the deployed policy.
+- `test/architecture/web_auth_seam_test.dart` — the web-storage and
+  redirect pin.
+- `docs/ops/supabase-go-live.md` — the dashboard redirect allow-list owner step.
 - `PRIVACY.md` §6/§7 — the public security and retention disclosure.
