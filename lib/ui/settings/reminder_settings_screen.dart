@@ -347,17 +347,19 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       _ensureLoaded(profile);
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Reminders')),
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context).settingsSectionReminders),
+      ),
       body: _body(profiles, profile),
     );
   }
 
   Widget _body(List<Profile> profiles, Profile? profile) {
     if (profiles.isEmpty || profile == null) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Create a profile to set up reminders.'),
+          padding: const EdgeInsets.all(24),
+          child: Text(AppLocalizations.of(context).reminderNoProfile),
         ),
       );
     }
@@ -375,9 +377,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            'Reminders never show a name, date, or any health '
-            'detail on the lock screen. Logging from a notification '
-            'waits until the app is unlocked.',
+            l10n.reminderPrivacyNote,
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
@@ -472,7 +472,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
   Widget _profileTile(List<Profile> profiles, Profile profile) {
     return ListTile(
       key: const ValueKey('reminder-profile-tile'),
-      title: const Text('Profile'),
+      title: Text(AppLocalizations.of(context).reminderProfileLabel),
       subtitle: Text(profile.displayName),
       trailing: profiles.length > 1
           ? DropdownButton<String>(
@@ -580,7 +580,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     final typeConfig = config.typeConfig(kind);
     return ListTile(
       key: ValueKey('reminder-${kind.name}-cadence'),
-      title: const Text('Cadence'),
+      title: Text(AppLocalizations.of(context).reminderCadenceLabel),
       trailing: DropdownButton<ReminderCadence>(
         key: ValueKey('reminder-${kind.name}-cadence-dropdown'),
         value: typeConfig.cadence,
@@ -612,7 +612,7 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     final typeConfig = config.typeConfig(kind);
     return ListTile(
       key: ValueKey('reminder-time-${kind.name}'),
-      title: const Text('Time'),
+      title: Text(AppLocalizations.of(context).reminderTimeLabel),
       trailing: Text(
           _timeOfDay(typeConfig.timeOfDayMinutes).format(context)),
       onTap:
@@ -646,9 +646,9 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
     return [
       SwitchListTile(
         key: const ValueKey('reminder-quiet-switch'),
-        title: const Text('Quiet hours'),
-        subtitle: const Text(
-            'A reminder that lands inside the window waits until it ends'),
+        title: Text(AppLocalizations.of(context).reminderQuietHoursTitle),
+        subtitle: Text(
+            AppLocalizations.of(context).reminderQuietHoursSubtitle),
         value: quiet != null,
         onChanged: (on) => _update(on
             ? config.copyWith(quietHours: kDefaultQuietHours)
@@ -657,13 +657,13 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
       if (quiet != null) ...[
         ListTile(
           key: const ValueKey('reminder-quiet-start'),
-          title: const Text('Starts'),
+          title: Text(AppLocalizations.of(context).reminderQuietStart),
           trailing: Text(_timeOfDay(quiet.startMinutes).format(context)),
           onTap: () => _pickQuietBoundary(start: true),
         ),
         ListTile(
           key: const ValueKey('reminder-quiet-end'),
-          title: const Text('Ends'),
+          title: Text(AppLocalizations.of(context).reminderQuietEnd),
           trailing: Text(_timeOfDay(quiet.endMinutes).format(context)),
           onTap: () => _pickQuietBoundary(start: false),
         ),
