@@ -88,6 +88,7 @@ Map<String, Object?> _rawProfile(
       'displayName': displayName,
       'isMinor': true,
       'mode': 'standard',
+      'irregularFraming': null,
       'sortOrder': 0,
       'archivedAt': null,
       'createdAt': '2026-01-01T00:00:00.000Z',
@@ -244,6 +245,9 @@ String? _neverBlocked(Profile p) => null;
 // these are cheap, distinct, and still readable at a glance.
 const String _p1 = '00000000000000000000000001';
 const String _p2 = '00000000000000000000000002';
+// Issue #853: two more ids for the framing-flag parse cases.
+const String _p3 = '00000000000000000000000003';
+const String _p4 = '00000000000000000000000004';
 const String _e1 = '00000000000000000000000011';
 const String _e2 = '00000000000000000000000012';
 const String _e3 = '00000000000000000000000013';
@@ -575,6 +579,33 @@ void main() {
         {..._rawProfile(_p1), 'mode': 'not_a_real_mode'},
       ]);
       expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    // Issue #853: the composed framing flag parses as mode's sibling —
+    // absent or null passes through, a non-bool is rejected outright.
+    test('a non-bool irregularFraming value is rejected (Issue #853)', () {
+      final raw = _rawDocument(profiles: [
+        {..._rawProfile(_p1), 'irregularFraming': 'yes'},
+      ]);
+      expect(parseAccountImport(_bytes(raw)), isA<AccountImportParseFailed>());
+    });
+
+    test('irregularFraming parses true/false/null; the legacy '
+        "mode='irregular' value still parses (the fold is the importer's "
+        'job, Issue #853)', () {
+      final parsed = parseAccountImport(_bytes(_rawDocument(profiles: [
+        {..._rawProfile(_p1), 'irregularFraming': true},
+        {..._rawProfile(_p2), 'irregularFraming': false},
+        {..._rawProfile(_p3), 'irregularFraming': null},
+        {..._rawProfile(_p4), 'mode': 'irregular'},
+      ]))) as AccountImportParsed;
+      final profiles = parsed.document.profiles;
+      expect(profiles[0].irregularFraming, isTrue);
+      expect(profiles[1].irregularFraming, isFalse);
+      expect(profiles[2].irregularFraming, isNull);
+      expect(profiles[3].mode, 'irregular',
+          reason: 'the closed set keeps the legacy wire value; the fold to '
+              'standard+flag happens in AccountImporter');
     });
 
     // Issue #255: the display-unit preferences get mode's closed-set

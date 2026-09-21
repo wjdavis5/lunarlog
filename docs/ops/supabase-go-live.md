@@ -25,15 +25,26 @@ JWT are CLI defaults) and says nothing about the cloud project.
 
 ### Supabase Auth
 
-- [ ] Custom SMTP configured (Authentication → SMTP). Until then the built-in
-      sender delivers 2 emails per hour to team addresses only, so every
-      non-team sign-up and password reset silently fails.
-- [ ] "Confirm email" on (Authentication → Providers → Email). The app depends
+- [x] Custom SMTP configured (Authentication → SMTP), completed 2026-09-20
+      (issue #18/#972). Provider: Cloudflare Email Sending, host
+      `smtp.mx.cloudflare.net:465`, user `api_token`, password = the
+      `CLOUDFLARE_EMAIL_SENDING_TOKEN` named in `.env` (name only, never a
+      value; also vaulted in the lab's SOPS store, and entered only in the
+      dashboard). Until this landed the built-in
+      sender delivered 2 emails per hour to team addresses only, so every
+      non-team sign-up and password reset silently failed.
+- [x] "Confirm email" on (Authentication → Providers → Email), completed
+      2026-09-20 (issue #18/#972). The app depends
       on it: `signUp` returns a user and no session, the status tile shows
       "Waiting for email confirmation — open the link on this device", and
       binding/upload consent wait for a confirmed session.
-- [ ] Password policy: minimum length 12; require letters, digits, and
-      symbols; leaked-password protection on. The client enforces the same
+- [x] Password policy: minimum length 12; require letters, digits, and
+      symbols; leaked-password protection on, completed 2026-09-20
+      (issue #18/#972). Leaked-password protection being ON is why issue
+      #972 removed the `auth_leaked_password_protection` advisor exclusion —
+      if that finding ever returns, this toggle was turned back off and
+      issue #18 must be reopened, not the exclusion re-added. The client
+      enforces the same
       12-character minimum (`kMinPasswordLength` in
       `lib/ui/account/sign_in_screen.dart`) and maps the server's
       `weakPassword` rejection to generic copy, so the two must agree.
@@ -44,11 +55,12 @@ JWT are CLI defaults) and says nothing about the cloud project.
       confirmation copy says other devices may take up to an hour to notice.
       See the "JWT expiry rationale" note below.
 - [ ] Session inactivity timeout set, if the project tier offers it.
-- [ ] Apple provider enabled with the bundle id `com.wjdavis5.lunarlog` as
+- [x] Apple provider enabled with the bundle id `com.wjdavis5.lunarlog` as
       the client id (native iOS flow only; no Services ID or client secret
-      needed).
-- [ ] `lunarlog://auth-callback` added to the redirect allow-list
-      (Authentication → URL Configuration). Both the confirmation and the
+      needed), completed 2026-09-20 (issue #18/#972).
+- [x] `lunarlog://auth-callback` added to the redirect allow-list
+      (Authentication → URL Configuration), completed 2026-09-20
+      (issue #18/#972). Both the confirmation and the
       reset email link through it (`ios/Runner/Info.plist` `CFBundleURLSchemes`
       and the Android `VIEW` intent filter register the scheme).
 - [ ] TOTP multi-factor authentication enabled (issue #268): Authentication →

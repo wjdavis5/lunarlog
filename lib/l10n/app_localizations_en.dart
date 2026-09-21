@@ -574,6 +574,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get overviewLongCyclePredictionsOff => 'Turn off predictions';
 
   @override
+  String get overviewStaleHistoryTitle => 'Your history is out of date';
+
+  @override
+  String get overviewStaleHistoryBody =>
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+
+  @override
+  String get overviewStaleHistoryLog => 'Log a period';
+
+  @override
   String get overviewReminderHint =>
       'Reminders unavailable — notifications are off';
 
@@ -610,6 +620,33 @@ class AppLocalizationsEn extends AppLocalizations {
       one: 'day late',
     );
     return '$_temp0';
+  }
+
+  @override
+  String cycleWheelDaysPastEstimateUnit(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'days past estimate',
+      one: 'day past estimate',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String cycleWheelSemanticsPastEstimate(
+    int daysPast,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  ) {
+    String _temp0 = intl.Intl.pluralLogic(
+      daysPast,
+      locale: localeName,
+      other: '$daysPast days past the estimate.',
+      one: '1 day past the estimate.',
+    );
+    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
   }
 
   @override
@@ -754,6 +791,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
       'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.';
+
+  @override
+  String healthSyncPermissionGranted(String source) {
+    return '$source access: granted';
+  }
+
+  @override
+  String healthSyncPermissionNotAsked(String source) {
+    return '$source access: not yet asked';
+  }
+
+  @override
+  String healthSyncPermissionDenied(String source) {
+    return '$source access: denied — open Settings to change';
+  }
+
+  @override
+  String healthSyncPermissionUnavailable(String source) {
+    return '$source access is not available on this device.';
+  }
+
+  @override
+  String get healthSyncPermissionOpenSettings => 'Open Settings';
 
   @override
   String healthSyncImportUpdatedDays(int count, String source) {
@@ -2115,4 +2175,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianNotesUpdate => 'Update note';
+
+  @override
+  String get profileIrregularFramingLabel => 'Irregular cycles';
+
+  @override
+  String get profileIrregularFramingHint =>
+      'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.';
 }

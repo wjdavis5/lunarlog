@@ -372,13 +372,13 @@ class _ReminderSettingsScreenState extends State<ReminderSettingsScreen> {
         ..._birthControlGroup(l10n, config),
         ..._group(l10n.reminderSectionOther, kOtherGroupKinds, config),
         ..._quietTiles(config),
-        const Padding(
-          padding: EdgeInsets.all(16),
+        Padding(
+          padding: const EdgeInsets.all(16),
           child: Text(
             'Reminders never show a name, date, or any health '
             'detail on the lock screen. Logging from a notification '
             'waits until the app is unlocked.',
-            style: TextStyle(fontSize: 12),
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
       ],

@@ -180,6 +180,7 @@ class ThrowingProfilesRepository implements ProfilesRepository {
     required bool isMinor,
     int sortOrder = 0,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     LocalDate? lastPeriodStart,
@@ -317,8 +318,9 @@ void main() {
         ),
       );
 
-      // Card 1: The brand mark (nights_stay icon) top must be >= 59 (safe area inset)
-      final iconFinder = find.byIcon(Icons.nights_stay);
+      // Card 1: The brand mark (issue #808: the bundled app icon, not the
+      // old nights_stay glyph) top must be >= 59 (safe area inset).
+      final iconFinder = find.byKey(const ValueKey('first-run-brand-mark'));
       expect(iconFinder, findsOneWidget);
       final iconTop = tester.getTopLeft(iconFinder).dy;
       expect(iconTop, greaterThanOrEqualTo(59.0));
@@ -760,7 +762,12 @@ void main() {
       await tester.enterText(find.byType(TextFormField), 'Nova');
       await tester.tap(find.byType(DropdownButton<ProfileMode>));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Irregular cycles').last);
+      // Issue #853: `irregular` is no longer offered — it is a legacy wire
+      // value, not a rival mode; the framing composes via the edit dialog's
+      // flag instead. The picker offers exactly standard/teen/caregiver.
+      expect(find.text('Irregular cycles'), findsNothing,
+          reason: 'issue #853: irregular is not a choosable mode');
+      await tester.tap(find.text('Teen').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('first-run-continue')));
       await tester.pumpAndSettle();
@@ -769,7 +776,10 @@ void main() {
 
       final profiles = await DriftProfilesRepository(h.db.storage).list();
       expect(profiles.single.displayName, 'Nova');
-      expect(profiles.single.mode, ProfileMode.irregular);
+      expect(profiles.single.mode, ProfileMode.teen);
+      // Creation never writes an explicit framing choice: the engine
+      // default (ON for teen until CycleConfidence.high) applies.
+      expect(profiles.single.irregularFraming, isNull);
       await h.dispose();
     });
   });
@@ -1135,6 +1145,7 @@ class _GatedProfilesRepository implements ProfilesRepository {
     required bool isMinor,
     int sortOrder = 0,
     ProfileMode mode = ProfileMode.standard,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     LocalDate? lastPeriodStart,

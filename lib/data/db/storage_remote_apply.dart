@@ -809,6 +809,9 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
               dirty: const Value(false),
               localRev: const Value(0),
               mode: Value(remote.mode),
+              // Issue #853: the composed framing flag (already folded from
+              // the legacy rival-mode wire value by `decodeProfile`).
+              irregularFraming: Value(remote.irregularFraming),
               bbtUnit: Value(remote.bbtUnit),
               weightUnit: Value(remote.weightUnit),
               trackingPreferences: Value(remote.trackingPreferences),
@@ -842,6 +845,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             deletedAt: Value(deletedAt),
             dirty: const Value(false),
             mode: Value(remote.mode),
+            // Issue #853: same as the insert path above.
+            irregularFraming: Value(remote.irregularFraming),
             bbtUnit: Value(remote.bbtUnit),
             weightUnit: Value(remote.weightUnit),
             trackingPreferences: Value(remote.trackingPreferences),
