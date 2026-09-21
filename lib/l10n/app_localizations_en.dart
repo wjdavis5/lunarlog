@@ -934,6 +934,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsSectionCalendar => 'Calendar';
 
   @override
+  String get settingsSectionHomeWidget => 'Home-screen widget';
+
+  @override
+  String get settingsHomeWidgetProfileTitle => 'Widget profile';
+
+  @override
+  String get settingsHomeWidgetFollowActive =>
+      'Follow the app\'s current profile';
+
+  @override
+  String get settingsHomeWidgetDisclosure =>
+      'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.';
+
+  @override
   String get settingsSectionFamilySharing => 'Family & sharing';
 
   @override
