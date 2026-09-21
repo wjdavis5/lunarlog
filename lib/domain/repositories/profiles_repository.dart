@@ -26,11 +26,16 @@ abstract interface class ProfilesRepository {
   /// defaulting to metric (`BbtUnit.celsius`/`WeightUnit.kg`) — editable
   /// later through [update], and always a rendering preference only (each
   /// stored `observations` value keeps the unit it was entered in).
+  /// [irregularFraming] (Issue #853) is the composed framing flag's
+  /// tri-state: null (the default) keeps the engine default (`true` for a
+  /// `teen`-mode profile until `CycleConfidence.high`, `false` otherwise);
+  /// true/false is the operator's explicit choice. Presentation only.
   Future<Profile> create({
     required String displayName,
     required bool isMinor,
     int sortOrder,
     ProfileMode mode,
+    bool? irregularFraming,
     int? birthYear,
     ProfileRelationship? relationship,
     LocalDate? lastPeriodStart,

@@ -114,6 +114,7 @@ class ProfileEditResult {
     this.displayName,
     this.isMinor, {
     this.mode = ProfileMode.standard,
+    this.irregularFraming,
     this.birthYear,
     this.relationship,
     this.lifecycleMode = LifecycleMode.tracking,
@@ -126,8 +127,16 @@ class ProfileEditResult {
   final bool isMinor;
 
   /// Care mode (Issue #131): presentation only — vocabulary, logging
-  /// defaults, and reminder presets. Never a permission.
+  /// defaults, and reminder presets. Never a permission. Since #853 the
+  /// dropdown never offers `irregular` — the framing lives on
+  /// [irregularFraming] instead.
   final ProfileMode mode;
+
+  /// Issue #853: the irregular-cycles framing flag, tri-state. Null (the
+  /// default for an untouched control) preserves whatever the profile
+  /// already stored — including null, the engine default (framing ON for
+  /// a teen until `CycleConfidence.high`, OFF otherwise).
+  final bool? irregularFraming;
 
   /// Optional birth year of the profile subject (Issue #4 R1). Display and
   /// context only (R2).
@@ -214,6 +223,14 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   );
   late bool _isMinor = widget.existing?.isMinor ?? false;
   late ProfileMode _mode = widget.existing?.mode ?? ProfileMode.standard;
+
+  /// Issue #853: the explicit irregular-framing choice, or null while the
+  /// control is untouched — an untouched save preserves the stored
+  /// tri-state as-is (including null, the engine default). Any tap makes
+  /// the choice explicit; the switch itself displays the resolved default
+  /// (`_irregularFramingDisplay`) so the engine default is visible without
+  /// being silently written.
+  bool? _irregularChoice;
   late final TextEditingController _birthYear = TextEditingController(
     text: widget.existing?.birthYear?.toString() ?? '',
   );
@@ -396,6 +413,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
             currentYear: DateTime.now().year,
           ),
           mode: _mode,
+          irregularFraming: _irregularChoice ?? widget.existing?.irregularFraming,
           birthYear: birthYear,
           relationship: _relationship,
           lifecycleMode: _lifecycleMode,
@@ -409,6 +427,38 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
         ),
       );
     }
+  }
+
+  /// Issue #853: what the framing switch shows — the explicit choice when
+  /// one was made, otherwise the engine default *for the currently
+  /// selected mode* (a stored null on a teen profile reads ON; switching
+  /// the dropdown to teen previews ON without writing it). No tier here by
+  /// design: the picker previews the default, the rendering resolves the
+  /// real tier (`irregularFramingInEffect`).
+  bool get _irregularFramingDisplay =>
+      _irregularChoice ??
+      widget.existing?.irregularFraming ??
+      (_mode == ProfileMode.teen);
+
+  /// Issue #853: the framing toggle — `irregular` is no longer a rival
+  /// entry in the care-mode dropdown but a switch composed with whatever
+  /// mode is selected.
+  Widget _irregularFramingControl(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return SwitchListTile(
+      key: const ValueKey('irregular-framing-toggle'),
+      value: _irregularFramingDisplay,
+      onChanged: (value) => setState(() => _irregularChoice = value),
+      contentPadding: EdgeInsets.zero,
+      title: Text(l10n.profileIrregularFramingLabel),
+      subtitle: Text(
+        l10n.profileIrregularFramingHint,
+        key: const ValueKey('irregular-framing-hint'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+      ),
+    );
   }
 
   /// Issue #820: the minor control. With no birth year it is the editable
@@ -648,7 +698,10 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                               onChanged: (value) => setState(
                                   () => _mode = value ?? ProfileMode.standard),
                               items: [
-                                for (final mode in ProfileMode.values)
+                                // Issue #853: `irregular` is a legacy wire
+                                // value, not a choice — the framing is the
+                                // toggle below, composed with any mode.
+                                for (final mode in ProfileMode.choosableModes)
                                   DropdownMenuItem<ProfileMode>(
                                     value: mode,
                                     child: Text(mode.label),
@@ -667,6 +720,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ),
+                      _irregularFramingControl(context),
+                      const SizedBox(height: LLSpace.space3),
                       TextFormField(
                         key: const ValueKey('edit-birth-year-field'),
                         controller: _birthYear,

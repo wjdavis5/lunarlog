@@ -1076,6 +1076,24 @@ abstract class AppLocalizations {
   /// **'Turn off predictions'**
   String get overviewLongCyclePredictionsOff;
 
+  /// Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything.
+  ///
+  /// In en, this message translates to:
+  /// **'Your history is out of date'**
+  String get overviewStaleHistoryTitle;
+
+  /// Issue #859: calm, non-alarming body of the stale-history overview card.
+  ///
+  /// In en, this message translates to:
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.'**
+  String get overviewStaleHistoryBody;
+
+  /// Issue #859: primary action on the stale-history card, logging a period start for today.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a period'**
+  String get overviewStaleHistoryLog;
+
   /// Hint line shown when notification permission is denied.
   ///
   /// In en, this message translates to:
@@ -1117,6 +1135,23 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{day late} other{days late}}'**
   String cycleWheelDaysLateUnit(int count);
+
+  /// Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{day past estimate} other{days past estimate}}'**
+  String cycleWheelDaysPastEstimateUnit(int count);
+
+  /// Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.
+  ///
+  /// In en, this message translates to:
+  /// **'{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
+  String cycleWheelSemanticsPastEstimate(
+    int daysPast,
+    int cycleDay,
+    int cycleDays,
+    int periodDays,
+  );
 
   /// Top line in the cycle wheel centre during a bleed episode.
   ///
@@ -1319,6 +1354,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
+
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: granted'**
+  String healthSyncPermissionGranted(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): the OS permission sheet has not been answered yet.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: not yet asked'**
+  String healthSyncPermissionNotAsked(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission was denied. Shown with the settings deep link.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access: denied — open Settings to change'**
+  String healthSyncPermissionDenied(String source);
+
+  /// Health sync screen OS-permission status line (Issue #959): there is no health store or permission surface on this device.
+  ///
+  /// In en, this message translates to:
+  /// **'{source} access is not available on this device.'**
+  String healthSyncPermissionUnavailable(String source);
+
+  /// The deep link offered on the health-sync status line only when the OS permission is denied (Issue #959).
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get healthSyncPermissionOpenSettings;
 
   /// Health import summary: days that gained or refreshed an imported flow value (Issues #217/#458).
   ///
@@ -3497,6 +3562,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update note'**
   String get guardianNotesUpdate;
+
+  /// Issue #853: the composed irregular-framing toggle in the profile edit dialog and first-run form.
+  ///
+  /// In en, this message translates to:
+  /// **'Irregular cycles'**
+  String get profileIrregularFramingLabel;
+
+  /// Issue #853: the composed irregular-framing toggle's hint, shown under the label.
+  ///
+  /// In en, this message translates to:
+  /// **'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.'**
+  String get profileIrregularFramingHint;
 }
 
 class _AppLocalizationsDelegate

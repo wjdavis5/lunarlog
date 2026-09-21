@@ -155,6 +155,20 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     requiredDuringInsert: false,
     defaultValue: const Constant('standard'),
   );
+  static const VerificationMeta _irregularFramingMeta = const VerificationMeta(
+    'irregularFraming',
+  );
+  @override
+  late final GeneratedColumn<bool> irregularFraming = GeneratedColumn<bool>(
+    'irregular_framing',
+    aliasedName,
+    true,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("irregular_framing" IN (0, 1))',
+    ),
+  );
   static const VerificationMeta _transferredAtMeta = const VerificationMeta(
     'transferredAt',
   );
@@ -286,6 +300,7 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     birthYear,
     relationship,
     mode,
+    irregularFraming,
     transferredAt,
     transferredToUserId,
     lastPeriodStart,
@@ -398,6 +413,15 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
       context.handle(
         _modeMeta,
         mode.isAcceptableOrUnknown(data['mode']!, _modeMeta),
+      );
+    }
+    if (data.containsKey('irregular_framing')) {
+      context.handle(
+        _irregularFramingMeta,
+        irregularFraming.isAcceptableOrUnknown(
+          data['irregular_framing']!,
+          _irregularFramingMeta,
+        ),
       );
     }
     if (data.containsKey('transferred_at')) {
@@ -545,6 +569,10 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.string,
         data['${effectivePrefix}mode'],
       )!,
+      irregularFraming: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}irregular_framing'],
+      ),
       transferredAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}transferred_at'],
@@ -630,7 +658,27 @@ class Profile extends DataClass implements Insertable<Profile> {
   /// irregular`). Non-null, defaulting to `standard`; an unrecognised value
   /// decodes to `standard` rather than throwing (see `row_codec.dart`).
   /// Presentation only — never consulted by any authorization path.
+  /// Issue #853: the `irregular` value is a legacy wire value only — never
+  /// stored by this client (the v28 migration converts any stored copy to
+  /// `standard` + [irregularFraming], and `decodeProfile` maps any that an
+  /// old client re-pushes), though the server CHECK still accepts it.
   final String mode;
+
+  /// Irregular-cycles framing (Issue #853), mirrored by
+  /// `domain.Profile.irregularFraming` and the server's nullable
+  /// `profiles.irregular_framing` boolean. Nullable tri-state BY DESIGN —
+  /// null means "never explicitly chosen; the engine default applies"
+  /// (`irregularFramingInEffect` in `lib/domain/care_modes.dart`: true for
+  /// a `teen`-mode profile until `CycleConfidence.high`, false otherwise),
+  /// while `true`/`false` are the operator's explicit override. Nullable
+  /// (not non-null-with-default, the [unitsUnconfirmed] precedent) so every
+  /// existing direct `Profile(...)` test fixture keeps compiling without
+  /// passing the field. Presentation only — never consulted by any
+  /// authorization path. Never synced as a null: `encodeProfile` emits the
+  /// key only when non-null, so a never-chosen device can't clobber a
+  /// co-guardian's explicit choice (the server's `?` containment guard
+  /// backstops it).
+  final bool? irregularFraming;
 
   /// Instant this profile's ownership last moved via
   /// `accept_ownership_transfer`, or null if it never has (R5). Never
@@ -750,6 +798,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.birthYear,
     this.relationship,
     required this.mode,
+    this.irregularFraming,
     this.transferredAt,
     this.transferredToUserId,
     this.lastPeriodStart,
@@ -785,6 +834,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       map['relationship'] = Variable<String>(relationship);
     }
     map['mode'] = Variable<String>(mode);
+    if (!nullToAbsent || irregularFraming != null) {
+      map['irregular_framing'] = Variable<bool>(irregularFraming);
+    }
     if (!nullToAbsent || transferredAt != null) {
       map['transferred_at'] = Variable<DateTime>(transferredAt);
     }
@@ -839,6 +891,9 @@ class Profile extends DataClass implements Insertable<Profile> {
           ? const Value.absent()
           : Value(relationship),
       mode: Value(mode),
+      irregularFraming: irregularFraming == null && nullToAbsent
+          ? const Value.absent()
+          : Value(irregularFraming),
       transferredAt: transferredAt == null && nullToAbsent
           ? const Value.absent()
           : Value(transferredAt),
@@ -887,6 +942,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       birthYear: serializer.fromJson<int?>(json['birthYear']),
       relationship: serializer.fromJson<String?>(json['relationship']),
       mode: serializer.fromJson<String>(json['mode']),
+      irregularFraming: serializer.fromJson<bool?>(json['irregularFraming']),
       transferredAt: serializer.fromJson<DateTime?>(json['transferredAt']),
       transferredToUserId: serializer.fromJson<String?>(
         json['transferredToUserId'],
@@ -924,6 +980,7 @@ class Profile extends DataClass implements Insertable<Profile> {
       'birthYear': serializer.toJson<int?>(birthYear),
       'relationship': serializer.toJson<String?>(relationship),
       'mode': serializer.toJson<String>(mode),
+      'irregularFraming': serializer.toJson<bool?>(irregularFraming),
       'transferredAt': serializer.toJson<DateTime?>(transferredAt),
       'transferredToUserId': serializer.toJson<String?>(transferredToUserId),
       'lastPeriodStart': serializer.toJson<String?>(lastPeriodStart),
@@ -953,6 +1010,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<int?> birthYear = const Value.absent(),
     Value<String?> relationship = const Value.absent(),
     String? mode,
+    Value<bool?> irregularFraming = const Value.absent(),
     Value<DateTime?> transferredAt = const Value.absent(),
     Value<String?> transferredToUserId = const Value.absent(),
     Value<String?> lastPeriodStart = const Value.absent(),
@@ -977,6 +1035,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     birthYear: birthYear.present ? birthYear.value : this.birthYear,
     relationship: relationship.present ? relationship.value : this.relationship,
     mode: mode ?? this.mode,
+    irregularFraming: irregularFraming.present
+        ? irregularFraming.value
+        : this.irregularFraming,
     transferredAt: transferredAt.present
         ? transferredAt.value
         : this.transferredAt,
@@ -1025,6 +1086,9 @@ class Profile extends DataClass implements Insertable<Profile> {
           ? data.relationship.value
           : this.relationship,
       mode: data.mode.present ? data.mode.value : this.mode,
+      irregularFraming: data.irregularFraming.present
+          ? data.irregularFraming.value
+          : this.irregularFraming,
       transferredAt: data.transferredAt.present
           ? data.transferredAt.value
           : this.transferredAt,
@@ -1072,6 +1136,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('birthYear: $birthYear, ')
           ..write('relationship: $relationship, ')
           ..write('mode: $mode, ')
+          ..write('irregularFraming: $irregularFraming, ')
           ..write('transferredAt: $transferredAt, ')
           ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
@@ -1101,6 +1166,7 @@ class Profile extends DataClass implements Insertable<Profile> {
     birthYear,
     relationship,
     mode,
+    irregularFraming,
     transferredAt,
     transferredToUserId,
     lastPeriodStart,
@@ -1129,6 +1195,7 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.birthYear == this.birthYear &&
           other.relationship == this.relationship &&
           other.mode == this.mode &&
+          other.irregularFraming == this.irregularFraming &&
           other.transferredAt == this.transferredAt &&
           other.transferredToUserId == this.transferredToUserId &&
           other.lastPeriodStart == this.lastPeriodStart &&
@@ -1155,6 +1222,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<int?> birthYear;
   final Value<String?> relationship;
   final Value<String> mode;
+  final Value<bool?> irregularFraming;
   final Value<DateTime?> transferredAt;
   final Value<String?> transferredToUserId;
   final Value<String?> lastPeriodStart;
@@ -1180,6 +1248,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.birthYear = const Value.absent(),
     this.relationship = const Value.absent(),
     this.mode = const Value.absent(),
+    this.irregularFraming = const Value.absent(),
     this.transferredAt = const Value.absent(),
     this.transferredToUserId = const Value.absent(),
     this.lastPeriodStart = const Value.absent(),
@@ -1206,6 +1275,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.birthYear = const Value.absent(),
     this.relationship = const Value.absent(),
     this.mode = const Value.absent(),
+    this.irregularFraming = const Value.absent(),
     this.transferredAt = const Value.absent(),
     this.transferredToUserId = const Value.absent(),
     this.lastPeriodStart = const Value.absent(),
@@ -1236,6 +1306,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<int>? birthYear,
     Expression<String>? relationship,
     Expression<String>? mode,
+    Expression<bool>? irregularFraming,
     Expression<DateTime>? transferredAt,
     Expression<String>? transferredToUserId,
     Expression<String>? lastPeriodStart,
@@ -1262,6 +1333,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (birthYear != null) 'birth_year': birthYear,
       if (relationship != null) 'relationship': relationship,
       if (mode != null) 'mode': mode,
+      if (irregularFraming != null) 'irregular_framing': irregularFraming,
       if (transferredAt != null) 'transferred_at': transferredAt,
       if (transferredToUserId != null)
         'transferred_to_user_id': transferredToUserId,
@@ -1294,6 +1366,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<int?>? birthYear,
     Value<String?>? relationship,
     Value<String>? mode,
+    Value<bool?>? irregularFraming,
     Value<DateTime?>? transferredAt,
     Value<String?>? transferredToUserId,
     Value<String?>? lastPeriodStart,
@@ -1320,6 +1393,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       birthYear: birthYear ?? this.birthYear,
       relationship: relationship ?? this.relationship,
       mode: mode ?? this.mode,
+      irregularFraming: irregularFraming ?? this.irregularFraming,
       transferredAt: transferredAt ?? this.transferredAt,
       transferredToUserId: transferredToUserId ?? this.transferredToUserId,
       lastPeriodStart: lastPeriodStart ?? this.lastPeriodStart,
@@ -1377,6 +1451,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     }
     if (mode.present) {
       map['mode'] = Variable<String>(mode.value);
+    }
+    if (irregularFraming.present) {
+      map['irregular_framing'] = Variable<bool>(irregularFraming.value);
     }
     if (transferredAt.present) {
       map['transferred_at'] = Variable<DateTime>(transferredAt.value);
@@ -1436,6 +1513,7 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('birthYear: $birthYear, ')
           ..write('relationship: $relationship, ')
           ..write('mode: $mode, ')
+          ..write('irregularFraming: $irregularFraming, ')
           ..write('transferredAt: $transferredAt, ')
           ..write('transferredToUserId: $transferredToUserId, ')
           ..write('lastPeriodStart: $lastPeriodStart, ')
@@ -12500,6 +12578,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<int?> birthYear,
   Value<String?> relationship,
   Value<String> mode,
+  Value<bool?> irregularFraming,
   Value<DateTime?> transferredAt,
   Value<String?> transferredToUserId,
   Value<String?> lastPeriodStart,
@@ -12526,6 +12605,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<int?> birthYear,
   Value<String?> relationship,
   Value<String> mode,
+  Value<bool?> irregularFraming,
   Value<DateTime?> transferredAt,
   Value<String?> transferredToUserId,
   Value<String?> lastPeriodStart,
@@ -12836,6 +12916,11 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<String> get mode => $composableBuilder(
     column: $table.mode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get irregularFraming => $composableBuilder(
+    column: $table.irregularFraming,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13239,6 +13324,11 @@ class $$ProfilesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get irregularFraming => $composableBuilder(
+    column: $table.irregularFraming,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
     builder: (column) => ColumnOrderings(column),
@@ -13343,6 +13433,11 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<String> get mode =>
       $composableBuilder(column: $table.mode, builder: (column) => column);
+
+  GeneratedColumn<bool> get irregularFraming => $composableBuilder(
+    column: $table.irregularFraming,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get transferredAt => $composableBuilder(
     column: $table.transferredAt,
@@ -13723,6 +13818,7 @@ class $$ProfilesTableTableManager
                 Value<int?> birthYear = const Value.absent(),
                 Value<String?> relationship = const Value.absent(),
                 Value<String> mode = const Value.absent(),
+                Value<bool?> irregularFraming = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
                 Value<String?> transferredToUserId = const Value.absent(),
                 Value<String?> lastPeriodStart = const Value.absent(),
@@ -13748,6 +13844,7 @@ class $$ProfilesTableTableManager
                 birthYear: birthYear,
                 relationship: relationship,
                 mode: mode,
+                irregularFraming: irregularFraming,
                 transferredAt: transferredAt,
                 transferredToUserId: transferredToUserId,
                 lastPeriodStart: lastPeriodStart,
@@ -13775,6 +13872,7 @@ class $$ProfilesTableTableManager
                 Value<int?> birthYear = const Value.absent(),
                 Value<String?> relationship = const Value.absent(),
                 Value<String> mode = const Value.absent(),
+                Value<bool?> irregularFraming = const Value.absent(),
                 Value<DateTime?> transferredAt = const Value.absent(),
                 Value<String?> transferredToUserId = const Value.absent(),
                 Value<String?> lastPeriodStart = const Value.absent(),
@@ -13800,6 +13898,7 @@ class $$ProfilesTableTableManager
                 birthYear: birthYear,
                 relationship: relationship,
                 mode: mode,
+                irregularFraming: irregularFraming,
                 transferredAt: transferredAt,
                 transferredToUserId: transferredToUserId,
                 lastPeriodStart: lastPeriodStart,

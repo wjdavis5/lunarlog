@@ -46,6 +46,7 @@ class TodayCard extends StatefulWidget {
     required this.cycleLengthDays,
     required this.periodLengthDays,
     this.daysUntilNextPeriod,
+    this.irregularFraming = false,
     required this.estimateText,
     required this.tier,
     required this.showConfidenceChip,
@@ -68,6 +69,11 @@ class TodayCard extends StatefulWidget {
 
   /// Days until next period (issue #807).
   final int? daysUntilNextPeriod;
+
+  /// Issue #853: the effective composed irregular framing — switches the
+  /// wheel's overdue unit and semantics off "late" wording. Forwarded to
+  /// [CycleWheel]; see that widget's own doc for the resolution rule.
+  final bool irregularFraming;
 
   /// The fully-formatted next-period estimate line (issue #131/#213: the
   /// mode's own label plus either the single date or the range), computed
@@ -135,6 +141,7 @@ class _TodayCardState extends State<TodayCard> {
             cycleLengthDays: widget.cycleLengthDays,
             periodLengthDays: widget.periodLengthDays,
             daysUntilNextPeriod: widget.daysUntilNextPeriod,
+            irregularFraming: widget.irregularFraming,
           ),
         ),
         if (!widget.duringEpisode) ...[

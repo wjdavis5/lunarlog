@@ -125,7 +125,28 @@ class Profiles extends Table {
   /// irregular`). Non-null, defaulting to `standard`; an unrecognised value
   /// decodes to `standard` rather than throwing (see `row_codec.dart`).
   /// Presentation only — never consulted by any authorization path.
+  /// Issue #853: the `irregular` value is a legacy wire value only — never
+  /// stored by this client (the v28 migration converts any stored copy to
+  /// `standard` + [irregularFraming], and `decodeProfile` maps any that an
+  /// old client re-pushes), though the server CHECK still accepts it.
   TextColumn get mode => text().withDefault(const Constant('standard'))();
+
+  /// Irregular-cycles framing (Issue #853), mirrored by
+  /// `domain.Profile.irregularFraming` and the server's nullable
+  /// `profiles.irregular_framing` boolean. Nullable tri-state BY DESIGN —
+  /// null means "never explicitly chosen; the engine default applies"
+  /// (`irregularFramingInEffect` in `lib/domain/care_modes.dart`: true for
+  /// a `teen`-mode profile until `CycleConfidence.high`, false otherwise),
+  /// while `true`/`false` are the operator's explicit override. Nullable
+  /// (not non-null-with-default, the [unitsUnconfirmed] precedent) so every
+  /// existing direct `Profile(...)` test fixture keeps compiling without
+  /// passing the field. Presentation only — never consulted by any
+  /// authorization path. Never synced as a null: `encodeProfile` emits the
+  /// key only when non-null, so a never-chosen device can't clobber a
+  /// co-guardian's explicit choice (the server's `?` containment guard
+  /// backstops it).
+  BoolColumn get irregularFraming =>
+      boolean().named('irregular_framing').nullable()();
 
   /// Instant this profile's ownership last moved via
   /// `accept_ownership_transfer`, or null if it never has (R5). Never

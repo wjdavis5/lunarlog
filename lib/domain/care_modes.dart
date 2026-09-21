@@ -17,9 +17,21 @@
 ///
 /// Pure Dart (R14/R16); `test/architecture/layering_test.dart` enforces the
 /// import discipline.
+///
+/// Issue #853 splits the axis this registry used to conflate: `irregular`
+/// is no longer a rival value of `ProfileMode` but a flag composed with
+/// whatever life-stage mode the profile carries (`careModeCopyFor(mode,
+/// irregularFraming: ...)`). The composition keeps the base mode's voice —
+/// teen stays teen — and overlays the variance-expecting framing: a
+/// range-style estimate label, a quiet non-alarm overdue line replacing the
+/// error-styled late resolver, no tier caption, no fertile window. A teen
+/// profile defaults to the flag ON until its engine confidence reaches
+/// `CycleConfidence.high` (`irregularFramingInEffect`), so teen mode never
+/// says "late" out of the box.
 library;
 
 import 'models/profile_mode.dart';
+import 'prediction/prediction.dart' show CycleConfidence;
 import 'tags.dart';
 
 /// Builds the not-enough-history body from the live tally (issue #816):
@@ -70,6 +82,44 @@ String _irregularNotEnoughBody(int complete, int needed) =>
     '${completedCycleProgress(complete, needed)} Your estimates may stay '
     'ranges rather than dates.';
 
+/// Issue #853: the range-style estimate label for a composed
+/// (mode + irregular) profile — same hedging as the legacy `irregular`
+/// mode's label, in the base mode's own register.
+String _composedNextEstimateLabel(ProfileMode mode) => switch (mode) {
+      ProfileMode.teen => 'Your next period may start around:',
+      _ => 'Next period may start around:',
+    };
+
+/// Issue #853: the quiet overdue line replacing the error-styled late
+/// resolver when the flag composes. Teen keeps its body-literacy register
+/// ("still forming"); the other modes keep the legacy `irregular` mode's
+/// exact line, which existing irregular-mode profiles already see. Neither
+/// variant says "late" — variation is expected, not overdue.
+String _composedOverdueStatusLabel(ProfileMode mode) => switch (mode) {
+      ProfileMode.teen =>
+        'No new period logged yet — cycles often vary while a pattern is '
+            'still forming, and that is expected.',
+      _ => _irregular.overdueStatusLabel,
+    };
+
+/// Issue #853: the single action a teen's quiet overdue line offers ("log
+/// it when it comes" — the issue's own wording). Only the teen composition
+/// carries one; the adult composition stays a text-only line, exactly the
+/// behavior the legacy `irregular` mode had.
+String _composedOverdueActionLabel(ProfileMode mode) => switch (mode) {
+      ProfileMode.teen => 'Log it when it comes',
+      _ => '',
+    };
+
+/// Issue #853: the estimate-range sentence appended to a composed mode's
+/// not-enough-history body (the legacy `irregular` mode's own sentence,
+/// teen-voiced for teen).
+String _composedNotEnoughSuffix(ProfileMode mode) => switch (mode) {
+      ProfileMode.teen =>
+        ' Your estimates may stay ranges rather than dates for a while.',
+      _ => ' Your estimates may stay ranges rather than dates.',
+    };
+
 /// Per-mode vocabulary and logging defaults.
 class CareModeCopy {
   const CareModeCopy({
@@ -77,6 +127,7 @@ class CareModeCopy {
     required this.notEnoughBody,
     required this.nextEstimateLabel,
     required this.overdueStatusLabel,
+    this.overdueActionLabel = '',
     required this.silencesLateBanner,
     required this.showsTierCaption,
     required this.showsFertileWindow,
@@ -103,10 +154,21 @@ class CareModeCopy {
   /// is expected, not overdue.
   final String overdueStatusLabel;
 
+  /// Issue #853: the single action offered under [overdueStatusLabel], or
+  /// the empty string for a text-only line. Only the teen + irregular
+  /// composition carries one ("Log it when it comes" — the issue's own
+  /// wording): a quiet line with one honest way forward, never the adult
+  /// resolver's "skip this cycle". The action is the same "log it" the
+  /// resolver's primary button performs (it opens today's day sheet).
+  final String overdueActionLabel;
+
   /// Whether the late resolver (the error-styled banner with log-it /
-  /// skip-cycle / remind-me actions) is suppressed for this mode. Only
-  /// `irregular` silences it (Issue #131: "irregular mode specifically
-  /// silences the late banner").
+  /// skip-cycle / remind-me actions) is suppressed for this mode. The
+  /// legacy `irregular` mode and every composed (mode + irregular,
+  /// Issue #853) copy silence it — and, since #853, a `teen` profile
+  /// carries the flag by default until its engine confidence reaches
+  /// `CycleConfidence.high` (`irregularFramingInEffect`), so a
+  /// first-year tracker never sees the banner.
   final bool silencesLateBanner;
 
   /// Whether the overview's tier caption (issue #213: the short
@@ -344,12 +406,87 @@ const CareModeCopy _irregular = CareModeCopy(
   categoryLabels: _standardCategoryLabels,
 );
 
-/// The copy for [mode]. A switch expression naming every mode (no `_`
-/// wildcard): adding a [ProfileMode] without copy is a compile error, not a
-/// silently-wrong screen.
-CareModeCopy careModeCopyFor(ProfileMode mode) => switch (mode) {
-  ProfileMode.standard => _standard,
-  ProfileMode.teen => _teen,
-  ProfileMode.caregiver => _caregiver,
-  ProfileMode.irregular => _irregular,
-};
+/// The copy for [mode] alone (the legacy single-axis lookup): a switch
+/// expression naming every mode (no `_` wildcard), so adding a
+/// [ProfileMode] without copy is a compile error, not a silently-wrong
+/// screen.
+CareModeCopy _baseCopyFor(ProfileMode mode) => switch (mode) {
+      ProfileMode.standard => _standard,
+      ProfileMode.teen => _teen,
+      ProfileMode.caregiver => _caregiver,
+      ProfileMode.irregular => _irregular,
+    };
+
+/// Issue #853: the copy for the composed axis — [mode]'s own voice with the
+/// irregular framing overlaid when [irregularFraming] is in effect. The
+/// base mode keeps its title, not-enough title, category order and
+/// headings; the estimate label goes range-style, the late resolver is
+/// silenced and replaced by the quiet [CareModeCopy.overdueStatusLabel]
+/// (with the teen's single [CareModeCopy.overdueActionLabel] action), and
+/// the tier caption and fertile window are hidden (a precise-looking window
+/// derived from a range estimate is exactly the false precision this
+/// framing exists to avoid — the same reasoning the legacy `irregular`
+/// mode already applied).
+///
+/// [irregularFraming] is deliberately a *required* named parameter even
+/// though a caller that only wants the mode axis could pass `false`: every
+/// call site must state its framing choice out loud, so a future consumer
+/// can never silently read estimate/banner fields off the un-composed axis.
+/// Pass the *effective* flag, not the stored tri-state —
+/// [irregularFramingInEffect] resolves stored value, mode, and engine tier
+/// (callers that render only the mode axis — the day sheet's category
+/// headings — may pass the stored default `false`, since no field they
+/// read varies with the flag).
+CareModeCopy careModeCopyFor(
+  ProfileMode mode, {
+  required bool irregularFraming,
+}) {
+  final base = _baseCopyFor(mode);
+  // The legacy wire value is already its own full copy; composing on top
+  // would double-apply.
+  if (!irregularFraming || mode == ProfileMode.irregular) return base;
+  return CareModeCopy(
+    notEnoughTitle: base.notEnoughTitle,
+    notEnoughBody: (complete, needed) =>
+        '${base.notEnoughBody(complete, needed)}'
+        '${_composedNotEnoughSuffix(mode)}',
+    nextEstimateLabel: _composedNextEstimateLabel(mode),
+    overdueStatusLabel: _composedOverdueStatusLabel(mode),
+    overdueActionLabel: _composedOverdueActionLabel(mode),
+    silencesLateBanner: true,
+    showsTierCaption: false,
+    showsFertileWindow: false,
+    fertileWindowLabel: base.fertileWindowLabel,
+    fertileWindowLegend: base.fertileWindowLegend,
+    categoriesInOrder: base.categoriesInOrder,
+    categoryLabels: base.categoryLabels,
+  );
+}
+
+/// Issue #853: resolves the *effective* irregular framing for a profile.
+///
+/// * An explicitly stored value ([stored] non-null) wins in both
+///   directions — the operator's choice is never second-guessed by the
+///   engine.
+/// * The engine default for an unset value is derived from the mode and
+///   the prediction's confidence tier, never from age or birth year
+///   ("birth year never gates", #131's standing constraint):
+///   * `teen` — framing ON until the engine reaches
+///     `CycleConfidence.high` ([tier] null — no active estimate yet —
+///     also reads ON: the early, no-history months are exactly when the
+///     alarm framing would be wrong). Once the cycles steady into `high`,
+///     the framing lifts on its own; if they later become genuinely
+///     irregular again, the tier drops and the framing returns.
+///   * every other mode — OFF.
+///
+/// Pure; the caller supplies the tier the prediction stream already holds.
+bool irregularFramingInEffect({
+  required ProfileMode mode,
+  required bool? stored,
+  CycleConfidence? tier,
+}) {
+  if (stored != null) return stored;
+  if (mode == ProfileMode.irregular) return true;
+  if (mode != ProfileMode.teen) return false;
+  return tier == null || tier != CycleConfidence.high;
+}
