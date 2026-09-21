@@ -527,36 +527,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     final controller = context.read<ProfileController>();
     final l10n = AppLocalizations.of(context);
     final recorder = _resolveRecorder();
-    // Issue #845: resolved before the first await (the home gate unmounts
-    // this screen the moment the profile exists on the plain path). The
-    // consent write is best-effort and only attempted for a signed-in
-    // operator; the local boolean below stays the offline cache.
-    final auth = context.read<AuthController?>();
-    final consent = context.read<ConsentService?>();
     setState(() {
       _creating = true;
       _createError = null;
     });
     try {
-      if (!_ageAckPreviouslyRecorded && _ageAcknowledged) {
-        final store = context.read<SettingsStore>();
-        await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
-        await store.set(
-            SettingsKeys.minimumAgePolicyVersion, kMinimumAgePolicyVersion);
-        _ageAckPreviouslyRecorded = true;
-        if (consent != null && (auth?.state.hasUsableSession ?? false)) {
-          try {
-            await consent.recordMinimumAgeAcknowledgement(
-              consentVia: kConsentViaSelf13Plus,
-              appVersion: kAppVersionForExport,
-              policyVersion: kMinimumAgePolicyVersion,
-            );
-          } catch (_) {
-            // Best-effort: the local record above is the offline cache and
-            // the next re-prompt (or a later launch) will retry.
-          }
-        }
-      }
+      await _recordMinimumAgeConsent();
       final profile = await controller.createProfile(
         displayName: _nameController.text,
         isMinor: _isMinor,
@@ -568,10 +544,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
         // (`ProfileDialogs`' irregular-framing-toggle), which is also where
         // the framing is visible and changeable later.
         irregularFraming: null,
-        // Issue #804: "Me" stamps `self` (AC2); a cared-for card stamps
-        // the picked relationship.
-        relationship:
-            _caredForCard ? _relationship : ProfileRelationship.self,
+        relationship: _creationRelationship,
         // Issue #530: the three cycle answers feed provisional seeding —
         // captured here, not just in the recorder.
         facts: CycleFacts(
@@ -583,14 +556,53 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
       await recorder?.record(profile.id, _collectedAnswers(l10n));
       if (mounted) _onProfileCreated(profile);
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _createError = l10n.firstRunCreateError;
-        });
-      }
+      _reportCreateError(l10n);
     } finally {
-      if (mounted) setState(() => _creating = false);
+      _clearCreating();
     }
+  }
+
+  /// Issue #845: persist and, when signed in, sync the minimum-age
+  /// acknowledgement just given on the name form. Split out of [_create] to
+  /// keep that method's branching within the CRAP budget. The local settings
+  /// write is the offline cache; the account RPC is best-effort and swallowed
+  /// on failure (a later re-prompt or launch retries). Both context reads
+  /// happen before this method's first await, so it is safe to call from
+  /// [_create] before the first profile-creation await.
+  Future<void> _recordMinimumAgeConsent() async {
+    if (_ageAckPreviouslyRecorded || !_ageAcknowledged) return;
+    final store = context.read<SettingsStore>();
+    final auth = context.read<AuthController?>();
+    final consent = context.read<ConsentService?>();
+    await store.set(SettingsKeys.minimumAgeAcknowledged, 'true');
+    await store.set(
+        SettingsKeys.minimumAgePolicyVersion, kMinimumAgePolicyVersion);
+    _ageAckPreviouslyRecorded = true;
+    if (consent == null || !(auth?.state.hasUsableSession ?? false)) return;
+    try {
+      await consent.recordMinimumAgeAcknowledgement(
+        consentVia: kConsentViaSelf13Plus,
+        appVersion: kAppVersionForExport,
+        policyVersion: kMinimumAgePolicyVersion,
+      );
+    } catch (_) {
+      // Best-effort: the local record above is the offline cache.
+    }
+  }
+
+  /// Issue #804: the relationship stamped on a newly created profile — the
+  /// picked relationship on a cared-for card, `self` for the operator's own.
+  ProfileRelationship get _creationRelationship =>
+      _caredForCard ? _relationship : ProfileRelationship.self;
+
+  /// Surfaces a failed creation without touching [context] when unmounted.
+  void _reportCreateError(AppLocalizations l10n) {
+    if (!mounted) return;
+    setState(() => _createError = l10n.firstRunCreateError);
+  }
+
+  void _clearCreating() {
+    if (mounted) setState(() => _creating = false);
   }
 
   /// Issue #804: after a successful creation inside the household flow,
