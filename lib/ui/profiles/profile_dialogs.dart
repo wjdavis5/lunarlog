@@ -467,6 +467,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   /// becomes a read-only, derived display — the operator can no longer set
   /// a flag that disagrees with the age.
   Widget _minorControl(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     if (!_hasBirthYear) {
       return CheckboxListTile(
         key: const ValueKey('edit-minor-checkbox'),
@@ -474,7 +475,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
         onChanged: (value) => setState(() => _isMinor = value ?? false),
         controlAffinity: ListTileControlAffinity.leading,
         contentPadding: EdgeInsets.zero,
-        title: const Text('This profile is for a minor'),
+        title: Text(l10n.firstRunMinorLabel),
       );
     }
     final isMinor = deriveMinorStatus(
@@ -491,8 +492,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
         color: theme.colorScheme.onSurfaceVariant,
       ),
       title: Text(isMinor
-          ? 'Counts as a minor (derived from birth year)'
-          : 'Counts as an adult (derived from birth year)'),
+          ? l10n.profileDialogCountsAsMinor
+          : l10n.profileDialogCountsAsAdult),
     );
   }
 
@@ -633,6 +634,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
   Widget build(BuildContext context) {
     final existing = widget.existing;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return SafeArea(
       child: ResponsiveBody(
         child: Padding(
@@ -648,8 +650,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
           children: [
             Text(
               existing == null
-                  ? 'Add profile'
-                  : AppLocalizations.of(context).editProfileAction,
+                  ? l10n.profileDialogAddTitle
+                  : l10n.editProfileAction,
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: LLSpace.space3),
@@ -664,7 +666,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         controller: _name,
                         focusNode: _nameFocus,
                         autofocus: true,
-                        decoration: const InputDecoration(labelText: 'Name'),
+                        decoration: InputDecoration(
+                            labelText: l10n.firstRunNameLabel),
                         maxLength: kMaxDisplayNameLength,
                         maxLengthEnforcement: MaxLengthEnforcement.enforced,
                         validator: validateProfileName,
@@ -686,7 +689,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Care mode',
+                                l10n.firstRunCareModeLabel,
                                 key: const ValueKey('care-mode-label'),
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
@@ -731,8 +734,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         // the Create/Save action.
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _submit(),
-                        decoration: const InputDecoration(
-                          labelText: 'Birth year (optional)',
+                        decoration: InputDecoration(
+                          labelText: l10n.profileDialogBirthYearLabel,
                         ),
                         // Issue #923: refuse a birth year later than the
                         // profile's earliest live entry — such a year would
@@ -751,7 +754,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Relationship',
+                                l10n.firstRunRelationshipLabel,
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ),
@@ -761,8 +764,9 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                               onChanged: (value) =>
                                   setState(() => _relationship = value),
                               items: [
-                                const DropdownMenuItem<ProfileRelationship?>(
-                                  child: Text('None'),
+                                DropdownMenuItem<ProfileRelationship?>(
+                                  child:
+                                      Text(l10n.profileDialogRelationshipNone),
                                 ),
                                 for (final relationship in ProfileRelationship.values)
                                   DropdownMenuItem<ProfileRelationship?>(
@@ -865,11 +869,13 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.profileDialogCancel),
                 ),
                 FilledButton(
                   onPressed: _submit,
-                  child: Text(existing == null ? 'Create' : 'Save'),
+                  child: Text(existing == null
+                      ? l10n.profileDialogCreate
+                      : l10n.profileDialogSave),
                 ),
               ],
             ),
@@ -885,25 +891,25 @@ Future<bool> confirmArchiveProfile(
   BuildContext context,
   Profile profile,
 ) async {
+  final l10n = AppLocalizations.of(context);
   final confirmed = await showDialog<bool>(
     context: context,
     routeSettings: const RouteSettings(name: kRouteProfileArchiveDialog),
     builder: (dialogContext) => AlertDialog(
-      title: Text('Archive ${profile.displayName}?'),
-      content: const SingleChildScrollView(
+      title: Text(l10n.profileArchiveConfirmTitle(profile.displayName)),
+      content: SingleChildScrollView(
         child: Text(
-          'The profile moves to the archived list and out of everyday use. '
-          'Its history stays on this device and can be restored at any time.',
+          l10n.profileArchiveConfirmBody,
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('Cancel'),
+          child: Text(l10n.profileArchiveConfirmCancel),
         ),
         DestructiveButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
-          child: const Text('Archive'),
+          child: Text(l10n.profileArchiveConfirmButton),
         ),
       ],
     ),

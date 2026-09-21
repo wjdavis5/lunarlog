@@ -151,10 +151,13 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.profile.displayName} Care')),
+      appBar: AppBar(
+          title: Text(AppLocalizations.of(context)
+              .careNotesTitle(widget.profile.displayName))),
       body: StreamBuilder<List<ProfileGuardian>>(
         stream: _guardiansStream,
         builder: (context, guardiansSnapshot) {
+          final l10n = AppLocalizations.of(context);
           final guardians = guardiansSnapshot.data ?? const [];
           final viewerReadOnly =
               acceptedGuardianFor(guardians, _currentUserId)?.role.canLog ==
@@ -165,7 +168,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
             _currentUserId,
           )?.role;
           final readOnlyReason = widget.readOnly
-              ? 'This profile is archived.'
+              ? l10n.careNotesReadOnlyArchived
               : viewerGuardianRole == null
               ? null
               : guardianRoleReadOnlyReason(
@@ -256,7 +259,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       _noteController.clear();
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not save the care note.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesSaveError);
       }
     } finally {
       if (mounted) setState(() => _savingNote = false);
@@ -278,7 +282,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       _itemController.clear();
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not add the prep item.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesAddPrepError);
       }
     } finally {
       if (mounted) setState(() => _savingItem = false);
@@ -301,7 +306,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       _supplyController.clear();
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not add the supply item.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesAddSupplyError);
       }
     } finally {
       if (mounted) setState(() => _savingSupply = false);
@@ -318,7 +324,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       );
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not update the prep item.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesUpdatePrepError);
       }
     }
   }
@@ -329,7 +336,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       await widget.repository.deletePrepItem(item.id);
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not remove the prep item.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesRemovePrepError);
       }
     }
   }
@@ -340,18 +348,16 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
   /// action pattern used elsewhere (e.g. `profile_dialogs.dart`'s archive
   /// confirm, `manage_guardians_screen.dart`'s remove/cancel confirms).
   Future<void> _deleteNote(CareNote note) async {
+    final l10n = AppLocalizations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this care note?'),
-        content: const Text(
-          'Every guardian with access to this profile can see this note. '
-          'Deleting it removes it for everyone and cannot be undone.',
-        ),
+        title: Text(l10n.careNotesDeleteTitle),
+        content: Text(l10n.careNotesDeleteBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.careNotesDeleteCancel),
           ),
           FilledButton(
             key: const ValueKey('care-note-delete-confirm'),
@@ -359,7 +365,7 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
-            child: const Text('Delete'),
+            child: Text(l10n.careNotesDeleteConfirm),
           ),
         ],
       ),
@@ -371,7 +377,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       await widget.repository.deleteCareNote(note.id);
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not remove the care note.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesRemoveNoteError);
       }
     }
   }
@@ -382,7 +389,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       await widget.repository.clearCheckedPrepItems(widget.profile.id);
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not clear the checked items.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesClearCheckedError);
       }
     }
   }
@@ -396,7 +404,8 @@ class _CareNotesScreenState extends State<CareNotesScreen> {
       );
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Could not clear the stocked items.');
+        setState(() => _error =
+            AppLocalizations.of(context).careNotesClearStockedError);
       }
     }
   }
@@ -413,7 +422,7 @@ String careActorCopy(
   String? currentUserId,
 ) {
   if (userId != null) {
-    if (userId == currentUserId) return 'you';
+    if (userId == currentUserId) return l10n.careNotesActorYou;
     final guardian = _guardianFor(userId, guardians);
     if (guardian != null) {
       final name = guardian.displayName;
@@ -422,7 +431,7 @@ String careActorCopy(
           : name;
     }
   }
-  return 'Guardian';
+  return l10n.careNotesActorGuardian;
 }
 
 /// The guardian row for [userId], or null when no row matches. Split out
@@ -458,21 +467,22 @@ class _CareNotesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const ListSectionHeader(
-          title: 'Care notes',
-          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ListSectionHeader(
+          title: l10n.careNotesSectionTitle,
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
         ),
         StreamBuilder<List<CareNote>>(
           stream: notesStream,
           builder: (context, snapshot) {
             final notes = snapshot.data ?? const [];
             if (notes.isEmpty) {
-              return const Text(
-                'No care notes yet.',
-                key: ValueKey('care-notes-empty'),
+              return Text(
+                l10n.careNotesEmpty,
+                key: const ValueKey('care-notes-empty'),
               );
             }
             return Card(
@@ -515,9 +525,9 @@ class _CareNotesSection extends StatelessWidget {
             // (a "done" action would steal the enter key from line
             // breaks).
             textInputAction: TextInputAction.newline,
-            decoration: const InputDecoration(
-              labelText: 'Add a care note',
-              hintText: 'Standing notes for everyone caring for this profile',
+            decoration: InputDecoration(
+              labelText: l10n.careNotesAddLabel,
+              hintText: l10n.careNotesAddHint,
             ),
           ),
           Align(
@@ -525,7 +535,7 @@ class _CareNotesSection extends StatelessWidget {
             child: FilledButton(
               key: const ValueKey('care-note-add'),
               onPressed: saving ? null : onAdd,
-              child: const Text('Add note'),
+              child: Text(l10n.careNotesAddButton),
             ),
           ),
         ],
@@ -615,21 +625,22 @@ class _VisitPrepSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const ListSectionHeader(
-          title: 'Visit prep',
-          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ListSectionHeader(
+          title: l10n.careVisitPrepSectionTitle,
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
         ),
         StreamBuilder<List<VisitPrepItem>>(
           stream: prepStream,
           builder: (context, snapshot) {
             final items = snapshot.data ?? const [];
             if (items.isEmpty) {
-              return const Text(
-                'No prep items yet.',
-                key: ValueKey('visit-prep-empty'),
+              return Text(
+                l10n.careVisitPrepEmpty,
+                key: const ValueKey('visit-prep-empty'),
               );
             }
             final checkedCount = items.where((i) => i.isChecked).length;
@@ -650,6 +661,7 @@ class _VisitPrepSection extends StatelessWidget {
                           canWrite: canWrite,
                           onToggle: onToggle,
                           onDelete: onDelete,
+                          checkedVerb: l10n.careVisitPrepCheckedVerb,
                         ),
                       ],
                     ],
@@ -661,7 +673,7 @@ class _VisitPrepSection extends StatelessWidget {
                     child: TextButton(
                       key: const ValueKey('visit-prep-clear-checked'),
                       onPressed: onClearChecked,
-                      child: Text('Clear checked ($checkedCount)'),
+                      child: Text(l10n.careVisitPrepClearChecked(checkedCount)),
                     ),
                   ),
               ],
@@ -680,9 +692,9 @@ class _VisitPrepSection extends StatelessWidget {
             onSubmitted: (_) {
               if (!saving) unawaited(onAdd());
             },
-            decoration: const InputDecoration(
-              labelText: 'Add a prep item',
-              hintText: 'A question or to-bring for the next appointment',
+            decoration: InputDecoration(
+              labelText: l10n.careVisitPrepAddLabel,
+              hintText: l10n.careVisitPrepAddHint,
             ),
           ),
           Align(
@@ -690,7 +702,7 @@ class _VisitPrepSection extends StatelessWidget {
             child: FilledButton(
               key: const ValueKey('visit-prep-add'),
               onPressed: saving ? null : onAdd,
-              child: const Text('Add item'),
+              child: Text(l10n.careVisitPrepAddButton),
             ),
           ),
         ],
@@ -709,7 +721,7 @@ class _VisitPrepRow extends StatelessWidget {
     required this.onToggle,
     required this.onDelete,
     this.keyPrefix = 'visit-prep',
-    this.checkedVerb = 'Checked by',
+    required this.checkedVerb,
   });
 
   final VisitPrepItem item;
@@ -797,12 +809,13 @@ class _SuppliesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const ListSectionHeader(
-          title: 'Supplies',
-          padding: EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
+        ListSectionHeader(
+          title: l10n.careSuppliesSectionTitle,
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, LLSpace.space2),
         ),
         StreamBuilder<List<VisitPrepItem>>(
           stream: supplyStream,
@@ -819,9 +832,9 @@ class _SuppliesSection extends StatelessWidget {
               children: [
                 if (nudge != null) _RestockNudgeBanner(nudge: nudge),
                 if (items.isEmpty)
-                  const Text(
-                    'No supplies tracked yet.',
-                    key: ValueKey('supplies-empty'),
+                  Text(
+                    l10n.careSuppliesEmpty,
+                    key: const ValueKey('supplies-empty'),
                   )
                 else
                   Card(
@@ -839,7 +852,7 @@ class _SuppliesSection extends StatelessWidget {
                             onToggle: onToggle,
                             onDelete: onDelete,
                             keyPrefix: 'supply',
-                            checkedVerb: 'Stocked by',
+                            checkedVerb: l10n.careSuppliesStockedVerb,
                           ),
                         ],
                       ],
@@ -851,7 +864,7 @@ class _SuppliesSection extends StatelessWidget {
                     child: TextButton(
                       key: const ValueKey('supplies-clear-stocked'),
                       onPressed: onClearChecked,
-                      child: Text('Clear stocked ($stockedCount)'),
+                      child: Text(l10n.careSuppliesClearStocked(stockedCount)),
                     ),
                   ),
               ],
@@ -868,9 +881,9 @@ class _SuppliesSection extends StatelessWidget {
             onSubmitted: (_) {
               if (!saving) unawaited(onAdd());
             },
-            decoration: const InputDecoration(
-              labelText: 'Add a supply item',
-              hintText: 'Something to keep stocked, e.g. liners',
+            decoration: InputDecoration(
+              labelText: l10n.careSuppliesAddLabel,
+              hintText: l10n.careSuppliesAddHint,
             ),
           ),
           Align(
@@ -878,7 +891,7 @@ class _SuppliesSection extends StatelessWidget {
             child: FilledButton(
               key: const ValueKey('supplies-add'),
               onPressed: saving ? null : onAdd,
-              child: const Text('Add supply'),
+              child: Text(l10n.careSuppliesAddButton),
             ),
           ),
         ],
@@ -907,7 +920,7 @@ class _RestockNudgeBanner extends StatelessWidget {
       key: const ValueKey('supplies-restock-nudge'),
       child: ListTile(
         leading: const Icon(Icons.shopping_cart_outlined),
-        title: Text('Restock before $date'),
+        title: Text(AppLocalizations.of(context).careRestockBefore(date)),
         subtitle: Text(names),
       ),
     );
