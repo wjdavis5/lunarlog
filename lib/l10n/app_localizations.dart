@@ -2784,10 +2784,10 @@ abstract class AppLocalizations {
   /// **'That sign-in method already belongs to another account.'**
   String get authFailureIdentityTaken;
 
-  /// AuthSignUpClosedFailure copy.
+  /// AuthSignUpClosedFailure copy. Issue #1003: the old line blocked an invitee with no next step; this names who can invite them.
   ///
   /// In en, this message translates to:
-  /// **'New accounts for this app are set up by the account owner.'**
+  /// **'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.'**
   String get authFailureSignUpClosed;
 
   /// AuthLastSignInMethodFailure copy.
@@ -3672,16 +3672,16 @@ abstract class AppLocalizations {
   /// **'Update note'**
   String get guardianNotesUpdate;
 
-  /// Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.
+  /// Invite dialog (Issue #802): the 'their own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker. Issue #1003: gender-neutral — the preset is offered for daughter/son/child, so 'her' was wrong.
   ///
   /// In en, this message translates to:
-  /// **'Invite {name} to log her own profile'**
+  /// **'Invite {name} to log their own profile'**
   String inviteSubjectOption(String name);
 
-  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.
+  /// Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Caregiver access - this is {name}\'s own profile, listed as hers on her device'**
+  /// **'Caregiver access - this is {name}\'s own profile, listed as theirs on their device'**
   String inviteSubjectOptionDetail(String name);
 
   /// Invite dialog, generated state: what to do with a helper invitation link.
@@ -3690,10 +3690,10 @@ abstract class AppLocalizations {
   /// **'Share this single-use link with the guardian for {profile}:'**
   String inviteCreatedShareGuardian(String profile);
 
-  /// Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.
+  /// Invite dialog, generated state (Issue #802): what to do with a 'their own profile' invitation link. Issue #1003: gender-neutral.
   ///
   /// In en, this message translates to:
-  /// **'Share this single-use link with {name} - she\'ll use it to join and log her own profile:'**
+  /// **'Share this single-use link with {name} - they\'ll use it to join and log their own profile:'**
   String inviteCreatedShareSubject(String name);
 
   /// Accept sheet (Issue #802, per #800's plain-language decision): the intro shown when the invitation carries the 'her own profile' preset.
@@ -3899,6 +3899,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t confirm it\'s you — try again'**
   String get accountReauthFailed;
+
+  /// Issue #1003: delete-account dialog body — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.'**
+  String get accountDeleteDialogBody;
+
+  /// Issue #1003: Settings delete-account tile subtitle — plain language, no 'server rows' jargon.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes the account, everything in it, and this device\'s copy.'**
+  String get accountDeleteTileSubtitle;
+
+  /// Issue #1003: the sign-out-everywhere confirmation body — plainer and shorter than the previous 'Ends every session…' copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.'**
+  String get accountSignOutEverywhereBody;
+
+  /// Issue #1003: transfer-ownership confirmation body. Names the canonical 'Primary Guardian' role and the continuing role the arming parent chose.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} will become the Primary Guardian of this profile. You\'ll keep access as {role}, and they can remove that access at any time.'**
+  String transferOwnershipConfirmBody(String name, String role);
+
+  /// Issue #1003: transfer-ownership 'What changes' bullet — 'Primary Guardian', not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} becomes this profile\'s Primary Guardian.'**
+  String transferOwnershipBecomesGuardian(String name);
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the co_parent role — the canonical 'Co-Parent' label, not 'Co-manager'.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent: keep logging entries and managing this profile.'**
+  String get transferOwnershipRoleCoParent;
+
+  /// Issue #1003: transfer-ownership post-transfer role description for the viewer role.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer: read-only access to their calendar and entries.'**
+  String get transferOwnershipRoleViewer;
+
+  /// Issue #1003: the revoke confirmation dialog title when the caller is removing their own row — 'Leave', not 'Remove <name>'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave {profile}\'s profile?'**
+  String manageGuardiansLeaveProfileDialogTitle(String profile);
+
+  /// Issue #1003: the confirm button on the caller's own leave dialog — 'Leave', not 'Remove'.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get manageGuardiansLeaveProfileConfirm;
+
+  /// Issue #1003: pending prediction-connection tile title with no recipient label — plain language, not 'code redemption'.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for them to open the link'**
+  String get manageGuardiansWaitingForRedemption;
+
+  /// Issue #1003: the confirm action of the 'Sync {name} to this phone?' dialog — matches the title verb, not 'Bind'.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync'**
+  String get healthSyncConfirmSyncAction;
+
+  /// Issue #1003: the recipient's manual-entry dialog title — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a connection link'**
+  String get predictionEnterLinkTitle;
+
+  /// Issue #1003: the recipient's manual-entry field hint — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the link you received'**
+  String get predictionEnterLinkHint;
+
+  /// Issue #1003: the recipient's manual-entry FAB label — says 'link' to match what the sharer copies.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter link'**
+  String get predictionEnterLinkAction;
+
+  /// Issue #1003: the sharer's copy action — sentence case and one term ('link') with the recipient's entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy link'**
+  String get sharePredictionsCopyLink;
+
+  /// Issue #1003: the sharer's expiry note — says 'link', matching the copied artifact and the recipient's wording.
+  ///
+  /// In en, this message translates to:
+  /// **'The link expires in 72 hours and can be used once.'**
+  String get sharePredictionsLinkExpiry;
+
+  /// Issue #1003: the claim-transfer confirm button — names the canonical 'Primary Guardian' role, not 'Owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Become Primary Guardian'**
+  String get claimProfileBecomeGuardianAction;
+
+  /// Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'.
+  ///
+  /// In en, this message translates to:
+  /// **'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
+  String get claimProfileBody;
 }
 
 class _AppLocalizationsDelegate

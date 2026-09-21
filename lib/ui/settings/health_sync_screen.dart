@@ -382,7 +382,9 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
           FilledButton(
             key: const ValueKey('health-sync-confirm-bind'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Bind'),
+            child: Text(
+              AppLocalizations.of(dialogContext).healthSyncConfirmSyncAction,
+            ),
           ),
         ],
       ),

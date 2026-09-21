@@ -2161,9 +2161,9 @@
   "@authFailureIdentityTaken": {
     "description": "AuthIdentityTakenFailure copy."
   },
-  "authFailureSignUpClosed": "New accounts for this app are set up by the account owner.",
+  "authFailureSignUpClosed": "New accounts are created by invitation. Ask the person who set up your family's lunarlog to invite you.",
   "@authFailureSignUpClosed": {
-    "description": "AuthSignUpClosedFailure copy."
+    "description": "AuthSignUpClosedFailure copy. Issue #1003: the old line blocked an invitee with no next step; this names who can invite them."
   },
   "authFailureLastSignInMethod": "That is the only way left to sign in to this account. Add another method first.",
   "@authFailureLastSignInMethod": {
@@ -2853,18 +2853,18 @@
   "@guardianNotesUpdate": {
     "description": "Day sheet: button that saves an edit to an existing guardian note (Issue #801)."
   },
-  "inviteSubjectOption": "Invite {name} to log her own profile",
+  "inviteSubjectOption": "Invite {name} to log their own profile",
   "@inviteSubjectOption": {
-    "description": "Invite dialog (Issue #802): the 'her own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker.",
+    "description": "Invite dialog (Issue #802): the 'their own profile' preset choice, offered when the profile's relationship is daughter/son/child or the profile is a minor's. Grants the caregiver role plus the subject marker. Issue #1003: gender-neutral — the preset is offered for daughter/son/child, so 'her' was wrong.",
     "placeholders": {
       "name": {
         "type": "String"
       }
     }
   },
-  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as hers on her device",
+  "inviteSubjectOptionDetail": "Caregiver access - this is {name}'s own profile, listed as theirs on their device",
   "@inviteSubjectOptionDetail": {
-    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel.",
+    "description": "Invite dialog (Issue #802): the consequence line under the subject preset choice, naming what it grants without the caregiver mislabel. Issue #1003: gender-neutral.",
     "placeholders": {
       "name": {
         "type": "String"
@@ -2880,9 +2880,9 @@
       }
     }
   },
-  "inviteCreatedShareSubject": "Share this single-use link with {name} - she'll use it to join and log her own profile:",
+  "inviteCreatedShareSubject": "Share this single-use link with {name} - they'll use it to join and log their own profile:",
   "@inviteCreatedShareSubject": {
-    "description": "Invite dialog, generated state (Issue #802): what to do with a 'her own profile' invitation link.",
+    "description": "Invite dialog, generated state (Issue #802): what to do with a 'their own profile' invitation link. Issue #1003: gender-neutral.",
     "placeholders": {
       "name": {
         "type": "String"
@@ -3112,5 +3112,95 @@
   "accountReauthFailed": "Couldn't confirm it's you — try again",
   "@accountReauthFailed": {
     "description": "Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop."
+  },
+  "accountDeleteDialogBody": "This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.",
+  "@accountDeleteDialogBody": {
+    "description": "Issue #1003: delete-account dialog body — plain language, no 'server rows' jargon."
+  },
+  "accountDeleteTileSubtitle": "Deletes the account, everything in it, and this device's copy.",
+  "@accountDeleteTileSubtitle": {
+    "description": "Issue #1003: Settings delete-account tile subtitle — plain language, no 'server rows' jargon."
+  },
+  "accountSignOutEverywhereBody": "Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.",
+  "@accountSignOutEverywhereBody": {
+    "description": "Issue #1003: the sign-out-everywhere confirmation body — plainer and shorter than the previous 'Ends every session…' copy."
+  },
+  "transferOwnershipConfirmBody": "{name} will become the Primary Guardian of this profile. You'll keep access as {role}, and they can remove that access at any time.",
+  "@transferOwnershipConfirmBody": {
+    "description": "Issue #1003: transfer-ownership confirmation body. Names the canonical 'Primary Guardian' role and the continuing role the arming parent chose.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "role": {
+        "type": "String"
+      }
+    }
+  },
+  "transferOwnershipBecomesGuardian": "{name} becomes this profile's Primary Guardian.",
+  "@transferOwnershipBecomesGuardian": {
+    "description": "Issue #1003: transfer-ownership 'What changes' bullet — 'Primary Guardian', not 'owner'.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "transferOwnershipRoleCoParent": "Co-Parent: keep logging entries and managing this profile.",
+  "@transferOwnershipRoleCoParent": {
+    "description": "Issue #1003: transfer-ownership post-transfer role description for the co_parent role — the canonical 'Co-Parent' label, not 'Co-manager'."
+  },
+  "transferOwnershipRoleViewer": "Viewer: read-only access to their calendar and entries.",
+  "@transferOwnershipRoleViewer": {
+    "description": "Issue #1003: transfer-ownership post-transfer role description for the viewer role."
+  },
+  "manageGuardiansLeaveProfileDialogTitle": "Leave {profile}'s profile?",
+  "@manageGuardiansLeaveProfileDialogTitle": {
+    "description": "Issue #1003: the revoke confirmation dialog title when the caller is removing their own row — 'Leave', not 'Remove <name>'.",
+    "placeholders": {
+      "profile": {
+        "type": "String"
+      }
+    }
+  },
+  "manageGuardiansLeaveProfileConfirm": "Leave",
+  "@manageGuardiansLeaveProfileConfirm": {
+    "description": "Issue #1003: the confirm button on the caller's own leave dialog — 'Leave', not 'Remove'."
+  },
+  "manageGuardiansWaitingForRedemption": "Waiting for them to open the link",
+  "@manageGuardiansWaitingForRedemption": {
+    "description": "Issue #1003: pending prediction-connection tile title with no recipient label — plain language, not 'code redemption'."
+  },
+  "healthSyncConfirmSyncAction": "Sync",
+  "@healthSyncConfirmSyncAction": {
+    "description": "Issue #1003: the confirm action of the 'Sync {name} to this phone?' dialog — matches the title verb, not 'Bind'."
+  },
+  "predictionEnterLinkTitle": "Enter a connection link",
+  "@predictionEnterLinkTitle": {
+    "description": "Issue #1003: the recipient's manual-entry dialog title — says 'link' to match what the sharer copies."
+  },
+  "predictionEnterLinkHint": "Paste the link you received",
+  "@predictionEnterLinkHint": {
+    "description": "Issue #1003: the recipient's manual-entry field hint — says 'link' to match what the sharer copies."
+  },
+  "predictionEnterLinkAction": "Enter link",
+  "@predictionEnterLinkAction": {
+    "description": "Issue #1003: the recipient's manual-entry FAB label — says 'link' to match what the sharer copies."
+  },
+  "sharePredictionsCopyLink": "Copy link",
+  "@sharePredictionsCopyLink": {
+    "description": "Issue #1003: the sharer's copy action — sentence case and one term ('link') with the recipient's entry point."
+  },
+  "sharePredictionsLinkExpiry": "The link expires in 72 hours and can be used once.",
+  "@sharePredictionsLinkExpiry": {
+    "description": "Issue #1003: the sharer's expiry note — says 'link', matching the copied artifact and the recipient's wording."
+  },
+  "claimProfileBecomeGuardianAction": "Become Primary Guardian",
+  "@claimProfileBecomeGuardianAction": {
+    "description": "Issue #1003: the claim-transfer confirm button — names the canonical 'Primary Guardian' role, not 'Owner'."
+  },
+  "claimProfileBody": "Claiming this link makes you this profile's Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.",
+  "@claimProfileBody": {
+    "description": "Issue #1003: the claim-transfer intro — names the canonical 'Primary Guardian' role, not 'owner'."
   }
 }

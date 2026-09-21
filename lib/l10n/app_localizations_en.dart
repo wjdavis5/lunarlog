@@ -1720,7 +1720,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authFailureSignUpClosed =>
-      'New accounts for this app are set up by the account owner.';
+      'New accounts are created by invitation. Ask the person who set up your family\'s lunarlog to invite you.';
 
   @override
   String get authFailureLastSignInMethod =>
@@ -2238,12 +2238,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteSubjectOption(String name) {
-    return 'Invite $name to log her own profile';
+    return 'Invite $name to log their own profile';
   }
 
   @override
   String inviteSubjectOptionDetail(String name) {
-    return 'Caregiver access - this is $name\'s own profile, listed as hers on her device';
+    return 'Caregiver access - this is $name\'s own profile, listed as theirs on their device';
   }
 
   @override
@@ -2253,7 +2253,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String inviteCreatedShareSubject(String name) {
-    return 'Share this single-use link with $name - she\'ll use it to join and log her own profile:';
+    return 'Share this single-use link with $name - they\'ll use it to join and log their own profile:';
   }
 
   @override
@@ -2438,4 +2438,72 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
+
+  @override
+  String get accountDeleteDialogBody =>
+      'This permanently deletes your account, everything stored in it, and the copy on this device. This cannot be undone.';
+
+  @override
+  String get accountDeleteTileSubtitle =>
+      'Deletes the account, everything in it, and this device\'s copy.';
+
+  @override
+  String get accountSignOutEverywhereBody =>
+      'Signs this account out on every device. Other devices may keep working for up to an hour. The copy on this device is removed; everything stays in your account.';
+
+  @override
+  String transferOwnershipConfirmBody(String name, String role) {
+    return '$name will become the Primary Guardian of this profile. You\'ll keep access as $role, and they can remove that access at any time.';
+  }
+
+  @override
+  String transferOwnershipBecomesGuardian(String name) {
+    return '$name becomes this profile\'s Primary Guardian.';
+  }
+
+  @override
+  String get transferOwnershipRoleCoParent =>
+      'Co-Parent: keep logging entries and managing this profile.';
+
+  @override
+  String get transferOwnershipRoleViewer =>
+      'Viewer: read-only access to their calendar and entries.';
+
+  @override
+  String manageGuardiansLeaveProfileDialogTitle(String profile) {
+    return 'Leave $profile\'s profile?';
+  }
+
+  @override
+  String get manageGuardiansLeaveProfileConfirm => 'Leave';
+
+  @override
+  String get manageGuardiansWaitingForRedemption =>
+      'Waiting for them to open the link';
+
+  @override
+  String get healthSyncConfirmSyncAction => 'Sync';
+
+  @override
+  String get predictionEnterLinkTitle => 'Enter a connection link';
+
+  @override
+  String get predictionEnterLinkHint => 'Paste the link you received';
+
+  @override
+  String get predictionEnterLinkAction => 'Enter link';
+
+  @override
+  String get sharePredictionsCopyLink => 'Copy link';
+
+  @override
+  String get sharePredictionsLinkExpiry =>
+      'The link expires in 72 hours and can be used once.';
+
+  @override
+  String get claimProfileBecomeGuardianAction => 'Become Primary Guardian';
+
+  @override
+  String get claimProfileBody =>
+      'Claiming this link makes you this profile\'s Primary Guardian. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.';
 }

@@ -197,13 +197,14 @@ class _PredictionConnectionsScreenState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Shared with me')),
       floatingActionButton: FloatingActionButton.extended(
         key: const ValueKey('enter-prediction-code'),
         onPressed: _enterCode,
         icon: const Icon(Icons.vpn_key_outlined),
-        label: const Text('Enter code'),
+        label: Text(l10n.predictionEnterLinkAction),
       ),
       body: FutureBuilder<List<IncomingPredictionConnection>>(
         future: _connectionsFuture,
@@ -342,7 +343,7 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Enter connection code'),
+      title: Text(AppLocalizations.of(context).predictionEnterLinkTitle),
       content: TextField(
         key: const ValueKey('prediction-code-field'),
         controller: _controller,
@@ -351,8 +352,8 @@ class _EnterCodeDialogState extends State<_EnterCodeDialog> {
         // action (identical to the button's pop-with-trimmed-code).
         textInputAction: TextInputAction.done,
         onSubmitted: (_) => Navigator.of(context).pop(_controller.text.trim()),
-        decoration: const InputDecoration(
-          hintText: 'Paste the code you received',
+        decoration: InputDecoration(
+          hintText: AppLocalizations.of(context).predictionEnterLinkHint,
         ),
       ),
       actions: [

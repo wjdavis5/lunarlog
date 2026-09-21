@@ -1227,7 +1227,7 @@ void main() {
           find.byKey(const ValueKey('share-predictions-copied-confirmation')),
           findsNothing,
         );
-        await tester.tap(find.widgetWithText(FilledButton, 'Copy Link'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Copy link'));
         await tester.pump();
         expect(find.text('Copied to clipboard'), findsOneWidget);
 
