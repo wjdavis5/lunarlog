@@ -511,20 +511,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         // (and offers the settings link) without leaving the screen.
         _permissionStatus = permissionStatus;
       });
-      // Issue #1017: bring the result into view and, for a completed pass
-      // that read something, announce its headline in a SnackBar so the
-      // result is impossible to miss. A blocked/empty pass has no headline
-      // to announce; scrolling alone reveals its copy.
-      _revealResult();
-      if (!summary.isBlocked && !summary.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _completedSummaryHeadline(AppLocalizations.of(context), summary),
-            ),
-          ),
-        );
-      }
+      _announceResult(summary);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -534,6 +521,23 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       });
       _revealResult();
     }
+  }
+
+  /// Issue #1017: bring the result into view and, for a completed pass that
+  /// read something, announce its headline in a SnackBar so the result is
+  /// impossible to miss. A blocked/empty pass has no headline to announce;
+  /// scrolling alone reveals its copy. Split out of [_runImport] so that
+  /// method stays under the CRAP threshold.
+  void _announceResult(HealthImportSummary summary) {
+    _revealResult();
+    if (summary.isBlocked || summary.isEmpty) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _completedSummaryHeadline(AppLocalizations.of(context), summary),
+        ),
+      ),
+    );
   }
 
   /// The copy for a pass that ended before reading — a guard refusal or a
