@@ -358,10 +358,10 @@ abstract class AppLocalizations {
   /// **'Could not load cycle history.'**
   String get cycleHistoryLoadError;
 
-  /// Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted.
+  /// Issue #816: subtitle on the cycle-history list's open ('Current cycle') row, making it visible that the in-progress cycle is not part of the completed-cycle tally shown in the section header. Replaced by a skip-specific subtitle when the open cycle is omitted. Issue #1005: third person, so a guardian reading this for someone else's profile is not told 'your period'.
   ///
   /// In en, this message translates to:
-  /// **'Not counted yet — your next period completes it'**
+  /// **'Not counted yet — the next period completes it'**
   String get cycleHistoryOpenCycleNotCounted;
 
   /// Issue #235: CycleHistorySection's header button that enters selection mode, letting the operator pick exactly two cycles to compare side by side.
@@ -781,12 +781,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Imported, not recognised'**
   String get daySheetUnmappedImported;
-
-  /// Caption under a taxonomy category whose option set is not yet attested (issue #249): the category exists but ships no options until a real Clue export pins them.
-  ///
-  /// In en, this message translates to:
-  /// **'Unverified — pin before shipping'**
-  String get daySheetUnverifiedPin;
 
   /// Issue #234: visible hint text in CategoryPicker's search field above the tag chip grid.
   ///
@@ -1799,10 +1793,10 @@ abstract class AppLocalizations {
   /// **'Restore from backup or Clue export'**
   String get firstRunRestore;
 
-  /// Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability.
+  /// Caption at the top of the cycle-questions step; states skippability and (truthfully, for the two persisted answers) later editability. Issue #1005: names the field 'life-stage mode' (the edit dialog's own label) and points at the 'Edit profile' action instead of inventing a fifth way to say where.
   ///
   /// In en, this message translates to:
-  /// **'A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.'**
+  /// **'A few optional questions to set this profile up — every one can be skipped. The life-stage mode and birth-control answers can be changed later from Edit profile.'**
   String get firstRunCycleCaption;
 
   /// Label of the last-period-start question.
@@ -1871,10 +1865,10 @@ abstract class AppLocalizations {
   /// **'Birth-control method'**
   String get firstRunCycleBirthControlLabel;
 
-  /// Label of the goal/life-stage-mode question.
+  /// Label of the life-stage-mode question. Issue #1005: was 'Goal / mode', a name no other surface used, so a parent could not find the field later; now matches the edit dialog's 'Life-stage mode' label and the care-mode vocabulary.
   ///
   /// In en, this message translates to:
-  /// **'Goal / mode'**
+  /// **'Life-stage mode'**
   String get firstRunCycleGoalLabel;
 
   /// Final button of the cycle-questions step; creates the profile (today's label, kept).
@@ -1943,34 +1937,34 @@ abstract class AppLocalizations {
   /// **'Add another person'**
   String get firstRunWrapUpAddAnother;
 
-  /// Title of the first-run invite step (issue #804).
+  /// Title of the first-run invite step (issue #804; reworded by issue #996 to name the outcome — another guardian — rather than an unanswerable question about 'help').
   ///
   /// In en, this message translates to:
-  /// **'Does someone else help?'**
+  /// **'Add another guardian?'**
   String get firstRunInviteTitle;
 
-  /// Body of the first-run invite step; states skippability and the later path (issue #804).
+  /// Body of the first-run invite step: states the benefit to the invited guardian instead of the account plumbing (issue #996). Plural-aware on the number of profiles created in this flow.
   ///
   /// In en, this message translates to:
-  /// **'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.'**
-  String get firstRunInviteBody;
+  /// **'{count, plural, =1{A co-parent or caregiver can follow and log this profile from their own phone.} other{A co-parent or caregiver can follow and log these profiles from their own phone.}}'**
+  String firstRunInviteBody(int count);
 
-  /// Shown on the invite step when there is no session: why an account is required here and only here (issue #804 AC3).
+  /// Shown on the invite step when there is no session: names why an account is required here, in the order the user meets it (issue #804 AC3; reworded by issue #996 to drop the mechanism sentence).
   ///
   /// In en, this message translates to:
-  /// **'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.'**
+  /// **'Invites are sent from your lunarlog account, so sign in first.'**
   String get firstRunInviteWhyAccount;
 
-  /// Button on the invite step opening the embedded sign-in screen (issue #804).
+  /// Button on the invite step opening the embedded sign-in screen; names the outcome the sign-in is for (issue #804; reworded by issue #996).
   ///
   /// In en, this message translates to:
-  /// **'Sign in or create account'**
+  /// **'Sign in to invite'**
   String get firstRunInviteSignInAction;
 
-  /// Per-profile button opening the invite dialog with the guardian presets (issue #804).
+  /// Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent.
   ///
   /// In en, this message translates to:
-  /// **'Invite a co-parent'**
+  /// **'Invite a guardian'**
   String get firstRunInviteCoParent;
 
   /// Button ending the household flow without any invite (issue #804; always available).
@@ -2126,7 +2120,7 @@ abstract class AppLocalizations {
   /// Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.
   ///
   /// In en, this message translates to:
-  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.'**
+  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.'**
   String predictionsSuppressedByModeBody(String mode);
 
   /// Title of the card displayed when predictions are disabled for the profile (issue #225).
@@ -2384,7 +2378,7 @@ abstract class AppLocalizations {
   /// Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183).
   ///
   /// In en, this message translates to:
-  /// **'Waits for a start date on the recorded method — re-record the method in profile settings to set one'**
+  /// **'Waits for a start date on the recorded method — re-record the method from Edit profile to set one'**
   String get reminderBirthControlNeedsStartDate;
 
   /// Issue #545: shared failure copy reused by every …FailureCopy mapper under lib/ui/l10n/ whose domain sealed failure has a plain network-error case (sharing, ownership transfer, prediction connections, notification preferences).
@@ -2465,34 +2459,34 @@ abstract class AppLocalizations {
   /// **'Failed to accept invitation. Please try again.'**
   String get sharingFailureOther;
 
-  /// ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart).
+  /// ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). Issue #1005: 'remove', not the jargon 'purge'.
   ///
   /// In en, this message translates to:
-  /// **'Can\'t purge while offline. Check your connection and try again.'**
+  /// **'Can\'t remove imported data while offline. Check your connection and try again.'**
   String get profileErasureFailureNetwork;
 
-  /// ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it.
+  /// ProfileErasureFailure.unauthorized copy at the purge surface. Only ever shown to a signed-in caller who genuinely lacks the role (issue #883); a signed-out caller never sees it. Issue #1005: 'remove', not 'purge'.
   ///
   /// In en, this message translates to:
-  /// **'Only that profile\'s primary guardian can purge its data.'**
+  /// **'Only that profile\'s primary guardian can remove its imported data.'**
   String get profileErasureFailureUnauthorized;
 
-  /// ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883).
+  /// ProfileErasureFailure.notSignedIn copy, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart). A no-session refusal at a purge surface, distinct from profileErasureFailureUnauthorized (issue #883). Issue #1005: 'remove', not 'purge'.
   ///
   /// In en, this message translates to:
-  /// **'Sign in to your account to purge imported data.'**
+  /// **'Sign in to your account to remove imported data.'**
   String get profileErasureFailureNotSignedIn;
 
-  /// ProfileErasureFailure.invalidSource copy at the purge surface.
+  /// ProfileErasureFailure.invalidSource copy at the purge surface. Issue #1005: 'remove', not 'purge'.
   ///
   /// In en, this message translates to:
-  /// **'That import source isn\'t supported. Nothing was purged.'**
+  /// **'That import source isn\'t supported. Nothing was removed.'**
   String get profileErasureFailureInvalidSource;
 
-  /// ProfileErasureFailure.other copy at the purge surface.
+  /// ProfileErasureFailure.other copy at the purge surface. Issue #1005: the unknown-failure case no longer borrows the network case's 'check connection' advice, and says 'remove', not 'purge'.
   ///
   /// In en, this message translates to:
-  /// **'Failed to purge imported data. Check connection and try again.'**
+  /// **'Couldn\'t remove the imported data. Try again.'**
   String get profileErasureFailureOther;
 
   /// Shown in the purge dialog when the selected profile has no imported rows for any source valid on this platform, instead of offering a no-op purge (issue #883).
@@ -2969,10 +2963,10 @@ abstract class AppLocalizations {
   /// **'No history yet'**
   String get profileStatusNoHistory;
 
-  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode).
+  /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode). Issue #1005: 'paused', not 'off' — nothing was toggled off and the mode pauses it.
   ///
   /// In en, this message translates to:
-  /// **'Period predictions off'**
+  /// **'Period estimates paused'**
   String get profileStatusPredictionsSuppressed;
 
   /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
@@ -3401,10 +3395,10 @@ abstract class AppLocalizations {
   /// **'Estimated due date: {date}'**
   String pregnancyDueOn(String date);
 
-  /// Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192).
+  /// Pregnancy card quiet line when the mode is pregnancy but no due date was recorded (Issue #192). Issue #1005: it only renders when the life-stage mode already is Pregnancy, so it no longer tells the reader to set the mode they have already set; points at the 'Edit profile' action.
   ///
   /// In en, this message translates to:
-  /// **'No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.'**
+  /// **'No due date yet. Add one from Edit profile.'**
   String get pregnancyDueDateMissing;
 
   /// Label for the due-date field shown in the profile edit dialog while the life-stage mode is Pregnancy (Issue #192).
@@ -3434,7 +3428,7 @@ abstract class AppLocalizations {
   /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
   String get pregnancyExitExclusionBody;
 
   /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
@@ -3545,10 +3539,10 @@ abstract class AppLocalizations {
   /// **'Estimated fertile window'**
   String get conceiveWindowLabel;
 
-  /// Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Deliberately says 'in one study' so the number never reads as a personal probability.
+  /// Conceive-mode card line naming the peak conception-likelihood day from the cited population-average study (Issue #204). Issue #1005: names what the percentage is a percentage of — the study's population, not the reader's personal odds.
   ///
   /// In en, this message translates to:
-  /// **'Most likely day: {date} (about {percent}% in one study)'**
+  /// **'Most likely day: {date} (about {percent}% of cycles in the study behind this estimate)'**
   String conceivePeakDay(String date, int percent);
 
   /// Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196).
@@ -3578,19 +3572,19 @@ abstract class AppLocalizations {
   /// Perimenopause comparison line when the compared cycle is longer than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: the card compares the two most recent COMPLETED cycles (an open cycle has no length yet), so the copy names those rather than saying 'this cycle' — which every other surface uses for the still-open one.
   ///
   /// In en, this message translates to:
-  /// **'Your last completed cycle was {days} longer than the one before it'**
+  /// **'The last completed cycle was {days} longer than the one before it'**
   String perimenopauseLengthLonger(String days);
 
   /// Perimenopause comparison line when the compared cycle is shorter than the one before it (Issue #196). {days} is an already-formatted, pluralized day count. Issue #862: names the completed cycles the card actually compares, never 'this cycle'.
   ///
   /// In en, this message translates to:
-  /// **'Your last completed cycle was {days} shorter than the one before it'**
+  /// **'The last completed cycle was {days} shorter than the one before it'**
   String perimenopauseLengthShorter(String days);
 
   /// Perimenopause comparison line when the two compared cycles are the same length (Issue #196). Issue #862: names the completed cycles the card actually compares, never 'this cycle'.
   ///
   /// In en, this message translates to:
-  /// **'Your last completed cycle was the same length as the one before it'**
+  /// **'The last completed cycle was the same length as the one before it'**
   String get perimenopauseLengthSame;
 
   /// Perimenopause comparison line when the current cycle has not finished, so no length difference can honestly be stated (Issue #196).
@@ -3752,7 +3746,7 @@ abstract class AppLocalizations {
   /// Manage guardians (Issue #802): body of the Teen-mode suggestion dialog.
   ///
   /// In en, this message translates to:
-  /// **'{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.'**
+  /// **'{name} is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from Edit profile.'**
   String subjectTeenModeDialogBody(String name);
 
   /// Manage guardians (Issue #802): accepting button of the Teen-mode suggestion dialog - writes the profile's care mode to teen.

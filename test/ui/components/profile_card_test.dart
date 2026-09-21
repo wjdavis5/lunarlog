@@ -347,19 +347,23 @@ void main() {
       );
     });
 
-    test('PredictionsSuppressed and PredictionsDisabled read as off', () {
+    test('PredictionsSuppressed reads as paused, PredictionsDisabled as off',
+        () {
       expect(
         profileCycleStatus(
           prediction:
               PredictionsSuppressed(method: BirthControlMethod.pill),
           l10n: l10n,
         ),
-        'Period predictions off',
+        'Period estimates paused',
+        reason: 'issue #1005: nothing was toggled off — a birth-control '
+            'method or life-stage mode paused the estimates',
       );
       expect(
         profileCycleStatus(
             prediction: const PredictionsDisabled(), l10n: l10n),
         'Period predictions off',
+        reason: 'the operator actually turned predictions off in settings',
       );
     });
 
