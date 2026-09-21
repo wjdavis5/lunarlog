@@ -76,10 +76,10 @@ List<double> predictedBandDashes(double sweep, double dashLen, double gapLen) {
 /// pump. #138: the phrases come from [AppLocalizations] (#340's rule),
 /// leading with the focal-point hero fact (issue #807).
 ///
-/// Issue #853: [irregularFraming] switches the overdue wording away from
-/// "late" — the count stays (days past the estimate is a fact), the unit
-/// and the semantics sentence say "past estimate" instead, matching the
-/// variance-expecting framing a composed profile renders everywhere else.
+/// Issue #853, #1000: overdue wording names the estimate ("past estimate",
+/// never "late") — the count stays (days past the estimate is a fact), the unit
+/// and the semantics sentence say "past estimate" across all framings, matching
+/// the calm, variance-expecting tone used everywhere else.
 String cycleWheelSemanticsLabel({
   required int cycleDay,
   required bool duringEpisode,
@@ -98,19 +98,12 @@ String cycleWheelSemanticsLabel({
   }
   final days = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
   if (days < 0) {
-    return irregularFraming
-        ? l10n.cycleWheelSemanticsPastEstimate(
-            -days,
-            cycleDay,
-            cycleLengthDays,
-            periodLengthDays,
-          )
-        : l10n.cycleWheelSemanticsLate(
-            -days,
-            cycleDay,
-            cycleLengthDays,
-            periodLengthDays,
-          );
+    return l10n.cycleWheelSemanticsPastEstimate(
+      -days,
+      cycleDay,
+      cycleLengthDays,
+      periodLengthDays,
+    );
   }
   return l10n.cycleWheelSemanticsMidCycle(
     days,
@@ -182,12 +175,10 @@ class CycleWheel extends StatelessWidget {
     final effectiveDays = daysUntilNextPeriod ?? (cycleLengthDays - cycleDay);
     final isLate = effectiveDays < 0;
     final displayCount = isLate ? -effectiveDays : effectiveDays;
-    // Issue #853: under the irregular framing the overdue count names the
-    // estimate, not the body — "N days past estimate", never "late".
+    // Issue #853, #1000: the overdue count names the estimate, not the
+    // body — "N days past estimate", never "late".
     final unit = isLate
-        ? (irregularFraming
-            ? l10n.cycleWheelDaysPastEstimateUnit(displayCount)
-            : l10n.cycleWheelDaysLateUnit(displayCount))
+        ? l10n.cycleWheelDaysPastEstimateUnit(displayCount)
         : l10n.cycleWheelDaysUntilUnit(displayCount);
 
     return Column(
@@ -384,8 +375,7 @@ class _CycleWheelPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
     var start = _startAngle;
-    for (final dash
-        in predictedBandDashes(sweep, _dashRadians, _gapRadians)) {
+    for (final dash in predictedBandDashes(sweep, _dashRadians, _gapRadians)) {
       canvas.drawArc(rect, start, dash, false, paint);
       start += dash + _gapRadians;
     }
