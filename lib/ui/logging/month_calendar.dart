@@ -3019,7 +3019,7 @@ class _FutureDayExplainer extends StatelessWidget {
           key: const ValueKey('future-explainer-cramps'),
           style: body,
         ),
-      ..._fertileWindowExplainer(cell, body),
+      ..._fertileWindowExplainer(cell, body, l10n),
       if (cell.cycleDayNumber != null && !cell.predictedBleed)
         Text(
           l10n.futureExplainerNumeral(cell.cycleDayNumber!),
@@ -3066,12 +3066,15 @@ class _FutureDayExplainer extends StatelessWidget {
   /// .fertileWindowLabel] (issue #143 review) rather than a hardcoded
   /// "estimated fertile window" phrase, so `teen`'s plainer wording is
   /// used here too.
-  List<Widget> _fertileWindowExplainer(ForecastDayCell cell, TextStyle? body) {
+  List<Widget> _fertileWindowExplainer(
+    ForecastDayCell cell,
+    TextStyle? body,
+    AppLocalizations l10n,
+  ) {
     if (!cell.fertileWindow) return const [];
     return [
       Text(
-        '${copy.fertileWindowLabel} — the days around estimated ovulation, '
-        'back-calculated from the predicted period date.',
+        l10n.monthCalendarFertileWindowExplainer(copy.fertileWindowLabel),
         key: const ValueKey('future-explainer-fertile'),
         style: body,
       ),

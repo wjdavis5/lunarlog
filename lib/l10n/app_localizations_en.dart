@@ -4397,4 +4397,142 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get yourDataImportSourceLabel => 'Import source';
+
+  @override
+  String cycleLiteracyReadingTimeMinutes(int minutes) {
+    return '$minutes min read';
+  }
+
+  @override
+  String get cycleLiteracySourceHeading => 'Source & Review';
+
+  @override
+  String cycleLiteracySourceLine(String source) {
+    return 'Source: $source';
+  }
+
+  @override
+  String cycleLiteracyLastReviewedLine(String date) {
+    return 'Last reviewed: $date';
+  }
+
+  @override
+  String get cycleLiteracyLibraryTitle => 'Cycle Literacy Library';
+
+  @override
+  String get cycleLiteracyLibraryIntro =>
+      'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.';
+
+  @override
+  String helpCardSourceLine(String source) {
+    return 'Source: $source';
+  }
+
+  @override
+  String helpCardReviewedLine(String date) {
+    return 'Reviewed: $date';
+  }
+
+  @override
+  String get failClosedAppTitle => 'lunarlog';
+
+  @override
+  String get failClosedClose => 'Close';
+
+  @override
+  String get failClosedTechnicalDetail =>
+      'Technical detail (for the device owner):';
+
+  @override
+  String get failClosedQuarantineTitle => 'lunarlog could not open your data';
+
+  @override
+  String get failClosedQuarantineBody =>
+      'The data saved on this device could not be opened. Nothing was changed and nothing was deleted — the data file was left exactly as it was, untouched.';
+
+  @override
+  String get failClosedStartTitle => 'lunarlog could not start';
+
+  @override
+  String get failClosedStartBody =>
+      'Something went wrong before any data was opened. Nothing on this device was changed.';
+
+  @override
+  String get daySheetDiscardFailedBody =>
+      'The last change couldn\'t be saved. Discarding removes it from this device.';
+
+  @override
+  String monthCalendarFertileWindowExplainer(String label) {
+    return '$label — the days around estimated ovulation, back-calculated from the predicted period date.';
+  }
+
+  @override
+  String get mergeNoticeDismissTooltip => 'Dismiss';
+
+  @override
+  String get mergeNoticeAnotherGuardian => 'another guardian';
+
+  @override
+  String get mergeNoticeAnotherGuardianPossessive => 'another guardian\'s';
+
+  @override
+  String get mergeNoticeYou => 'you';
+
+  @override
+  String get mergeNoticeYour => 'your';
+
+  @override
+  String mergeNoticeNoteBody(String winner, String loser) {
+    return 'Two entries for this date were merged; $winner note was kept and $loser note was discarded.';
+  }
+
+  @override
+  String mergeNoticeFlowBody(String winner, String loser) {
+    return 'Two entries for this date were merged; $winner flow level was kept and $loser was discarded.';
+  }
+
+  @override
+  String get mergeNoticeGuardianNoteBody =>
+      'A guardian note for this date was replaced on sync.';
+
+  @override
+  String get mergeNoticeRestoreNote => 'Restore my note';
+
+  @override
+  String get mergeNoticeRestoreFlow => 'Restore my flow level';
+
+  @override
+  String get caregiverAttributionYou => 'you';
+
+  @override
+  String get caregiverAttributionGuardianFallback => 'Guardian';
+
+  @override
+  String caregiverAttributionLoggedBy(String name) {
+    return 'Logged by $name';
+  }
+
+  @override
+  String caregiverAttributionModifiedBy(String name) {
+    return 'Modified by $name';
+  }
+
+  @override
+  String get caregiverAttributionImportedClue => 'Imported from Clue';
+
+  @override
+  String get caregiverAttributionImportedHealth => 'Imported from Health';
+
+  @override
+  String get caregiverAttributionImportedHealthConnect =>
+      'Imported from Health Connect';
+
+  @override
+  String get caregiverAttributionImportedFile => 'Imported from file';
+
+  @override
+  String get caregiverAttributionImportedWearable => 'Imported from wearable';
+
+  @override
+  String get caregiverAttributionImportedGeneric => 'Imported';
 }
