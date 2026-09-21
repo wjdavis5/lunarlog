@@ -580,10 +580,6 @@ class _AnalysisTabState extends State<AnalysisTab>
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
     final episodes = _episodes;
     final report = _report;
-    final recap = _recap;
-    final showRecap = recap != null &&
-        _recapState.recorded &&
-        _recapState.seenCycleIso != recap.cycleStart.iso;
 
     return [
       Text(
@@ -595,24 +591,7 @@ class _AnalysisTabState extends State<AnalysisTab>
       // Issue #852: the cycle-end recap leads the tab — a moment worth
       // returning for, shown once per completed cycle and dismissible
       // without covering a single log affordance.
-      if (showRecap) ...[
-        CycleRecapCard(
-          recap: recap,
-          mode: widget.mode,
-          onDismiss: () => _dismissRecap(recap),
-          onCompare: recap.previousCycleStart == null
-              ? null
-              : () => Navigator.of(context).push(
-                    CycleComparisonScreen.route(
-                      profileId: widget.profileId,
-                      cycleAStart: recap.previousCycleStart!,
-                      cycleBStart: recap.cycleStart,
-                      todayProvider: widget.todayProvider,
-                    ),
-                  ),
-        ),
-        const SizedBox(height: LLSpace.space3),
-      ],
+      ..._recapSection(context),
       switch (prediction) {
         ActivePrediction() => _statsCard(context, prediction),
         NotEnoughHistory() => _notEnoughCard(context, prediction),
@@ -661,6 +640,35 @@ class _AnalysisTabState extends State<AnalysisTab>
       _bbtChartCard(context, episodes),
     ];
   }
+
+  /// The recap section (issue #852) or nothing at all — split out of
+  /// [_sections] to keep that method's own branch count low (the quality
+  /// gate's per-method CRAP rule).
+  List<Widget> _recapSection(BuildContext context) {
+    final recap = _recap;
+    if (recap == null ||
+        !_recapState.recorded ||
+        _recapState.seenCycleIso == recap.cycleStart.iso) {
+      return const [];
+    }
+    return [_recapCard(context, recap), const SizedBox(height: LLSpace.space3)];
+  }
+
+  Widget _recapCard(BuildContext context, CycleRecap recap) => CycleRecapCard(
+        recap: recap,
+        mode: widget.mode,
+        onDismiss: () => _dismissRecap(recap),
+        onCompare: recap.previousCycleStart == null
+            ? null
+            : () => Navigator.of(context).push(
+                  CycleComparisonScreen.route(
+                    profileId: widget.profileId,
+                    cycleAStart: recap.previousCycleStart!,
+                    cycleBStart: recap.cycleStart,
+                    todayProvider: widget.todayProvider,
+                  ),
+                ),
+      );
 
   /// Issue #245: the BBT chart card — data shaping is
   /// [bbt.deriveBbtChartData] (pure, `lib/domain/insights/bbt_chart.dart`),
