@@ -13,6 +13,9 @@ mixin SupabaseAuthSessionState {
   AuthGateway get _gateway;
   AuthLinkSource get _links;
 
+  /// The browser's launch URL on web (epic #831 slice 2); null on native.
+  Uri? get _webInitialUri;
+
   StreamController<AuthSessionState> get _states;
   StreamController<AuthFailure> get _linkFailures;
 
@@ -58,6 +61,14 @@ mixin SupabaseAuthSessionState {
           '(${error.runtimeType})');
     }
     if (initial != null) unawaited(handleLink(initial));
+    // Web (epic #831 slice 2): the browser cannot open the custom scheme, so
+    // an email link lands on `<origin>/auth/callback?code=…` and the code is
+    // read off the initial `Uri.base` here. Native leaves this null; a web
+    // launch without an auth callback is ignored by the classifier. The
+    // `_lastHandledLink` latch makes this idempotent with an app_links web
+    // launch link that carries the same URL.
+    final webInitial = _webInitialUri;
+    if (webInitial != null) unawaited(handleLink(webInitial));
   }
 
   /// Classifies and, for a callback, exchanges [uri]. Public so tests (and
