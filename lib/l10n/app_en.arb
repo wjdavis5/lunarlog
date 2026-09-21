@@ -5654,5 +5654,209 @@
     "yourDataImportSourceLabel": "Import source",
     "@yourDataImportSourceLabel": {
       "description": "Issue #1004 (tranche 2): purge-imported-data dialog import-source field label."
+    },
+  "cycleLiteracyReadingTimeMinutes": "{minutes} min read",
+  "@cycleLiteracyReadingTimeMinutes": {
+    "description": "Issue #1004 (tranche 4b): estimated reading time on a cycle literacy article sheet.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
     }
+  },
+  "cycleLiteracySourceHeading": "Source & Review",
+  "@cycleLiteracySourceHeading": {
+    "description": "Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet."
+  },
+  "cycleLiteracySourceLine": "Source: {source}",
+  "@cycleLiteracySourceLine": {
+    "description": "Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleLiteracyLastReviewedLine": "Last reviewed: {date}",
+  "@cycleLiteracyLastReviewedLine": {
+    "description": "Issue #1004 (tranche 4b): provenance review date on a cycle literacy article sheet.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleLiteracyLibraryTitle": "Cycle Literacy Library",
+  "@cycleLiteracyLibraryTitle": {
+    "description": "Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library."
+  },
+  "cycleLiteracyLibraryIntro": "Evidence-based educational guides to understand your body, hormones, and cycle rhythms.",
+  "@cycleLiteracyLibraryIntro": {
+    "description": "Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library."
+  },
+  "helpCardSourceLine": "Source: {source}",
+  "@helpCardSourceLine": {
+    "description": "Issue #1004 (tranche 4b): provenance source line on a bundled help card.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "helpCardReviewedLine": "Reviewed: {date}",
+  "@helpCardReviewedLine": {
+    "description": "Issue #1004 (tranche 4b): provenance review date on a bundled help card.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "failClosedAppTitle": "lunarlog",
+  "@failClosedAppTitle": {
+    "description": "Issue #1004 (tranche 4b): OS task-switcher title of the fail-closed startup app."
+  },
+  "failClosedClose": "Close",
+  "@failClosedClose": {
+    "description": "Issue #1004 (tranche 4b): the fail-closed screen's single Close action."
+  },
+  "failClosedTechnicalDetail": "Technical detail (for the device owner):",
+  "@failClosedTechnicalDetail": {
+    "description": "Issue #1004 (tranche 4b): label above the raw error on the fail-closed screen."
+  },
+  "failClosedQuarantineTitle": "lunarlog could not open your data",
+  "@failClosedQuarantineTitle": {
+    "description": "Issue #1004 (tranche 4b): fail-closed title for a quarantined database."
+  },
+  "failClosedQuarantineBody": "The data saved on this device could not be opened. Nothing was changed and nothing was deleted — the data file was left exactly as it was, untouched.",
+  "@failClosedQuarantineBody": {
+    "description": "Issue #1004 (tranche 4b): fail-closed body for a quarantined database."
+  },
+  "failClosedStartTitle": "lunarlog could not start",
+  "@failClosedStartTitle": {
+    "description": "Issue #1004 (tranche 4b): fail-closed title for a generic startup failure."
+  },
+  "failClosedStartBody": "Something went wrong before any data was opened. Nothing on this device was changed.",
+  "@failClosedStartBody": {
+    "description": "Issue #1004 (tranche 4b): fail-closed body for a generic startup failure."
+  },
+  "daySheetDiscardFailedBody": "The last change couldn't be saved. Discarding removes it from this device.",
+  "@daySheetDiscardFailedBody": {
+    "description": "Issue #1004 (tranche 4b): body of the day sheet's discard-after-failed-save confirmation."
+  },
+  "monthCalendarFertileWindowExplainer": "{label} — the days around estimated ovulation, back-calculated from the predicted period date.",
+  "@monthCalendarFertileWindowExplainer": {
+    "description": "Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeDismissTooltip": "Dismiss",
+  "@mergeNoticeDismissTooltip": {
+    "description": "Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button."
+  },
+  "mergeNoticeAnotherGuardian": "another guardian",
+  "@mergeNoticeAnotherGuardian": {
+    "description": "Issue #1004 (tranche 4b): fallback author name in the day sheet merge notice."
+  },
+  "mergeNoticeAnotherGuardianPossessive": "another guardian's",
+  "@mergeNoticeAnotherGuardianPossessive": {
+    "description": "Issue #1004 (tranche 4b): possessive fallback author name in the day sheet merge notice."
+  },
+  "mergeNoticeYou": "you",
+  "@mergeNoticeYou": {
+    "description": "Issue #1004 (tranche 4b): the signed-in user as a merge-notice author."
+  },
+  "mergeNoticeYour": "your",
+  "@mergeNoticeYour": {
+    "description": "Issue #1004 (tranche 4b): possessive form of the signed-in user in a merge-notice sentence."
+  },
+  "mergeNoticeNoteBody": "Two entries for this date were merged; {winner} note was kept and {loser} note was discarded.",
+  "@mergeNoticeNoteBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a discarded note.",
+    "placeholders": {
+      "winner": {
+        "type": "String"
+      },
+      "loser": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeFlowBody": "Two entries for this date were merged; {winner} flow level was kept and {loser} was discarded.",
+  "@mergeNoticeFlowBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a discarded flow level.",
+    "placeholders": {
+      "winner": {
+        "type": "String"
+      },
+      "loser": {
+        "type": "String"
+      }
+    }
+  },
+  "mergeNoticeGuardianNoteBody": "A guardian note for this date was replaced on sync.",
+  "@mergeNoticeGuardianNoteBody": {
+    "description": "Issue #1004 (tranche 4b): merge-notice sentence for a replaced guardian note."
+  },
+  "mergeNoticeRestoreNote": "Restore my note",
+  "@mergeNoticeRestoreNote": {
+    "description": "Issue #1004 (tranche 4b): restore action for a discarded note."
+  },
+  "mergeNoticeRestoreFlow": "Restore my flow level",
+  "@mergeNoticeRestoreFlow": {
+    "description": "Issue #1004 (tranche 4b): restore action for a discarded flow level."
+  },
+  "caregiverAttributionYou": "you",
+  "@caregiverAttributionYou": {
+    "description": "Issue #1004 (tranche 4b): the signed-in user in a caregiver-attribution badge."
+  },
+  "caregiverAttributionGuardianFallback": "Guardian",
+  "@caregiverAttributionGuardianFallback": {
+    "description": "Issue #1004 (tranche 4b): fallback guardian name in a caregiver-attribution badge."
+  },
+  "caregiverAttributionLoggedBy": "Logged by {name}",
+  "@caregiverAttributionLoggedBy": {
+    "description": "Issue #1004 (tranche 4b): attribution verb naming who logged an entry.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "caregiverAttributionModifiedBy": "Modified by {name}",
+  "@caregiverAttributionModifiedBy": {
+    "description": "Issue #1004 (tranche 4b): attribution verb naming who last modified an entry.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "caregiverAttributionImportedClue": "Imported from Clue",
+  "@caregiverAttributionImportedClue": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a Clue import."
+  },
+  "caregiverAttributionImportedHealth": "Imported from Health",
+  "@caregiverAttributionImportedHealth": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for an Apple Health / HealthKit import."
+  },
+  "caregiverAttributionImportedHealthConnect": "Imported from Health Connect",
+  "@caregiverAttributionImportedHealthConnect": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a Health Connect import."
+  },
+  "caregiverAttributionImportedFile": "Imported from file",
+  "@caregiverAttributionImportedFile": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a file import."
+  },
+  "caregiverAttributionImportedWearable": "Imported from wearable",
+  "@caregiverAttributionImportedWearable": {
+    "description": "Issue #1004 (tranche 4b): import-source badge for a wearable import."
+  },
+  "caregiverAttributionImportedGeneric": "Imported",
+  "@caregiverAttributionImportedGeneric": {
+    "description": "Issue #1004 (tranche 4b): generic import-source badge for an unrecognised source."
+  }
 }

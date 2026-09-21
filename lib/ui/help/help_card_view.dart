@@ -10,6 +10,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/help/help_cards.dart';
+import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
 
 /// Presents [card] in a modal bottom sheet built purely from bundled copy.
@@ -60,6 +61,7 @@ class HelpCardView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return SingleChildScrollView(
       key: ValueKey('help-card-${card.id}'),
@@ -88,7 +90,7 @@ class HelpCardView extends StatelessWidget {
           const SizedBox(height: 16),
           const Divider(),
           Text(
-            'Source: ${card.source}',
+            l10n.helpCardSourceLine(card.source),
             key: ValueKey('help-card-source-${card.id}'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -96,7 +98,7 @@ class HelpCardView extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Reviewed: ${card.reviewDate}',
+            l10n.helpCardReviewedLine(card.reviewDate),
             key: ValueKey('help-card-reviewed-${card.id}'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

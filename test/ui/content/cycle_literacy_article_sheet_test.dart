@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/content/cycle_literacy_library.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/content/cycle_literacy_article_sheet.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 
@@ -12,6 +13,8 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.lightTheme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         body: CycleLiteracyArticleSheet(article: article),
       ),

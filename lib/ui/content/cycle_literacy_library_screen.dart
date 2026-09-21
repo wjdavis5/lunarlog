@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
+import '../../l10n/app_localizations.dart';
 import '../../observability/route_names.dart';
 import 'cycle_literacy_article_sheet.dart';
 
@@ -17,20 +18,20 @@ class CycleLiteracyLibraryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cycle Literacy Library'),
+        title: Text(l10n.cycleLiteracyLibraryTitle),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           // Header intro
           Text(
-            'Evidence-based educational guides to understand your body, '
-            'hormones, and cycle rhythms.',
+            l10n.cycleLiteracyLibraryIntro,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
             ),

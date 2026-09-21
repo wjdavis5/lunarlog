@@ -7057,6 +7057,228 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Import source'**
   String get yourDataImportSourceLabel;
+
+  /// Issue #1004 (tranche 4b): estimated reading time on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min read'**
+  String cycleLiteracyReadingTimeMinutes(int minutes);
+
+  /// Issue #1004 (tranche 4b): provenance block heading on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Source & Review'**
+  String get cycleLiteracySourceHeading;
+
+  /// Issue #1004 (tranche 4b): provenance source line on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}'**
+  String cycleLiteracySourceLine(String source);
+
+  /// Issue #1004 (tranche 4b): provenance review date on a cycle literacy article sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Last reviewed: {date}'**
+  String cycleLiteracyLastReviewedLine(String date);
+
+  /// Issue #1004 (tranche 4b): app-bar title of the standalone cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle Literacy Library'**
+  String get cycleLiteracyLibraryTitle;
+
+  /// Issue #1004 (tranche 4b): intro paragraph atop the cycle literacy library.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence-based educational guides to understand your body, hormones, and cycle rhythms.'**
+  String get cycleLiteracyLibraryIntro;
+
+  /// Issue #1004 (tranche 4b): provenance source line on a bundled help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source}'**
+  String helpCardSourceLine(String source);
+
+  /// Issue #1004 (tranche 4b): provenance review date on a bundled help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Reviewed: {date}'**
+  String helpCardReviewedLine(String date);
+
+  /// Issue #1004 (tranche 4b): OS task-switcher title of the fail-closed startup app.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog'**
+  String get failClosedAppTitle;
+
+  /// Issue #1004 (tranche 4b): the fail-closed screen's single Close action.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get failClosedClose;
+
+  /// Issue #1004 (tranche 4b): label above the raw error on the fail-closed screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical detail (for the device owner):'**
+  String get failClosedTechnicalDetail;
+
+  /// Issue #1004 (tranche 4b): fail-closed title for a quarantined database.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not open your data'**
+  String get failClosedQuarantineTitle;
+
+  /// Issue #1004 (tranche 4b): fail-closed body for a quarantined database.
+  ///
+  /// In en, this message translates to:
+  /// **'The data saved on this device could not be opened. Nothing was changed and nothing was deleted — the data file was left exactly as it was, untouched.'**
+  String get failClosedQuarantineBody;
+
+  /// Issue #1004 (tranche 4b): fail-closed title for a generic startup failure.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog could not start'**
+  String get failClosedStartTitle;
+
+  /// Issue #1004 (tranche 4b): fail-closed body for a generic startup failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong before any data was opened. Nothing on this device was changed.'**
+  String get failClosedStartBody;
+
+  /// Issue #1004 (tranche 4b): body of the day sheet's discard-after-failed-save confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'The last change couldn\'t be saved. Discarding removes it from this device.'**
+  String get daySheetDiscardFailedBody;
+
+  /// Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.
+  ///
+  /// In en, this message translates to:
+  /// **'{label} — the days around estimated ovulation, back-calculated from the predicted period date.'**
+  String monthCalendarFertileWindowExplainer(String label);
+
+  /// Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button.
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get mergeNoticeDismissTooltip;
+
+  /// Issue #1004 (tranche 4b): fallback author name in the day sheet merge notice.
+  ///
+  /// In en, this message translates to:
+  /// **'another guardian'**
+  String get mergeNoticeAnotherGuardian;
+
+  /// Issue #1004 (tranche 4b): possessive fallback author name in the day sheet merge notice.
+  ///
+  /// In en, this message translates to:
+  /// **'another guardian\'s'**
+  String get mergeNoticeAnotherGuardianPossessive;
+
+  /// Issue #1004 (tranche 4b): the signed-in user as a merge-notice author.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get mergeNoticeYou;
+
+  /// Issue #1004 (tranche 4b): possessive form of the signed-in user in a merge-notice sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'your'**
+  String get mergeNoticeYour;
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a discarded note.
+  ///
+  /// In en, this message translates to:
+  /// **'Two entries for this date were merged; {winner} note was kept and {loser} note was discarded.'**
+  String mergeNoticeNoteBody(String winner, String loser);
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a discarded flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Two entries for this date were merged; {winner} flow level was kept and {loser} was discarded.'**
+  String mergeNoticeFlowBody(String winner, String loser);
+
+  /// Issue #1004 (tranche 4b): merge-notice sentence for a replaced guardian note.
+  ///
+  /// In en, this message translates to:
+  /// **'A guardian note for this date was replaced on sync.'**
+  String get mergeNoticeGuardianNoteBody;
+
+  /// Issue #1004 (tranche 4b): restore action for a discarded note.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore my note'**
+  String get mergeNoticeRestoreNote;
+
+  /// Issue #1004 (tranche 4b): restore action for a discarded flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore my flow level'**
+  String get mergeNoticeRestoreFlow;
+
+  /// Issue #1004 (tranche 4b): the signed-in user in a caregiver-attribution badge.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get caregiverAttributionYou;
+
+  /// Issue #1004 (tranche 4b): fallback guardian name in a caregiver-attribution badge.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get caregiverAttributionGuardianFallback;
+
+  /// Issue #1004 (tranche 4b): attribution verb naming who logged an entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged by {name}'**
+  String caregiverAttributionLoggedBy(String name);
+
+  /// Issue #1004 (tranche 4b): attribution verb naming who last modified an entry.
+  ///
+  /// In en, this message translates to:
+  /// **'Modified by {name}'**
+  String caregiverAttributionModifiedBy(String name);
+
+  /// Issue #1004 (tranche 4b): import-source badge for a Clue import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Clue'**
+  String get caregiverAttributionImportedClue;
+
+  /// Issue #1004 (tranche 4b): import-source badge for an Apple Health / HealthKit import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Health'**
+  String get caregiverAttributionImportedHealth;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a Health Connect import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Health Connect'**
+  String get caregiverAttributionImportedHealthConnect;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a file import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from file'**
+  String get caregiverAttributionImportedFile;
+
+  /// Issue #1004 (tranche 4b): import-source badge for a wearable import.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from wearable'**
+  String get caregiverAttributionImportedWearable;
+
+  /// Issue #1004 (tranche 4b): generic import-source badge for an unrecognised source.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported'**
+  String get caregiverAttributionImportedGeneric;
 }
 
 class _AppLocalizationsDelegate
