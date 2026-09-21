@@ -2577,4 +2577,236 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingInviteGuardianCreateLink => 'Create Link';
+
+  @override
+  String get sharingManageGuardiansCancel => 'Cancel';
+
+  @override
+  String get sharingManageGuardiansEndPredictionTitle =>
+      'End prediction sharing?';
+
+  @override
+  String get sharingManageGuardiansEndPredictionBody =>
+      'They will immediately lose the shared predictions calendar. You can create a new connection any time.';
+
+  @override
+  String get sharingManageGuardiansEndSharing => 'End sharing';
+
+  @override
+  String get sharingManageGuardiansPredictionSharingEnded =>
+      'Prediction sharing ended';
+
+  @override
+  String get sharingManageGuardiansEndSharingFailed =>
+      'Failed to end sharing. Check connection.';
+
+  @override
+  String sharingManageGuardiansDeleteProfileTitle(String profileName) {
+    return 'Delete $profileName permanently?';
+  }
+
+  @override
+  String get sharingManageGuardiansDeleteProfileStep1Body =>
+      'This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian\'s access to it — including your own. Synced copies on every device are erased too.';
+
+  @override
+  String get sharingManageGuardiansContinue => 'Continue';
+
+  @override
+  String get sharingManageGuardiansDeleteProfileStep2Title =>
+      'Are you absolutely sure?';
+
+  @override
+  String sharingManageGuardiansDeleteProfileStep2Body(String profileName) {
+    return '$profileName\'s history will be gone permanently, for every guardian on this profile. There is no undo.';
+  }
+
+  @override
+  String get sharingManageGuardiansDeletePermanently => 'Delete permanently';
+
+  @override
+  String get sharingManageGuardiansDeleteOffline =>
+      'Can\'t delete while offline. Check your connection and try again.';
+
+  @override
+  String get sharingManageGuardiansDeleteFailed =>
+      'Failed to delete profile. Check connection and try again.';
+
+  @override
+  String get sharingManageGuardiansSolePrimaryLeave =>
+      'You\'re now the only primary guardian, so you can\'t leave. Add another primary guardian first, then try again.';
+
+  @override
+  String get sharingManageGuardiansRemoveFailed =>
+      'Failed to remove guardian. Check connection.';
+
+  @override
+  String sharingManageGuardiansRemoveTitle(String name) {
+    return 'Remove $name?';
+  }
+
+  @override
+  String get sharingManageGuardiansLeaveBody =>
+      'You will leave this profile and no longer receive updates or sync its entries.';
+
+  @override
+  String sharingManageGuardiansRemoveBody(String profileName) {
+    return 'This guardian will lose access to $profileName\'s calendar and entries.';
+  }
+
+  @override
+  String get sharingManageGuardiansRemove => 'Remove';
+
+  @override
+  String sharingManageGuardiansRemoved(String name) {
+    return 'Removed $name';
+  }
+
+  @override
+  String sharingManageGuardiansCancelInviteTitle(String name) {
+    return 'Cancel invitation for $name?';
+  }
+
+  @override
+  String get sharingManageGuardiansCancelInviteBody =>
+      'The invite link will stop working immediately. You can send a new one any time.';
+
+  @override
+  String get sharingManageGuardiansKeepInvitation => 'Keep Invitation';
+
+  @override
+  String get sharingManageGuardiansCancelInvitation => 'Cancel Invitation';
+
+  @override
+  String get sharingManageGuardiansCancelInviteFailed =>
+      'Failed to cancel invitation. Check connection.';
+
+  @override
+  String get sharingManageGuardiansPendingLoadError =>
+      'Could not load pending invitations.';
+
+  @override
+  String get sharingManageGuardiansNoPending => 'No pending invitations';
+
+  @override
+  String get sharingManageGuardiansPendingTitle => 'Pending invitations';
+
+  @override
+  String sharingManageGuardiansPendingSubtitleExpired(String kindLabel) {
+    return '$kindLabel • Expired';
+  }
+
+  @override
+  String sharingManageGuardiansPendingSubtitle(
+    String kindLabel,
+    String expiry,
+  ) {
+    return '$kindLabel • $expiry';
+  }
+
+  @override
+  String get sharingManageGuardiansResend => 'Resend';
+
+  @override
+  String get sharingManageGuardiansExpiryExpired => 'expired';
+
+  @override
+  String sharingManageGuardiansExpiryHours(int hours) {
+    return 'expires in ${hours}h';
+  }
+
+  @override
+  String sharingManageGuardiansExpiryMinutes(int minutes) {
+    return 'expires in ${minutes}m';
+  }
+
+  @override
+  String sharingManageGuardiansScreenTitle(String profileName) {
+    return '$profileName Guardians';
+  }
+
+  @override
+  String get sharingManageGuardiansInviteAction => 'Invite guardian';
+
+  @override
+  String get sharingManageGuardiansNoGuardiansTitle =>
+      'No guardians linked yet';
+
+  @override
+  String get sharingManageGuardiansNoGuardiansBody =>
+      'Invite another guardian to sync and share tracking.';
+
+  @override
+  String get sharingManageGuardiansPredictionsSectionTitle =>
+      'Predictions-only sharing';
+
+  @override
+  String get sharingManageGuardiansPredictionsSectionBody =>
+      'Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.';
+
+  @override
+  String get sharingManageGuardiansPredictionsMinor =>
+      'Prediction sharing is not available for a minor\'s profile.';
+
+  @override
+  String get sharingManageGuardiansSharePredictionsAction =>
+      'Share predictions only...';
+
+  @override
+  String get sharingManageGuardiansPredictionsPrimaryOnly =>
+      'Only the primary guardian can share predictions.';
+
+  @override
+  String get sharingManageGuardiansPendingRedemption =>
+      'Waiting for code redemption';
+
+  @override
+  String get sharingManageGuardiansSharingPredictions => 'Sharing predictions';
+
+  @override
+  String get sharingManageGuardiansPendingBadge => 'pending';
+
+  @override
+  String get sharingManageGuardiansPhasesOnlyCalendar =>
+      'Phases-only calendar • not a guardian';
+
+  @override
+  String get sharingManageGuardiansDangerZoneTitle => 'Danger zone';
+
+  @override
+  String get sharingManageGuardiansDangerZoneBody =>
+      'Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.';
+
+  @override
+  String get sharingManageGuardiansDeleteProfileAction =>
+      'Delete profile permanently';
+
+  @override
+  String get sharingManageGuardiansRoleUpdateFailed =>
+      'Failed to update role. Check connection.';
+
+  @override
+  String sharingManageGuardiansChangeRoleTitle(String newRoleLabel) {
+    return 'Change role to $newRoleLabel?';
+  }
+
+  @override
+  String sharingManageGuardiansChangeRoleBody(
+    String name,
+    String currentRoleLabel,
+    String consequence,
+  ) {
+    return '$name currently has $currentRoleLabel access. $consequence No new invitation is needed — the new role applies on their next sync.';
+  }
+
+  @override
+  String get sharingManageGuardiansChangeRoleAction => 'Change role';
+
+  @override
+  String sharingManageGuardiansRoleUpdated(String newRoleLabel) {
+    return 'Role updated to $newRoleLabel';
+  }
+
+  @override
+  String get sharingManageGuardiansYouSuffix => '(you)';
 }

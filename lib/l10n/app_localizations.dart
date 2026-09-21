@@ -4139,6 +4139,352 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Create Link'**
   String get sharingInviteGuardianCreateLink;
+
+  /// Issue #1004 (tranche 1): manage-guardians screen generic cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingManageGuardiansCancel;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End prediction sharing?'**
+  String get sharingManageGuardiansEndPredictionTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'They will immediately lose the shared predictions calendar. You can create a new connection any time.'**
+  String get sharingManageGuardiansEndPredictionBody;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'End sharing'**
+  String get sharingManageGuardiansEndSharing;
+
+  /// Issue #1004 (tranche 1): snackbar after a prediction connection is revoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing ended'**
+  String get sharingManageGuardiansPredictionSharingEnded;
+
+  /// Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to end sharing. Check connection.'**
+  String get sharingManageGuardiansEndSharingFailed;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete {profileName} permanently?'**
+  String sharingManageGuardiansDeleteProfileTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian\'s access to it — including your own. Synced copies on every device are erased too.'**
+  String get sharingManageGuardiansDeleteProfileStep1Body;
+
+  /// Issue #1004 (tranche 1): first delete-profile confirmation continue action.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get sharingManageGuardiansContinue;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Are you absolutely sure?'**
+  String get sharingManageGuardiansDeleteProfileStep2Title;
+
+  /// Issue #1004 (tranche 1): second delete-profile confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName}\'s history will be gone permanently, for every guardian on this profile. There is no undo.'**
+  String sharingManageGuardiansDeleteProfileStep2Body(String profileName);
+
+  /// Issue #1004 (tranche 1): final destructive delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete permanently'**
+  String get sharingManageGuardiansDeletePermanently;
+
+  /// Issue #1004 (tranche 1): delete-profile failure while offline.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t delete while offline. Check your connection and try again.'**
+  String get sharingManageGuardiansDeleteOffline;
+
+  /// Issue #1004 (tranche 1): generic delete-profile failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to delete profile. Check connection and try again.'**
+  String get sharingManageGuardiansDeleteFailed;
+
+  /// Issue #1004 (tranche 1): error when the sole primary guardian tries to leave.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'re now the only primary guardian, so you can\'t leave. Add another primary guardian first, then try again.'**
+  String get sharingManageGuardiansSolePrimaryLeave;
+
+  /// Issue #1004 (tranche 1): generic revoke-guardian failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to remove guardian. Check connection.'**
+  String get sharingManageGuardiansRemoveFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name}?'**
+  String sharingManageGuardiansRemoveTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body when the caller removes herself.
+  ///
+  /// In en, this message translates to:
+  /// **'You will leave this profile and no longer receive updates or sync its entries.'**
+  String get sharingManageGuardiansLeaveBody;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when removing another guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'This guardian will lose access to {profileName}\'s calendar and entries.'**
+  String sharingManageGuardiansRemoveBody(String profileName);
+
+  /// Issue #1004 (tranche 1): destructive remove-guardian action.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get sharingManageGuardiansRemove;
+
+  /// Issue #1004 (tranche 1): snackbar after a guardian is removed.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed {name}'**
+  String sharingManageGuardiansRemoved(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel invitation for {name}?'**
+  String sharingManageGuardiansCancelInviteTitle(String name);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'The invite link will stop working immediately. You can send a new one any time.'**
+  String get sharingManageGuardiansCancelInviteBody;
+
+  /// Issue #1004 (tranche 1): decline action for the cancel-invitation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep Invitation'**
+  String get sharingManageGuardiansKeepInvitation;
+
+  /// Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Invitation'**
+  String get sharingManageGuardiansCancelInvitation;
+
+  /// Issue #1004 (tranche 1): snackbar when cancelling an invitation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to cancel invitation. Check connection.'**
+  String get sharingManageGuardiansCancelInviteFailed;
+
+  /// Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load pending invitations.'**
+  String get sharingManageGuardiansPendingLoadError;
+
+  /// Issue #1004 (tranche 1): empty state for the pending-invitations section.
+  ///
+  /// In en, this message translates to:
+  /// **'No pending invitations'**
+  String get sharingManageGuardiansNoPending;
+
+  /// Issue #1004 (tranche 1): pending-invitations section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Pending invitations'**
+  String get sharingManageGuardiansPendingTitle;
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • Expired'**
+  String sharingManageGuardiansPendingSubtitleExpired(String kindLabel);
+
+  /// Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.
+  ///
+  /// In en, this message translates to:
+  /// **'{kindLabel} • {expiry}'**
+  String sharingManageGuardiansPendingSubtitle(String kindLabel, String expiry);
+
+  /// Issue #1004 (tranche 1): resend action on an expired pending invitation.
+  ///
+  /// In en, this message translates to:
+  /// **'Resend'**
+  String get sharingManageGuardiansResend;
+
+  /// Issue #1004 (tranche 1): expiry label once an invitation has lapsed.
+  ///
+  /// In en, this message translates to:
+  /// **'expired'**
+  String get sharingManageGuardiansExpiryExpired;
+
+  /// Issue #1004 (tranche 1): expiry label rounded to hours.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {hours}h'**
+  String sharingManageGuardiansExpiryHours(int hours);
+
+  /// Issue #1004 (tranche 1): expiry label rounded to minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'expires in {minutes}m'**
+  String sharingManageGuardiansExpiryMinutes(int minutes);
+
+  /// Issue #1004 (tranche 1): manage-guardians app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'{profileName} Guardians'**
+  String sharingManageGuardiansScreenTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian floating action label.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian'**
+  String get sharingManageGuardiansInviteAction;
+
+  /// Issue #1004 (tranche 1): empty guardian list title.
+  ///
+  /// In en, this message translates to:
+  /// **'No guardians linked yet'**
+  String get sharingManageGuardiansNoGuardiansTitle;
+
+  /// Issue #1004 (tranche 1): empty guardian list body.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite another guardian to sync and share tracking.'**
+  String get sharingManageGuardiansNoGuardiansBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Predictions-only sharing'**
+  String get sharingManageGuardiansPredictionsSectionTitle;
+
+  /// Issue #1004 (tranche 1): prediction-connection section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.'**
+  String get sharingManageGuardiansPredictionsSectionBody;
+
+  /// Issue #1004 (tranche 1): prediction-connection notice on a minor's profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Prediction sharing is not available for a minor\'s profile.'**
+  String get sharingManageGuardiansPredictionsMinor;
+
+  /// Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Share predictions only...'**
+  String get sharingManageGuardiansSharePredictionsAction;
+
+  /// Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the primary guardian can share predictions.'**
+  String get sharingManageGuardiansPredictionsPrimaryOnly;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile title while the code is unredeemed.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for code redemption'**
+  String get sharingManageGuardiansPendingRedemption;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile title once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Sharing predictions'**
+  String get sharingManageGuardiansSharingPredictions;
+
+  /// Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile.
+  ///
+  /// In en, this message translates to:
+  /// **'pending'**
+  String get sharingManageGuardiansPendingBadge;
+
+  /// Issue #1004 (tranche 1): prediction-connection tile subtitle once active.
+  ///
+  /// In en, this message translates to:
+  /// **'Phases-only calendar • not a guardian'**
+  String get sharingManageGuardiansPhasesOnlyCalendar;
+
+  /// Issue #1004 (tranche 1): danger-zone section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Danger zone'**
+  String get sharingManageGuardiansDangerZoneTitle;
+
+  /// Issue #1004 (tranche 1): danger-zone section explanatory copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.'**
+  String get sharingManageGuardiansDangerZoneBody;
+
+  /// Issue #1004 (tranche 1): danger-zone delete-profile action.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete profile permanently'**
+  String get sharingManageGuardiansDeleteProfileAction;
+
+  /// Issue #1004 (tranche 1): generic role-update failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to update role. Check connection.'**
+  String get sharingManageGuardiansRoleUpdateFailed;
+
+  /// Issue #1004 (tranche 1): confirm dialog title for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role to {newRoleLabel}?'**
+  String sharingManageGuardiansChangeRoleTitle(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.'**
+  String sharingManageGuardiansChangeRoleBody(
+    String name,
+    String currentRoleLabel,
+    String consequence,
+  );
+
+  /// Issue #1004 (tranche 1): confirm action for a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Change role'**
+  String get sharingManageGuardiansChangeRoleAction;
+
+  /// Issue #1004 (tranche 1): snackbar after a role change.
+  ///
+  /// In en, this message translates to:
+  /// **'Role updated to {newRoleLabel}'**
+  String sharingManageGuardiansRoleUpdated(String newRoleLabel);
+
+  /// Issue #1004 (tranche 1): suffix marking the caller's own guardian row.
+  ///
+  /// In en, this message translates to:
+  /// **'(you)'**
+  String get sharingManageGuardiansYouSuffix;
 }
 
 class _AppLocalizationsDelegate

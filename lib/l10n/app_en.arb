@@ -3285,5 +3285,312 @@
   "sharingInviteGuardianCreateLink": "Create Link",
   "@sharingInviteGuardianCreateLink": {
     "description": "Issue #1004 (tranche 1): invite-guardian dialog create-link button."
+  },
+  "sharingManageGuardiansCancel": "Cancel",
+  "@sharingManageGuardiansCancel": {
+    "description": "Issue #1004 (tranche 1): manage-guardians screen generic cancel action."
+  },
+  "sharingManageGuardiansEndPredictionTitle": "End prediction sharing?",
+  "@sharingManageGuardiansEndPredictionTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a prediction connection."
+  },
+  "sharingManageGuardiansEndPredictionBody": "They will immediately lose the shared predictions calendar. You can create a new connection any time.",
+  "@sharingManageGuardiansEndPredictionBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body for revoking a prediction connection."
+  },
+  "sharingManageGuardiansEndSharing": "End sharing",
+  "@sharingManageGuardiansEndSharing": {
+    "description": "Issue #1004 (tranche 1): destructive confirm action for revoking a prediction connection."
+  },
+  "sharingManageGuardiansPredictionSharingEnded": "Prediction sharing ended",
+  "@sharingManageGuardiansPredictionSharingEnded": {
+    "description": "Issue #1004 (tranche 1): snackbar after a prediction connection is revoked."
+  },
+  "sharingManageGuardiansEndSharingFailed": "Failed to end sharing. Check connection.",
+  "@sharingManageGuardiansEndSharingFailed": {
+    "description": "Issue #1004 (tranche 1): snackbar when revoking a prediction connection fails."
+  },
+  "sharingManageGuardiansDeleteProfileTitle": "Delete {profileName} permanently?",
+  "@sharingManageGuardiansDeleteProfileTitle": {
+    "description": "Issue #1004 (tranche 1): first delete-profile confirmation title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansDeleteProfileStep1Body": "This permanently erases every day entry, care note, and visit-prep item on this profile, and removes every guardian's access to it — including your own. Synced copies on every device are erased too.",
+  "@sharingManageGuardiansDeleteProfileStep1Body": {
+    "description": "Issue #1004 (tranche 1): first delete-profile confirmation body."
+  },
+  "sharingManageGuardiansContinue": "Continue",
+  "@sharingManageGuardiansContinue": {
+    "description": "Issue #1004 (tranche 1): first delete-profile confirmation continue action."
+  },
+  "sharingManageGuardiansDeleteProfileStep2Title": "Are you absolutely sure?",
+  "@sharingManageGuardiansDeleteProfileStep2Title": {
+    "description": "Issue #1004 (tranche 1): second delete-profile confirmation title."
+  },
+  "sharingManageGuardiansDeleteProfileStep2Body": "{profileName}'s history will be gone permanently, for every guardian on this profile. There is no undo.",
+  "@sharingManageGuardiansDeleteProfileStep2Body": {
+    "description": "Issue #1004 (tranche 1): second delete-profile confirmation body.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansDeletePermanently": "Delete permanently",
+  "@sharingManageGuardiansDeletePermanently": {
+    "description": "Issue #1004 (tranche 1): final destructive delete-profile action."
+  },
+  "sharingManageGuardiansDeleteOffline": "Can't delete while offline. Check your connection and try again.",
+  "@sharingManageGuardiansDeleteOffline": {
+    "description": "Issue #1004 (tranche 1): delete-profile failure while offline."
+  },
+  "sharingManageGuardiansDeleteFailed": "Failed to delete profile. Check connection and try again.",
+  "@sharingManageGuardiansDeleteFailed": {
+    "description": "Issue #1004 (tranche 1): generic delete-profile failure."
+  },
+  "sharingManageGuardiansSolePrimaryLeave": "You're now the only primary guardian, so you can't leave. Add another primary guardian first, then try again.",
+  "@sharingManageGuardiansSolePrimaryLeave": {
+    "description": "Issue #1004 (tranche 1): error when the sole primary guardian tries to leave."
+  },
+  "sharingManageGuardiansRemoveFailed": "Failed to remove guardian. Check connection.",
+  "@sharingManageGuardiansRemoveFailed": {
+    "description": "Issue #1004 (tranche 1): generic revoke-guardian failure."
+  },
+  "sharingManageGuardiansRemoveTitle": "Remove {name}?",
+  "@sharingManageGuardiansRemoveTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title for revoking a guardian or leaving.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansLeaveBody": "You will leave this profile and no longer receive updates or sync its entries.",
+  "@sharingManageGuardiansLeaveBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body when the caller removes herself."
+  },
+  "sharingManageGuardiansRemoveBody": "This guardian will lose access to {profileName}'s calendar and entries.",
+  "@sharingManageGuardiansRemoveBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body when removing another guardian.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansRemove": "Remove",
+  "@sharingManageGuardiansRemove": {
+    "description": "Issue #1004 (tranche 1): destructive remove-guardian action."
+  },
+  "sharingManageGuardiansRemoved": "Removed {name}",
+  "@sharingManageGuardiansRemoved": {
+    "description": "Issue #1004 (tranche 1): snackbar after a guardian is removed.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansCancelInviteTitle": "Cancel invitation for {name}?",
+  "@sharingManageGuardiansCancelInviteTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title for cancelling a pending invitation.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansCancelInviteBody": "The invite link will stop working immediately. You can send a new one any time.",
+  "@sharingManageGuardiansCancelInviteBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body for cancelling a pending invitation."
+  },
+  "sharingManageGuardiansKeepInvitation": "Keep Invitation",
+  "@sharingManageGuardiansKeepInvitation": {
+    "description": "Issue #1004 (tranche 1): decline action for the cancel-invitation dialog."
+  },
+  "sharingManageGuardiansCancelInvitation": "Cancel Invitation",
+  "@sharingManageGuardiansCancelInvitation": {
+    "description": "Issue #1004 (tranche 1): destructive confirm action for cancelling an invitation."
+  },
+  "sharingManageGuardiansCancelInviteFailed": "Failed to cancel invitation. Check connection.",
+  "@sharingManageGuardiansCancelInviteFailed": {
+    "description": "Issue #1004 (tranche 1): snackbar when cancelling an invitation fails."
+  },
+  "sharingManageGuardiansPendingLoadError": "Could not load pending invitations.",
+  "@sharingManageGuardiansPendingLoadError": {
+    "description": "Issue #1004 (tranche 1): inline error when the pending-invitations list fails to load."
+  },
+  "sharingManageGuardiansNoPending": "No pending invitations",
+  "@sharingManageGuardiansNoPending": {
+    "description": "Issue #1004 (tranche 1): empty state for the pending-invitations section."
+  },
+  "sharingManageGuardiansPendingTitle": "Pending invitations",
+  "@sharingManageGuardiansPendingTitle": {
+    "description": "Issue #1004 (tranche 1): pending-invitations section heading."
+  },
+  "sharingManageGuardiansPendingSubtitleExpired": "{kindLabel} • Expired",
+  "@sharingManageGuardiansPendingSubtitleExpired": {
+    "description": "Issue #1004 (tranche 1): pending-invitation row subtitle for an expired invitation.",
+    "placeholders": {
+      "kindLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansPendingSubtitle": "{kindLabel} • {expiry}",
+  "@sharingManageGuardiansPendingSubtitle": {
+    "description": "Issue #1004 (tranche 1): pending-invitation row subtitle with the live expiry label.",
+    "placeholders": {
+      "kindLabel": {
+        "type": "String"
+      },
+      "expiry": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansResend": "Resend",
+  "@sharingManageGuardiansResend": {
+    "description": "Issue #1004 (tranche 1): resend action on an expired pending invitation."
+  },
+  "sharingManageGuardiansExpiryExpired": "expired",
+  "@sharingManageGuardiansExpiryExpired": {
+    "description": "Issue #1004 (tranche 1): expiry label once an invitation has lapsed."
+  },
+  "sharingManageGuardiansExpiryHours": "expires in {hours}h",
+  "@sharingManageGuardiansExpiryHours": {
+    "description": "Issue #1004 (tranche 1): expiry label rounded to hours.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingManageGuardiansExpiryMinutes": "expires in {minutes}m",
+  "@sharingManageGuardiansExpiryMinutes": {
+    "description": "Issue #1004 (tranche 1): expiry label rounded to minutes.",
+    "placeholders": {
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "sharingManageGuardiansScreenTitle": "{profileName} Guardians",
+  "@sharingManageGuardiansScreenTitle": {
+    "description": "Issue #1004 (tranche 1): manage-guardians app-bar title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansInviteAction": "Invite guardian",
+  "@sharingManageGuardiansInviteAction": {
+    "description": "Issue #1004 (tranche 1): invite-guardian floating action label."
+  },
+  "sharingManageGuardiansNoGuardiansTitle": "No guardians linked yet",
+  "@sharingManageGuardiansNoGuardiansTitle": {
+    "description": "Issue #1004 (tranche 1): empty guardian list title."
+  },
+  "sharingManageGuardiansNoGuardiansBody": "Invite another guardian to sync and share tracking.",
+  "@sharingManageGuardiansNoGuardiansBody": {
+    "description": "Issue #1004 (tranche 1): empty guardian list body."
+  },
+  "sharingManageGuardiansPredictionsSectionTitle": "Predictions-only sharing",
+  "@sharingManageGuardiansPredictionsSectionTitle": {
+    "description": "Issue #1004 (tranche 1): prediction-connection section heading."
+  },
+  "sharingManageGuardiansPredictionsSectionBody": "Shares estimated period, fertile, ovulation, and PMS days on a read-only calendar - never notes or logs. One connection.",
+  "@sharingManageGuardiansPredictionsSectionBody": {
+    "description": "Issue #1004 (tranche 1): prediction-connection section explanatory copy."
+  },
+  "sharingManageGuardiansPredictionsMinor": "Prediction sharing is not available for a minor's profile.",
+  "@sharingManageGuardiansPredictionsMinor": {
+    "description": "Issue #1004 (tranche 1): prediction-connection notice on a minor's profile."
+  },
+  "sharingManageGuardiansSharePredictionsAction": "Share predictions only...",
+  "@sharingManageGuardiansSharePredictionsAction": {
+    "description": "Issue #1004 (tranche 1): primary-guardian action to arm a prediction connection."
+  },
+  "sharingManageGuardiansPredictionsPrimaryOnly": "Only the primary guardian can share predictions.",
+  "@sharingManageGuardiansPredictionsPrimaryOnly": {
+    "description": "Issue #1004 (tranche 1): notice for a non-primary guardian on the prediction section."
+  },
+  "sharingManageGuardiansPendingRedemption": "Waiting for code redemption",
+  "@sharingManageGuardiansPendingRedemption": {
+    "description": "Issue #1004 (tranche 1): prediction-connection tile title while the code is unredeemed."
+  },
+  "sharingManageGuardiansSharingPredictions": "Sharing predictions",
+  "@sharingManageGuardiansSharingPredictions": {
+    "description": "Issue #1004 (tranche 1): prediction-connection tile title once active."
+  },
+  "sharingManageGuardiansPendingBadge": "pending",
+  "@sharingManageGuardiansPendingBadge": {
+    "description": "Issue #1004 (tranche 1): inline pending marker on the prediction-connection tile."
+  },
+  "sharingManageGuardiansPhasesOnlyCalendar": "Phases-only calendar • not a guardian",
+  "@sharingManageGuardiansPhasesOnlyCalendar": {
+    "description": "Issue #1004 (tranche 1): prediction-connection tile subtitle once active."
+  },
+  "sharingManageGuardiansDangerZoneTitle": "Danger zone",
+  "@sharingManageGuardiansDangerZoneTitle": {
+    "description": "Issue #1004 (tranche 1): danger-zone section heading."
+  },
+  "sharingManageGuardiansDangerZoneBody": "Permanently erases this profile and everything logged on it, for every guardian. This cannot be undone.",
+  "@sharingManageGuardiansDangerZoneBody": {
+    "description": "Issue #1004 (tranche 1): danger-zone section explanatory copy."
+  },
+  "sharingManageGuardiansDeleteProfileAction": "Delete profile permanently",
+  "@sharingManageGuardiansDeleteProfileAction": {
+    "description": "Issue #1004 (tranche 1): danger-zone delete-profile action."
+  },
+  "sharingManageGuardiansRoleUpdateFailed": "Failed to update role. Check connection.",
+  "@sharingManageGuardiansRoleUpdateFailed": {
+    "description": "Issue #1004 (tranche 1): generic role-update failure."
+  },
+  "sharingManageGuardiansChangeRoleTitle": "Change role to {newRoleLabel}?",
+  "@sharingManageGuardiansChangeRoleTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title for a role change.",
+    "placeholders": {
+      "newRoleLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansChangeRoleBody": "{name} currently has {currentRoleLabel} access. {consequence} No new invitation is needed — the new role applies on their next sync.",
+  "@sharingManageGuardiansChangeRoleBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body for a role change. The consequence sentence is supplied by roleChangeConsequence.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "currentRoleLabel": {
+        "type": "String"
+      },
+      "consequence": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansChangeRoleAction": "Change role",
+  "@sharingManageGuardiansChangeRoleAction": {
+    "description": "Issue #1004 (tranche 1): confirm action for a role change."
+  },
+  "sharingManageGuardiansRoleUpdated": "Role updated to {newRoleLabel}",
+  "@sharingManageGuardiansRoleUpdated": {
+    "description": "Issue #1004 (tranche 1): snackbar after a role change.",
+    "placeholders": {
+      "newRoleLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingManageGuardiansYouSuffix": "(you)",
+  "@sharingManageGuardiansYouSuffix": {
+    "description": "Issue #1004 (tranche 1): suffix marking the caller's own guardian row."
   }
 }
