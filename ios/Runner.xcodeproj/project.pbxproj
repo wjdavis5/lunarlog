@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		7A1000122E65014100000001 /* LunarLogWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1000022E65014100000001 /* LunarLogWidgetBundle.swift */; };
 		7A1000132E65014100000001 /* LunarLogWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1000032E65014100000001 /* LunarLogWidget.swift */; };
 		7A1000152E65014100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 7A1000062E65014100000001 /* PrivacyInfo.xcprivacy */; };
 		7A1000532E65014100000001 /* LunarLogWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7A1000312E65014100000001 /* LunarLogWidget.appex */; };
@@ -68,7 +67,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		7A1000022E65014100000001 /* LunarLogWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunarLogWidgetBundle.swift; sourceTree = "<group>"; };
 		7A1000032E65014100000001 /* LunarLogWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LunarLogWidget.swift; sourceTree = "<group>"; };
 		7A1000042E65014100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		7A1000052E65014100000001 /* LunarLogWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LunarLogWidget.entitlements; sourceTree = "<group>"; };
@@ -133,7 +131,6 @@
 		7A1000012E65014100000001 /* LunarLogWidget */ = {
 			isa = PBXGroup;
 			children = (
-				7A1000022E65014100000001 /* LunarLogWidgetBundle.swift */,
 				7A1000032E65014100000001 /* LunarLogWidget.swift */,
 				7A1000042E65014100000001 /* Info.plist */,
 				7A1000052E65014100000001 /* LunarLogWidget.entitlements */,
@@ -486,7 +483,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7A1000122E65014100000001 /* LunarLogWidgetBundle.swift in Sources */,
 				7A1000132E65014100000001 /* LunarLogWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

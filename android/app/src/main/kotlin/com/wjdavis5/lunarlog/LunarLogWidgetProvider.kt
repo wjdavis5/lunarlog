@@ -86,8 +86,11 @@ class LunarLogWidgetProvider : AppWidgetProvider() {
         val asOf = prefs.getString(KEY_AS_OF, null)?.let { parseDate(it) }
         val elapsed = if (asOf != null) daysBetween(asOf, LocalDate.now()) else 0L
         // Defensive: a device clock rollback renders the stored values
-        // unchanged rather than counting backwards.
-        val rolled = if (elapsed > 0) elapsed else 0L
+        // unchanged rather than counting backwards. The elapsed count is
+        // narrowed to Int here — everything it feeds is an Int (the stored
+        // cycle day and days-until estimate), and a realistic elapsed day
+        // count is nowhere near Int range.
+        val rolled = if (elapsed > 0) elapsed.toInt() else 0
         val day = baseDay + rolled
         // The countdown stops rendering once it would cross zero: the app
         // is the only authority for a fresh estimate.
