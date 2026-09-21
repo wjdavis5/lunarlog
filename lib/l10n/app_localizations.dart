@@ -1440,6 +1440,12 @@ abstract class AppLocalizations {
   /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.'**
   String healthSyncImportSummaryHeadline(int imported, int skipped);
 
+  /// Health import completion headline (Issue #1017) for a pass that imported no days: says plainly that nothing was new because the days were already logged, rather than the pre-#1017 'Imported 0 days'.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing new — {skipped, plural, =1{1 day} other{{skipped} days}} already logged.'**
+  String healthSyncImportSummaryNothingNew(int skipped);
+
   /// Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history.
   ///
   /// In en, this message translates to:
