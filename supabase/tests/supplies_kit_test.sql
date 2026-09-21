@@ -10,7 +10,7 @@
 -- and check state clear, kind survives -- identity, not health content).
 -- Fixture style: care_notes_visit_prep_test.sql.
 begin;
-select plan(18);
+select plan(20);
 
 create temp table r (name text primary key, v jsonb);
 grant all on table r to authenticated;
