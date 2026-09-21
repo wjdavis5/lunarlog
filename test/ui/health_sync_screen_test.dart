@@ -276,12 +276,15 @@ void main() {
     HealthImportRunner? importer,
     HealthPermissionProbe? permissionProbe,
     bool writeEnabled = true,
+    Size viewport = const Size(800, 1800),
   }) async {
     // Issue #186 added revocation/30-day-limit copy above the profile
     // picker, and #217 adds an import tile and its result block below it,
     // so give the lazy ListView a tall viewport to keep every profile tile
-    // and the import/unbind actions inside the build window.
-    tester.view.physicalSize = const Size(800, 1800);
+    // and the import/unbind actions inside the build window. Issue #1017
+    // overrides this with a short viewport to prove the result is scrolled
+    // into view after a pass.
+    tester.view.physicalSize = viewport;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -678,6 +681,104 @@ void main() {
       );
       return binding;
     }
+
+    testWidgets('after an import completes on a short screen the result is '
+        'scrolled into view and announced in a SnackBar (Issue #1017)',
+        (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 3,
+        daysWritten: 3,
+        samplesFromDeviceZone: 3,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        importer: importer,
+        // Short enough that the import tile and its result cannot both be
+        // on screen at once, so the pass must scroll the result into view.
+        viewport: const Size(400, 300),
+      );
+
+      final tile = find.byKey(const ValueKey('health-sync-import-tile'));
+      await tester.scrollUntilVisible(tile, 120);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      final result = find.byKey(const ValueKey('health-sync-import-summary'));
+      expect(result, findsOneWidget);
+      final screenHeight = tester.view.physicalSize.height /
+          tester.view.devicePixelRatio;
+      final rect = tester.getRect(result);
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(
+        rect.bottom,
+        lessThanOrEqualTo(screenHeight),
+        reason: 'the result must be scrolled fully into view after the pass',
+      );
+      // The completion headline is also announced in a SnackBar so the tap
+      // cannot look like it did nothing.
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.textContaining('Imported 3 days'),
+        ),
+        findsOneWidget,
+      );
+
+      // Retire the SnackBar so no timer outlives the test.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a finished import states its outcome exactly once — the '
+        'headline, without the pre-#992 duplicate lines (Issue #1017)',
+        (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 3,
+        daysWritten: 3,
+        daysUnchanged: 1,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      final summary = find.byKey(const ValueKey('health-sync-import-summary'));
+      expect(
+        find.descendant(
+          of: summary,
+          matching: find.text('Imported 3 days, skipped 1 already logged.'),
+        ),
+        findsOneWidget,
+      );
+      // The headline already carries the imported and skipped counts, so the
+      // summary must not restate them with "Updated N days" / "N days
+      // already matched".
+      expect(
+        find.descendant(
+          of: summary,
+          matching: find.textContaining('Updated 3 days'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: summary,
+          matching: find.textContaining('already matched'),
+        ),
+        findsNothing,
+      );
+      // Exactly one line: the outcome is stated once.
+      expect(
+        find.descendant(of: summary, matching: find.byType(Text)),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+    });
 
     testWidgets('the import tile is hidden when no runner is provided or '
         'nothing is bound', (tester) async {
