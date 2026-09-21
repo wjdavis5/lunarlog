@@ -74,6 +74,13 @@ jobs:
         if: always()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
 
+      # Issue #141 / PR #1007: a signed build now signs both the app and its
+      # LunarLogWidget extension, so the workflow must install two profiles
+      # and the export plist must map both bundle ids. This pins that wiring.
+      - name: Run check-ios-widget-signing tests
+        if: always()
+        run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
+
       - name: Run upload-sentry-symbols-setup tests
         if: always()
         run: bash .github/scripts/tests/upload-sentry-symbols-setup.test.sh
@@ -237,6 +244,13 @@ jobs:
       - name: Run check-qa-build-gate tests
         if: always()
         run: bash .github/scripts/tests/check-qa-build-gate.test.sh
+
+      # Issue #141 / PR #1007: a signed build now signs both the app and its
+      # LunarLogWidget extension, so the workflow must install two profiles
+      # and the export plist must map both bundle ids. This pins that wiring.
+      - name: Run check-ios-widget-signing tests
+        if: always()
+        run: bash .github/scripts/tests/check-ios-widget-signing.test.sh
 
       - name: Run upload-sentry-symbols-setup tests
         if: always()
