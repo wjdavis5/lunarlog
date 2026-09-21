@@ -95,7 +95,7 @@ class CycleRecapCard extends StatelessWidget {
               key: const ValueKey('cycle-recap-length'),
               style: theme.textTheme.bodyMedium,
             ),
-            ..._estimateFacts(context, theme, l10n),
+            ..._estimateFacts(theme, l10n),
             ..._recurringFacts(theme, l10n),
             if (!_suppressComparison && onCompare != null) ...[
               const SizedBox(height: LLSpace.space2),
@@ -116,7 +116,6 @@ class CycleRecapCard extends StatelessWidget {
   /// recap (a tier transition, or a displayed-mean shift the #178
   /// thresholds already judged meaningful).
   List<Widget> _estimateFacts(
-    BuildContext context,
     ThemeData theme,
     AppLocalizations l10n,
   ) {
