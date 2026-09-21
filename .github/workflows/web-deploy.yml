@@ -136,7 +136,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: '3'
+          # Pinned to the wrangler version this action release itself
+          # defaults to (3.89.0), rather than a floating `3`.
+          wranglerVersion: '3.89.0'
           # `--branch=main` pins this to a production deployment of the Pages
           # project (a non-production branch would publish a preview URL).
           command: pages deploy build/web --project-name=lunarlog-app --branch=main
