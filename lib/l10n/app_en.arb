@@ -121,16 +121,24 @@
   "@calendarCellDateLabel": {
     "description": "The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.",
     "placeholders": {
-      "weekday": {"type": "String"},
-      "month": {"type": "String"},
-      "day": {"type": "int"}
+      "weekday": {
+        "type": "String"
+      },
+      "month": {
+        "type": "String"
+      },
+      "day": {
+        "type": "int"
+      }
     }
   },
   "calendarCellFlowState": "{level} flow",
   "@calendarCellFlowState": {
     "description": "Screen-reader fragment naming a logged day's bleed level, e.g. 'Medium flow'.",
     "placeholders": {
-      "level": {"type": "String"}
+      "level": {
+        "type": "String"
+      }
     }
   },
   "calendarCellSymptomsLogged": "symptoms logged",
@@ -173,14 +181,18 @@
   "@calendarCellCycleDay": {
     "description": "Screen-reader fragment for a predicted bleed day's cycle-day numeral.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "calendarCellCycleDayFirstCycle": "cycle day {day} of the first predicted cycle",
   "@calendarCellCycleDayFirstCycle": {
     "description": "Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "calendarCellPmsWindow": "predicted premenstrual window",
@@ -219,7 +231,9 @@
   "@cycleComparisonSelectedCount": {
     "description": "Issue #235: selection-mode progress hint in the cycle-history list (\"0 of 2 selected\", \"1 of 2 selected\", \"2 of 2 selected\") -- always exactly two are required, so this is a bare count, not a pluralized noun.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "cycleComparisonOpenButton": "Compare",
@@ -230,7 +244,9 @@
   "@cycleComparisonSelectCycleSemantic": {
     "description": "Issue #235: accessibility label on a completed cycle's selection checkbox in the cycle-history list, naming what the checkbox is for (a bare Checkbox otherwise announces only checked/unchecked state).",
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "cycleComparisonSelectCurrentCycleSemantic": "Select current cycle for comparison",
@@ -253,14 +269,18 @@
   "@cycleComparisonSideHeading": {
     "description": "Issue #235: header above a completed cycle's column in the comparison screen.",
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "cycleComparisonCurrentCycleHeading": "Current cycle (started {date})",
   "@cycleComparisonCurrentCycleHeading": {
     "description": "Issue #235: header above the still-open cycle's column in the comparison screen, when one side of the comparison is the open cycle.",
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "cycleComparisonExcludedBadge": "Excluded from averages",
@@ -295,7 +315,9 @@
   "@cycleComparisonDayHeading": {
     "description": "Issue #235: the shared cycle-day label each aligned row starts with (\"Day 1\", \"Day 2\", ...), and the leading fragment of that row's accessibility label for each side.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "cycleComparisonNoEntryLabel": "Not logged",
@@ -763,38 +785,54 @@
   "@cycleWheelDaysUntilUnit": {
     "description": "Unit label beneath the days-until count in the cycle wheel centre.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelDaysLateUnit": "{count, plural, =1{day late} other{days late}}",
   "@cycleWheelDaysLateUnit": {
     "description": "Unit label beneath the days-late count in the cycle wheel centre when overdue.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelDaysPastEstimateUnit": "{count, plural, =1{day past estimate} other{days past estimate}}",
   "@cycleWheelDaysPastEstimateUnit": {
     "description": "Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelSemanticsPastEstimate": "{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsPastEstimate": {
     "description": "Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.",
     "placeholders": {
-      "daysPast": {"type": "int"},
-      "cycleDay": {"type": "int"},
-      "cycleDays": {"type": "int"},
-      "periodDays": {"type": "int"}
+      "daysPast": {
+        "type": "int"
+      },
+      "cycleDay": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelBleedDayHero": "Day {day}",
   "@cycleWheelBleedDayHero": {
     "description": "Top line in the cycle wheel centre during a bleed episode.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelBleedOfPeriod": "of period",
@@ -805,59 +843,93 @@
   "@cycleWheelCenterCycleDay": {
     "description": "The overview wheel's centre label mid-cycle.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelCenterPeriodDay": "Period · day {day}",
   "@cycleWheelCenterPeriodDay": {
     "description": "The overview wheel's centre label during a logged bleed episode.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelPhasePeriodDay": "Period, day {day}",
   "@cycleWheelPhasePeriodDay": {
     "description": "The phase half of the overview wheel's screen-reader label during a bleed episode.",
     "placeholders": {
-      "day": {"type": "int"}
+      "day": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelSemanticsBleed": "Day {day} of period. Cycle of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsBleed": {
     "description": "The overview wheel's screen-reader label during a bleed episode.",
     "placeholders": {
-      "day": {"type": "int"},
-      "cycleDays": {"type": "int"},
-      "periodDays": {"type": "int"}
+      "day": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelSemanticsMidCycle": "{daysUntil, plural, =1{About 1 day until next period.} other{About {daysUntil} days until next period.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsMidCycle": {
     "description": "The overview wheel's screen-reader label mid-cycle, leading with the days-until figure.",
     "placeholders": {
-      "daysUntil": {"type": "int"},
-      "cycleDay": {"type": "int"},
-      "cycleDays": {"type": "int"},
-      "periodDays": {"type": "int"}
+      "daysUntil": {
+        "type": "int"
+      },
+      "cycleDay": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelSemanticsLate": "{daysLate, plural, =1{1 day late.} other{{daysLate} days late.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsLate": {
     "description": "The overview wheel's screen-reader label when overdue.",
     "placeholders": {
-      "daysLate": {"type": "int"},
-      "cycleDay": {"type": "int"},
-      "cycleDays": {"type": "int"},
-      "periodDays": {"type": "int"}
+      "daysLate": {
+        "type": "int"
+      },
+      "cycleDay": {
+        "type": "int"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
     }
   },
   "cycleWheelSemanticsBody": "{phase} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsBody": {
     "description": "The overview wheel's screen-reader label; {phase} is a cycleWheelCenter*/cycleWheelPhase* fragment.",
     "placeholders": {
-      "phase": {"type": "String"},
-      "cycleDays": {"type": "int"},
-      "periodDays": {"type": "int"}
+      "phase": {
+        "type": "String"
+      },
+      "cycleDays": {
+        "type": "int"
+      },
+      "periodDays": {
+        "type": "int"
+      }
     }
   },
   "settingsTitle": "Settings",
@@ -1465,16 +1537,24 @@
   "@overviewPmsBandLabel": {
     "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
     "placeholders": {
-      "range": {"type": "String"},
-      "days": {"type": "int"},
-      "length": {"type": "int"}
+      "range": {
+        "type": "String"
+      },
+      "days": {
+        "type": "int"
+      },
+      "length": {
+        "type": "int"
+      }
     }
   },
   "overviewPmsTierLabel": "PMS estimate: {tier}",
   "@overviewPmsTierLabel": {
     "description": "Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.",
     "placeholders": {
-      "tier": {"type": "String"}
+      "tier": {
+        "type": "String"
+      }
     }
   },
   "predictionsSuppressedTitle": "Predictions are suppressed",
@@ -1485,14 +1565,18 @@
   "@predictionsSuppressedBody": {
     "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
     "placeholders": {
-      "method": {"type": "String"}
+      "method": {
+        "type": "String"
+      }
     }
   },
   "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.",
   "@predictionsSuppressedByModeBody": {
     "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
     "placeholders": {
-      "mode": {"type": "String"}
+      "mode": {
+        "type": "String"
+      }
     }
   },
   "predictionsDisabledTitle": "Predictions turned off",
@@ -1515,7 +1599,9 @@
   "@settingsPredictionsProfileTitle": {
     "description": "Title of the prediction toggle in Settings for a specific profile (issue #225).",
     "placeholders": {
-      "profileName": {"type": "String"}
+      "profileName": {
+        "type": "String"
+      }
     }
   },
   "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and prediction reminders",
@@ -1526,14 +1612,18 @@
   "@settingsPredictionsSuppressedByModeSubtitle": {
     "description": "Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).",
     "placeholders": {
-      "mode": {"type": "String"}
+      "mode": {
+        "type": "String"
+      }
     }
   },
   "settingsPredictionsSuppressedByMethodSubtitle": "Turned off by {method} — change or clear the birth-control method to resume.",
   "@settingsPredictionsSuppressedByMethodSubtitle": {
     "description": "Subtitle of the settings predictions toggle when an active continuous birth-control method ({method}) suppresses predictions; the toggle is disabled and the method name comes from the shared birth-control picker vocabulary (Issue #877).",
     "placeholders": {
-      "method": {"type": "String"}
+      "method": {
+        "type": "String"
+      }
     }
   },
   "overviewIrregularSuggestionTitle": "Cycles vary a lot",
@@ -1676,7 +1766,6 @@
   "@reminderBirthControlNeedsStartDate": {
     "description": "Row subtitle shown when an anchor-based birth-control reminder (patch, ring, shot) is enabled for a method with no recorded start date: without one there is no knowable due date, so nothing fires (Issue #183)."
   },
-
   "commonNetworkError": "Network error. Please check your connection.",
   "@commonNetworkError": {
     "description": "Issue #545: shared failure copy reused by every …FailureCopy mapper under lib/ui/l10n/ whose domain sealed failure has a plain network-error case (sharing, ownership transfer, prediction connections, notification preferences)."
@@ -1693,7 +1782,6 @@
   "@commonSomethingWentWrong": {
     "description": "Issue #545: shared catch-all failure copy reused by every …FailureCopy mapper's 'other'/unknown case."
   },
-
   "sharingFailureNotFound": "Invitation not found or invalid link.",
   "@sharingFailureNotFound": {
     "description": "SharingFailure.notFound copy, rendered by sharingFailureCopy (lib/ui/l10n/sharing_failure_copy.dart)."
@@ -1730,7 +1818,6 @@
   "@sharingFailureOther": {
     "description": "SharingFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always an accept-invite attempt."
   },
-
   "profileErasureFailureNetwork": "Can't purge while offline. Check your connection and try again.",
   "@profileErasureFailureNetwork": {
     "description": "ProfileErasureFailure.network copy at the purge surface, rendered by profileErasureFailureCopy (lib/ui/l10n/profile_erasure_failure_copy.dart)."
@@ -1759,49 +1846,68 @@
   "@purgeImportedDataPreview": {
     "description": "The purge dialog's count preview (issue #883): how many local rows the selected profile+source purge would remove, e.g. '109 entries from File import'.",
     "placeholders": {
-      "count": { "type": "int" },
-      "source": { "type": "String" }
+      "count": {
+        "type": "int"
+      },
+      "source": {
+        "type": "String"
+      }
     }
   },
   "importEntryDatesRejectedPreview": "{count, plural, =1{1 day entry falls} other{{count} day entries fall}} outside this profile's date range and will be skipped when you import ({reasons}).",
   "@importEntryDatesRejectedPreview": {
     "description": "Issue #925: the restore-from-file preview's warning before the user commits, naming how many of the file's day entries are out of bounds and why (reasons). Shown only when count > 0.",
     "placeholders": {
-      "count": { "type": "int" },
-      "reasons": { "type": "String" }
+      "count": {
+        "type": "int"
+      },
+      "reasons": {
+        "type": "String"
+      }
     }
   },
   "importEntryDatesRejectedResult": "{count, plural, =1{1 day entry} other{{count} day entries}} skipped by date ({reasons})",
   "@importEntryDatesRejectedResult": {
     "description": "Issue #925: the restore-from-file result summary's skipped-by-date clause, counted in the same sentence as the other outcomes rather than leaving '0 skipped' misleading. Shown only when count > 0.",
     "placeholders": {
-      "count": { "type": "int" },
-      "reasons": { "type": "String" }
+      "count": {
+        "type": "int"
+      },
+      "reasons": {
+        "type": "String"
+      }
     }
   },
   "importEntryDatesRejectionFuture": "{count, plural, =1{1 more than a day in the future} other{{count} more than a day in the future}}",
   "@importEntryDatesRejectionFuture": {
     "description": "Issue #925: the 'future-dated' half of a rejected-entry reason breakdown.",
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "importEntryDatesRejectionBeforeBirthYear": "{count, plural, =1{1 before the birth year} other{{count} before the birth year}}",
   "@importEntryDatesRejectionBeforeBirthYear": {
     "description": "Issue #925: the 'before the birth year' half of a rejected-entry reason breakdown.",
     "placeholders": {
-      "count": { "type": "int" }
+      "count": {
+        "type": "int"
+      }
     }
   },
   "importEntryDatesRejectionReasonsJoin": "{first} and {second}",
   "@importEntryDatesRejectionReasonsJoin": {
     "description": "Issue #925: joins the two non-zero rejected-entry reasons into one phrases, e.g. '1 more than a day in the future and 2 before the birth year'.",
     "placeholders": {
-      "first": { "type": "String" },
-      "second": { "type": "String" }
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
     }
   },
-
   "inviteCancellationRevoked": "Invitation cancelled",
   "@inviteCancellationRevoked": {
     "description": "InviteCancellation.revoked copy, rendered by inviteCancellationCopy (lib/ui/l10n/sharing_failure_copy.dart)."
@@ -1818,7 +1924,6 @@
   "@inviteCancellationExpired": {
     "description": "InviteCancellation.expired copy."
   },
-
   "transferFailureNotFound": "Transfer not found or invalid link.",
   "@transferFailureNotFound": {
     "description": "TransferFailure.notFound copy, rendered by transferFailureCopy (lib/ui/l10n/transfer_failure_copy.dart)."
@@ -1851,7 +1956,6 @@
   "@transferFailureInvalidToken": {
     "description": "TransferFailure.invalidToken copy."
   },
-
   "predictionConnectionFailureNotFound": "That code is not valid.",
   "@predictionConnectionFailureNotFound": {
     "description": "PredictionConnectionFailure.notFound copy, rendered by predictionConnectionFailureCopy (lib/ui/l10n/prediction_connection_failure_copy.dart)."
@@ -1888,7 +1992,6 @@
   "@predictionConnectionFailureMinorProfile": {
     "description": "PredictionConnectionFailure.minorProfile copy."
   },
-
   "feedbackFailureRateLimited": "You've sent a few reports already — please try again in a bit.",
   "@feedbackFailureRateLimited": {
     "description": "FeedbackFailure.rateLimited copy, rendered by feedbackFailureCopy (lib/ui/l10n/feedback_failure_copy.dart)."
@@ -1918,7 +2021,6 @@
       }
     }
   },
-
   "notificationPreferencesFailureInvalidTimeZone": "Your device's time zone isn't recognised by the server yet — quiet hours will use UTC until it is",
   "@notificationPreferencesFailureInvalidTimeZone": {
     "description": "NotificationPreferencesFailure.invalidTimeZone copy, rendered by notificationPreferencesFailureCopy (lib/ui/l10n/notification_preferences_failure_copy.dart)."
@@ -1927,7 +2029,6 @@
   "@notificationPreferencesFailureOther": {
     "description": "NotificationPreferencesFailure.other copy — distinct from the generic commonSomethingWentWrong because this failure is always a preferences-save attempt."
   },
-
   "guardianRoleLabelPrimaryGuardian": "Primary Guardian",
   "@guardianRoleLabelPrimaryGuardian": {
     "description": "GuardianRole.primaryGuardian's display label, rendered by guardianRoleLabel (lib/ui/l10n/guardian_role_copy.dart)."
@@ -1965,7 +2066,6 @@
       }
     }
   },
-
   "authFailureWrongPassword": "That email and password combination was not accepted.",
   "@authFailureWrongPassword": {
     "description": "AuthWrongPasswordFailure copy, rendered by authFailureCopy (lib/ui/l10n/auth_failure_copy.dart)."
@@ -2011,7 +2111,6 @@
   "@authFailureLastSignInMethod": {
     "description": "AuthLastSignInMethodFailure copy."
   },
-
   "careNotesRemoveNoteTooltip": "Remove note",
   "@careNotesRemoveNoteTooltip": {
     "description": "Tooltip on a care note's delete icon button."
@@ -2120,7 +2219,6 @@
   "@profileStatusPredictionsOff": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
   },
-
   "daysCount": "{count} {count, plural, =1{day} other{days}}",
   "@daysCount": {
     "description": "Issue #545: a bare integer day count, correctly pluralized (fixes 'N days' rendering as '1 days'). Shared by the cycle-history section's variation/period-length stats and the late-resolver's fallback line.",
@@ -2150,30 +2248,42 @@
   "@daySheetBbtFieldLabel": {
     "description": "Label (and accessibility label) for the day sheet's BBT text field (Issue #457); {unit} is the profile's current display-unit symbol ('°C'/'°F', from measurement_unit.dart's bbtUnitSymbol — a universal symbol, not itself translated).",
     "placeholders": {
-      "unit": {"type": "String"}
+      "unit": {
+        "type": "String"
+      }
     }
   },
   "daySheetWeightFieldLabel": "Weight ({unit})",
   "@daySheetWeightFieldLabel": {
     "description": "Label (and accessibility label) for the day sheet's weight text field (Issue #457); {unit} is the profile's current display-unit symbol ('kg'/'lb').",
     "placeholders": {
-      "unit": {"type": "String"}
+      "unit": {
+        "type": "String"
+      }
     }
   },
   "daySheetBbtRangeError": "Enter a BBT between {min} and {max}",
   "@daySheetBbtRangeError": {
     "description": "Inline validation error under the BBT field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
     "placeholders": {
-      "min": {"type": "String"},
-      "max": {"type": "String"}
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
     }
   },
   "daySheetWeightRangeError": "Enter a weight between {min} and {max}",
   "@daySheetWeightRangeError": {
     "description": "Inline validation error under the weight field when the entered value is outside the sanity range (Issue #457); {min}/{max} are already formatted in the profile's current display unit.",
     "placeholders": {
-      "min": {"type": "String"},
-      "max": {"type": "String"}
+      "min": {
+        "type": "String"
+      },
+      "max": {
+        "type": "String"
+      }
     }
   },
   "daySheetMeasurementInvalidNumber": "Enter a number",
@@ -2204,7 +2314,9 @@
   "@settingsMeasurementUnitsProfileTitle": {
     "description": "Heading of the measurement-units section in Settings for a specific profile, when more than one profile exists (Issue #457).",
     "placeholders": {
-      "profileName": {"type": "String"}
+      "profileName": {
+        "type": "String"
+      }
     }
   },
   "settingsMeasurementUnitsBbtLabel": "BBT unit",
@@ -2371,14 +2483,18 @@
   "@pinLockScreenIncorrect": {
     "description": "Inline error on the lock screen after a wrong PIN, naming how many attempts remain before the next lockout tier (issue #271).",
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "pinLockScreenLockedOut": "Too many attempts. Try again after {time}.",
   "@pinLockScreenLockedOut": {
     "description": "Inline error on the lock screen while the PIN is locked out, naming the local time it unlocks again (issue #271).",
     "placeholders": {
-      "time": {"type": "String"}
+      "time": {
+        "type": "String"
+      }
     }
   },
   "reminderTextTileTitle": "Notification text",
@@ -2425,7 +2541,6 @@
   "@reminderTextDiscretionNote": {
     "description": "Explainer under the editor fields stating the discretion posture: manual text only, no auto-inserted names or dates (Issue #184)."
   },
-
   "pregnancyWeekTitle": "Week {week} of pregnancy",
   "@pregnancyWeekTitle": {
     "description": "Pregnancy-mode Cycle View headline: the week-of-pregnancy counter derived from the estimated due date (Issue #192). Week is the 0-based gestational week (floor of gestational days / 7), so the due date itself reads week 40.",
@@ -2542,7 +2657,6 @@
   "@postpartumExitExclusionDone": {
     "description": "Snackbar confirming the postpartum exclusion rows were written (Issue #455)."
   },
-
   "conceiveTitle": "Conceive mode",
   "@conceiveTitle": {
     "description": "Heading of the Conceive-mode Cycle View card, shown while profile_modes.mode is conceive (Issue #204)."
@@ -2563,7 +2677,6 @@
       }
     }
   },
-
   "perimenopauseTitle": "Cycle changes",
   "@perimenopauseTitle": {
     "description": "Heading of the Perimenopause-mode Cycle View card, shown while profile_modes.mode is perimenopause (Issue #196)."
@@ -2773,7 +2886,105 @@
   "@profileIrregularFramingHint": {
     "description": "Issue #853: the composed irregular-framing toggle's hint, shown under the label."
   },
-
+  "cycleRecapTitle": "Cycle {cycleNumber} wrapped up",
+  "@cycleRecapTitle": {
+    "description": "Issue #852: title of the cycle-end recap card. {cycleNumber} is the 1-based ordinal of the cycle that just closed.",
+    "placeholders": {
+      "cycleNumber": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleRecapLength": "This cycle lasted {days}.",
+  "@cycleRecapLength": {
+    "description": "Issue #852: the recap's one certain fact -- the logged length of the cycle that just closed. {days} is already pluralized by formatDays (e.g. '29 days').",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleRecapUsualRange": "Your usual range is {range}.",
+  "@cycleRecapUsualRange": {
+    "description": "Issue #852: the recap's estimate-backed range line, shown only when the engine has an estimate. {range} is a formatted span such as '27-31 days'. Never rendered in irregular framing.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleRecapLongerThanPrevious": "{days, plural, =1{One day longer than the cycle before it.} other{{days} days longer than the cycle before it.}}",
+  "@cycleRecapLongerThanPrevious": {
+    "description": "Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleRecapShorterThanPrevious": "{days, plural, =1{One day shorter than the cycle before it.} other{{days} days shorter than the cycle before it.}}",
+  "@cycleRecapShorterThanPrevious": {
+    "description": "Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "cycleRecapSameAsPrevious": "About the same length as the cycle before it.",
+  "@cycleRecapSameAsPrevious": {
+    "description": "Issue #852: this-cycle-vs-previous comparison when the two lengths are equal. Never rendered in irregular framing."
+  },
+  "cycleRecapEstimatesMoreConfident": "Your estimates are now more confident.",
+  "@cycleRecapEstimatesMoreConfident": {
+    "description": "Issue #852: a confidence-tier transition upward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists. Uses the app's own CycleConfidence vocabulary, never invented encouragement."
+  },
+  "cycleRecapEstimatesLessConfident": "Your estimates are a little less certain now.",
+  "@cycleRecapEstimatesLessConfident": {
+    "description": "Issue #852: a confidence-tier transition downward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists."
+  },
+  "cycleRecapAverageMoved": "Your average cycle length moved by {days}.",
+  "@cycleRecapAverageMoved": {
+    "description": "Issue #852: a meaningful displayed mean-cycle-length shift detected with the #178 statistic-change thresholds. {days} is the pluralized absolute shift.",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleRecapRecurringSymptom": "{symptom}: most often around cycle day {days}.",
+  "@cycleRecapRecurringSymptom": {
+    "description": "Issue #852: a recurring-symptom fact from the Analysis tab's own report (#135). {symptom} is the tag code with underscores turned into spaces, sentence-cased; {days} is a formatted cycle-day list such as '1-2'.",
+    "placeholders": {
+      "symptom": {
+        "type": "String"
+      },
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleRecapCrampDays": "Cramps most often land around cycle day {days}.",
+  "@cycleRecapCrampDays": {
+    "description": "Issue #852: the cramp forecast's own recurring-day fact (#229), shown only when the engine produced one. {days} is a formatted cycle-day list such as '1, 2'.",
+    "placeholders": {
+      "days": {
+        "type": "String"
+      }
+    }
+  },
+  "cycleRecapStillLearning": "Still learning — estimates appear once a few cycles are recorded.",
+  "@cycleRecapStillLearning": {
+    "description": "Issue #852: the recap's honest thin-history line, shown instead of any estimate-backed fact while the engine is below its estimate threshold. Mirrors the app's 'Estimates not ready' voice rule."
+  },
+  "cycleRecapCompareAction": "Compare with the cycle before",
+  "@cycleRecapCompareAction": {
+    "description": "Issue #852: action opening the #235 side-by-side comparison for the recap's two cycles, shown only when both are complete."
+  },
+  "cycleRecapDismissLabel": "Dismiss",
+  "@cycleRecapDismissLabel": {
+    "description": "Issue #852: tooltip and accessibility label for the recap card's dismiss affordance (reused by the irregular suggestion banner's own copy)."
+  },
   "householdLogToday": "Log today",
   "@householdLogToday": {
     "description": "Issue #803: the household row's log-for-her action label. The row itself names the profile, so the visible label stays short; the full 'Log today for <name>' phrasing (householdLogTodayFor) is the action's tooltip/semantics."

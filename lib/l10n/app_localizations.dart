@@ -3653,6 +3653,90 @@ abstract class AppLocalizations {
   /// **'Treats variation as expected, not late: ranges instead of dates, no late banner, no late nudges. On by default for teen profiles until cycles are steady.'**
   String get profileIrregularFramingHint;
 
+  /// Issue #852: title of the cycle-end recap card. {cycleNumber} is the 1-based ordinal of the cycle that just closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle {cycleNumber} wrapped up'**
+  String cycleRecapTitle(int cycleNumber);
+
+  /// Issue #852: the recap's one certain fact -- the logged length of the cycle that just closed. {days} is already pluralized by formatDays (e.g. '29 days').
+  ///
+  /// In en, this message translates to:
+  /// **'This cycle lasted {days}.'**
+  String cycleRecapLength(String days);
+
+  /// Issue #852: the recap's estimate-backed range line, shown only when the engine has an estimate. {range} is a formatted span such as '27-31 days'. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'Your usual range is {range}.'**
+  String cycleRecapUsualRange(String range);
+
+  /// Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{One day longer than the cycle before it.} other{{days} days longer than the cycle before it.}}'**
+  String cycleRecapLongerThanPrevious(int days);
+
+  /// Issue #852: this-cycle-vs-previous comparison, shown only when both cycles are complete. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'{days, plural, =1{One day shorter than the cycle before it.} other{{days} days shorter than the cycle before it.}}'**
+  String cycleRecapShorterThanPrevious(int days);
+
+  /// Issue #852: this-cycle-vs-previous comparison when the two lengths are equal. Never rendered in irregular framing.
+  ///
+  /// In en, this message translates to:
+  /// **'About the same length as the cycle before it.'**
+  String get cycleRecapSameAsPrevious;
+
+  /// Issue #852: a confidence-tier transition upward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists. Uses the app's own CycleConfidence vocabulary, never invented encouragement.
+  ///
+  /// In en, this message translates to:
+  /// **'Your estimates are now more confident.'**
+  String get cycleRecapEstimatesMoreConfident;
+
+  /// Issue #852: a confidence-tier transition downward, detected with the #178 statistic-change thresholds only when a previous recap's snapshot exists.
+  ///
+  /// In en, this message translates to:
+  /// **'Your estimates are a little less certain now.'**
+  String get cycleRecapEstimatesLessConfident;
+
+  /// Issue #852: a meaningful displayed mean-cycle-length shift detected with the #178 statistic-change thresholds. {days} is the pluralized absolute shift.
+  ///
+  /// In en, this message translates to:
+  /// **'Your average cycle length moved by {days}.'**
+  String cycleRecapAverageMoved(String days);
+
+  /// Issue #852: a recurring-symptom fact from the Analysis tab's own report (#135). {symptom} is the tag code with underscores turned into spaces, sentence-cased; {days} is a formatted cycle-day list such as '1-2'.
+  ///
+  /// In en, this message translates to:
+  /// **'{symptom}: most often around cycle day {days}.'**
+  String cycleRecapRecurringSymptom(String symptom, String days);
+
+  /// Issue #852: the cramp forecast's own recurring-day fact (#229), shown only when the engine produced one. {days} is a formatted cycle-day list such as '1, 2'.
+  ///
+  /// In en, this message translates to:
+  /// **'Cramps most often land around cycle day {days}.'**
+  String cycleRecapCrampDays(String days);
+
+  /// Issue #852: the recap's honest thin-history line, shown instead of any estimate-backed fact while the engine is below its estimate threshold. Mirrors the app's 'Estimates not ready' voice rule.
+  ///
+  /// In en, this message translates to:
+  /// **'Still learning — estimates appear once a few cycles are recorded.'**
+  String get cycleRecapStillLearning;
+
+  /// Issue #852: action opening the #235 side-by-side comparison for the recap's two cycles, shown only when both are complete.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare with the cycle before'**
+  String get cycleRecapCompareAction;
+
+  /// Issue #852: tooltip and accessibility label for the recap card's dismiss affordance (reused by the irregular suggestion banner's own copy).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get cycleRecapDismissLabel;
+
   /// Issue #803: the household row's log-for-her action label. The row itself names the profile, so the visible label stays short; the full 'Log today for <name>' phrasing (householdLogTodayFor) is the action's tooltip/semantics.
   ///
   /// In en, this message translates to:
