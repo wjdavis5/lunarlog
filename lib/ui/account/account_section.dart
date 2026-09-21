@@ -264,9 +264,6 @@ Future<AuthorizationCredentialAppleID> _defaultAppleAuthorizationCodeRequest() =
 /// the caller proceeds to the device reset.
 enum _AppleFlowOutcome { completed, cancelled }
 
-const String kSignOutConsequenceCopy =
-    'This removes the data from this device. It stays in your account.';
-
 /// Human label for a Supabase identity provider id (#2 U5; R9). Known ids
 /// map to their brand names; anything else is capitalized as-is.
 String providerLabel(String provider) => switch (provider) {
@@ -375,7 +372,10 @@ class _AccountSectionState extends State<AccountSection> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-          child: Text('Account', style: theme.textTheme.titleSmall),
+          child: Text(
+            AppLocalizations.of(context).accountSectionTitle,
+            style: theme.textTheme.titleSmall,
+          ),
         ),
         if (signedIn)
           ..._buildSignedInIdentityTiles(auth, user, providers, canLink)
@@ -410,17 +410,20 @@ class _AccountSectionState extends State<AccountSection> {
     List<String> providers,
     bool canLink,
   ) {
+    final l10n = AppLocalizations.of(context);
     final linkError = _linkError;
     return [
       ListTile(
         key: const ValueKey('account-identity'),
         leading: const Icon(Icons.person_outline),
         title: Text(
-            user?.email == null ? 'Signed in' : 'Signed in as ${user!.email}'),
+            user?.email == null
+                ? l10n.accountSectionSignedIn
+                : l10n.accountSectionSignedInAs(user!.email)),
         subtitle: providers.isEmpty
             ? null
-            : Text('Sign-in methods: '
-                '${providers.map(providerLabel).join(', ')}'),
+            : Text(l10n.accountSectionSignInMethods(
+                providers.map(providerLabel).join(', '))),
       ),
       if (linkError != null)
         Padding(
@@ -458,7 +461,7 @@ class _AccountSectionState extends State<AccountSection> {
             key: 'account-add-apple',
             provider: AuthProviders.apple,
             icon: Icons.apple,
-            label: 'Add Apple',
+            label: AppLocalizations.of(context).accountSectionAddApple,
             onTap: () => _addMethod(AuthProviders.apple, auth.linkApple),
           ),
         if (_canAddGoogle && !providers.contains(AuthProviders.google))
@@ -466,7 +469,7 @@ class _AccountSectionState extends State<AccountSection> {
             key: 'account-add-google',
             provider: AuthProviders.google,
             icon: Icons.add_link,
-            label: 'Add Google',
+            label: AppLocalizations.of(context).accountSectionAddGoogle,
             onTap: () => _addMethod(AuthProviders.google, auth.linkGoogle),
           ),
         if (_canAddPasskey)
@@ -474,7 +477,7 @@ class _AccountSectionState extends State<AccountSection> {
             key: 'account-add-passkey',
             provider: _kPasskeyBusyKey,
             icon: Icons.fingerprint,
-            label: 'Add a passkey',
+            label: AppLocalizations.of(context).accountSectionAddPasskey,
             onTap: () =>
                 _addMethod(_kPasskeyBusyKey, () => _registerPasskey(auth)),
           ),
@@ -496,12 +499,15 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   Widget _buildSignInTile(BuildContext context, AuthController auth) {
+    final l10n = AppLocalizations.of(context);
     return ListTile(
       key: const ValueKey('account-sign-in'),
       leading: const Icon(Icons.login),
       title: Text(
-          auth.state == AuthSessionState.expired ? 'Sign in again' : 'Sign in'),
-      subtitle: const Text('Sync this device\'s data to an account.'),
+          auth.state == AuthSessionState.expired
+              ? l10n.accountSectionSignInAgain
+              : l10n.accountSectionSignIn),
+      subtitle: Text(l10n.accountSectionSyncSubtitle),
       onTap: () => pushNamedScreen<void>(context, kRouteSignInScreen),
     );
   }
@@ -510,28 +516,27 @@ class _AccountSectionState extends State<AccountSection> {
     return ListTile(
       key: const ValueKey('account-sync-now'),
       leading: const Icon(Icons.sync),
-      title: const Text('Sync now'),
+      title: Text(AppLocalizations.of(context).accountSectionSyncNow),
       enabled: !isSyncRunning(sync.snapshot),
       onTap: sync.requestSync,
     );
   }
 
   List<Widget> _buildSignOutTiles(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return [
       ListTile(
         key: const ValueKey('account-sign-out'),
         leading: const Icon(Icons.logout),
-        title: const Text('Sign out'),
-        subtitle: const Text('Removes the data from this device.'),
+        title: Text(l10n.accountSectionSignOut),
+        subtitle: Text(l10n.accountSectionSignOutSubtitle),
         onTap: () => _signOut(context),
       ),
       ListTile(
         key: const ValueKey('account-sign-out-everywhere'),
         leading: const Icon(Icons.devices_other),
-        title: const Text('Sign out everywhere'),
-        subtitle: const Text(
-            'Signs out all devices, though others may take up to an hour to '
-            'notice.'),
+        title: Text(l10n.accountSectionSignOutEverywhere),
+        subtitle: Text(l10n.accountSectionSignOutEverywhereSubtitle),
         onTap: () => _signOutEverywhere(context),
       ),
     ];
@@ -550,7 +555,7 @@ class _AccountSectionState extends State<AccountSection> {
         ListTile(
           key: const ValueKey('account-delete'),
           leading: Icon(Icons.delete_forever, color: theme.colorScheme.error),
-          title: Text('Delete account',
+          title: Text(AppLocalizations.of(context).accountSectionDelete,
               style: TextStyle(color: theme.colorScheme.error)),
           subtitle: Text(
               AppLocalizations.of(context).accountDeleteTileSubtitle),
@@ -587,7 +592,7 @@ class _AccountSectionState extends State<AccountSection> {
       key: ValueKey(key),
       leading: Icon(icon),
       title: Text(label),
-      subtitle: const Text('Sign in to this account another way.'),
+      subtitle: Text(AppLocalizations.of(context).accountSectionLinkSubtitle),
       enabled: _busyProvider == null,
       trailing: busy
           ? const SizedBox(
@@ -612,11 +617,12 @@ class _AccountSectionState extends State<AccountSection> {
     required VoidCallback onTap,
   }) {
     final busy = _busyProvider == provider;
+    final l10n = AppLocalizations.of(context);
     return ListTile(
       key: ValueKey('account-remove-$provider'),
       leading: Icon(provider == AuthProviders.apple ? Icons.apple : Icons.link_off),
-      title: Text('Remove ${providerLabel(provider)}'),
-      subtitle: const Text('Stop using this to sign in to this account.'),
+      title: Text(l10n.accountSectionRemoveProvider(providerLabel(provider))),
+      subtitle: Text(l10n.accountSectionRemoveSubtitle),
       enabled: _busyProvider == null,
       trailing: busy
           ? const SizedBox(
@@ -703,25 +709,22 @@ class _AccountSectionState extends State<AccountSection> {
     }
     final auth = context.read<AuthController>();
     setState(() => _linkError = null);
+    final l10n = AppLocalizations.of(context);
     final label = providerLabel(provider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Remove $label?'),
-        content: Text(
-          'You will no longer be able to sign in to this account with '
-          '$label. Your data and your other sign-in methods are '
-          'unchanged.',
-        ),
+        title: Text(l10n.accountSectionRemoveTitle(label)),
+        content: Text(l10n.accountSectionRemoveBody(label)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.accountSectionCancel),
           ),
           FilledButton(
             key: const ValueKey('account-remove-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Remove'),
+            child: Text(l10n.accountSectionRemove),
           ),
         ],
       ),
@@ -780,6 +783,7 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   Future<void> _signOut(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final sync = context.read<SyncStatusController?>();
     final dirty = sync?.snapshot.dirtyCount ?? 0;
     final bool? discard;
@@ -787,27 +791,22 @@ class _AccountSectionState extends State<AccountSection> {
       discard = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Unsynced changes'),
-          content: Text(
-            '$dirty ${dirty == 1 ? 'change' : 'changes'} on this device '
-            '${dirty == 1 ? 'has' : 'have'} not been uploaded yet, '
-            'deletions included. Sync first, or discard '
-            '${dirty == 1 ? 'it' : 'them'} and sign out.',
-          ),
+          title: Text(l10n.accountSectionUnsyncedTitle),
+          content: Text(l10n.accountSectionUnsyncedBody(dirty)),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(null),
-              child: const Text('Cancel'),
+              child: Text(l10n.accountSectionCancel),
             ),
             TextButton(
               key: const ValueKey('account-sign-out-sync'),
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Sync now'),
+              child: Text(l10n.accountSectionSyncNow),
             ),
             FilledButton(
               key: const ValueKey('account-sign-out-discard'),
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Discard unsynced changes and sign out'),
+              child: Text(l10n.accountSectionDiscardAndSignOut),
             ),
           ],
         ),
@@ -820,17 +819,17 @@ class _AccountSectionState extends State<AccountSection> {
       discard = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: const Text('Sign out?'),
-          content: const Text(kSignOutConsequenceCopy),
+          title: Text(l10n.accountSectionSignOutTitle),
+          content: Text(l10n.accountSectionSignOutBody),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(null),
-              child: const Text('Cancel'),
+              child: Text(l10n.accountSectionCancel),
             ),
             FilledButton(
               key: const ValueKey('account-sign-out-confirm'),
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Sign out'),
+              child: Text(l10n.accountSectionSignOut),
             ),
           ],
         ),
@@ -841,22 +840,21 @@ class _AccountSectionState extends State<AccountSection> {
   }
 
   Future<void> _signOutEverywhere(BuildContext context) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Sign out everywhere?'),
-        content: Text(
-          AppLocalizations.of(context).accountSignOutEverywhereBody,
-        ),
+        title: Text(l10n.accountSectionSignOutEverywhereTitle),
+        content: Text(l10n.accountSignOutEverywhereBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.accountSectionCancel),
           ),
           FilledButton(
             key: const ValueKey('account-sign-out-everywhere-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Sign out everywhere'),
+            child: Text(l10n.accountSectionSignOutEverywhere),
           ),
         ],
       ),
@@ -891,10 +889,10 @@ class _AccountSectionState extends State<AccountSection> {
       await auth.signOut(scope: AuthSignOutScope.global);
     } on AuthFailure catch (failure) {
       if (context.mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '${authFailureCopy(AppLocalizations.of(context), failure)} '
-              'Other devices were not signed out.'),
+          content: Text(l10n.accountSectionOtherDevicesNotSignedOut(
+              authFailureCopy(l10n, failure))),
         ));
       }
       // Always run, whether or not context is still mounted (Issue #638) -

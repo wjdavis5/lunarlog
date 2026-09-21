@@ -145,7 +145,7 @@ class _MfaStepUpDialogState extends State<_MfaStepUpDialog> {
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          child: Text(l10n.accountMfaStepUpCancel),
         ),
         FilledButton(
           key: const ValueKey('mfa-step-up-confirm'),

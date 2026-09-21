@@ -5397,6 +5397,640 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
   String sharingPendingInviteBadgeExpiredCount(int count);
+
+  /// Issue #1004 (tranche 2): account-mismatch screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Different account'**
+  String get accountMismatchTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch body when no email is known.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than the one you just signed in to.'**
+  String get accountMismatchBodyNoEmail;
+
+  /// Issue #1004 (tranche 2): account-mismatch body naming the signed-in email.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that belongs to a different account than {email}.'**
+  String accountMismatchBodyWithEmail(String email);
+
+  /// Issue #1004 (tranche 2): account-mismatch explainer paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is set up for a different account. This happens when Apple\'s Hide My Email created a new account, or when you chose a different Google account. Nothing has been uploaded or changed.'**
+  String get accountMismatchExplainer;
+
+  /// Issue #1004 (tranche 2): account-mismatch non-destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch account'**
+  String get accountMismatchSwitchAccount;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out and keeps everything on this device.'**
+  String get accountMismatchSwitchAccountSubtitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch destructive exit button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data'**
+  String get accountMismatchRemoveData;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this device\'s data?'**
+  String get accountMismatchRemoveDialogTitle;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Erases every profile and entry stored on this device and signs out. The data stays in the account it belongs to; it is not deleted there.'**
+  String get accountMismatchRemoveDialogBody;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMismatchCancel;
+
+  /// Issue #1004 (tranche 2): account-mismatch confirmation destructive button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove and sign out'**
+  String get accountMismatchRemoveConfirm;
+
+  /// Issue #1004 (tranche 2): account-mismatch switch-account failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not switch accounts. Please try again.'**
+  String get accountMismatchSwitchError;
+
+  /// Issue #1004 (tranche 2): account-mismatch remove-data failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove this device\'s data. Please try again.'**
+  String get accountMismatchRemoveError;
+
+  /// Issue #1004 (tranche 2): upload-consent screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to your account?'**
+  String get accountUploadConsentTitle;
+
+  /// Issue #1004 (tranche 2): upload-consent body with counts of this device's rows.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds {profileCount, plural, =1{1 profile} other{{profileCount} profiles}} and {entryCount, plural, =1{1 entry} other{{entryCount} entries}} that are not in your account yet. Uploading copies them to the account, deletions included, and keeps this device in sync from now on.'**
+  String accountUploadConsentBody(int profileCount, int entryCount);
+
+  /// Issue #1004 (tranche 2): upload-consent body while the row counts load.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds data that is not in your account yet.'**
+  String get accountUploadConsentLoadingBody;
+
+  /// Issue #1004 (tranche 2): upload-consent duplicate-profile note.
+  ///
+  /// In en, this message translates to:
+  /// **'If another device also created the same person while offline, you will see two profiles after the upload; archive the one you do not want.'**
+  String get accountUploadConsentDuplicateNote;
+
+  /// Issue #1004 (tranche 2): upload-consent upload button.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload to my account'**
+  String get accountUploadConsentUploadAction;
+
+  /// Issue #1004 (tranche 2): upload-consent defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountUploadConsentNotNow;
+
+  /// Issue #1004 (tranche 2): empty-device restore progress label.
+  ///
+  /// In en, this message translates to:
+  /// **'Restoring your data…'**
+  String get accountRestoringScreenBody;
+
+  /// Issue #1004 (tranche 2): restore-failure screen heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to restore data'**
+  String get accountRestoreErrorTitle;
+
+  /// Issue #1004 (tranche 2): restore-failure screen default body.
+  ///
+  /// In en, this message translates to:
+  /// **'We could not restore your account data from the cloud. Please check your internet connection and try again.'**
+  String get accountRestoreErrorBody;
+
+  /// Issue #1004 (tranche 2): restore-failure retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get accountRestoreErrorRetry;
+
+  /// Issue #1004 (tranche 2): restore-failure continue-without-sync button.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue without syncing'**
+  String get accountRestoreErrorContinue;
+
+  /// Issue #1004 (tranche 2): restore-failure sign-out button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountRestoreErrorSignOut;
+
+  /// Issue #1004 (tranche 2): password-recovery screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Set a new password'**
+  String get accountPasswordRecoveryTitle;
+
+  /// Issue #1004 (tranche 2): password-recovery intro paragraph.
+  ///
+  /// In en, this message translates to:
+  /// **'You opened a password reset link. Choose a new password for your account.'**
+  String get accountPasswordRecoveryIntro;
+
+  /// Issue #1004 (tranche 2): password-recovery new-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get accountPasswordRecoveryNewLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountPasswordRecoveryLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery confirm-password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password'**
+  String get accountPasswordRecoveryConfirmLabel;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountPasswordRecoveryShow;
+
+  /// Issue #1004 (tranche 2): password-recovery reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountPasswordRecoveryHide;
+
+  /// Issue #1004 (tranche 2): password-recovery too-short error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountPasswordRecoveryLengthError(int length);
+
+  /// Issue #1004 (tranche 2): password-recovery mismatch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match.'**
+  String get accountPasswordRecoveryMismatchError;
+
+  /// Issue #1004 (tranche 2): password-recovery save button.
+  ///
+  /// In en, this message translates to:
+  /// **'Save password'**
+  String get accountPasswordRecoverySave;
+
+  /// Issue #1004 (tranche 2): password-recovery defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountPasswordRecoveryNotNow;
+
+  /// Issue #1004 (tranche 2): MFA remove-factor confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaSettingsCancel;
+
+  /// Issue #1004 (tranche 2): MFA step-up dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountMfaStepUpCancel;
+
+  /// Issue #1004 (tranche 2): sync-status tile subtitle when entries were rejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to retry'**
+  String get accountSyncStatusTapToRetry;
+
+  /// Issue #1004 (tranche 2): sync-status snackbar action opening Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get accountSyncStatusSettingsAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run embedded intro.
+  ///
+  /// In en, this message translates to:
+  /// **'An account keeps a copy of this device\'s data so it can be restored on another device. You can also keep everything on this device only.'**
+  String get accountSignInEmbeddedIntro;
+
+  /// Issue #1004 (tranche 2): sign-in screen passkey button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with a passkey'**
+  String get accountSignInPasskeyAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen provider/passwordless divider label.
+  ///
+  /// In en, this message translates to:
+  /// **'or'**
+  String get accountSignInOr;
+
+  /// Issue #1004 (tranche 2): sign-in screen email field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountSignInEmailLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen password field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get accountSignInPasswordLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-account primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create account'**
+  String get accountSignInCreateAccountAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen sign-in primary button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen forgot-password button.
+  ///
+  /// In en, this message translates to:
+  /// **'Forgot password'**
+  String get accountSignInForgotPasswordAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Code from the email'**
+  String get accountSignInCodeLabel;
+
+  /// Issue #1004 (tranche 2): sign-in screen email-code field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'6-10 digits'**
+  String get accountSignInCodeHint;
+
+  /// Issue #1004 (tranche 2): sign-in screen verify-code button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with code'**
+  String get accountSignInVerifyCodeAction;
+
+  /// Issue #1004 (tranche 2): sign-in screen first-run defer button.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get accountSignInNotNow;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSignInTitle;
+
+  /// Issue #1004 (tranche 2): sign-in screen app-bar title in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account'**
+  String get accountSignInTitleCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode short-password error.
+  ///
+  /// In en, this message translates to:
+  /// **'Use at least {length} characters for the password.'**
+  String accountSignInUseAtLeast(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen post-signup confirmation info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email to confirm the account, then open the link on this device.'**
+  String get accountSignInConfirmEmailInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-reset-request info.
+  ///
+  /// In en, this message translates to:
+  /// **'If an account exists for that email, a reset link is on its way. Open it on this device. If you request another email, only the newest link works — an earlier one stops working (issue #32).'**
+  String get accountSignInResetInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen post-magic-link info.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your email for a sign-in link or code.'**
+  String get accountSignInMagicLinkInfo;
+
+  /// Issue #1004 (tranche 2): sign-in screen create-mode length helper text.
+  ///
+  /// In en, this message translates to:
+  /// **'At least {length} characters'**
+  String accountSignInPasswordLengthHelper(int length);
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (shown).
+  ///
+  /// In en, this message translates to:
+  /// **'Show password'**
+  String get accountSignInShowPassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen password reveal toggle tooltip (hidden).
+  ///
+  /// In en, this message translates to:
+  /// **'Hide password'**
+  String get accountSignInHidePassword;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (create mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'I already have an account'**
+  String get accountSignInToggleHaveAccount;
+
+  /// Issue #1004 (tranche 2): sign-in screen mode toggle (sign-in mode active).
+  ///
+  /// In en, this message translates to:
+  /// **'Create an account instead'**
+  String get accountSignInToggleCreateInstead;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in create mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a link to create my account'**
+  String get accountSignInMagicLinkCreate;
+
+  /// Issue #1004 (tranche 2): sign-in screen magic-link button in sign-in mode.
+  ///
+  /// In en, this message translates to:
+  /// **'Email me a sign-in link'**
+  String get accountSignInMagicLinkSignIn;
+
+  /// Issue #1004 (tranche 2): delete-account confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get accountDeleteDialogTitle;
+
+  /// Issue #1004 (tranche 2): delete-account dialog guardian-entry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Entries you logged as a guardian on someone else\'s profile are kept and re-attributed to its owner, not deleted. Apple Health / Health Connect writes this device already made stay in the device\'s own health store - account deletion does not remove them.'**
+  String get accountDeleteDialogGuardianNote;
+
+  /// Issue #1004 (tranche 2): delete-account dialog blast-radius acknowledgement checkbox.
+  ///
+  /// In en, this message translates to:
+  /// **'I understand this removes access for other guardians and deletes any minor profiles I own.'**
+  String get accountDeleteDialogAck;
+
+  /// Issue #1004 (tranche 2): delete-account dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountDeleteDialogCancel;
+
+  /// Issue #1004 (tranche 2): delete-account dialog transfer-ownership escape hatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer ownership first'**
+  String get accountDeleteDialogTransferFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export-first button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export first'**
+  String get accountDeleteDialogExportFirst;
+
+  /// Issue #1004 (tranche 2): delete-account dialog destructive confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountDeleteDialogConfirm;
+
+  /// Issue #1004 (tranche 2): delete-account dialog export failure copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountDeleteDialogExportError;
+
+  /// Issue #1004 (tranche 2): delete-account blast radius with no other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}).'**
+  String accountDeleteDialogBlastRadiusProfiles(int count, String names);
+
+  /// Issue #1004 (tranche 2): delete-account blast radius naming other guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'This will also permanently delete {count, plural, =1{1 profile} other{{count} profiles}} you own ({names}) and remove access for {guardianCount, plural, =1{1 other guardian} other{{guardianCount} other guardians}}.'**
+  String accountDeleteDialogBlastRadiusGuardians(
+    int count,
+    String names,
+    int guardianCount,
+  );
+
+  /// Issue #1004 (tranche 2): Settings Account section heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get accountSectionTitle;
+
+  /// Issue #1004 (tranche 2): account identity tile subtitle listing sign-in methods.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in methods: {methods}'**
+  String accountSectionSignInMethods(String methods);
+
+  /// Issue #1004 (tranche 2): account identity tile title with no known email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in'**
+  String get accountSectionSignedIn;
+
+  /// Issue #1004 (tranche 2): account identity tile title naming the email.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as {email}'**
+  String accountSectionSignedInAs(String email);
+
+  /// Issue #1004 (tranche 2): account add-Apple tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Apple'**
+  String get accountSectionAddApple;
+
+  /// Issue #1004 (tranche 2): account add-Google tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add Google'**
+  String get accountSectionAddGoogle;
+
+  /// Issue #1004 (tranche 2): account add-passkey tile label.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a passkey'**
+  String get accountSectionAddPasskey;
+
+  /// Issue #1004 (tranche 2): account sign-in tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync this device\'s data to an account.'**
+  String get accountSectionSyncSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title when the session expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again'**
+  String get accountSectionSignInAgain;
+
+  /// Issue #1004 (tranche 2): account sign-in tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get accountSectionSignIn;
+
+  /// Issue #1004 (tranche 2): account sync-now tile and dialog button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync now'**
+  String get accountSectionSyncNow;
+
+  /// Issue #1004 (tranche 2): account sign-out tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get accountSectionSignOut;
+
+  /// Issue #1004 (tranche 2): account sign-out tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes the data from this device.'**
+  String get accountSectionSignOutSubtitle;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile and confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere'**
+  String get accountSectionSignOutEverywhere;
+
+  /// Issue #1004 (tranche 2): account sign-out-everywhere tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Signs out all devices, though others may take up to an hour to notice.'**
+  String get accountSectionSignOutEverywhereSubtitle;
+
+  /// Issue #1004 (tranche 2): account delete tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account'**
+  String get accountSectionDelete;
+
+  /// Issue #1004 (tranche 2): account add-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to this account another way.'**
+  String get accountSectionLinkSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}'**
+  String accountSectionRemoveProvider(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop using this to sign in to this account.'**
+  String get accountSectionRemoveSubtitle;
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation title.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {provider}?'**
+  String accountSectionRemoveTitle(String provider);
+
+  /// Issue #1004 (tranche 2): account remove-method confirmation body.
+  ///
+  /// In en, this message translates to:
+  /// **'You will no longer be able to sign in to this account with {provider}. Your data and your other sign-in methods are unchanged.'**
+  String accountSectionRemoveBody(String provider);
+
+  /// Issue #1004 (tranche 2): account section dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accountSectionCancel;
+
+  /// Issue #1004 (tranche 2): account remove-method confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get accountSectionRemove;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Unsynced changes'**
+  String get accountSectionUnsyncedTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 change on this device has not been uploaded yet, deletions included. Sync first, or discard it and sign out.} other{{count} changes on this device have not been uploaded yet, deletions included. Sync first, or discard them and sign out.}}'**
+  String accountSectionUnsyncedBody(int count);
+
+  /// Issue #1004 (tranche 2): sign-out-with-unsynced-rows discard button.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard unsynced changes and sign out'**
+  String get accountSectionDiscardAndSignOut;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out?'**
+  String get accountSectionSignOutTitle;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out everywhere?'**
+  String get accountSectionSignOutEverywhereTitle;
+
+  /// Issue #1004 (tranche 2): sign-out confirmation dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the data from this device. It stays in your account.'**
+  String get accountSectionSignOutBody;
+
+  /// Issue #1004 (tranche 2): sign-out-everywhere partial-failure snackbar suffix.
+  ///
+  /// In en, this message translates to:
+  /// **'{failureCopy} Other devices were not signed out.'**
+  String accountSectionOtherDevicesNotSignedOut(String failureCopy);
 }
 
 class _AppLocalizationsDelegate
