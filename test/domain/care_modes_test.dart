@@ -246,7 +246,7 @@ void main() {
       final standard = careModeCopyFor(ProfileMode.standard, irregularFraming: false);
       expect(
         standard.notEnoughBody(2, 3),
-        '2 of 3 completed cycles — estimates start after your next period.',
+        '2 of 3 completed cycles — estimates start after the next period.',
       );
       expect(
         standard.notEnoughBody(1, 3),
@@ -254,8 +254,8 @@ void main() {
       );
       expect(
         standard.notEnoughBody(0, 3),
-        '0 of 3 completed cycles — estimates start once you have 3 '
-        'completed cycles.',
+        '0 of 3 completed cycles — estimates start once 3 '
+        'completed cycles are recorded.',
       );
     });
 

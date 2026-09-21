@@ -42,7 +42,9 @@ ActivePrediction _active({
     // The rolled estimate sits within the grace window of today whenever
     // the raw estimate is past it (the engine's own forward-roll), so the
     // two never disagree about the late state the row renders.
-    estimatedNextStart: daysPastEstimate > 2 ? kToday.addDays(1) : originalEstimate,
+    estimatedNextStart: daysPastEstimate > 2
+        ? kToday.addDays(1)
+        : originalEstimate,
     originalEstimatedNextStart: originalEstimate,
     averagedCycleLengths: const [28, 28, 28],
     meanCycleLengthDays: 28,
@@ -56,19 +58,16 @@ ActivePrediction _active({
 }
 
 DayEntry _entry(LocalDate date) => DayEntry(
-      id: 'e-${date.iso}',
-      profileId: 'p1',
-      localDate: date,
-      tz: 'UTC',
-      flow: FlowLevel.medium,
-      updatedAt: DateTime.utc(2026, 9, 1),
-    );
+  id: 'e-${date.iso}',
+  profileId: 'p1',
+  localDate: date,
+  tz: 'UTC',
+  flow: FlowLevel.medium,
+  updatedAt: DateTime.utc(2026, 9, 1),
+);
 
-ActivityItem _item(String id, DateTime occurredAt) => ActivityItem(
-      id: id,
-      kind: ActivityKind.logged,
-      occurredAt: occurredAt,
-    );
+ActivityItem _item(String id, DateTime occurredAt) =>
+    ActivityItem(id: id, kind: ActivityKind.logged, occurredAt: occurredAt);
 
 void main() {
   group('householdTimingSignal (pure, issue #803)', () {
@@ -79,8 +78,7 @@ void main() {
       );
     });
 
-    test('no-history / suppressed / disabled predictions carry no signal',
-        () {
+    test('no-history / suppressed / disabled predictions carry no signal', () {
       const notEnough = NotEnoughHistory(
         episodeCount: 1,
         completedCycleCount: 1,
@@ -102,7 +100,9 @@ void main() {
       );
       expect(
         householdTimingSignal(
-            prediction: const PredictionsDisabled(), irregularFraming: false),
+          prediction: const PredictionsDisabled(),
+          irregularFraming: false,
+        ),
         isNull,
       );
     });
@@ -149,8 +149,7 @@ void main() {
       );
     });
 
-    test('a late unframed profile reads "N days late" (the resolver\'s '
-        'vocabulary)', () {
+    test('a late unframed profile derives a late timing signal', () {
       final signal = householdTimingSignal(
         prediction: _active(cycleDay: 32, daysPastEstimate: 4),
         irregularFraming: false,
@@ -229,8 +228,7 @@ void main() {
   group('householdTimingCopy (ARB)', () {
     test('every variant reads from the ARB with a pluralized count', () {
       expect(
-        householdTimingCopy(
-            const HouseholdTimingExpected(0), _l10n),
+        householdTimingCopy(const HouseholdTimingExpected(0), _l10n),
         'Period expected today',
       );
       expect(
@@ -243,11 +241,11 @@ void main() {
       );
       expect(
         householdTimingCopy(const HouseholdTimingLate(4), _l10n),
-        '4 days late',
+        '4 days past the estimate',
       );
       expect(
         householdTimingCopy(const HouseholdTimingLate(1), _l10n),
-        '1 day late',
+        '1 day past the estimate',
       );
       expect(
         householdTimingCopy(const HouseholdTimingOpen(12), _l10n),
@@ -258,8 +256,7 @@ void main() {
 
   group('householdSilenceThresholdDays (reminder-preference mapping)', () {
     test('a profile with no stored config falls back to the default', () {
-      expect(householdSilenceThresholdDays(null),
-          kHouseholdSilenceDefaultDays);
+      expect(householdSilenceThresholdDays(null), kHouseholdSilenceDefaultDays);
     });
 
     test('a disabled log nudge falls back to the default (the signal stays '
@@ -271,20 +268,22 @@ void main() {
       expect(householdSilenceThresholdDays(off), kHouseholdSilenceDefaultDays);
     });
 
-    test('the cadence maps to its own length (two days for a daily nudge)',
-        () {
+    test('the cadence maps to its own length (two days for a daily nudge)', () {
       ReminderTypeConfig cadence(ReminderCadence c) => ReminderTypeConfig(
-            enabled: true,
-            timeOfDayMinutes: kDefaultReminderTimeMinutes,
-            cadence: c,
-          );
+        enabled: true,
+        timeOfDayMinutes: kDefaultReminderTimeMinutes,
+        cadence: c,
+      );
       expect(householdSilenceThresholdDays(cadence(ReminderCadence.daily)), 2);
       expect(householdSilenceThresholdDays(cadence(ReminderCadence.weekly)), 7);
       expect(
-          householdSilenceThresholdDays(cadence(ReminderCadence.fortnightly)),
-          14);
+        householdSilenceThresholdDays(cadence(ReminderCadence.fortnightly)),
+        14,
+      );
       expect(
-          householdSilenceThresholdDays(cadence(ReminderCadence.monthly)), 30);
+        householdSilenceThresholdDays(cadence(ReminderCadence.monthly)),
+        30,
+      );
     });
   });
 
@@ -294,10 +293,7 @@ void main() {
     });
 
     test('whole civil days from the latest logged date', () {
-      final entries = [
-        _entry(kToday.addDays(-12)),
-        _entry(kToday.addDays(-3)),
-      ];
+      final entries = [_entry(kToday.addDays(-12)), _entry(kToday.addDays(-3))];
       expect(daysSinceLastLog(entries, kToday), 3);
     });
 

@@ -59,7 +59,6 @@ import '../support/fake_auth_service.dart';
 /// Fixed "today" so every derived number is deterministic.
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
-
 /// Materializes a server-authored guardian row locally (mirrors
 /// `test/ui/logging_test.dart`'s helper of the same name -- each suite
 /// keeps its own tiny copy rather than sharing one, matching the existing
@@ -272,11 +271,14 @@ class Harness {
         // the raw storage object (mirrors `lib/app.dart`).
         if (withStorage) ...[
           Provider<ProfileGuardiansRepository>.value(
-              value: DriftProfileGuardiansRepository(db.storage)),
+            value: DriftProfileGuardiansRepository(db.storage),
+          ),
           Provider<ActivityFeedRepository>.value(
-              value: DriftActivityFeedRepository(db.storage)),
+            value: DriftActivityFeedRepository(db.storage),
+          ),
           Provider<CareContentRepository>.value(
-              value: DriftCareContentRepository(db.storage)),
+            value: DriftCareContentRepository(db.storage),
+          ),
         ],
         if (authController != null)
           ChangeNotifierProvider<AuthController>.value(value: authController),
@@ -292,8 +294,8 @@ class Harness {
         ),
       ],
       child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         theme: AppTheme.lightTheme,
         home: ProfileDetailScreen(
           profile: profile,
@@ -316,11 +318,12 @@ Future<Harness> pumpOverview(
   AuthController? authController,
   bool withStorage = false,
   Future<void> Function(DriftDayEntriesRepository entries, String profileId)?
-      seed,
+  seed,
+
   /// Applied after the profile exists but before the widget pumps, so a
   /// guardian row can name the profile id (issue #316 review item 3).
   Future<void> Function(LunarLogStorage storage, String profileId)?
-      seedGuardians,
+  seedGuardians,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -332,27 +335,29 @@ Future<Harness> pumpOverview(
   final settings = DriftSettingsStore(db.storage);
   final entries = DriftDayEntriesRepository(db.storage);
   final profile = await profiles.create(
-      displayName: 'Alice',
-      isMinor: false,
-      mode: mode,
-      irregularFraming: irregularFraming);
+    displayName: 'Alice',
+    isMinor: false,
+    mode: mode,
+    irregularFraming: irregularFraming,
+  );
   if (seed != null) {
     await seed(entries, profile.id);
   }
   if (seedGuardians != null) {
     await seedGuardians(db.storage, profile.id);
   }
-  final harness =
-      Harness(db, profile, profiles, entries, settings);
-  await tester.pumpWidget(harness.appFor(
-    profile,
-    availability: availability,
-    requestPermission: requestPermission,
-    today: today,
-    readOnly: readOnly,
-    authController: authController,
-    withStorage: withStorage,
-  ));
+  final harness = Harness(db, profile, profiles, entries, settings);
+  await tester.pumpWidget(
+    harness.appFor(
+      profile,
+      availability: availability,
+      requestPermission: requestPermission,
+      today: today,
+      readOnly: readOnly,
+      authController: authController,
+      withStorage: withStorage,
+    ),
+  );
   await tester.pumpAndSettle();
   await tester.tap(find.text('Overview'));
   await tester.pumpAndSettle();
@@ -374,17 +379,19 @@ Future<void> seedEpisodes(
 }) async {
   for (final start in starts) {
     for (var i = 0; i < lengthDays; i++) {
-      await entries.save(DayEntry(
-        id: '',
-        profileId: profileId,
-        localDate: start.addDays(i),
-        tz: 'America/Chicago',
-        flow: FlowLevel.medium,
-        tags: const [],
-        note: null,
-        updatedAt: DateTime.utc(2026, 1, 1),
-        deletedAt: null,
-      ));
+      await entries.save(
+        DayEntry(
+          id: '',
+          profileId: profileId,
+          localDate: start.addDays(i),
+          tz: 'America/Chicago',
+          flow: FlowLevel.medium,
+          tags: const [],
+          note: null,
+          updatedAt: DateTime.utc(2026, 1, 1),
+          deletedAt: null,
+        ),
+      );
     }
   }
 }
@@ -400,8 +407,11 @@ void expectNoFertilityVocabulary(WidgetTester tester, String state) {
   for (final text in texts) {
     final lower = text.toLowerCase();
     for (final stem in kForbiddenStems) {
-      expect(lower.contains(stem), isFalse,
-          reason: 'state "$state" renders "$text" containing "$stem" (R13)');
+      expect(
+        lower.contains(stem),
+        isFalse,
+        reason: 'state "$state" renders "$text" containing "$stem" (R13)',
+      );
     }
   }
 }
@@ -419,13 +429,18 @@ void main() {
       );
 
       expect(find.text('Cycle day 26'), findsOneWidget);
-      expect(find.text('Next period estimate: September 4, 2026'),
-          findsOneWidget);
+      expect(
+        find.text('Next period estimate: September 4, 2026'),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('overview-days-until')), findsOneWidget);
       expect(find.text('5'), findsOneWidget);
       expect(find.text('days'), findsOneWidget);
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-          reason: 'not late: estimate is 5 days ahead');
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'not late: estimate is 5 days ahead',
+      );
       // Issue #314: CycleHistorySection no longer mounts on Overview --
       // it lives exclusively on the Analysis tab now (test/ui/
       // cycle_history_test.dart, test/ui/analysis_tab_test.dart).
@@ -450,15 +465,17 @@ void main() {
           LocalDate(2026, 8, 5),
         ]) {
           for (var i = 1; i <= 3; i++) {
-            await entries.save(DayEntry(
-              id: '',
-              profileId: profileId,
-              localDate: start.addDays(-i),
-              tz: 'America/Chicago',
-              flow: FlowLevel.none,
-              pms: true,
-              updatedAt: DateTime.utc(2026, 1, 1),
-            ));
+            await entries.save(
+              DayEntry(
+                id: '',
+                profileId: profileId,
+                localDate: start.addDays(-i),
+                tz: 'America/Chicago',
+                flow: FlowLevel.none,
+                pms: true,
+                updatedAt: DateTime.utc(2026, 1, 1),
+              ),
+            );
           }
         }
       }
@@ -471,19 +488,26 @@ void main() {
         },
       );
 
-      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      expect(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
       // Issue #874: band and averages render as one sentence; the range
       // joins with an en dash (see _pmsSection's formatter).
       expect(
-        find.text('Predicted PMS: September 1, 2026 – September 3, 2026 — '
-            'usually starts about 3 days before your period and lasts '
-            'about 3 days.'),
+        find.text(
+          'Predicted PMS: September 1, 2026 – September 3, 2026 — '
+          'usually starts about 3 days before your period and lasts '
+          'about 3 days.',
+        ),
         findsOneWidget,
-        reason: 'issue #874: the averages must be part of the band '
+        reason:
+            'issue #874: the averages must be part of the band '
             'sentence, not a subject-less fragment on their own line',
       );
       expect(
@@ -496,12 +520,17 @@ void main() {
       expect(find.byKey(const ValueKey('overview-pms-tier')), findsNothing);
       // Issue #874 defect 1: the tier caption no longer stutters.
       expect(
-        find.text('Still learning — estimates improve after a few more '
-            'cycles.'),
+        find.text(
+          'Still learning — estimates improve after a few more '
+          'cycles.',
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('Learning — Still learning'), findsNothing,
-          reason: 'issue #874: drop the duplicated label prefix');
+      expect(
+        find.textContaining('Learning — Still learning'),
+        findsNothing,
+        reason: 'issue #874: drop the duplicated label prefix',
+      );
       // Issue #807: single disclaimer per screen at the bottom of overview.
       expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
       expect(find.text(kEstimateDisclaimer), findsOneWidget);
@@ -516,8 +545,7 @@ void main() {
           await seedPms(entries, profileId);
           // Remove the third interval's days.
           for (var i = 1; i <= 3; i++) {
-            await entries.delete(
-                profileId, LocalDate(2026, 6, 6).addDays(-i));
+            await entries.delete(profileId, LocalDate(2026, 6, 6).addDays(-i));
           }
         },
       );
@@ -525,23 +553,29 @@ void main() {
       await disposeOverview(tester, h2);
     });
 
-    testWidgets('every estimate block carries the R17 disclaimer',
-        (tester) async {
+    testWidgets('every estimate block carries the R17 disclaimer', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kActiveStarts),
       );
 
-      expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the Today card carries it, plus the late resolver or '
-              'status line whenever one of those also renders (R17)');
+      expect(
+        find.text(kDisclaimer),
+        findsWidgets,
+        reason:
+            'the Today card carries it, plus the late resolver or '
+            'status line whenever one of those also renders (R17)',
+      );
       await disposeOverview(tester, h);
     });
 
     testWidgets('below-threshold profile shows the not-enough state with no '
-        'partial numbers (no digits or dates leak from the estimate card)',
-        (tester) async {
+        'partial numbers (no digits or dates leak from the estimate card)', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -578,20 +612,27 @@ void main() {
       expect(
         find.text('1 of 3 completed cycles — 2 more periods until estimates.'),
         findsOneWidget,
-        reason: 'the card states the live tally (two starts = one '
+        reason:
+            'the card states the live tally (two starts = one '
             'completed cycle) and what unblocks it',
       );
-      final texts = tester.widgetList<Text>(
-        find.descendant(
-          of: find.byKey(const ValueKey('overview-not-enough')),
-          matching: find.byType(Text),
-        ),
-      ).map((text) => text.data ?? '').where((text) => text.isNotEmpty);
+      final texts = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byKey(const ValueKey('overview-not-enough')),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .where((text) => text.isNotEmpty);
       expect(texts, isNotEmpty);
       for (final text in texts) {
         if (text.contains('completed cycles')) continue;
-        expect(RegExp(r'\d').hasMatch(text), isFalse,
-            reason: 'partial number leaked in not-enough state: "$text"');
+        expect(
+          RegExp(r'\d').hasMatch(text),
+          isFalse,
+          reason: 'partial number leaked in not-enough state: "$text"',
+        );
       }
       expectNoFertilityVocabulary(tester, 'not enough history');
       await disposeOverview(tester, h);
@@ -613,30 +654,44 @@ void main() {
       expect(find.text('Awaiting next period'), findsNothing);
       expect(find.textContaining('Predictions are paused'), findsNothing);
       expect(find.text('Cycle day 66'), findsOneWidget);
-      expect(find.text('Next period estimate: September 24, 2026'),
-          findsOneWidget,
-          reason: 'rolled forward twice (30-day mean) from the original '
-              'Jul 26 estimate');
-      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      expect(
+        find.text('Next period estimate: September 24, 2026'),
+        findsOneWidget,
+        reason:
+            'rolled forward twice (30-day mean) from the original '
+            'Jul 26 estimate',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(
-        find.text('Still learning — estimates improve after a few more '
-            'cycles.'),
+        find.text(
+          'Still learning — estimates improve after a few more '
+          'cycles.',
+        ),
         findsOneWidget,
-        reason: 'issue #858: three steady 30-day cycles read learning past '
+        reason:
+            'issue #858: three steady 30-day cycles read learning past '
             '60 open days, not irregular -- a long open cycle lowers the '
             'tier one rung (a no-op from learning) and never asserts the '
             'variability `irregular` describes. Issue #874: the summary '
             'renders alone, without the "Learning —" label prefix.',
       );
-      expect(find.textContaining('Cycles vary a lot'), findsNothing,
-          reason: 'issue #858: the forced-irregular mislabel is gone');
+      expect(
+        find.textContaining('Cycles vary a lot'),
+        findsNothing,
+        reason: 'issue #858: the forced-irregular mislabel is gone',
+      );
       expect(
         find.byKey(const ValueKey('overview-irregular-prediction-suggestion')),
         findsNothing,
-        reason: 'issue #225/#858: the suggestion card keys on genuine '
+        reason:
+            'issue #225/#858: the suggestion card keys on genuine '
             'cycle-to-cycle variability, which this steady history lacks',
       );
       // Issue #132 (AC7): still resolves through the resolver — "log it"
@@ -644,8 +699,10 @@ void main() {
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
       expect(find.text('35 days late'), findsOneWidget);
       expect(find.text('Log it'), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsOneWidget,
+      );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
       expect(find.text('Turn off predictions'), findsOneWidget);
@@ -658,8 +715,11 @@ void main() {
         isNotNull,
         reason: 'issue #225: button is wired to open Settings',
       );
-      expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the late resolver and the overview each carry it');
+      expect(
+        find.text(kDisclaimer),
+        findsWidgets,
+        reason: 'the late resolver and the overview each carry it',
+      );
       expectNoFertilityVocabulary(tester, 'unusually long cycle');
 
       // Issue #132 (AC7)/#314: the resolver's "log it" is the way through
@@ -690,7 +750,8 @@ void main() {
       expect(
         find.text('This cycle is excluded from future averages.'),
         findsOneWidget,
-        reason: 'the prompt keeps showing (the cycle is still open), so a '
+        reason:
+            'the prompt keeps showing (the cycle is still open), so a '
             'brief confirmation is the only visible sign the tap did '
             'anything',
       );
@@ -700,7 +761,8 @@ void main() {
           await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
         ),
         contains(LocalDate(2026, 6, 26)),
-        reason: 'exclude feeds the same exclusion list as manual omit / '
+        reason:
+            'exclude feeds the same exclusion list as manual omit / '
             'the resolver\'s skip',
       );
       await disposeOverview(tester, h);
@@ -715,18 +777,28 @@ void main() {
             seedEpisodes(entries, profileId, kLongOpen70Starts),
       );
 
-      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
-          reason: 'the ordinary active card, not the stale replacement');
-      expect(find.byKey(const ValueKey('overview-stale-history')),
-          findsNothing);
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-active')),
+        findsOneWidget,
+        reason: 'the ordinary active card, not the stale replacement',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-stale-history')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsOneWidget,
+      );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
       expect(find.text('Turn off predictions'), findsOneWidget);
       // The rolled estimate, the late resolver, and the days-late count all
       // stay exactly as they were before #859.
-      expect(find.byKey(const ValueKey('overview-next-period')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-next-period')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
       expect(find.text('40 days late'), findsOneWidget);
       await disposeOverview(tester, h);
@@ -742,19 +814,32 @@ void main() {
             seedEpisodes(entries, profileId, kStaleStarts),
       );
 
-      expect(find.byKey(const ValueKey('overview-stale-history')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-stale-history')),
+        findsOneWidget,
+      );
       expect(find.byKey(const ValueKey('overview-active')), findsNothing);
       // Nothing derived from the 2½-year-old date survives.
-      expect(find.byKey(const ValueKey('overview-days-until')), findsNothing,
-          reason: 'no days-late hero number');
-      expect(find.byKey(const ValueKey('overview-next-period')), findsNothing,
-          reason: 'no rolled-forward next-period estimate');
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-          reason: 'no red late resolver / "Remind me in 3 days"');
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsNothing,
-          reason: 'the stale state replaces the long-cycle prompt entirely');
+      expect(
+        find.byKey(const ValueKey('overview-days-until')),
+        findsNothing,
+        reason: 'no days-late hero number',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-next-period')),
+        findsNothing,
+        reason: 'no rolled-forward next-period estimate',
+      );
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'no red late resolver / "Remind me in 3 days"',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsNothing,
+        reason: 'the stale state replaces the long-cycle prompt entirely',
+      );
       expect(find.textContaining('days late'), findsNothing);
       // Never silent (#221): the screen explains the situation and offers a
       // way forward.
@@ -769,8 +854,9 @@ void main() {
     });
 
     testWidgets('late state (estimate + 2 days passed, nothing logged) shows '
-        'the three-option resolver instead of the days-until line',
-        (tester) async {
+        'the three-option resolver instead of the days-until line', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -783,211 +869,268 @@ void main() {
       expect(find.text('Skip this cycle'), findsOneWidget);
       expect(find.text('Remind me in 3 days'), findsOneWidget);
       expect(find.textContaining('days until next period'), findsNothing);
-      expect(find.text('Next period estimate: August 30, 2026'), findsOneWidget,
-          reason: 'the estimate itself rolled forward one 28-day mean '
-              'cycle (issue #221) and stays visible with its disclaimer');
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsNothing,
-          reason: 'only 56 days open — not past kMaxOpenCycleDays');
-      expect(find.text(kDisclaimer), findsWidgets,
-          reason: 'the estimate card and the resolver each carry it');
+      expect(
+        find.text('Next period estimate: August 30, 2026'),
+        findsOneWidget,
+        reason:
+            'the estimate itself rolled forward one 28-day mean '
+            'cycle (issue #221) and stays visible with its disclaimer',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsNothing,
+        reason: 'only 56 days open — not past kMaxOpenCycleDays',
+      );
+      expect(
+        find.text(kDisclaimer),
+        findsWidgets,
+        reason: 'the estimate card and the resolver each carry it',
+      );
       expectNoFertilityVocabulary(tester, 'late');
       await disposeOverview(tester, h);
     });
 
     group('provisional onboarding-seeded estimate (issue #218)', () {
-    testWidgets('a profile with cycle facts and no logged cycles shows the '
-        'provisional estimate, tier caption, and disclaimer — never the '
-        'not-enough state', (tester) async {
-      tester.view.physicalSize = const Size(800, 1400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      testWidgets('a profile with cycle facts and no logged cycles shows the '
+          'provisional estimate, tier caption, and disclaimer — never the '
+          'not-enough state', (tester) async {
+        tester.view.physicalSize = const Size(800, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
 
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final profiles = DriftProfilesRepository(db.storage);
-      final settings = DriftSettingsStore(db.storage);
-      final entries = DriftDayEntriesRepository(db.storage);
-      final profile = await profiles.create(
-        displayName: 'Alice',
-        isMinor: false,
-        lastPeriodStart: LocalDate(2026, 8, 7),
-        typicalCycleLengthDays: 28,
-        typicalPeriodLengthDays: 5,
-      );
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final profiles = DriftProfilesRepository(db.storage);
+        final settings = DriftSettingsStore(db.storage);
+        final entries = DriftDayEntriesRepository(db.storage);
+        final profile = await profiles.create(
+          displayName: 'Alice',
+          isMinor: false,
+          lastPeriodStart: LocalDate(2026, 8, 7),
+          typicalCycleLengthDays: 28,
+          typicalPeriodLengthDays: 5,
+        );
 
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            Provider<DayEntriesRepository>.value(value: entries),
-            Provider<SettingsStore>.value(value: settings),
-            // The one behavioral difference from the harness above: the
-            // profiles repository is wired, so the service can seed.
-            Provider<CyclePredictionService>.value(
-              value: CyclePredictionService(entries,
-                  settings: settings, profiles: profiles),
-            ),
-            Provider<CycleExclusionList>.value(
-              value: CycleExclusionList(settings),
-            ),
-            ChangeNotifierProvider<NotificationPermissionState>.value(
-              value:
-                  NotificationPermissionState(NotificationAvailability.available),
-            ),
-          ],
-          child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: OverviewPanel(profileId: profile.id, todayProvider: () => kToday),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // 2026-08-07 + 28 = 2026-09-04; provisional is not `high`, so the
-      // estimate renders as the ±kProvisionalSpreadDays range.
-      expect(
-        find.text('Next period estimate: August 31, 2026 – September 8, 2026'),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
-      await tester.pumpAndSettle();
-      expect(find.text('Based on your onboarding answers — estimates '
-          'improve once real cycles are logged.'), findsOneWidget);
-      expect(find.textContaining('Provisional — Based on'), findsNothing,
-          reason: 'issue #874: the tier caption renders the summary alone');
-      expect(find.byKey(const ValueKey('overview-days-until')), findsOneWidget);
-      expect(find.text('5'), findsOneWidget);
-      expect(find.text('days'), findsOneWidget);
-      expect(find.text('Provisional'), findsOneWidget,
-          reason: 'the Today card confidence chip');
-      expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
-      expect(find.byKey(const ValueKey('overview-tier-caption')),
-          findsOneWidget);
-      // Issue #807: single disclaimer per screen.
-      expect(find.text(kDisclaimer), findsOneWidget);
-
-      // Same teardown discipline as disposeOverview: unmount, let the
-      // drift stream store's close-timer fire, then close the database —
-      // otherwise the pending FakeTimer fails the test's invariants.
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-    });
-
-    testWidgets('a continuous birth-control method surfaces the explicit '
-        'suppressed state, never the not-enough card (issue #233)',
-        (tester) async {
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final entries = DriftDayEntriesRepository(db.storage);
-      final settings = DriftSettingsStore(db.storage);
-      final profile = await DriftProfilesRepository(db.storage)
-          .create(displayName: 'Alice', isMinor: false);
-      final profileId = profile.id;
-      // Production-shaped provider: drift's replaying watchProfileMode row
-      // mapped onto the BirthControlState shape (app_dependencies.dart).
-      Stream<BirthControlState?> birthControlStateFor(String profileId) => db
-          .storage
-          .watchProfileMode(profileId)
-          .map((row) => row == null
-              ? null
-              : (
-                  method: row.birthControlMethod,
-                  startedOn: row.birthControlStartedOn,
-                  stoppedOn: row.birthControlStoppedOn,
-                ));
-
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            Provider<DayEntriesRepository>.value(value: entries),
-            Provider<SettingsStore>.value(value: settings),
-            Provider<CyclePredictionService>.value(
-              value: CyclePredictionService(
-                entries,
-                settings: settings,
-                birthControlStateFor: birthControlStateFor,
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<SettingsStore>.value(value: settings),
+              // The one behavioral difference from the harness above: the
+              // profiles repository is wired, so the service can seed.
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(
+                  entries,
+                  settings: settings,
+                  profiles: profiles,
+                ),
               ),
-            ),
-            Provider<CycleExclusionList>.value(
-              value: CycleExclusionList(settings),
-            ),
-            ChangeNotifierProvider<NotificationPermissionState>.value(
-              value: NotificationPermissionState(
-                  NotificationAvailability.available),
-            ),
-          ],
-          child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            home: Scaffold(
-              body: OverviewPanel(
-                profileId: profileId,
-                todayProvider: () => kToday,
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+              ChangeNotifierProvider<NotificationPermissionState>.value(
+                value: NotificationPermissionState(
+                  NotificationAvailability.available,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: OverviewPanel(
+                  profileId: profile.id,
+                  todayProvider: () => kToday,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+        );
+        await tester.pumpAndSettle();
 
-      // No method row yet -> the ordinary not-enough state.
-      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+        // 2026-08-07 + 28 = 2026-09-04; provisional is not `high`, so the
+        // estimate renders as the ±kProvisionalSpreadDays range.
+        expect(
+          find.text(
+            'Next period estimate: August 31, 2026 – September 8, 2026',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('overview-about-estimate-toggle')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Based on your onboarding answers — estimates '
+            'improve once real cycles are logged.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Provisional — Based on'),
+          findsNothing,
+          reason: 'issue #874: the tier caption renders the summary alone',
+        );
+        expect(
+          find.byKey(const ValueKey('overview-days-until')),
+          findsOneWidget,
+        );
+        expect(find.text('5'), findsOneWidget);
+        expect(find.text('days'), findsOneWidget);
+        expect(
+          find.text('Provisional'),
+          findsOneWidget,
+          reason: 'the Today card confidence chip',
+        );
+        expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('overview-tier-caption')),
+          findsOneWidget,
+        );
+        // Issue #807: single disclaimer per screen.
+        expect(find.text(kDisclaimer), findsOneWidget);
 
-      // Continuous method (implant) in effect -> explicit suppressed card.
-      await db.storage.upsertProfileMode(
-        profileId: profileId,
-        mode: 'tracking',
-        birthControlMethod: BirthControlMethod.implant.toDb(),
-        birthControlStartedOn: '2026-01-01',
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
-      expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
-      expect(
-        find.byKey(const ValueKey('predictions-suppressed')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('predictions-suppressed-body')),
-        findsOneWidget,
-      );
+        // Same teardown discipline as disposeOverview: unmount, let the
+        // drift stream store's close-timer fire, then close the database —
+        // otherwise the pending FakeTimer fails the test's invariants.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
 
-      // Clearing the method returns the not-enough state (no logged cycles).
-      await db.storage.upsertProfileMode(
-        profileId: profileId,
-        mode: 'tracking',
-        birthControlMethod: null,
-        birthControlStartedOn: null,
-        birthControlStoppedOn: null,
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
-      expect(find.byKey(const ValueKey('predictions-suppressed')), findsNothing);
-      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
+      testWidgets('a continuous birth-control method surfaces the explicit '
+          'suppressed state, never the not-enough card (issue #233)', (
+        tester,
+      ) async {
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final entries = DriftDayEntriesRepository(db.storage);
+        final settings = DriftSettingsStore(db.storage);
+        final profile = await DriftProfilesRepository(db.storage)
+            .create(displayName: 'Alice', isMinor: false);
+        final profileId = profile.id;
+        // Production-shaped provider: drift's replaying watchProfileMode row
+        // mapped onto the BirthControlState shape (app_dependencies.dart).
+        Stream<BirthControlState?> birthControlStateFor(String profileId) => db
+            .storage
+            .watchProfileMode(profileId)
+            .map(
+              (row) => row == null
+                  ? null
+                  : (
+                      method: row.birthControlMethod,
+                      startedOn: row.birthControlStartedOn,
+                      stoppedOn: row.birthControlStoppedOn,
+                    ),
+            );
 
-      // Same teardown discipline as the seeded-provisional test above.
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<SettingsStore>.value(value: settings),
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(
+                  entries,
+                  settings: settings,
+                  birthControlStateFor: birthControlStateFor,
+                ),
+              ),
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+              ChangeNotifierProvider<NotificationPermissionState>.value(
+                value: NotificationPermissionState(
+                  NotificationAvailability.available,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: OverviewPanel(
+                  profileId: profileId,
+                  todayProvider: () => kToday,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        // No method row yet -> the ordinary not-enough state.
+        expect(
+          find.byKey(const ValueKey('overview-not-enough')),
+          findsOneWidget,
+        );
+
+        // Continuous method (implant) in effect -> explicit suppressed card.
+        await db.storage.upsertProfileMode(
+          profileId: profileId,
+          mode: 'tracking',
+          birthControlMethod: BirthControlMethod.implant.toDb(),
+          birthControlStartedOn: '2026-01-01',
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(find.byKey(const ValueKey('overview-not-enough')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('predictions-suppressed')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('predictions-suppressed-body')),
+          findsOneWidget,
+        );
+
+        // Clearing the method returns the not-enough state (no logged cycles).
+        await db.storage.upsertProfileMode(
+          profileId: profileId,
+          mode: 'tracking',
+          birthControlMethod: null,
+          birthControlStartedOn: null,
+          birthControlStoppedOn: null,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(
+          find.byKey(const ValueKey('predictions-suppressed')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('overview-not-enough')),
+          findsOneWidget,
+        );
+
+        // Same teardown discipline as the seeded-provisional test above.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      });
+
+      testWidgets('skipping the questions keeps the not-enough state exactly '
+          'as today (a facts-less profile with no repository wiring is the '
+          'pre-#218 behavior)', (tester) async {
+        final h = await pumpOverview(tester);
+        expect(
+          find.byKey(const ValueKey('overview-not-enough')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('overview-tier-caption')),
+          findsNothing,
+        );
+        await disposeOverview(tester, h);
+      });
     });
 
-    testWidgets('skipping the questions keeps the not-enough state exactly '
-        'as today (a facts-less profile with no repository wiring is the '
-        'pre-#218 behavior)', (tester) async {
-      final h = await pumpOverview(tester);
-      expect(find.byKey(const ValueKey('overview-not-enough')), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-tier-caption')), findsNothing);
-      await disposeOverview(tester, h);
-    });
-  });
-
-  group('issue #132 (AC6): three-option late resolver actions -- moved '
+    group('issue #132 (AC6): three-option late resolver actions -- moved '
         'here from cycle_history_test.dart under issue #314, since the '
         'resolver stays in OverviewPanel while the cycle-history section '
         'it used to sit next to moved to the Analysis tab', () {
@@ -1002,26 +1145,35 @@ void main() {
               seedEpisodes(entries, profileId, kSkipStarts),
         );
 
-        expect(find.text('Next period estimate: August 26, 2026'),
-            findsOneWidget);
+        expect(
+          find.text('Next period estimate: August 26, 2026'),
+          findsOneWidget,
+        );
         expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
 
         await tester.tap(find.byKey(const ValueKey('resolver-skip')));
         await tester.pumpAndSettle();
 
-        expect(find.text('Next period estimate: August 26, 2026'),
-            findsOneWidget,
-            reason: 'the skip advances the un-rolled estimate one '
-                'averaged cycle (Jul 27 + 30) to the same date the late '
-                'roll had already reached');
-        expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-            reason: 'the late window replanned -- no longer late');
+        expect(
+          find.text('Next period estimate: August 26, 2026'),
+          findsOneWidget,
+          reason:
+              'the skip advances the un-rolled estimate one '
+              'averaged cycle (Jul 27 + 30) to the same date the late '
+              'roll had already reached',
+        );
+        expect(
+          find.byKey(const ValueKey('late-resolver')),
+          findsNothing,
+          reason: 'the late window replanned -- no longer late',
+        );
         expect(
           parseOmittedCycles(
             await h._settings.get(omittedCyclesSettingKey(h.profile.id)),
           ),
           contains(LocalDate(2026, 6, 27)),
-          reason: 'skip feeds the same device-local exclusion list the '
+          reason:
+              'skip feeds the same device-local exclusion list the '
               'cycle-history section on Insights reads',
         );
 
@@ -1032,9 +1184,11 @@ void main() {
         await CycleExclusionList(h._settings)
             .include(h.profile.id, LocalDate(2026, 6, 27));
         await tester.pumpAndSettle();
-        expect(find.text('Next period estimate: August 26, 2026'),
-            findsOneWidget,
-            reason: 'reversible: including it restores the late window');
+        expect(
+          find.text('Next period estimate: August 26, 2026'),
+          findsOneWidget,
+          reason: 'reversible: including it restores the late window',
+        );
         expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
         await disposeOverview(tester, h);
       });
@@ -1094,8 +1248,9 @@ void main() {
       });
     });
 
-    testWidgets('mid-cycle phase reads "Cycle day N" and never "Period"',
-        (tester) async {
+    testWidgets('mid-cycle phase reads "Cycle day N" and never "Period"', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -1104,11 +1259,16 @@ void main() {
 
       // Issue #209: the plain-text phase headline moved into the Today
       // card's cycle wheel (its centre label carries this key now).
-      expect(find.byKey(const ValueKey('cycle-wheel-center-label')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('cycle-wheel-center-label')),
+        findsOneWidget,
+      );
       expect(find.text('Cycle day 26'), findsOneWidget);
-      expect(find.text('Period'), findsNothing,
-          reason: 'today is outside every episode');
+      expect(
+        find.text('Period'),
+        findsNothing,
+        reason: 'today is outside every episode',
+      );
       expectNoFertilityVocabulary(tester, 'mid-cycle phase');
       await disposeOverview(tester, h);
     });
@@ -1125,8 +1285,10 @@ void main() {
       expect(find.text('Day 3'), findsOneWidget);
       expect(find.text('of period'), findsOneWidget);
       expect(find.textContaining('Cycle day'), findsNothing);
-      expect(find.text('Next period estimate: September 27, 2026'),
-          findsOneWidget);
+      expect(
+        find.text('Next period estimate: September 27, 2026'),
+        findsOneWidget,
+      );
       expectNoFertilityVocabulary(tester, 'during episode');
       await disposeOverview(tester, h);
     });
@@ -1140,12 +1302,18 @@ void main() {
             seedEpisodes(entries, profileId, kIrregularSpreadStarts),
       );
 
-      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
+      expect(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('overview-tier-caption')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-tier-caption')),
+        findsOneWidget,
+      );
       expect(
         find.text('Cycles vary a lot — treat estimates as rough guides.'),
         findsOneWidget,
@@ -1154,7 +1322,8 @@ void main() {
       expect(
         find.text('Next period estimate: June 8, 2026 – July 20, 2026'),
         findsOneWidget,
-        reason: 'below-high tiers show a range (± round(spreadDays)) '
+        reason:
+            'below-high tiers show a range (± round(spreadDays)) '
             'instead of one exact date',
       );
       expectNoFertilityVocabulary(tester, 'irregular-tier range');
@@ -1176,22 +1345,33 @@ void main() {
       // exactly 0, so estimatedRangeStart == estimatedRangeEnd. The
       // estimate line must still show the single date, never
       // "September 4, 2026 – September 4, 2026".
-      expect(find.byKey(const ValueKey('overview-about-estimate-toggle')),
-          findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('overview-about-estimate-toggle')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('overview-tier-caption')),
-          findsOneWidget);
       expect(
-        find.text('Still learning — estimates improve after a few more '
-            'cycles.'),
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('overview-tier-caption')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Still learning — estimates improve after a few more '
+          'cycles.',
+        ),
         findsOneWidget,
         reason: 'issue #874: the tier caption renders the summary alone',
       );
-      expect(find.text('Next period estimate: September 4, 2026'),
-          findsOneWidget,
-          reason: 'a degenerate zero spread must fall back to the single '
-              'date');
+      expect(
+        find.text('Next period estimate: September 4, 2026'),
+        findsOneWidget,
+        reason:
+            'a degenerate zero spread must fall back to the single '
+            'date',
+      );
       expect(
         find.textContaining('September 4, 2026 – September 4, 2026'),
         findsNothing,
@@ -1210,8 +1390,10 @@ void main() {
       );
 
       // The dedicated long-cycle state is genuinely active...
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsOneWidget,
+      );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       // ...and the honest tier is learning, not irregular.
       expect(
@@ -1228,11 +1410,14 @@ void main() {
         findsNothing,
       );
       await tester.tap(
-          find.byKey(const ValueKey('overview-about-estimate-toggle')));
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(
-        find.text('Still learning — estimates improve after a few more '
-            'cycles.'),
+        find.text(
+          'Still learning — estimates improve after a few more '
+          'cycles.',
+        ),
         findsOneWidget,
       );
       expect(find.textContaining('Cycles vary a lot'), findsNothing);
@@ -1255,7 +1440,8 @@ void main() {
       );
       expect(find.text('Cycles vary a lot'), findsOneWidget);
       await tester.tap(
-          find.byKey(const ValueKey('overview-about-estimate-toggle')));
+        find.byKey(const ValueKey('overview-about-estimate-toggle')),
+      );
       await tester.pumpAndSettle();
       expect(
         find.text('Cycles vary a lot — treat estimates as rough guides.'),
@@ -1286,16 +1472,23 @@ void main() {
       await tester.tap(find.text('Overview'));
       await tester.pumpAndSettle();
       expect(find.text('Cycle day 26'), findsOneWidget);
-      expect(find.text('Next period estimate: September 4, 2026'),
-          findsOneWidget);
+      expect(
+        find.text('Next period estimate: September 4, 2026'),
+        findsOneWidget,
+      );
 
       await tester.pumpWidget(h.appFor(bob));
       await tester.pumpAndSettle();
       expect(find.text('Not enough history yet'), findsOneWidget);
-      expect(find.text('Cycle day 26'), findsNothing,
-          reason: 'no cross-profile carryover');
-      expect(find.text('Next period estimate: September 4, 2026'),
-          findsNothing);
+      expect(
+        find.text('Cycle day 26'),
+        findsNothing,
+        reason: 'no cross-profile carryover',
+      );
+      expect(
+        find.text('Next period estimate: September 4, 2026'),
+        findsNothing,
+      );
       expectNoFertilityVocabulary(tester, 'switched profile');
       await disposeOverview(tester, h);
     });
@@ -1312,18 +1505,22 @@ void main() {
       expect(find.text(kReminderHint), findsOneWidget);
 
       await tester.pumpWidget(
-          h.appFor(h.profile, availability: NotificationAvailability.available));
+        h.appFor(h.profile, availability: NotificationAvailability.available),
+      );
       await tester.pumpAndSettle();
       expect(find.text(kReminderHint), findsNothing);
-      expect(find.text('Cycle day 26'), findsOneWidget,
-          reason: 'overview content survives the availability re-pump');
+      expect(
+        find.text('Cycle day 26'),
+        findsOneWidget,
+        reason: 'overview content survives the availability re-pump',
+      );
       await disposeOverview(tester, h);
     });
 
-    testWidgets(
-        'the reminder hint has no "Turn on reminders" action when no '
-        'permission-request seam is provided (issue #168 fallback)',
-        (tester) async {
+    testWidgets('the reminder hint has no "Turn on reminders" action when no '
+        'permission-request seam is provided (issue #168 fallback)', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         availability: NotificationAvailability.denied,
@@ -1336,15 +1533,13 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets(
-        'tapping "Turn on reminders" (issue #168) calls the injected '
+    testWidgets('tapping "Turn on reminders" (issue #168) calls the injected '
         'request seam', (tester) async {
       var calls = 0;
       final h = await pumpOverview(
         tester,
         availability: NotificationAvailability.denied,
-        requestPermission:
-            RequestNotificationPermissionCallback(() async {
+        requestPermission: RequestNotificationPermissionCallback(() async {
           calls++;
         }),
         seed: (entries, profileId) =>
@@ -1363,35 +1558,39 @@ void main() {
     });
 
     testWidgets(
-        'the "Turn on reminders" button disables itself while the request '
-        'is in flight and re-enables once it resolves', (tester) async {
-      final gate = Completer<void>();
-      final h = await pumpOverview(
-        tester,
-        availability: NotificationAvailability.denied,
-        requestPermission:
-            RequestNotificationPermissionCallback(() => gate.future),
-        seed: (entries, profileId) =>
-            seedEpisodes(entries, profileId, kActiveStarts),
-      );
+      'the "Turn on reminders" button disables itself while the request '
+      'is in flight and re-enables once it resolves',
+      (tester) async {
+        final gate = Completer<void>();
+        final h = await pumpOverview(
+          tester,
+          availability: NotificationAvailability.denied,
+          requestPermission: RequestNotificationPermissionCallback(
+            () => gate.future,
+          ),
+          seed: (entries, profileId) =>
+              seedEpisodes(entries, profileId, kActiveStarts),
+        );
 
-      final button = find.byKey(const ValueKey('reminder-hint-action'));
-      await tester.tap(button);
-      await tester.pump();
+        final button = find.byKey(const ValueKey('reminder-hint-action'));
+        await tester.tap(button);
+        await tester.pump();
 
-      expect(
-        tester.widget<TextButton>(button).onPressed,
-        isNull,
-        reason: 'a second tap while the first request is in flight must '
-            'not fire another one',
-      );
+        expect(
+          tester.widget<TextButton>(button).onPressed,
+          isNull,
+          reason:
+              'a second tap while the first request is in flight must '
+              'not fire another one',
+        );
 
-      gate.complete();
-      await tester.pumpAndSettle();
+        gate.complete();
+        await tester.pumpAndSettle();
 
-      expect(tester.widget<TextButton>(button).onPressed, isNotNull);
-      await disposeOverview(tester, h);
-    });
+        expect(tester.widget<TextButton>(button).onPressed, isNotNull);
+        await disposeOverview(tester, h);
+      },
+    );
 
     testWidgets('logging a period through the repository refreshes the '
         'overview via the stream (late state clears)', (tester) async {
@@ -1403,23 +1602,31 @@ void main() {
 
       expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget);
 
-      await h.entries.save(DayEntry(
-        id: '',
-        profileId: h.profile.id,
-        localDate: kToday,
-        tz: 'America/Chicago',
-        flow: FlowLevel.medium,
-        tags: const [],
-        note: null,
-        updatedAt: DateTime.utc(2026, 1, 1),
-        deletedAt: null,
-      ));
+      await h.entries.save(
+        DayEntry(
+          id: '',
+          profileId: h.profile.id,
+          localDate: kToday,
+          tz: 'America/Chicago',
+          flow: FlowLevel.medium,
+          tags: const [],
+          note: null,
+          updatedAt: DateTime.utc(2026, 1, 1),
+          deletedAt: null,
+        ),
+      );
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-          reason: 'the new episode resets the open cycle');
-      expect(find.text('Day 1'), findsOneWidget,
-          reason: 'today is now day 1 of the new episode');
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'the new episode resets the open cycle',
+      );
+      expect(
+        find.text('Day 1'),
+        findsOneWidget,
+        reason: 'today is now day 1 of the new episode',
+      );
       expect(find.text('of period'), findsOneWidget);
       await disposeOverview(tester, h);
     });
@@ -1481,8 +1688,10 @@ void main() {
       expect(find.text('Waiting for your next period'), findsNothing);
       expect(find.textContaining('Predictions are paused'), findsNothing);
       expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsOneWidget,
+      );
       await disposeOverview(tester, longCycle);
     });
 
@@ -1496,8 +1705,11 @@ void main() {
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kLateStarts),
       );
-      expect(find.byKey(const ValueKey('late-resolver')), findsOneWidget,
-          reason: 'an explicit choice overrides the engine default');
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsOneWidget,
+        reason: 'an explicit choice overrides the engine default',
+      );
       expect(
         find.text('Your next period is estimated around: August 30, 2026'),
         findsOneWidget,
@@ -1517,15 +1729,18 @@ void main() {
             seedEpisodes(entries, profileId, kPausedStarts),
       );
       expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('overview-active')),
           matching: find.text(kDisclaimer),
         ),
         findsWidgets,
-        reason: 'the estimate card carries it, and the resolver the '
+        reason:
+            'the estimate card carries it, and the resolver the '
             'unusually-long state still shows carries its own copy',
       );
       await disposeOverview(tester, h);
@@ -1539,16 +1754,25 @@ void main() {
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kLateStarts),
       );
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-          reason: 'irregular silences the late banner (#131)');
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'irregular silences the late banner (#131)',
+      );
       expect(find.text('Log it'), findsNothing);
-      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
-          findsOneWidget);
-      expect(find.textContaining('variation like this is common'),
-          findsOneWidget);
-      expect(find.text('Next period may start around: August 30, 2026'),
-          findsOneWidget,
-          reason: 'issue #221: rolled forward one 28-day mean cycle');
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('variation like this is common'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Next period may start around: August 30, 2026'),
+        findsOneWidget,
+        reason: 'issue #221: rolled forward one 28-day mean cycle',
+      );
       expect(
         find.byKey(const ValueKey('overview-disclaimer')),
         findsOneWidget,
@@ -1563,9 +1787,11 @@ void main() {
       // the "Learning" tier caption in standard mode (the 6-cycle window
       // is not yet full) — irregular mode's own overdue line already
       // carries that framing, so the separate caption is silenced too.
-      expect(find.byKey(const ValueKey('overview-tier-caption')),
-          findsNothing,
-          reason: 'irregular mode silences the tier caption (#131/#213)');
+      expect(
+        find.byKey(const ValueKey('overview-tier-caption')),
+        findsNothing,
+        reason: 'irregular mode silences the tier caption (#131/#213)',
+      );
       expectNoFertilityVocabulary(tester, 'irregular late');
       await disposeOverview(tester, h);
     });
@@ -1581,11 +1807,16 @@ void main() {
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kLateStarts),
       );
-      expect(find.byKey(const ValueKey('late-resolver')), findsNothing,
-          reason: 'teen never sees the error-styled banner out of the box');
+      expect(
+        find.byKey(const ValueKey('late-resolver')),
+        findsNothing,
+        reason: 'teen never sees the error-styled banner out of the box',
+      );
       expect(find.text('Skip this cycle'), findsNothing);
-      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
       expect(find.textContaining('cycles often vary'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
@@ -1606,8 +1837,9 @@ void main() {
     });
 
     testWidgets('issue #853: a teen profile whose cycles reach high '
-        'confidence gets the plain framing back, with no write needed',
-        (tester) async {
+        'confidence gets the plain framing back, with no write needed', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         mode: ProfileMode.teen,
@@ -1616,8 +1848,10 @@ void main() {
         seed: (entries, profileId) =>
             seedEpisodes(entries, profileId, kSteadyHighStarts),
       );
-      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsNothing,
+      );
       expect(
         find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
         findsNothing,
@@ -1627,9 +1861,9 @@ void main() {
         findsOneWidget,
         reason: 'high confidence keeps the plain single-date framing',
       );
-      // And the wheel's overdue unit is back to the plain vocabulary.
-      expect(find.text('day late'), findsOneWidget);
-      expect(find.text('day past estimate'), findsNothing);
+      // Issue #1000: wheel overdue unit uses 'past estimate' across every framing.
+      expect(find.text('day past estimate'), findsOneWidget);
+      expect(find.text('day late'), findsNothing);
       await disposeOverview(tester, h);
     });
 
@@ -1643,16 +1877,21 @@ void main() {
             seedEpisodes(entries, profileId, kLateStarts),
       );
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
-      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey('irregular-overdue-log-when-it-comes')),
         findsNothing,
-        reason: 'only the teen composition carries the one action; the '
+        reason:
+            'only the teen composition carries the one action; the '
             'adult composition stays a text-only line',
       );
-      expect(find.textContaining('variation like this is common'),
-          findsOneWidget);
+      expect(
+        find.textContaining('variation like this is common'),
+        findsOneWidget,
+      );
       await disposeOverview(tester, h);
     });
 
@@ -1666,21 +1905,19 @@ void main() {
             seedEpisodes(entries, profileId, kPausedStarts),
       );
       expect(find.byKey(const ValueKey('late-resolver')), findsNothing);
-      expect(find.byKey(const ValueKey('overview-irregular-overdue')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('overview-irregular-overdue')),
+        findsOneWidget,
+      );
       // Issue #221/A2-12: the "unusually long" prompt is not the late
       // banner — it still renders even though irregular mode silences
       // that banner.
-      expect(find.byKey(const ValueKey('overview-long-cycle-prompt')),
-          findsOneWidget);
       expect(
-        find.byKey(const ValueKey('overview-disclaimer')),
+        find.byKey(const ValueKey('overview-long-cycle-prompt')),
         findsOneWidget,
       );
-      expect(
-        find.text(kDisclaimer),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
+      expect(find.text(kDisclaimer), findsOneWidget);
       await disposeOverview(tester, h);
     });
   });
@@ -1695,8 +1932,10 @@ void main() {
       );
 
       expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
-      expect(find.byKey(const ValueKey('cycle-wheel-center-label')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('cycle-wheel-center-label')),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('today-card')),
@@ -1704,8 +1943,10 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.byKey(const ValueKey('today-card-confidence-chip')),
-          findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('today-card-confidence-chip')),
+        findsOneWidget,
+      );
       // Descendant-scoped (rather than a bare `find.text`) since the
       // history section's own confidence chip carries the same tier
       // label on Insights (issue #314: no longer on this screen at all).
@@ -1715,17 +1956,12 @@ void main() {
           matching: find.text('Learning'),
         ),
         findsOneWidget,
-        reason: 'kActiveStarts has not yet filled the 6-cycle average '
+        reason:
+            'kActiveStarts has not yet filled the 6-cycle average '
             'window (issue #213 item 5)',
       );
-      expect(
-        find.byKey(const ValueKey('overview-disclaimer')),
-        findsOneWidget,
-      );
-      expect(
-        find.text(kDisclaimer),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('overview-disclaimer')), findsOneWidget);
+      expect(find.text(kDisclaimer), findsOneWidget);
       await disposeOverview(tester, h);
     });
 
@@ -1746,8 +1982,11 @@ void main() {
       final saved = await h.entries.find(h.profile.id, kToday);
       expect(saved, isNotNull);
       expect(saved!.flow, FlowLevel.medium);
-      expect(find.text('Day 1'), findsOneWidget,
-          reason: 'the new episode recomputes the prediction stream');
+      expect(
+        find.text('Day 1'),
+        findsOneWidget,
+        reason: 'the new episode recomputes the prediction stream',
+      );
       expect(find.text('of period'), findsOneWidget);
       await disposeOverview(tester, h);
     });
@@ -1759,17 +1998,19 @@ void main() {
         seed: (entries, profileId) async {
           await seedEpisodes(entries, profileId, kActiveStarts);
           // Today is already logged heavier than the quick-log default.
-          await entries.save(DayEntry(
-            id: '',
-            profileId: profileId,
-            localDate: kToday,
-            tz: 'America/Chicago',
-            flow: FlowLevel.heavy,
-            tags: const [],
-            note: 'already logged',
-            updatedAt: DateTime.utc(2026, 1, 1),
-            deletedAt: null,
-          ));
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.heavy,
+              tags: const [],
+              note: 'already logged',
+              updatedAt: DateTime.utc(2026, 1, 1),
+              deletedAt: null,
+            ),
+          );
         },
       );
 
@@ -1780,13 +2021,23 @@ void main() {
 
       final all = await h.entries.listForProfile(h.profile.id);
       final todays = all.where((e) => e.localDate == kToday).toList();
-      expect(todays, hasLength(1),
-          reason: 'a second tap must never create a second entry');
-      expect(todays.single.flow, FlowLevel.heavy,
-          reason: 'a flow already logged heavier than the quick-log '
-              'default must never be downgraded');
-      expect(todays.single.note, 'already logged',
-          reason: 'the rest of the existing entry is preserved');
+      expect(
+        todays,
+        hasLength(1),
+        reason: 'a second tap must never create a second entry',
+      );
+      expect(
+        todays.single.flow,
+        FlowLevel.heavy,
+        reason:
+            'a flow already logged heavier than the quick-log '
+            'default must never be downgraded',
+      );
+      expect(
+        todays.single.note,
+        'already logged',
+        reason: 'the rest of the existing entry is preserved',
+      );
       await disposeOverview(tester, h);
     });
 
@@ -1801,10 +2052,7 @@ void main() {
       );
 
       expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('today-card-log-action')),
-        findsNothing,
-      );
+      expect(find.byKey(const ValueKey('today-card-log-action')), findsNothing);
       await disposeOverview(tester, h);
     });
 
@@ -1826,8 +2074,7 @@ void main() {
   });
 
   group('issue #314: "See cycle history" link', () {
-    testWidgets(
-        'no AppShellScope is mounted here (ProfileDetailScreen pumps '
+    testWidgets('no AppShellScope is mounted here (ProfileDetailScreen pumps '
         'OverviewPanel outside any AppShell), so the link renders '
         'nothing rather than a dead button', (tester) async {
       final h = await pumpOverview(
@@ -1843,10 +2090,10 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets(
-        'still absent in the not-enough-history state -- the link is '
-        'gated on the shell scope, not on which card renders above it',
-        (tester) async {
+    testWidgets('still absent in the not-enough-history state -- the link is '
+        'gated on the shell scope, not on which card renders above it', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -1867,8 +2114,7 @@ void main() {
         'entirely (the same live guardian watch TodayLogFab and '
         'MonthCalendar already use)', (tester) async {
       final auth = FakeAuthService()
-        ..emit(AuthSessionState.signedIn,
-            user: const AuthUser(id: 'user-doc'));
+        ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-doc'));
       final authController = AuthController(authService: auth);
       final h = await pumpOverview(
         tester,
@@ -1881,13 +2127,14 @@ void main() {
         ]),
       );
 
-      expect(find.byKey(const ValueKey('today-card')), findsOneWidget,
-          reason: 'the wheel/estimate stay visible -- only the write '
-              'action is gated');
       expect(
-        find.byKey(const ValueKey('today-card-log-action')),
-        findsNothing,
+        find.byKey(const ValueKey('today-card')),
+        findsOneWidget,
+        reason:
+            'the wheel/estimate stay visible -- only the write '
+            'action is gated',
       );
+      expect(find.byKey(const ValueKey('today-card-log-action')), findsNothing);
 
       authController.dispose();
       await auth.dispose();
@@ -1897,8 +2144,10 @@ void main() {
     testWidgets('an accepted co-parent guardian keeps the quick-log action '
         'visible', (tester) async {
       final auth = FakeAuthService()
-        ..emit(AuthSessionState.signedIn,
-            user: const AuthUser(id: 'user-parent'));
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-parent'),
+        );
       final authController = AuthController(authService: auth);
       final h = await pumpOverview(
         tester,
@@ -1925,8 +2174,9 @@ void main() {
   group('issue #316 review item 5: undo + disclosure on the quick-log '
       'write', () {
     testWidgets('a successful write shows a confirmation snackbar with an '
-        'Undo action; undo after a create removes the entry entirely',
-        (tester) async {
+        'Undo action; undo after a create removes the entry entirely', (
+      tester,
+    ) async {
       final h = await pumpOverview(
         tester,
         seed: (entries, profileId) =>
@@ -1948,9 +2198,13 @@ void main() {
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
 
-      expect(await h.entries.find(h.profile.id, kToday), isNull,
-          reason: 'undo after a create removes the entry the tap made, '
-              'through the ordinary DayEntriesRepository delete path');
+      expect(
+        await h.entries.find(h.profile.id, kToday),
+        isNull,
+        reason:
+            'undo after a create removes the entry the tap made, '
+            'through the ordinary DayEntriesRepository delete path',
+      );
       await disposeOverview(tester, h);
     });
 
@@ -1960,17 +2214,19 @@ void main() {
         tester,
         seed: (entries, profileId) async {
           await seedEpisodes(entries, profileId, kActiveStarts);
-          await entries.save(DayEntry(
-            id: '',
-            profileId: profileId,
-            localDate: kToday,
-            tz: 'America/Chicago',
-            flow: FlowLevel.light,
-            tags: const ['cramps'],
-            note: 'before the quick log',
-            updatedAt: DateTime.utc(2026, 1, 1),
-            deletedAt: null,
-          ));
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday,
+              tz: 'America/Chicago',
+              flow: FlowLevel.light,
+              tags: const ['cramps'],
+              note: 'before the quick log',
+              updatedAt: DateTime.utc(2026, 1, 1),
+              deletedAt: null,
+            ),
+          );
         },
       );
 
@@ -1986,8 +2242,11 @@ void main() {
 
       final restored = await h.entries.find(h.profile.id, kToday);
       expect(restored, isNotNull);
-      expect(restored!.flow, FlowLevel.light,
-          reason: 'undo restores the prior flow level exactly');
+      expect(
+        restored!.flow,
+        FlowLevel.light,
+        reason: 'undo restores the prior flow level exactly',
+      );
       expect(restored.tags, ['cramps']);
       expect(restored.note, 'before the quick log');
       await disposeOverview(tester, h);
@@ -1995,47 +2254,51 @@ void main() {
   });
 
   group('issue #314 review item 3: OverviewPanel.trailingChildren', () {
-    testWidgets(
-        'a trailing widget renders inside the same ListView, below the '
+    testWidgets('a trailing widget renders inside the same ListView, below the '
         'estimate content', (tester) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       final profiles = DriftProfilesRepository(db.storage);
       final settings = DriftSettingsStore(db.storage);
       final entries = DriftDayEntriesRepository(db.storage);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
       await seedEpisodes(entries, profile.id, kActiveStarts);
 
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          Provider<DayEntriesRepository>.value(value: entries),
-          Provider<SettingsStore>.value(value: settings),
-          Provider<CyclePredictionService>.value(
-            value: CyclePredictionService(entries, settings: settings),
-          ),
-          Provider<CycleExclusionList>.value(
-            value: CycleExclusionList(settings),
-          ),
-          ChangeNotifierProvider<NotificationPermissionState>.value(
-            value:
-                NotificationPermissionState(NotificationAvailability.available),
-          ),
-        ],
-        child: MaterialApp(
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
-              supportedLocales: AppLocalizations.supportedLocales,
-          theme: AppTheme.lightTheme,
-          home: Scaffold(
-            body: OverviewPanel(
-              profileId: profile.id,
-              todayProvider: () => kToday,
-              trailingChildren: const [
-                Text('trailing marker', key: ValueKey('trailing-marker')),
-              ],
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            Provider<DayEntriesRepository>.value(value: entries),
+            Provider<SettingsStore>.value(value: settings),
+            Provider<CyclePredictionService>.value(
+              value: CyclePredictionService(entries, settings: settings),
+            ),
+            Provider<CycleExclusionList>.value(
+              value: CycleExclusionList(settings),
+            ),
+            ChangeNotifierProvider<NotificationPermissionState>.value(
+              value: NotificationPermissionState(
+                NotificationAvailability.available,
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.lightTheme,
+            home: Scaffold(
+              body: OverviewPanel(
+                profileId: profile.id,
+                todayProvider: () => kToday,
+                trailingChildren: const [
+                  Text('trailing marker', key: ValueKey('trailing-marker')),
+                ],
+              ),
             ),
           ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('overview-active')), findsOneWidget);
@@ -2045,7 +2308,8 @@ void main() {
           matching: find.byKey(const ValueKey('trailing-marker')),
         ),
         findsOneWidget,
-        reason: 'trailingChildren is appended inside the panel\'s own '
+        reason:
+            'trailingChildren is appended inside the panel\'s own '
             'ListView -- one scroll region, not a second scrollable',
       );
 
@@ -2057,64 +2321,82 @@ void main() {
 
   group('issue #543: prediction stream error', () {
     testWidgets(
-        'a thrown error on the prediction stream shows InlineError with '
-        'retry instead of a permanent spinner', (tester) async {
-      final db = LunarLogDatabase(NativeDatabase.memory());
-      final profiles = DriftProfilesRepository(db.storage);
-      final settings = DriftSettingsStore(db.storage);
-      final innerEntries = DriftDayEntriesRepository(db.storage);
-      final entries = ErroringDayEntriesRepository(innerEntries);
-      final profile =
-          await profiles.create(displayName: 'Alice', isMinor: false);
-      await seedEpisodes(innerEntries, profile.id, kActiveStarts);
+      'a thrown error on the prediction stream shows InlineError with '
+      'retry instead of a permanent spinner',
+      (tester) async {
+        final db = LunarLogDatabase(NativeDatabase.memory());
+        final profiles = DriftProfilesRepository(db.storage);
+        final settings = DriftSettingsStore(db.storage);
+        final innerEntries = DriftDayEntriesRepository(db.storage);
+        final entries = ErroringDayEntriesRepository(innerEntries);
+        final profile = await profiles.create(
+          displayName: 'Alice',
+          isMinor: false,
+        );
+        await seedEpisodes(innerEntries, profile.id, kActiveStarts);
 
-      await tester.pumpWidget(MultiProvider(
-        providers: [
-          Provider<DayEntriesRepository>.value(value: entries),
-          Provider<SettingsStore>.value(value: settings),
-          Provider<CyclePredictionService>.value(
-            value: CyclePredictionService(entries, settings: settings),
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<SettingsStore>.value(value: settings),
+              Provider<CyclePredictionService>.value(
+                value: CyclePredictionService(entries, settings: settings),
+              ),
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+              ChangeNotifierProvider<NotificationPermissionState>.value(
+                value: NotificationPermissionState(
+                  NotificationAvailability.available,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.lightTheme,
+              home: Scaffold(
+                body: OverviewPanel(
+                  profileId: profile.id,
+                  todayProvider: () => kToday,
+                ),
+              ),
+            ),
           ),
-          Provider<CycleExclusionList>.value(
-            value: CycleExclusionList(settings),
-          ),
-          ChangeNotifierProvider<NotificationPermissionState>.value(
-            value:
-                NotificationPermissionState(NotificationAvailability.available),
-          ),
-        ],
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          theme: AppTheme.lightTheme,
-          home: Scaffold(
-            body: OverviewPanel(profileId: profile.id, todayProvider: () => kToday),
-          ),
-        ),
-      ));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
-          reason: 'sanity: healthy before the break');
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('overview-active')),
+          findsOneWidget,
+          reason: 'sanity: healthy before the break',
+        );
 
-      entries.broken = true;
-      // Forces the watched stream to re-emit (and now throw).
-      await entries.save((await entries.find(profile.id, kActiveStarts.last))!);
-      await tester.pumpAndSettle();
+        entries.broken = true;
+        // Forces the watched stream to re-emit (and now throw).
+        await entries.save(
+          (await entries.find(profile.id, kActiveStarts.last))!,
+        );
+        await tester.pumpAndSettle();
 
-      expect(find.byType(InlineError), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byType(InlineError), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
 
-      entries.broken = false;
-      await tester.tap(find.text('Retry'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('overview-active')), findsOneWidget,
-          reason: 'retry re-subscribes and recovers once the failure clears');
+        entries.broken = false;
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('overview-active')),
+          findsOneWidget,
+          reason: 'retry re-subscribes and recovers once the failure clears',
+        );
 
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump(const Duration(milliseconds: 100));
-      await db.close();
-    });
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+        await db.close();
+      },
+    );
   });
 
   group('issue #874: PMS tier line', () {
@@ -2159,39 +2441,43 @@ void main() {
         // so a fresh tree is required to read the next fixed prediction.
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();
-        await tester.pumpWidget(MultiProvider(
-          providers: [
-            Provider<DayEntriesRepository>.value(value: entries),
-            Provider<SettingsStore>.value(value: settings),
-            Provider<CyclePredictionService>.value(
-              value: _FixedPredictionService(
-                entries,
-                predictionWithPmsTier(pmsTier),
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              Provider<DayEntriesRepository>.value(value: entries),
+              Provider<SettingsStore>.value(value: settings),
+              Provider<CyclePredictionService>.value(
+                value: _FixedPredictionService(
+                  entries,
+                  predictionWithPmsTier(pmsTier),
+                ),
               ),
-            ),
-            Provider<CycleExclusionList>.value(
-              value: CycleExclusionList(settings),
-            ),
-            ChangeNotifierProvider<NotificationPermissionState>.value(
-              value: NotificationPermissionState(
-                  NotificationAvailability.available),
-            ),
-          ],
-          child: MaterialApp(
-            localizationsDelegates: AppLocalizations.localizationsDelegates,
-            supportedLocales: AppLocalizations.supportedLocales,
-            theme: AppTheme.lightTheme,
-            home: Scaffold(
-              body: OverviewPanel(
-                profileId: 'p1',
-                todayProvider: () => kToday,
+              Provider<CycleExclusionList>.value(
+                value: CycleExclusionList(settings),
+              ),
+              ChangeNotifierProvider<NotificationPermissionState>.value(
+                value: NotificationPermissionState(
+                  NotificationAvailability.available,
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              theme: AppTheme.lightTheme,
+              home: Scaffold(
+                body: OverviewPanel(
+                  profileId: 'p1',
+                  todayProvider: () => kToday,
+                ),
               ),
             ),
           ),
-        ));
+        );
         await tester.pumpAndSettle();
         await tester.tap(
-            find.byKey(const ValueKey('overview-about-estimate-toggle')));
+          find.byKey(const ValueKey('overview-about-estimate-toggle')),
+        );
         await tester.pumpAndSettle();
       }
 
@@ -2200,20 +2486,21 @@ void main() {
       expect(
         find.byKey(const ValueKey('overview-pms-tier')),
         findsNothing,
-        reason: 'issue #874: no subject-less tier line when it matches the '
+        reason:
+            'issue #874: no subject-less tier line when it matches the '
             'cycle estimate',
       );
       expect(find.byKey(const ValueKey('overview-pms-band')), findsOneWidget);
 
       // Differing tier (defensive): the line gains a subject.
       await pumpWith(CycleConfidence.high);
-      expect(
-        find.byKey(const ValueKey('overview-pms-tier')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('overview-pms-tier')), findsOneWidget);
       expect(find.text('PMS estimate: High confidence'), findsOneWidget);
-      expect(find.text('High confidence'), findsNothing,
-          reason: 'only the subject-prefixed PMS line, never a bare label');
+      expect(
+        find.text('High confidence'),
+        findsNothing,
+        reason: 'only the subject-prefixed PMS line, never a bare label',
+      );
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
@@ -2234,6 +2521,5 @@ class _FixedPredictionService extends CyclePredictionService {
   Stream<CyclePrediction> watch(
     String profileId, {
     LocalDate Function()? today,
-  }) =>
-      Stream<CyclePrediction>.value(prediction);
+  }) => Stream<CyclePrediction>.value(prediction);
 }

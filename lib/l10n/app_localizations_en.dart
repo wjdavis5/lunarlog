@@ -156,7 +156,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get cycleHistoryOpenCycleNotCounted =>
-      'Not counted yet — your next period completes it';
+      'Not counted yet — the next period completes it';
 
   @override
   String get cycleComparisonToggleButton => 'Compare cycles';
@@ -414,9 +414,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetUnmappedImported => 'Imported, not recognised';
 
   @override
-  String get daySheetUnverifiedPin => 'Unverified — pin before shipping';
-
-  @override
   String get daySheetTagSearchHint => 'Search';
 
   @override
@@ -528,6 +525,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cycleConfidenceProvisional => 'Provisional';
 
   @override
+  String get cycleConfidenceShortHigh => 'high';
+
+  @override
+  String get cycleConfidenceShortLearning => 'learning';
+
+  @override
+  String get cycleConfidenceShortIrregular => 'rough';
+
+  @override
+  String get cycleConfidenceShortProvisional => 'provisional';
+
+  @override
   String get cycleConfidenceSummaryHigh =>
       'Recent cycles are steady — estimates are at their most reliable.';
 
@@ -612,17 +621,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String cycleWheelDaysLateUnit(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'days late',
-      one: 'day late',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String cycleWheelDaysPastEstimateUnit(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -689,22 +687,6 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other: 'About $daysUntil days until next period.',
       one: 'About 1 day until next period.',
-    );
-    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
-  }
-
-  @override
-  String cycleWheelSemanticsLate(
-    int daysLate,
-    int cycleDay,
-    int cycleDays,
-    int periodDays,
-  ) {
-    String _temp0 = intl.Intl.pluralLogic(
-      daysLate,
-      locale: localeName,
-      other: '$daysLate days late.',
-      one: '1 day late.',
     );
     return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
   }
@@ -1105,7 +1087,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunCycleCaption =>
-      'A few optional questions to set this profile up — every one can be skipped. The goal and birth-control answers can be changed later when editing the profile.';
+      'A few optional questions to set this profile up — every one can be skipped. The life-stage mode and birth-control answers can be changed later from Edit profile.';
 
   @override
   String get firstRunCycleLastPeriodLabel => 'Last period start';
@@ -1143,7 +1125,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunCycleBirthControlLabel => 'Birth-control method';
 
   @override
-  String get firstRunCycleGoalLabel => 'Goal / mode';
+  String get firstRunCycleGoalLabel => 'Life-stage mode';
 
   @override
   String get firstRunCreateButton => 'Create profile';
@@ -1182,21 +1164,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunWrapUpAddAnother => 'Add another person';
 
   @override
-  String get firstRunInviteTitle => 'Does someone else help?';
+  String get firstRunInviteTitle => 'Add another guardian?';
 
   @override
-  String get firstRunInviteBody =>
-      'Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.';
+  String firstRunInviteBody(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'A co-parent or caregiver can follow and log these profiles from their own phone.',
+      one: 'A co-parent or caregiver can follow and log this profile from their own phone.',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get firstRunInviteWhyAccount =>
-      'Invites travel through your lunarlog account so the link reaches the other person\'s device. Sign in or create an account to send one now.';
+      'Invites are sent from your lunarlog account, so sign in first.';
 
   @override
-  String get firstRunInviteSignInAction => 'Sign in or create account';
+  String get firstRunInviteSignInAction => 'Sign in to invite';
 
   @override
-  String get firstRunInviteCoParent => 'Invite a co-parent';
+  String get firstRunInviteCoParent => 'Invite a guardian';
 
   @override
   String get firstRunInviteSkip => 'Skip for now';
@@ -1263,7 +1252,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String overviewPmsBandLabel(String range, int days, int length) {
-    return 'Predicted PMS: $range — usually starts about $days days before your period and lasts about $length days.';
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      length,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    return 'Predicted PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
   }
 
   @override
@@ -1281,7 +1282,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String predictionsSuppressedByModeBody(String mode) {
-    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode in profile settings to resume ordinary prediction.';
+    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.';
   }
 
   @override
@@ -1430,7 +1431,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderBirthControlNeedsStartDate =>
-      'Waits for a start date on the recorded method — re-record the method in profile settings to set one';
+      'Waits for a start date on the recorded method — re-record the method from Edit profile to set one';
 
   @override
   String get commonNetworkError =>
@@ -1482,23 +1483,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileErasureFailureNetwork =>
-      'Can\'t purge while offline. Check your connection and try again.';
+      'Can\'t remove imported data while offline. Check your connection and try again.';
 
   @override
   String get profileErasureFailureUnauthorized =>
-      'Only that profile\'s primary guardian can purge its data.';
+      'Only that profile\'s primary guardian can remove its imported data.';
 
   @override
   String get profileErasureFailureNotSignedIn =>
-      'Sign in to your account to purge imported data.';
+      'Sign in to your account to remove imported data.';
 
   @override
   String get profileErasureFailureInvalidSource =>
-      'That import source isn\'t supported. Nothing was purged.';
+      'That import source isn\'t supported. Nothing was removed.';
 
   @override
   String get profileErasureFailureOther =>
-      'Failed to purge imported data. Check connection and try again.';
+      'Couldn\'t remove the imported data. Try again.';
 
   @override
   String get purgeImportedDataNoRows =>
@@ -1815,7 +1816,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileStatusNoHistory => 'No history yet';
 
   @override
-  String get profileStatusPredictionsSuppressed => 'Period predictions off';
+  String get profileStatusPredictionsSuppressed => 'Period estimates paused';
 
   @override
   String get profileStatusPredictionsOff => 'Period predictions off';
@@ -2074,7 +2075,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pregnancyDueDateMissing =>
-      'No due date recorded yet. Edit this profile and set the life-stage mode to Pregnancy to add one.';
+      'No due date yet. Add one from Edit profile.';
 
   @override
   String get pregnancyDueDateLabel => 'Estimated due date';
@@ -2093,7 +2094,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pregnancyExitExclusionBody =>
-      'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps your cycle history intact — the pregnancy span is just left out of the math. You can also exclude individual cycles later from cycle history.';
+      'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.';
 
   @override
   String get pregnancyExitExclusionAccept => 'Exclude pregnancy';
@@ -2162,7 +2163,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String conceivePeakDay(String date, int percent) {
-    return 'Most likely day: $date (about $percent% in one study)';
+    return 'Most likely day: $date (about $percent% of cycles in the study behind this estimate)';
   }
 
   @override
@@ -2181,17 +2182,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String perimenopauseLengthLonger(String days) {
-    return 'Your last completed cycle was $days longer than the one before it';
+    return 'The last completed cycle was $days longer than the one before it';
   }
 
   @override
   String perimenopauseLengthShorter(String days) {
-    return 'Your last completed cycle was $days shorter than the one before it';
+    return 'The last completed cycle was $days shorter than the one before it';
   }
 
   @override
   String get perimenopauseLengthSame =>
-      'Your last completed cycle was the same length as the one before it';
+      'The last completed cycle was the same length as the one before it';
 
   @override
   String get perimenopauseLengthUnknown =>
@@ -2290,7 +2291,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String subjectTeenModeDialogBody(String name) {
-    return '$name is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from profile settings.';
+    return '$name is logging her own profile now. Teen mode frames things for someone building body literacy for the first time - same data, same honesty. You can change it any time from Edit profile.';
   }
 
   @override
@@ -2406,12 +2407,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String householdTimingLate(int count) {
+  String householdTimingPastEstimate(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count days late',
-      one: '1 day late',
+      other: '$count days past the estimate',
+      one: '1 day past the estimate',
     );
     return '$_temp0';
   }

@@ -59,9 +59,9 @@ String completedCycleProgress(int complete, int needed) {
   final remaining = needed - complete;
   final String nextStep;
   if (remaining <= 1) {
-    nextStep = 'estimates start after your next period';
+    nextStep = 'estimates start after the next period';
   } else if (complete == 0) {
-    nextStep = 'estimates start once you have $needed completed cycles';
+    nextStep = 'estimates start once $needed completed cycles are recorded';
   } else {
     nextStep = '$remaining more periods until estimates';
   }

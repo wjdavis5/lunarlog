@@ -472,7 +472,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Not counted yet — your next period completes it'),
+        find.text('Not counted yet — the next period completes it'),
         findsOneWidget,
         reason: 'the open row must read as excluded from the tally',
       );
@@ -489,7 +489,7 @@ void main() {
       // The open cycle still reads as not counted even with an estimate
       // present — it is genuinely not part of the completed history yet.
       expect(
-        find.text('Not counted yet — your next period completes it'),
+        find.text('Not counted yet — the next period completes it'),
         findsOneWidget,
       );
       await disposeHistory(tester, h);

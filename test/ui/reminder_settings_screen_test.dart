@@ -332,7 +332,7 @@ void main() {
     expect(
       (row.subtitle as Text).data,
       'Waits for a start date on the recorded method — re-record the '
-      'method in profile settings to set one',
+      'method from Edit profile to set one',
     );
   });
 

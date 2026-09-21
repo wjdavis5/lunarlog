@@ -2,7 +2,7 @@
 /// "Who is this profile for?" choice on the name form, the cared-for
 /// card's defaults (relationship, minor on, Teen suggested), the
 /// shortened cycle step, the add-another wrap-up loop, and the invite
-/// step ("Does someone else help?") with #966's co-parent and subject
+/// step ("Add another guardian?") with #966's guardian and subject
 /// invite presets.
 ///
 /// The single-profile regression contract lives here too: the plain
@@ -129,7 +129,17 @@ class Harness {
       DriftOnboardingCycleAnswersRecorder(db.storage,
           todayProvider: () => kToday);
 
-  Future<void> pump() async {
+  Future<void> pump({
+    double textScale = 1.0,
+    Size physicalSize = const Size(800, 600),
+  }) async {
+    // Issue #994: the layout regression only reproduces on a narrow surface
+    // with large type, so the harness drives the view (logical pixels equal
+    // physical pixels at dpr 1.0) and the text scaler explicitly.
+    tester.view.physicalSize = physicalSize;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     // Locals so the nullable provider values promote below (fields do
     // not promote).
     final sharing = this.sharing;
@@ -147,8 +157,14 @@ class Harness {
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: FirstRunScreen(
-          todayProvider: () => kToday,
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(textScale)),
+            child: FirstRunScreen(
+              todayProvider: () => kToday,
+            ),
+          ),
         ),
       ),
     ));
@@ -178,11 +194,14 @@ class Harness {
 
   /// Acknowledged intro + minimum age, so tests land straight on the name
   /// form and only exercise the #804 surfaces.
-  Future<void> pumpToNameForm() async {
+  Future<void> pumpToNameForm({
+    double textScale = 1.0,
+    Size physicalSize = const Size(800, 600),
+  }) async {
     final auth = this.auth;
     await settings.set(SettingsKeys.firstRunNoticeShown, 'true');
     await settings.set(SettingsKeys.minimumAgeAcknowledged, 'true');
-    await pump();
+    await pump(textScale: textScale, physicalSize: physicalSize);
     // A signed-out harness shows the account step first; "Not now" skips
     // it (the same skip a real operator chooses). The sign-in screen's
     // ListView keeps "Not now" below the fold on this surface, so drag
@@ -448,7 +467,7 @@ void main() {
           reason: 'AC3: the step says why an account is required here');
       expect(find.byKey(const ValueKey('first-run-invite-sign-in')),
           findsOneWidget);
-      expect(find.text('Invite a co-parent'), findsNothing,
+      expect(find.text('Invite a guardian'), findsNothing,
           reason: 'the rows wait behind the sign-in');
 
       // The sign-in button opens the embedded sign-in screen, and "Not
@@ -499,7 +518,7 @@ void main() {
 
       expect(find.byKey(const ValueKey('first-run-invite-step')),
           findsOneWidget);
-      expect(find.text('Invite a co-parent'), findsNWidgets(2));
+      expect(find.text('Invite a guardian'), findsNWidgets(2));
       expect(find.text('Invite Riley to log her own profile'), findsOneWidget,
           reason: '#966\'s subject preset is offered for the minor\'s own '
               'profile');
@@ -508,7 +527,7 @@ void main() {
 
       // The co-parent invite rides the existing dialog and asks the
       // service for the co_parent role, no subject marker.
-      await tester.tap(find.text('Invite a co-parent').last);
+      await tester.tap(find.text('Invite a guardian').last);
       await tester.pumpAndSettle();
       expect(find.byType(InviteGuardianDialog), findsOneWidget);
       await tester.ensureVisible(find.text('Create Link'));
@@ -587,6 +606,75 @@ void main() {
           reason: 'issue #804 step 4: more than one profile lands on the '
               'household view (the picker, until #803\'s dedicated view '
               'exists)');
+      await h.dispose();
+    });
+  });
+
+  group('onboarding layout and copy (persona audit #994-#996)', () {
+    testWidgets('issue #994: the who-chips clear the Name field at a narrow '
+        'width and large text scale', (tester) async {
+      final h = Harness(tester);
+      await h.pumpToNameForm(
+        textScale: 2.0,
+        physicalSize: const Size(320, 640),
+      );
+
+      final chips = find.byKey(const ValueKey('first-run-who-chips'));
+      final name = find.byKey(const ValueKey('first-run-name-field'));
+      expect(chips, findsOneWidget);
+      expect(name, findsOneWidget);
+      expect(
+        tester.getBottomLeft(chips).dy,
+        lessThan(tester.getTopLeft(name).dy),
+        reason: 'issue #994: the compact, shrink-wrapped chips removed the '
+            'Material minimum-height slack, so the Name field\'s floating '
+            'label drew across their bottom edge — the chips must sit '
+            'strictly above the field',
+      );
+      await h.dispose();
+    });
+
+    testWidgets('issue #995: the wrap-up question renders exactly once — in '
+        'the app bar, never repeated as a body heading', (tester) async {
+      final h = Harness(tester);
+      await h.pumpToNameForm();
+
+      await h.createCaredForProfile('Riley');
+
+      expect(find.text('Add another person?'), findsOneWidget,
+          reason: 'issue #995: the title was rendered twice (app bar and '
+              'body heading), so the user read it before the one sentence '
+              'of body copy');
+      await h.dispose();
+    });
+
+    testWidgets('issue #996: the invite step leads with the guardian outcome '
+        'and names the sign-in as the way to send an invite', (tester) async {
+      final auth = FakeAuthService();
+      addTearDown(auth.dispose);
+      final h = Harness(
+        tester,
+        sharing: _FakeSharing(),
+        auth: AuthController(authService: auth),
+      );
+      await h.pumpToNameForm();
+
+      await h.createCaredForProfile('Riley');
+      await h.tapKey('first-run-wrap-up-continue');
+
+      expect(find.text('Add another guardian?'), findsOneWidget);
+      expect(find.text('Sign in to invite'), findsOneWidget,
+          reason: 'issue #996: the primary button names the outcome the '
+              'sign-in is for');
+      expect(
+        find.text(
+          'A co-parent or caregiver can follow and log this profile from '
+          'their own phone.',
+        ),
+        findsOneWidget,
+        reason: 'issue #996: the body states the benefit, not the account '
+            'plumbing',
+      );
       await h.dispose();
     });
   });
