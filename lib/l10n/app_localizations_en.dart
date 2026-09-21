@@ -1807,6 +1807,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileStatusPredictionsOff => 'Period predictions off';
 
   @override
+  String get profileStatusNoRecentPeriod => 'No recent period logged';
+
+  @override
   String daysCount(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

@@ -24,6 +24,7 @@ ActivePrediction _prediction({
   List<PredictedCycle> forecast = const [],
   PmsEstimate? pms,
   PredictionBasis basis = PredictionBasis.statistical,
+  bool staleHistory = false,
 }) {
   final lastStart = estimatedNextStart.addDays(-28);
   final cycleDay = today.difference(lastStart) + 1;
@@ -41,6 +42,7 @@ ActivePrediction _prediction({
     forecast: forecast,
     pms: pms,
     basis: basis,
+    staleHistory: staleHistory,
   );
 }
 
@@ -1063,6 +1065,104 @@ void main() {
           plan.where((r) => r.kind == ReminderKind.periodStartingSoon).length;
       expect(lateCount, kLatePreArmDays);
       expect(lateCount + soonCount, kMaxPendingReminders);
+    });
+  });
+
+  group('issue #982: a stale history plans no estimate-relative reminders', () {
+    /// Every estimate-relative kind on, plus the prediction-independent log
+    /// nudge, so the plan itself proves which gate skipped what.
+    ReminderConfig allOn() => ReminderConfig.standard.copyWith(
+          log: const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          periodStartingSoon:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          pms: const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+          fertileWindowSoon:
+              const ReminderTypeConfig(enabled: true, timeOfDayMinutes: 9 * 60),
+        );
+
+    List<PredictedCycle> forecastFrom(LocalDate firstStart) => [
+          for (var i = 1; i <= 6; i++)
+            PredictedCycle(
+              cycleIndex: i,
+              start: firstStart.addDays(28 * (i - 1)),
+              estimatedPeriodLengthDays: 4,
+              tier: CycleConfidence.high,
+              spreadDays: 2,
+            ),
+        ];
+
+    test('period-expected, PMS, and fertile-window kinds all skip; the '
+        'prediction-independent log nudge still plans', () {
+      final estimate = today.addDays(10);
+      ActivePrediction prediction({required bool stale}) => _prediction(
+            today: today,
+            estimatedNextStart: estimate,
+            forecast: forecastFrom(estimate),
+            pms: _pmsEstimate(estimatedNextStart: estimate, daysBeforePeriod: 5),
+            staleHistory: stale,
+          );
+
+      final fresh = planReminders(
+        today: today,
+        predictions: {'p1': prediction(stale: false)},
+        configs: {'p1': allOn()},
+      );
+      expect(
+        fresh.map((r) => r.kind),
+        containsAll(const [
+          ReminderKind.upcoming,
+          ReminderKind.periodStartingSoon,
+          ReminderKind.pms,
+          ReminderKind.fertileWindowSoon,
+        ]),
+        reason: 'sanity: without the stale flag every kind above plans',
+      );
+
+      final stale = planReminders(
+        today: today,
+        predictions: {'p1': prediction(stale: true)},
+        configs: {'p1': allOn()},
+      );
+      expect(stale, isNotEmpty,
+          reason: 'the log nudge is prediction-independent and still plans');
+      expect(stale.map((r) => r.kind), everyElement(ReminderKind.log));
+      expect(stale.map((r) => r.kind), isNot(contains(ReminderKind.upcoming)));
+      expect(
+        stale.map((r) => r.kind),
+        isNot(contains(ReminderKind.periodStartingSoon)),
+      );
+      expect(stale.map((r) => r.kind), isNot(contains(ReminderKind.pms)));
+      expect(
+        stale.map((r) => r.kind),
+        isNot(contains(ReminderKind.fertileWindowSoon)),
+      );
+    });
+
+    test('the late window also skips for a stale history', () {
+      // The late window is the one estimate-relative kind whose fire date
+      // is "today" rather than the estimate, so pin it separately.
+      final fresh = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        configs: {'p1': ReminderConfig.standard},
+      );
+      expect(fresh.map((r) => r.kind), everyElement(ReminderKind.late));
+
+      final stale = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(
+            today: today,
+            estimatedNextStart: today.addDays(-6),
+            staleHistory: true,
+          ),
+        },
+        configs: {'p1': ReminderConfig.standard},
+      );
+      expect(stale, isEmpty,
+          reason: 'no late pre-arm from a years-old estimate');
     });
   });
 

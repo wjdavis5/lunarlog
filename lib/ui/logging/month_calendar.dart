@@ -778,19 +778,30 @@ class _MonthCalendarState extends State<MonthCalendar>
 
     final byIso = {for (final entry in entries) entry.localDate.iso: entry};
     final estimateActive = prediction is ActivePrediction;
+    // Issue #982: a stale history (#859) has no forward forecast worth
+    // painting — its rolled estimate would draw predicted-period and
+    // fertile-window bands 31 cycles out, exactly the false precision the
+    // overview's stale card hides and the current-window helpers
+    // (`estimateFertileWindow`/`currentFertileWindow`, `conceive.dart`)
+    // already return null for. Suppress the whole forecast off the same
+    // flag, never a re-derived date comparison, so the calendar shows only
+    // logged days. The PMS band is anchored to the same stale estimate, so
+    // it goes too.
+    final staleHistory = estimateActive && prediction.staleHistory;
     // Issue #300: deriveForecast no longer takes history -- it now reads
     // ActivePrediction.forecast directly (the engine's own single
     // degradation curve), so the caller-computed CycleHistoryView is no
     // longer part of the forecast derivation itself (still threaded
     // through this method's own memoisation key below, unrelated to this
     // call).
-    final cycles = estimateActive
+    final cycles = estimateActive && !staleHistory
         ? deriveForecast(prediction: prediction, today: today)
         : const <ForecastCycle>[];
     // Issue #220: the PMS band is data-driven — the estimate's own
     // 6-cycle averages anchored before the next predicted start, or null
     // (no PMS badge anywhere) below the 3-logged-interval minimum.
-    final pmsEstimate = estimateActive ? prediction.pms : null;
+    final pmsEstimate =
+        estimateActive && !staleHistory ? prediction.pms : null;
     final forecastByIso = forecastDayCells(
       cycles: cycles,
       today: today,
