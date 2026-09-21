@@ -892,6 +892,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportSummaryNothingNew(int skipped) {
+    String _temp0 = intl.Intl.pluralLogic(
+      skipped,
+      locale: localeName,
+      other: '$skipped days',
+      one: '1 day',
+    );
+    return 'Nothing new — $_temp0 already logged.';
+  }
+
+  @override
   String get healthSyncImportTileSubtitle =>
       'Bring in all available menstrual flow and spotting.';
 
