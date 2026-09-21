@@ -188,6 +188,26 @@ enum GateDenialReason {
   noCredentialEnrolled,
 }
 
+/// [reauthenticate]'s interruption verdict (issue #984): whether the
+/// departure a credential prompt absorbed was answered by the operator
+/// coming back. Completes only once the answer is actually known — a
+/// `resumed` delivered after the credential result resolves it as "not
+/// interrupted"; the settle tail running out with the app still away
+/// resolves it as interrupted. That is the #65 KTD4 level check, moved
+/// from the moment the prompt returns (too early: iOS hands back the
+/// credential result before the prompt's own trailing `resumed`) to the
+/// moment the answer exists.
+class _InterruptVerdict {
+  final Completer<bool> completer = Completer<bool>();
+
+  bool get completed => completer.isCompleted;
+
+  void resolve(bool interrupted) {
+    if (completer.isCompleted) return;
+    completer.complete(interrupted);
+  }
+}
+
 /// Owns the locked/unlocked session state and everything that flips it.
 ///
 /// Notifications drive both the root's state machine and the
@@ -298,6 +318,7 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   int? _systemUiEpoch;
   bool _settling = false;
   bool _departedDuringWindow = false;
+  _InterruptVerdict? _interruptVerdict;
   bool _disposed = false;
 
   /// Bumped whenever the gate makes a decision that supersedes an
@@ -457,7 +478,25 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _settling = false;
     _settleTimer?.cancel();
     _settleTimer = null;
+    // Issue #984: answer any verdict this window still owns before the
+    // departure it is keyed on is cleared. A verdict a trailing `resumed`
+    // already resolved is untouched (idempotent), and one whose window is
+    // still open is not this method's to answer.
+    _resolveInterruptVerdict(_departedDuringWindow && !_resumed);
+    _interruptVerdict = null;
     _departedDuringWindow = false;
+  }
+
+  /// Resolves a pending [reauthenticate] verdict the moment the answer is
+  /// known (issue #984). Called from the lifecycle entry points that settle a
+  /// system-UI window: a `resumed` means the operator came back, so the
+  /// departure the prompt absorbed was its own; a `hidden`/`paused` on the
+  /// way out is likewise a prompt-induced report, since any genuine departure
+  /// that never returns is answered fail-closed by [_reconcileWindowClose].
+  void _resolveInterruptVerdict(bool interrupted) {
+    final verdict = _interruptVerdict;
+    if (verdict == null || verdict.completed) return;
+    verdict.resolve(interrupted);
   }
 
   int _openSystemUiWindow() {
@@ -546,6 +585,12 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // all. That is strictly weaker than the behaviour this change
     // replaced, which locked on every departure.
     final unanswered = _departedDuringWindow && !_resumed;
+    // Issue #984: answer [reauthenticate] before the departure state is
+    // cleared below. A pending verdict that reaches here still interrupted
+    // means the operator never came back — a `resumed` would have resolved it
+    // as not-interrupted already.
+    _resolveInterruptVerdict(unanswered);
+    _interruptVerdict = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = null;
     _systemUiWindows = 0;
@@ -571,8 +616,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// takes effect. Runs immediately rather than waiting out the settling
   /// tail — the tail exists to absorb a *returning* app's trailing
   /// transitions, and there is nothing to wait for when the operator has
-  /// not come back.
+  /// not come back. Issue #984: a verdict still pending here is answered
+  /// interrupted, the same fail-closed rule as the settle.
   void _replayDeparture() {
+    _resolveInterruptVerdict(true);
+    _interruptVerdict = null;
     _systemUiTimer?.cancel();
     _systemUiTimer = null;
     _systemUiWindows = 0;
@@ -591,6 +639,11 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     _systemUiWindows = 0;
     _systemUiEpoch = null;
     _generation++;
+    // Issue #984: the deadline answers a parked re-auth fail-closed before the
+    // settle tail is dropped, so a prompt that outstayed its bound never
+    // leaves a caller waiting.
+    _resolveInterruptVerdict(true);
+    _interruptVerdict = null;
     _cancelSettleTail();
     // Release the prompt too. A credential request that never returns is
     // exactly why this deadline exists, and leaving the flag set would
@@ -791,6 +844,17 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
   /// which lifecycle events arrived. That is a level check at one known
   /// moment, which no ordering guarantee is needed to answer.
   ///
+  /// Issue #984: that "one known moment" is the window's settle, not the
+  /// moment [AppGate.requestAccess] returns. iOS hands back the credential
+  /// result *before* the prompt's own trailing `resumed`, so the old
+  /// synchronous check read the prompt's own `inactive` as a walk-away,
+  /// re-locked, and returned false — "Add Apple" looped on Face ID and never
+  /// reached the Apple sheet. When a departure was observed the result is now
+  /// taken from [_InterruptVerdict], which a trailing `resumed` resolves as
+  /// not-interrupted and the settle resolves fail-closed if the operator
+  /// really is still away. A prompt with no departure resolves without
+  /// waiting, so the ordinary link path gains no delay.
+  ///
   /// Issue #739: a QA build auto-grants — no prompt, no gate call, no
   /// system-UI window. This is the client-side prompt bypass only; every
   /// server-side re-check (the `delete-account` AAL2 gate, RLS) still runs
@@ -802,18 +866,52 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     final generation = _generation;
     try {
-      final granted = await duringSystemUi(_gate.requestAccess);
+      // A nested re-auth is the credential prompt inside a caller's ceremony
+      // window (the "Add Apple" shape). Only the outermost window owns the
+      // interruption verdict and the re-lock; a nested prompt reports the
+      // credential and leaves the walk-away to the outer window's own
+      // fail-closed settle, which is exactly what keeps the two from
+      // fighting over the shared departure state.
+      final nested = _systemUiWindows > 0;
+      final (granted, verdict) = await _runCredentialPrompt(nested);
       if (_disposed || generation != _generation) return false;
-      final interrupted = _departedDuringWindow && !_resumed;
-      if (interrupted) _replayDeparture();
-      // A caller that acts on `true` must not act after the app re-locked
-      // underneath it, or "Add Google" launches its picker over the lock
-      // screen and links while the operator is away.
-      return granted && !interrupted;
+      if (verdict == null) return granted;
+      final settled = await _settleReauthVerdict(granted, verdict);
+      return settled;
     } finally {
       _authenticating = false;
       if (!_disposed) notifyListeners();
     }
+  }
+
+  /// Opens the credential prompt's own window, runs [AppGate.requestAccess],
+  /// and closes it — the window bookkeeping [reauthenticate] shares with the
+  /// rest of the gate. A nested call (someone else's window is already open)
+  /// attaches no verdict: its walk-away is the outer window's to answer.
+  Future<(bool, _InterruptVerdict?)> _runCredentialPrompt(bool nested) async {
+    final epoch = _openSystemUiWindow();
+    final verdict = nested ? null : _InterruptVerdict();
+    if (verdict != null) _interruptVerdict = verdict;
+    final bool granted;
+    try {
+      granted = await _gate.requestAccess();
+    } finally {
+      _closeSystemUiWindow(epoch);
+    }
+    return (granted, verdict);
+  }
+
+  /// [reauthenticate]'s outcome once the prompt has returned (issue #984): a
+  /// departure the prompt itself reported is only an interruption if the
+  /// operator never came back before the window settled.
+  Future<bool> _settleReauthVerdict(
+      bool granted, _InterruptVerdict verdict) async {
+    final interrupted = _departedDuringWindow && await verdict.completer.future;
+    if (interrupted) _replayDeparture();
+    // A caller that acts on `true` must not act after the app re-locked
+    // underneath it, or "Add Google" launches its picker over the lock
+    // screen and links while the operator is away.
+    return granted && !interrupted;
   }
 
   /// Re-lock now. Backgrounding always calls this; on un-gated platforms it
@@ -887,6 +985,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // it armed is answered by the return, not by a lock.
     _cancelInactiveGrace();
     _resumed = true;
+    // Issue #984: a `resumed` that trails a credential result answers the
+    // prompt's own departure — the re-auth can proceed even though the
+    // result was handed back before this event arrived.
+    _resolveInterruptVerdict(false);
     if (_systemUiWindows == 0) _obscured = false;
     if (!_locked && !_suppressingLock) _armInactivity();
     // Issue #534: a `noCredentialEnrolled` denial means no prompt was
@@ -985,6 +1087,10 @@ class GateController extends ChangeNotifier with WidgetsBindingObserver {
     // fresh timers nothing will ever cancel and notify a disposed
     // ChangeNotifier.
     _disposed = true;
+    // Issue #984: release a parked re-auth's verdict — the window's timers
+    // are cancelled below, so nothing else would ever answer it.
+    _resolveInterruptVerdict(true);
+    _interruptVerdict = null;
     WidgetsBinding.instance.removeObserver(this);
     _inactivityTimer?.cancel();
     _systemUiTimer?.cancel();

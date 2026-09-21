@@ -3886,6 +3886,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 change} other{{count} changes}} since you last looked'**
   String householdChanges(int count);
+
+  /// Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t confirm it\'s you — try again'**
+  String get accountReauthFailed;
 }
 
 class _AppLocalizationsDelegate

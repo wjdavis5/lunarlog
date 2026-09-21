@@ -1204,6 +1204,11 @@ void main() {
     // opens through unlock(), and the interrupted prompt's suppressed
     // departure must REPLAY as a re-lock after the prompt settles — an
     // assertion that fails if the replay (or the lock) regresses.
+    //
+    // Issue #984: `reauthenticate()` now reports the interruption only once
+    // the answer exists (the window's settle), because iOS hands back the
+    // credential result *before* the prompt's trailing `resumed`. This case
+    // delivers no resumed at all, so the settle timer is what answers it.
     testWidgets('returns false when the prompt is interrupted by a '
         'lifecycle change, without re-locking mid-prompt — the suppressed '
         'departure replays as a re-lock afterwards (#102)', (tester) async {
@@ -1233,6 +1238,13 @@ void main() {
           reason: 'no re-lock while the prompt is still up — the window '
               'suppresses the departure, it does not ignore it');
       hold.complete(true);
+      // The credential result lands first; the window closes and arms the
+      // settle tail on the following microtasks (issue #984).
+      await Future<void>.value();
+      await Future<void>.value();
+      // The operator never came back: the settle tail expires and answers the
+      // departure fail-closed.
+      timers.fireWithDelay(kSystemUiSettleTimeout);
       expect(await pending, isFalse);
       expect(controller.authenticating, isFalse);
       expect(controller.locked, isTrue,
@@ -1243,6 +1255,7 @@ void main() {
       // A clean prompt afterwards works again: come back, unlock, and a
       // second re-auth with no departure succeeds.
       controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
       gate.grantNext = true;
       await controller.unlock();
       expect(controller.locked, isFalse);
@@ -1253,7 +1266,9 @@ void main() {
     testWidgets('an interrupted prompt on a gated platform replays the '
         'departure: covered and re-locked, like unlock', (tester) async {
       final gate = FakeGate(requiresUnlock: true);
-      final controller = GateController(gate: gate);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
       addTearDown(controller.dispose);
       gate.grantNext = true;
       await controller.unlock();
@@ -1266,11 +1281,138 @@ void main() {
       expect(controller.locked, isFalse,
           reason: 'no re-lock while the prompt is still up');
       hold.complete(true);
+      await Future<void>.value();
+      await Future<void>.value();
+      timers.fireWithDelay(kSystemUiSettleTimeout);
       expect(await pending, isFalse);
       expect(controller.locked, isTrue,
           reason: 'the suppressed departure is replayed after the prompt');
       expect(controller.obscured, isTrue);
       expect(controller.authenticating, isFalse);
+    });
+
+    // Issue #984 — the field regression. iOS reports `inactive` for the Face
+    // ID prompt but hands back the credential result *before* the prompt's
+    // trailing `resumed`. The old synchronous check read that order as a
+    // walk-away, re-locked, and returned false, so "Add Apple" looped on Face
+    // ID and never reached the Apple sheet.
+    testWidgets('a prompt whose own `inactive` is followed by a trailing '
+        '`resumed` reports granted with no re-lock (issue #984)',
+        (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      // The real iOS order: `inactive` while the prompt is up, the credential
+      // result handed back, then `resumed` arrives — all before the window
+      // settles.
+      gate.onPrompt = () =>
+          controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+      final pending = controller.reauthenticate();
+      await Future<void>.value();
+      await Future<void>.value();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+      expect(await pending, isTrue,
+          reason: 'the prompt reported its own focus loss, then the operator '
+              'returned — that is not an interruption');
+      expect(controller.locked, isFalse,
+          reason: 'a re-auth the operator came back to must not re-lock');
+      // The settle tail only absorbs the trailing event; it must not undo the
+      // grant.
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+      gate.onPrompt = null;
+    });
+
+    // Issue #984 — nested windows. "Add Apple" opens one window for the whole
+    // ceremony and the credential prompt nests its own inside it; the
+    // departure must be attributed to the prompt's window, so the inner
+    // re-auth can report the credential while the outer window stays open.
+    // The outcome is delivered by the settle tail firing (the operator came
+    // back by then), so the nested window's verdict is what answers it.
+    testWidgets('a nested credential window attributes the departure to '
+        'itself, not the outer ceremony window (issue #984)', (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      gate.onPrompt = () {
+        // The prompt reports its own focus loss, then the operator is back by
+        // the time the re-auth's own window settles.
+        controller.didChangeAppLifecycleState(AppLifecycleState.inactive);
+        controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      };
+      await controller.duringSystemUi(() async {
+        await controller.duringSystemUi(() async {
+          final verdict = await controller.reauthenticate();
+          expect(verdict, isTrue,
+              reason: 'the prompt reported its own focus loss and the '
+                  'operator returned — not an interruption');
+          expect(controller.locked, isFalse);
+        });
+      });
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+      expect(controller.systemUiActive, isFalse, reason: 'every window closed');
+      gate.onPrompt = null;
+    });
+
+    testWidgets('a nested credential window with the operator still away '
+        'still re-locks through the outer ceremony window (issue #984)',
+        (tester) async {
+      final gate = FakeGate(requiresUnlock: true);
+      final timers = FakeInactivityTimers();
+      final controller = GateController(
+          gate: gate, inactivityTimerFactory: timers.factory);
+      addTearDown(controller.dispose);
+      gate.grantNext = true;
+      await controller.unlock();
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isFalse);
+
+      gate.grantNext = true;
+      gate.onPrompt =
+          () => controller.didChangeAppLifecycleState(AppLifecycleState.paused);
+      bool? verdict;
+      final outer = controller.duringSystemUi(() async {
+        await controller.duringSystemUi(() async {
+          verdict = await controller.reauthenticate();
+        });
+      });
+      await Future<void>.value();
+      await Future<void>.value();
+      await Future<void>.value();
+      await Future<void>.value();
+      expect(verdict, isTrue,
+          reason: 'the credential was accepted — a nested prompt reports the '
+              'credential and leaves the walk-away to the outer window');
+      expect(controller.locked, isFalse,
+          reason: 'still suppressed while the outer ceremony window is open');
+      await outer;
+      // The operator never returns; the outer window's settle answers the
+      // absorbed departure fail-closed.
+      timers.fireWithDelay(kSystemUiSettleTimeout);
+      expect(controller.locked, isTrue,
+          reason: 'a nested walk-away still re-locks');
+      gate.onPrompt = null;
     });
   });
 
