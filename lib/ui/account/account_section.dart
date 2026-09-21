@@ -349,7 +349,10 @@ class _AccountSectionState extends State<AccountSection> {
 
   bool get _canAddApple =>
       widget.showAddApple ??
-      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+      computeAppleSignInAvailable(
+        isWeb: kIsWeb,
+        isIos: defaultTargetPlatform == TargetPlatform.iOS,
+      );
 
   bool get _canAddPasskey => widget.showAddPasskey ?? AppConfig.hasPasskeys;
 

@@ -361,6 +361,56 @@ void main() {
     });
   });
 
+  group('web sign-in shape (epic #831 slice 2: providers hidden, email works)', () {
+    testWidgets('with Apple, Google, and passkeys hidden (the web shape), the '
+        'email + password form signs in', (tester) async {
+      final s = await pumpStandalone(
+        tester,
+        showApple: false,
+        showGoogle: false,
+        showPasskeys: false,
+      );
+      expect(key('auth-apple'), findsNothing);
+      expect(key('auth-google'), findsNothing);
+      expect(key('auth-passkey'), findsNothing);
+      expect(
+        key('auth-magic-link'),
+        findsOneWidget,
+        reason: 'passwordless email has no build-config gate and is the web '
+            'fallback alongside the password form',
+      );
+
+      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.enterText(key('auth-password'), 'correct horse');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signInCalls.single.email, 'web@b.c');
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('with the native providers hidden, the passwordless email '
+        'send and the 8-digit code path still work on web', (tester) async {
+      final s = await pumpStandalone(
+        tester,
+        showApple: false,
+        showGoogle: false,
+        showPasskeys: false,
+      );
+      await tester.enterText(key('auth-email'), 'web@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+      expect(s.auth.magicLinkCalls.single.email, 'web@b.c');
+      expect(key('auth-code'), findsOneWidget);
+
+      await tester.enterText(key('auth-code'), '12345678');
+      await tester.pumpAndSettle();
+      await tester.tap(key('auth-verify-code'));
+      await tester.pumpAndSettle();
+      expect(s.auth.codeCalls.single.email, 'web@b.c');
+      expect(s.auth.codeCalls.single.code, '12345678');
+    });
+  });
+
   group('provider buttons and passwordless entry (#2 U4; AE2, AE8, R12)', () {
     testWidgets('showGoogle: false and the null default (empty config on a '
         'non-web platform) render no Google button; true renders it (AE8)', (
