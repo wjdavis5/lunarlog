@@ -1427,6 +1427,36 @@ abstract class AppLocalizations {
   /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
 
+  /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
+  ///
+  /// In en, this message translates to:
+  /// **'Imported {imported, plural, =1{1 day} other{{imported} days}}, skipped {skipped, plural, =1{1 already logged} other{{skipped} already logged}}.'**
+  String healthSyncImportSummaryHeadline(int imported, int skipped);
+
+  /// Health sync screen import tile subtitle (Issue #992): the import is no longer bounded to a recent window, it reads the whole available history.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring in all available menstrual flow and spotting.'**
+  String get healthSyncImportTileSubtitle;
+
+  /// Shown while a full-history health import runs (Issue #992): the running sample count, so a long pass shows progress rather than a bare spinner.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing… {samples, plural, =1{1 sample} other{{samples} samples}} read so far.'**
+  String healthSyncImportProgress(int samples);
+
+  /// Health sync screen scope note (Issue #992): reads are full-history now; background reads remain deferred.
+  ///
+  /// In en, this message translates to:
+  /// **'Imports everything the health store makes available, not a recent window. Background sync is not available yet.'**
+  String get healthSyncFullHistoryNote;
+
+  /// Health import summary (Issue #992): the pass hit the page cap or saw a repeated cursor, so it stopped rather than spin. Days read so far were still merged; re-running continues safely.
+  ///
+  /// In en, this message translates to:
+  /// **'The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.'**
+  String get healthSyncImportStoppedEarly;
+
   /// Confirm dialog title for unbinding a health-sync profile (Issue #893), mirroring the bind confirmation.
   ///
   /// In en, this message translates to:
