@@ -1,9 +1,9 @@
-/// The user-initiated OS health-store import service (Issues #217/#458) —
-/// the effectful half of the read direction, mirroring
-/// `health_flow_write_service.dart`'s split between pure mapping and an
-/// injected platform port. One shared pipeline reads Apple Health on iOS
-/// and Health Connect on Android; the injected [HealthImportPlatform] picks
-/// the provenance stamped on every written row.
+/// The user-initiated OS health-store import service (Issues #217/#458,
+/// full-history in #992) — the effectful half of the read direction,
+/// mirroring `health_flow_write_service.dart`'s split between pure mapping
+/// and an injected platform port. One shared pipeline reads Apple Health on
+/// iOS and Health Connect on Android; the injected [HealthImportPlatform]
+/// picks the provenance stamped on every written row.
 ///
 /// **What it does, in order:**
 ///
@@ -16,9 +16,19 @@
 ///    the menstrual-flow read type in the one system sheet, Android's
 ///    Health Connect sheet carries the write and read permission sets, so a
 ///    user who has only ever imported (never exported) is still prompted.
-/// 3. Reads menstrual-flow and intermenstrual-bleeding samples over a
-///    bounded, widened query window ([kHealthImportWindowDays] civil days
-///    back, ±1 day of slack so a sample in any zone is returned).
+/// 3. Reads menstrual-flow and intermenstrual-bleeding samples over the
+///    **whole history** (Issue #992 — from [kHealthImportEarliestYear] to
+///    tomorrow, ±1 day of slack so a sample in any zone is returned), one
+///    *page* at a time. Each page is fetched through
+///    [HealthImportSource.readMenstrualFlowPage] with an opaque cursor and
+///    [kHealthImportPageSize]; the loop stops on a null cursor, on an
+///    exhausted (empty) page, on a repeated cursor, or after
+///    [kHealthImportMaxPages] pages — so no adapter bug can make it spin.
+///    A page's samples are resolved to desired days (in a background
+///    isolate once the page is large enough, see
+///    [kHealthImportResolveOffloadThreshold]) and merged into a pass-wide
+///    per-date accumulator, so the same day split across two pages still
+///    resolves to its highest-intensity sample.
 /// 4. Resolves each sample's civil date from the **sample's own** zone —
 ///    HealthKit's IANA `tzName`, or Health Connect's raw `offset`
 ///    (`day_boundary.dart`'s #180 import contract) — never the device's
@@ -35,7 +45,11 @@
 ///    (`none`) day is upgraded, and an already-imported day is refreshed.
 ///    An intermenstrual-bleeding record becomes a `spotting` observation
 ///    (the inverse of the write side's A3-4 rule) unless the day already
-///    carries a spotting observation, which is never overwritten.
+///    carries a spotting observation, which is never overwritten. A re-run
+///    is idempotent because every row carries its platform sample id as
+///    `source_id` (#186's contract); "resumable" means exactly that — an
+///    interrupted pass leaves the days it wrote in place and a fresh pass
+///    recomputes the rest without duplicating anything.
 /// 6. Every written row carries the platform's provenance
 ///    ([DayEntrySource.healthkit]/[DayEntrySource.healthConnect], and the
 ///    matching observation source) so the write path never echoes it back
@@ -53,8 +67,12 @@
 ///
 /// Pure Dart (R14/R16): repositories and the platform ports are injected
 /// interfaces; time and "today" are injectable, so every branch runs under
-/// `flutter test`.
+/// `flutter test`. The one `dart:isolate` use is the pure page-resolution
+/// offload; it lives behind the same top-level function a synchronous call
+/// would use, so tests exercise the resolution logic directly.
 library;
+
+import 'dart:isolate' show Isolate;
 
 import 'package:lunarlog/domain/health/day_boundary.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
@@ -80,6 +98,15 @@ import 'health_flow_mapping.dart';
 // not initializing formals (private finals via the initializer list), the
 // same declared pattern `health_flow_write_service.dart` uses.
 // ignore_for_file: prefer_initializing_formals
+
+/// How many samples a page must hold before its pure date resolution is
+/// moved to a background isolate (Issue #992). Below it the isolate
+/// spin-up costs more than the work; above it a multi-hundred-sample page
+/// is real CPU work and belongs off the UI isolate — the same
+/// threshold-shaped seam `import_screen.dart` uses for a large import file
+/// (issue #140 review, item 10). Tests keep their pages small so the
+/// resolution runs inline and deterministically.
+const int kHealthImportResolveOffloadThreshold = 250;
 
 /// The one flow sample chosen for a civil date: the highest-intensity flow
 /// among the samples that resolved to it, plus the provenance the imported
@@ -118,54 +145,171 @@ class _SpottingSample {
 /// The outcome of one date's merge, counted by [importNow].
 enum _MergeOutcome { written, unchanged, keptManual }
 
-/// The bounded read window, resolved once per pass.
+/// The full-history read window, resolved once per pass.
 class _Window {
-  const _Window({
-    required this.from,
-    required this.to,
-    required this.queryStart,
-    required this.queryEnd,
-  });
+  const _Window({required this.from, required this.to});
 
-  /// Inclusive civil-date bounds the import keeps.
+  /// Inclusive civil-date bounds the import keeps. [from] is
+  /// [kHealthImportEarliestYear]'s first day, [to] is today — the whole
+  /// history a store can hold.
   final LocalDate from;
   final LocalDate to;
 
-  /// The zone-free absolute query bounds handed to the platform — widened a
-  /// day either side of [from]/[to] so a sample in any zone inside the civil
-  /// window is returned. The precise civil filter happens in [_resolveSamples]
-  /// against each sample's own zone.
-  final DateTime queryStart;
-  final DateTime queryEnd;
+  /// The zone-free absolute query lower bound (~1970), widened by a day so
+  /// a sample in any zone is returned. The precise civil filter happens in
+  /// the page resolver against each sample's own zone.
+  DateTime get queryStart => DateTime.utc(from.year, from.month, from.day)
+      .subtract(const Duration(days: 1));
+
+  /// The absolute query upper bound: tomorrow's UTC civil date (today + 2,
+  /// so today in any zone is included).
+  DateTime get queryEnd =>
+      DateTime.utc(to.year, to.month, to.day).add(const Duration(days: 2));
 }
 
-/// One pass's sample resolution: the winning flow sample per in-window date,
-/// the spotting record per date, and the counts of samples that could not be
-/// placed.
-class _ResolvedSamples {
-  const _ResolvedSamples({
-    required this.byDate,
-    required this.spottingByDate,
-    required this.recordedZone,
-    required this.deviceZone,
-    required this.withoutZone,
-    required this.unsupported,
-  });
+/// One page's pure resolution input (a named record so it is a single
+/// sendable value for the isolate offload).
+typedef _PageResolveRequest = ({
+  List<HealthFlowSample> samples,
+  LocalDate from,
+  LocalDate to,
+});
 
-  final Map<LocalDate, _DesiredSample> byDate;
-  final Map<LocalDate, _SpottingSample> spottingByDate;
+/// One page's pure resolution output: the winning flow day per date, the
+/// spotting record per date, and the placement counts.
+typedef _PageResolveResult = ({
+  Map<LocalDate, _DesiredSample> flowDays,
+  Map<LocalDate, _SpottingSample> spottingDays,
+  int recordedZone,
+  int deviceZone,
+  int withoutZone,
+  int unsupported,
+});
 
-  /// In-window samples whose civil date came from the source's own recorded
-  /// zone (IANA name, or a Health Connect record's own offset).
-  final int recordedZone;
+/// The pure half of a page: maps every sample to a civil date using its OWN
+/// zone, keeps the highest-intensity flow per in-window date, records one
+/// spotting entry per intermenstrual-bleeding date, and counts the ones
+/// that could not be placed. Top-level and side-effect-free so it can run
+/// in a background isolate unchanged.
+_PageResolveResult _resolvePage(_PageResolveRequest request) {
+  final byDate = <LocalDate, _DesiredSample>{};
+  final spottingByDate = <LocalDate, _SpottingSample>{};
+  var withoutZone = 0;
+  var unsupported = 0;
+  var recordedZone = 0;
+  var deviceZone = 0;
+  // Counts a usable in-window sample by how its date was resolved (#902):
+  // from a zone the source recorded, or from this phone's own offset. Only
+  // samples that actually yield a placed row (or a spotting observation)
+  // are counted — an unsupported flow is already counted by [unsupported]
+  // and is not also reported as placed.
+  void countZone(HealthFlowSample sample) {
+    if (_usedDeviceZone(sample)) {
+      deviceZone++;
+    } else {
+      recordedZone++;
+    }
+  }
 
-  /// In-window samples placed from this phone's own offset because the
-  /// source recorded no zone (Issue #902) — reported separately so the
-  /// summary never presents an inferred date as a recorded one.
-  final int deviceZone;
+  for (final sample in request.samples) {
+    final date = _dateFor(sample);
+    if (date == null) {
+      withoutZone++;
+      continue;
+    }
+    if (date.isBefore(request.from) || date.isAfter(request.to)) continue;
+    if (sample.kind == HealthSampleKind.intermenstrualBleeding) {
+      countZone(sample);
+      spottingByDate.putIfAbsent(
+        date,
+        () => _SpottingSample(
+          recordId: sample.recordId,
+          // Non-null: _dateFor already proved a zone resolves.
+          tz: _zoneNameFor(sample)!,
+        ),
+      );
+      continue;
+    }
+    final value = sample.flow!;
+    final flow = flowLevelFromHealthValue(value);
+    if (flow == null) {
+      unsupported++;
+      continue;
+    }
+    countZone(sample);
+    final current = byDate[date];
+    if (current == null ||
+        healthFlowValueRank(value) > healthFlowValueRank(current.value)) {
+      byDate[date] = _DesiredSample(
+        flow: flow,
+        value: value,
+        recordId: sample.recordId,
+        // Non-null: _dateFor already proved a zone resolves.
+        tzName: _zoneNameFor(sample)!,
+      );
+    }
+  }
+  return (
+    flowDays: byDate,
+    spottingDays: spottingByDate,
+    recordedZone: recordedZone,
+    deviceZone: deviceZone,
+    withoutZone: withoutZone,
+    unsupported: unsupported,
+  );
+}
 
-  final int withoutZone;
-  final int unsupported;
+/// Resolves one page on a background isolate when it is large enough to be
+/// worth the spin-up, inline otherwise (Issue #992).
+Future<_PageResolveResult> _resolvePageOffThread(_PageResolveRequest request) {
+  if (request.samples.length >= kHealthImportResolveOffloadThreshold) {
+    return Isolate.run(() => _resolvePage(request));
+  }
+  return Future.value(_resolvePage(request));
+}
+
+/// Whether [sample]'s civil date is resolved from this phone's own zone
+/// (Issue #902) rather than from a zone the source recorded. Only the iOS
+/// read ever sets [HealthFlowSample.offsetInferred]; a recorded IANA name
+/// still wins over the flag (the #180 contract).
+bool _usedDeviceZone(HealthFlowSample sample) =>
+    sample.offsetInferred && (sample.tzName == null || sample.tzName!.isEmpty);
+
+/// The sample's civil date in its own recorded zone, or null when it has no
+/// zone (or one this build cannot resolve) — never the device's current
+/// zone. A sample with no IANA name but a non-null [offset] is placed from
+/// that offset: for Health Connect that is the record's own zone, and for an
+/// iOS sample the read forwarded this phone's offset (Issue #902,
+/// [HealthFlowSample.offsetInferred]). Menstrual flow is a whole-day
+/// category sample, so if the phone's zone has since changed the inferred
+/// date can be off by at most one day, and only near local midnight — a
+/// deliberate, bounded tradeoff.
+LocalDate? _dateFor(HealthFlowSample sample) {
+  final tzName = sample.tzName;
+  if (tzName != null && tzName.isNotEmpty) {
+    try {
+      return localDateForSample(sample.start, tzName: tzName);
+    } on TimeZoneResolutionException {
+      return null;
+    }
+  }
+  final offset = sample.offset;
+  if (offset == null) return null;
+  return localDateForSample(sample.start, offset: offset);
+}
+
+/// The zone string a written row carries: the sample's own IANA name when it
+/// has one (iOS), otherwise a fixed-offset designator derived from its raw
+/// offset (Health Connect records, and an iOS sample whose date came from
+/// this phone's offset — #902). The fixed-offset form is what keeps an
+/// imported `(local_date, tz)` pair internally consistent without inventing
+/// a device zone.
+String? _zoneNameFor(HealthFlowSample sample) {
+  final tzName = sample.tzName;
+  if (tzName != null && tzName.isNotEmpty) return tzName;
+  final offset = sample.offset;
+  if (offset == null) return null;
+  return fixedOffsetZoneName(offset);
 }
 
 /// The concrete [HealthImportRunner]. Never throws on an expected failure
@@ -229,7 +373,9 @@ class LocalHealthImportService implements HealthImportRunner {
           : ObservationSource.appleHealth;
 
   @override
-  Future<HealthImportSummary> importNow() async {
+  Future<HealthImportSummary> importNow({
+    void Function(HealthImportProgress progress)? onProgress,
+  }) async {
     final bound = await _resolveBound();
     if (bound == null) return const HealthImportSummary(bound: false);
 
@@ -254,44 +400,78 @@ class LocalHealthImportService implements HealthImportRunner {
     if (blocked != null) return HealthImportSummary(blocked: blocked);
 
     final window = _window();
-    final read = await _source.readMenstrualFlow(
-      bound.facts,
-      start: window.queryStart,
-      end: window.queryEnd,
-    );
-    return _summaryForRead(bound.profile.id, window, read);
+    final run = await _readPages(bound.facts, window, onProgress);
+    final early = run.earlySummary;
+    if (early != null) return early;
+    return _apply(bound.profile.id, run.accumulator, run.lateBlocked);
   }
 
-  /// Maps one [HealthReadResult] to the summary: samples go through
-  /// [_apply]; every platform outcome becomes the matching blocked summary,
-  /// with a denied read coalesced into the neutral empty one (see the
-  /// switch's note). Split out of [importNow] purely to keep each method's
-  /// CRAP score under the quality gate.
-  Future<HealthImportSummary> _summaryForRead(
-    String profileId,
+  /// Fetches pages until the cursor is exhausted, a page cannot advance, or
+  /// [kHealthImportMaxPages] is reached, accumulating resolved days as it
+  /// goes. A platform outcome ends the pass: on the first page it is
+  /// returned whole ([_PageRun.earlySummary]); after earlier pages were read
+  /// those days are still merged and only the outcome rides along
+  /// ([_PageRun.lateBlocked]).
+  Future<_PageRun> _readPages(
+    HealthGuardFacts facts,
     _Window window,
-    HealthReadResult read,
-  ) async => switch (read) {
-    HealthReadSamples(:final samples) => await _apply(
-      profileId,
-      window,
-      samples,
-    ),
-    HealthReadRefused(:final check) => HealthImportSummary(
-      blocked: HealthPlatformResult.refused(check),
-    ),
-    HealthReadUnavailable() => const HealthImportSummary(
-      blocked: HealthPlatformUnavailable(),
-    ),
-    // HealthKit never reports a denied read — it returns an empty sample
-    // list. Health Connect does report one, but both are deliberately
-    // coalesced into the same neutral "nothing came back" summary as an
-    // empty result. The app must not distinguish the two.
-    HealthReadPermissionDenied() => const HealthImportSummary(),
-    HealthReadFailed(:final message) => HealthImportSummary(
-      blocked: HealthPlatformResult.failed(message),
-    ),
-  };
+    void Function(HealthImportProgress progress)? onProgress,
+  ) async {
+    final accumulator = _Accumulator();
+    String? cursor;
+    final seenCursors = <String>{};
+    while (true) {
+      if (accumulator.pagesRead >= kHealthImportMaxPages) {
+        accumulator.pageLimitReached = true;
+        break;
+      }
+      final read = await _source.readMenstrualFlowPage(
+        facts,
+        start: window.queryStart,
+        end: window.queryEnd,
+        pageSize: kHealthImportPageSize,
+        cursor: cursor,
+      );
+      if (read is! HealthReadSamples) {
+        return _outcomeRun(accumulator, read);
+      }
+      accumulator.pagesRead++;
+      accumulator.samplesRead += read.samples.length;
+      accumulator.addPage(
+        await _resolvePageOffThread(
+          (samples: read.samples, from: window.from, to: window.to),
+        ),
+      );
+      onProgress?.call(accumulator.progress);
+      final next = read.nextCursor;
+      if (next == null) break;
+      if (next == cursor || seenCursors.contains(next)) {
+        accumulator.repeatedCursor = true;
+        break;
+      }
+      seenCursors.add(next);
+      cursor = next;
+    }
+    return _PageRun(accumulator: accumulator);
+  }
+
+  /// Wraps a platform outcome per the first-page rule described on
+  /// [_readPages].
+  _PageRun _outcomeRun(_Accumulator accumulator, HealthReadResult read) {
+    if (accumulator.pagesRead == 0) {
+      return _PageRun(accumulator: accumulator, earlySummary: _blockedFor(read));
+    }
+    return _PageRun(
+      accumulator: accumulator,
+      lateBlocked: _blockedFor(read).blocked,
+    );
+  }
+
+  /// The full-history window: 1970-01-01 through today. Not a fixed day
+  /// count any more (Issue #992); the loop's page cap, not the window, is
+  /// what bounds the pass.
+  _Window _window() =>
+      _Window(from: LocalDate(kHealthImportEarliestYear, 1, 1), to: _today());
 
   /// The bound profile plus its guard facts, or null when health sync is
   /// off for this device or the bound profile no longer resolves.
@@ -308,43 +488,22 @@ class LocalHealthImportService implements HealthImportRunner {
     return (profile: profile, facts: facts);
   }
 
-  /// The bounded window this pass reads. The query bounds are plain UTC
-  /// civil dates padded a day either side — never a zone conversion, so
-  /// nothing about the device's current zone leaks into the read.
-  _Window _window() {
-    final to = _today();
-    final from = healthImportWindowStart(to);
-    return _Window(
-      from: from,
-      to: to,
-      queryStart: DateTime.utc(
-        from.year,
-        from.month,
-        from.day,
-      ).subtract(const Duration(days: 1)),
-      queryEnd: DateTime.utc(
-        to.year,
-        to.month,
-        to.day,
-      ).add(const Duration(days: 2)),
-    );
-  }
-
-  /// Resolves the pass's samples, merges each in-window date, and assembles
-  /// the summary.
+  /// Merges the accumulated per-date desired rows into the bound profile's
+  /// live entries and assembles the summary. [blocked] rides along when a
+  /// later page returned a platform outcome after earlier pages had already
+  /// been read.
   Future<HealthImportSummary> _apply(
     String profileId,
-    _Window window,
-    List<HealthFlowSample> samples,
+    _Accumulator accumulator,
+    HealthPlatformResult? blocked,
   ) async {
-    final resolved = _resolveSamples(samples, window);
     // Day-level sets, so a date whose flow merge and spotting merge land in
     // different outcomes is counted once per outcome rather than twice.
     final writtenDays = <LocalDate>{};
     final unchangedDays = <LocalDate>{};
     final keptManualDays = <LocalDate>{};
     final spottingDays = <LocalDate>{};
-    for (final entry in resolved.byDate.entries) {
+    for (final entry in accumulator.flowDays.entries) {
       switch (await _mergeDay(profileId, entry.key, entry.value)) {
         case _MergeOutcome.written:
           writtenDays.add(entry.key);
@@ -354,7 +513,7 @@ class LocalHealthImportService implements HealthImportRunner {
           keptManualDays.add(entry.key);
       }
     }
-    for (final entry in resolved.spottingByDate.entries) {
+    for (final entry in accumulator.spottingDays.entries) {
       switch (await _mergeSpotting(profileId, entry.key, entry.value)) {
         case _MergeOutcome.written:
           spottingDays.add(entry.key);
@@ -365,137 +524,39 @@ class LocalHealthImportService implements HealthImportRunner {
       }
     }
     return HealthImportSummary(
-      samplesRead: samples.length,
+      blocked: blocked,
+      samplesRead: accumulator.samplesRead,
       daysWritten: writtenDays.length,
       daysUnchanged: unchangedDays.length,
       daysKeptManual: keptManualDays.length,
       spottingDaysWritten: spottingDays.length,
-      samplesFromRecordedZone: resolved.recordedZone,
-      samplesFromDeviceZone: resolved.deviceZone,
-      samplesWithoutZone: resolved.withoutZone,
-      samplesUnsupported: resolved.unsupported,
+      samplesFromRecordedZone: accumulator.recordedZone,
+      samplesFromDeviceZone: accumulator.deviceZone,
+      samplesWithoutZone: accumulator.withoutZone,
+      samplesUnsupported: accumulator.unsupported,
+      pagesRead: accumulator.pagesRead,
+      pageLimitReached: accumulator.pageLimitReached,
+      repeatedCursor: accumulator.repeatedCursor,
     );
   }
 
-  /// Maps every sample to a civil date using its OWN zone, keeps the
-  /// highest-intensity flow per in-window date, records one spotting entry
-  /// per intermenstrual-bleeding date, and counts the ones that could not be
-  /// placed.
-  _ResolvedSamples _resolveSamples(
-    List<HealthFlowSample> samples,
-    _Window window,
-  ) {
-    final byDate = <LocalDate, _DesiredSample>{};
-    final spottingByDate = <LocalDate, _SpottingSample>{};
-    var withoutZone = 0;
-    var unsupported = 0;
-    var recordedZone = 0;
-    var deviceZone = 0;
-    // Counts a usable in-window sample by how its date was resolved
-    // (#902): from a zone the source recorded, or from this phone's own
-    // offset. Only samples that actually yield a placed row (or a spotting
-    // observation) are counted — an unsupported flow is already counted by
-    // [unsupported] and is not also reported as placed.
-    void countZone(HealthFlowSample sample) {
-      if (_usedDeviceZone(sample)) {
-        deviceZone++;
-      } else {
-        recordedZone++;
-      }
-    }
-
-    for (final sample in samples) {
-      final date = _dateFor(sample);
-      if (date == null) {
-        withoutZone++;
-        continue;
-      }
-      if (date.isBefore(window.from) || date.isAfter(window.to)) continue;
-      if (sample.kind == HealthSampleKind.intermenstrualBleeding) {
-        countZone(sample);
-        spottingByDate.putIfAbsent(
-          date,
-          () => _SpottingSample(
-            recordId: sample.recordId,
-            // Non-null: _dateFor already proved a zone resolves.
-            tz: _zoneNameFor(sample)!,
-          ),
-        );
-        continue;
-      }
-      final value = sample.flow!;
-      final flow = flowLevelFromHealthValue(value);
-      if (flow == null) {
-        unsupported++;
-        continue;
-      }
-      countZone(sample);
-      final current = byDate[date];
-      if (current == null ||
-          healthFlowValueRank(value) > healthFlowValueRank(current.value)) {
-        byDate[date] = _DesiredSample(
-          flow: flow,
-          value: value,
-          recordId: sample.recordId,
-          // Non-null: _dateFor already proved a zone resolves.
-          tzName: _zoneNameFor(sample)!,
-        );
-      }
-    }
-    return _ResolvedSamples(
-      byDate: byDate,
-      spottingByDate: spottingByDate,
-      recordedZone: recordedZone,
-      deviceZone: deviceZone,
-      withoutZone: withoutZone,
-      unsupported: unsupported,
-    );
-  }
-
-  /// Whether [sample]'s civil date is resolved from this phone's own zone
-  /// (Issue #902) rather than from a zone the source recorded. Only the iOS
-  /// read ever sets [HealthFlowSample.offsetInferred]; a recorded IANA name
-  /// still wins over the flag (the #180 contract).
-  bool _usedDeviceZone(HealthFlowSample sample) =>
-      sample.offsetInferred &&
-      (sample.tzName == null || sample.tzName!.isEmpty);
-
-  /// The sample's civil date in its own recorded zone, or null when it has
-  /// no zone (or one this build cannot resolve) — never the device's
-  /// current zone. A sample with no IANA name but a non-null [offset] is
-  /// placed from that offset: for Health Connect that is the record's own
-  /// zone, and for an iOS sample the read forwarded this phone's offset
-  /// (Issue #902, [HealthFlowSample.offsetInferred]). Menstrual flow is a
-  /// whole-day category sample, so if the phone's zone has since changed
-  /// the inferred date can be off by at most one day, and only near local
-  /// midnight — a deliberate, bounded tradeoff.
-  LocalDate? _dateFor(HealthFlowSample sample) {
-    final tzName = sample.tzName;
-    if (tzName != null && tzName.isNotEmpty) {
-      try {
-        return localDateForSample(sample.start, tzName: tzName);
-      } on TimeZoneResolutionException {
-        return null;
-      }
-    }
-    final offset = sample.offset;
-    if (offset == null) return null;
-    return localDateForSample(sample.start, offset: offset);
-  }
-
-  /// The zone string a written row carries: the sample's own IANA name when
-  /// it has one (iOS), otherwise a fixed-offset designator derived from its
-  /// raw offset (Health Connect records, and an iOS sample whose date came
-  /// from this phone's offset — #902). The
-  /// fixed-offset form is what keeps an imported `(local_date, tz)` pair
-  /// internally consistent without inventing a device zone.
-  String? _zoneNameFor(HealthFlowSample sample) {
-    final tzName = sample.tzName;
-    if (tzName != null && tzName.isNotEmpty) return tzName;
-    final offset = sample.offset;
-    if (offset == null) return null;
-    return fixedOffsetZoneName(offset);
-  }
+  /// Maps a non-sample [read] to the matching blocked summary, with a
+  /// denied read coalesced into the neutral empty one (HealthKit never
+  /// reports a denied read — it returns an empty sample list — and Health
+  /// Connect's denial is deliberately treated the same way).
+  HealthImportSummary _blockedFor(HealthReadResult read) => switch (read) {
+    HealthReadSamples() => const HealthImportSummary(),
+    HealthReadRefused(:final check) => HealthImportSummary(
+      blocked: HealthPlatformResult.refused(check),
+    ),
+    HealthReadUnavailable() => const HealthImportSummary(
+      blocked: HealthPlatformUnavailable(),
+    ),
+    HealthReadPermissionDenied() => const HealthImportSummary(),
+    HealthReadFailed(:final message) => HealthImportSummary(
+      blocked: HealthPlatformResult.failed(message),
+    ),
+  };
 
   /// Merges one date's imported flow into the bound profile's live entry:
   ///
@@ -600,4 +661,59 @@ class LocalHealthImportService implements HealthImportRunner {
   /// The pass-blocking outcome of [result], or null when it was allowed.
   static HealthPlatformResult? _notAllowed(HealthPlatformResult result) =>
       result is HealthPlatformAllowed ? null : result;
+}
+
+/// One pass's page-fetch result (Issue #992): the accumulated days, plus
+/// the platform outcome that ended the pass — [earlySummary] when it
+/// happened on the very first page (nothing was merged, so the whole
+/// blocked summary is returned), [lateBlocked] when earlier pages had
+/// already merged days (those are still applied and the outcome rides
+/// along).
+class _PageRun {
+  _PageRun({required this.accumulator, this.earlySummary, this.lateBlocked});
+
+  final _Accumulator accumulator;
+  final HealthImportSummary? earlySummary;
+  final HealthPlatformResult? lateBlocked;
+}
+
+/// The running per-date accumulator across pages (Issue #992). A page's
+/// winning day per date merges in without a later page downgrading an
+/// earlier one: flow keeps the highest intensity, spotting keeps the first
+/// record seen.
+class _Accumulator {
+  final Map<LocalDate, _DesiredSample> flowDays = {};
+  final Map<LocalDate, _SpottingSample> spottingDays = {};
+  int recordedZone = 0;
+  int deviceZone = 0;
+  int withoutZone = 0;
+  int unsupported = 0;
+  int samplesRead = 0;
+  int pagesRead = 0;
+  bool pageLimitReached = false;
+  bool repeatedCursor = false;
+
+  void addPage(_PageResolveResult page) {
+    for (final entry in page.flowDays.entries) {
+      final current = flowDays[entry.key];
+      if (current == null ||
+          healthFlowValueRank(entry.value.value) >
+              healthFlowValueRank(current.value)) {
+        flowDays[entry.key] = entry.value;
+      }
+    }
+    for (final entry in page.spottingDays.entries) {
+      spottingDays.putIfAbsent(entry.key, () => entry.value);
+    }
+    recordedZone += page.recordedZone;
+    deviceZone += page.deviceZone;
+    withoutZone += page.withoutZone;
+    unsupported += page.unsupported;
+  }
+
+  HealthImportProgress get progress => HealthImportProgress(
+    pagesRead: pagesRead,
+    samplesRead: samplesRead,
+    daysWritten: flowDays.length + spottingDays.length,
+  );
 }

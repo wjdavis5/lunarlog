@@ -65,10 +65,12 @@ class _FakeSource implements HealthImportSource {
   }
 
   @override
-  Future<HealthReadResult> readMenstrualFlow(
+  Future<HealthReadResult> readMenstrualFlowPage(
     HealthGuardFacts facts, {
     required DateTime start,
     required DateTime end,
+    required int pageSize,
+    String? cursor,
   }) async =>
       const HealthReadResult.unavailable();
 }

@@ -136,6 +136,11 @@ Future<void> _runLunarlog() async {
     // factory builds the platform default (with its settings store) after
     // the database opens; web gets the no-op.
     buildDefaultScheduler: true,
+    // Issue #141: the home-screen widget is a native-only surface too —
+    // the same production-only arming as the scheduler above. The store
+    // itself still no-ops where the OS has no widget surface
+    // (`hasHomeWidgetSurface`), and no test path arms it.
+    buildHomeWidgetStore: true,
     authService: authService,
     syncTransport: syncTransport,
     // U5/U6: with a client present the root also builds the sharing

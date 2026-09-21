@@ -196,7 +196,9 @@ class _FakeImporter implements HealthImportRunner {
   int calls = 0;
 
   @override
-  Future<HealthImportSummary> importNow() async {
+  Future<HealthImportSummary> importNow({
+    void Function(HealthImportProgress progress)? onProgress,
+  }) async {
     calls++;
     return summary;
   }
@@ -208,7 +210,9 @@ class _ThrowingImporter implements HealthImportRunner {
   HealthImportPlatform get platform => HealthImportPlatform.appleHealth;
 
   @override
-  Future<HealthImportSummary> importNow() async =>
+  Future<HealthImportSummary> importNow({
+    void Function(HealthImportProgress progress)? onProgress,
+  }) async =>
       throw StateError('boom');
 }
 
@@ -721,6 +725,47 @@ void main() {
       );
       expect(
         find.textContaining('Kept your own logged value on 1 day.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the completion summary headline reports imported days and '
+        'days skipped because a value was already there (Issue #992)',
+        (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 3,
+        daysWritten: 2,
+        daysUnchanged: 4,
+        daysKeptManual: 1,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      // importedDays = 2, skippedAlreadyLoggedDays = 4 + 1 = 5.
+      expect(
+        find.textContaining('Imported 2 days, skipped 5 already logged.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a pass stopped by the page cap says so rather than '
+        'pretending it finished (Issue #992)', (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        samplesRead: 2,
+        daysWritten: 1,
+        pageLimitReached: true,
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('The import stopped early'),
         findsOneWidget,
       );
     });

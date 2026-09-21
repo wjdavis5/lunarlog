@@ -875,6 +875,46 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String healthSyncImportSummaryHeadline(int imported, int skipped) {
+    String _temp0 = intl.Intl.pluralLogic(
+      imported,
+      locale: localeName,
+      other: '$imported days',
+      one: '1 day',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      skipped,
+      locale: localeName,
+      other: '$skipped already logged',
+      one: '1 already logged',
+    );
+    return 'Imported $_temp0, skipped $_temp1.';
+  }
+
+  @override
+  String get healthSyncImportTileSubtitle =>
+      'Bring in all available menstrual flow and spotting.';
+
+  @override
+  String healthSyncImportProgress(int samples) {
+    String _temp0 = intl.Intl.pluralLogic(
+      samples,
+      locale: localeName,
+      other: '$samples samples',
+      one: '1 sample',
+    );
+    return 'Importing… $_temp0 read so far.';
+  }
+
+  @override
+  String get healthSyncFullHistoryNote =>
+      'Imports everything the health store makes available, not a recent window. Background sync is not available yet.';
+
+  @override
+  String get healthSyncImportStoppedEarly =>
+      'The import stopped early after an unusual amount of data. The days already read were kept — run the import again to continue.';
+
+  @override
   String healthSyncUnbindDialogTitle(String name) {
     return 'Stop syncing $name to this phone?';
   }
@@ -932,6 +972,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSectionCalendar => 'Calendar';
+
+  @override
+  String get settingsSectionHomeWidget => 'Home-screen widget';
+
+  @override
+  String get settingsHomeWidgetProfileTitle => 'Widget profile';
+
+  @override
+  String get settingsHomeWidgetFollowActive =>
+      'Follow the app\'s current profile';
+
+  @override
+  String get settingsHomeWidgetDisclosure =>
+      'The widget shows only a discreet state: a cycle-day count, never a name, a date, or flow details. When the profile is one you can log for, tapping it records a period started today — the entry applies only after you unlock the app, and logging it twice changes nothing. Profiles you can only view are not offered here.';
 
   @override
   String get settingsSectionFamilySharing => 'Family & sharing';

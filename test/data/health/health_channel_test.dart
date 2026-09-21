@@ -555,73 +555,83 @@ void main() {
     });
   });
 
-  group('readMenstrualFlow (Issue #217)', () {
-    final start = DateTime.utc(2026, 8, 16);
+  group('readMenstrualFlowPage (Issues #217/#992)', () {
+    final start = DateTime.utc(1970, 1, 1);
     final end = DateTime.utc(2026, 9, 17);
 
+    Future<HealthReadResult> page({
+      String? cursor,
+      MethodChannelHealthPlatform? platform,
+    }) =>
+        (platform ?? makePlatform()).readMenstrualFlowPage(
+          _facts(),
+          start: start,
+          end: end,
+          pageSize: kHealthImportPageSize,
+          cursor: cursor,
+        );
+
     test('a denied read refuses with zero channel invocations', () async {
-      final result = await makePlatform(seed: {}).readMenstrualFlow(
-        _facts(),
-        start: start,
-        end: end,
-      );
+      final result = await page(platform: makePlatform(seed: {}));
       expect(result, isA<HealthReadRefused>());
       expect((result as HealthReadRefused).check, HealthSyncCheck.noBinding);
       expect(calls, isEmpty);
     });
 
-    test('an allowed read crosses the channel with the guard and window', () async {
-      nextResult = <Object?>[
-        {
-          'recordId': 'uuid-1',
-          'flow': 'light',
-          'startMs': 1000,
-          'endMs': 2000,
-          'tzName': 'UTC',
-        },
-      ];
-      final result = await makePlatform().readMenstrualFlow(
-        _facts(),
-        start: start,
-        end: end,
-      );
+    test('an allowed read crosses the channel with the guard, window, page '
+        'size and cursor', () async {
+      nextResult = <String, Object?>{
+        'samples': [
+          {
+            'recordId': 'uuid-1',
+            'flow': 'light',
+            'startMs': 1000,
+            'endMs': 2000,
+            'tzName': 'UTC',
+          },
+        ],
+        'nextCursor': 'page-2',
+      };
+      final result = await page(cursor: 'page-1');
 
       expect(calls, hasLength(1));
       final call = calls.single;
-      expect(call.method, 'readMenstrualFlow');
+      expect(call.method, 'readMenstrualFlowPage');
       final args = call.arguments as Map<Object?, Object?>;
       expect(args['profileId'], 'p1');
       expect(args['startMs'], start.millisecondsSinceEpoch);
       expect(args['endMs'], end.millisecondsSinceEpoch);
-      expect((result as HealthReadSamples).samples.single.recordId, 'uuid-1');
+      expect(args['pageSize'], kHealthImportPageSize);
+      expect(args['cursor'], 'page-1');
+      final samples = result as HealthReadSamples;
+      expect(samples.samples.single.recordId, 'uuid-1');
+      expect(samples.nextCursor, 'page-2');
+    });
+
+    test('a first page sends no cursor key at all', () async {
+      nextResult = <String, Object?>{'samples': <Object?>[]};
+      await page();
+      final args = calls.single.arguments as Map<Object?, Object?>;
+      expect(args.containsKey('cursor'), isFalse);
     });
 
     test('a platform unavailable error maps to HealthReadUnavailable', () async {
       nextError = PlatformException(code: 'unavailable');
-      final result = await makePlatform().readMenstrualFlow(
-        _facts(),
-        start: start,
-        end: end,
-      );
-      expect(result, isA<HealthReadUnavailable>());
+      expect(await page(), isA<HealthReadUnavailable>());
     });
 
     test('a permissionDenied platform error maps to the read denial', () async {
       nextError = PlatformException(code: 'permissionDenied');
-      final result = await makePlatform().readMenstrualFlow(
-        _facts(),
-        start: start,
-        end: end,
-      );
-      expect(result, isA<HealthReadPermissionDenied>());
+      expect(await page(), isA<HealthReadPermissionDenied>());
     });
 
     test('the unsupported platform reads as unavailable', () async {
       const platform = UnsupportedHealthPlatform();
-      final result = await platform.readMenstrualFlow(
+      final result = await platform.readMenstrualFlowPage(
         _facts(),
         start: start,
         end: end,
+        pageSize: kHealthImportPageSize,
       );
       expect(result, isA<HealthReadUnavailable>());
     });

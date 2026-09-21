@@ -25,16 +25,25 @@
          getReadPermission for both, the user-initiated import calls
          getChangesToken/getChanges, and the native read drops any record
          whose dataOrigin is this app so our own writes are never
-         re-imported. Reads are bounded to the last 30 days and happen only
-         when the operator starts an import — full history and background
-         reads remain undeclared. Extend this list (never widen it silently)
-         as later HS issues add data types — adding one re-triggers Play's
-         Health apps declaration review; do NOT add history, background, or
-         sexual-activity permissions here; those belong to #186/#210. -->
+         re-imported. Issue #992 lifts the old 30-day cap: the read is now
+         full-history and paged, which is why READ_HEALTH_DATA_HISTORY is
+         declared and requested below (without it Health Connect returns
+         only the 30 days preceding the permission grant). Background reads
+         (READ_HEALTH_DATA_IN_BACKGROUND) remain undeclared — the import is
+         still user-initiated only. Extend this list (never widen it
+         silently) as later HS issues add data types — adding one re-triggers
+         Play's Health apps declaration review; do NOT add background or
+         sexual-activity permissions here. -->
     <uses-permission android:name="android.permission.health.WRITE_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.WRITE_INTERMENSTRUAL_BLEEDING"/>
     <uses-permission android:name="android.permission.health.READ_MENSTRUATION"/>
     <uses-permission android:name="android.permission.health.READ_INTERMENSTRUAL_BLEEDING"/>
+    <!-- Issue #992: full-history import. Health Connect caps a read at the
+         30 days preceding the permission grant unless the app holds this
+         permission. It is requested alongside the read set (see
+         HealthConnectAdapter.kt's readPermissions) and only ever read from —
+         never written. -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY"/>
     <!-- Issue #228: the fertility/measurement family's WRITE permissions.
          Cervical mucus, ovulation test, and basal body temperature are
          distinct Health Connect permissions (unlike the menstruation
@@ -132,6 +141,23 @@
                 <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
             </intent-filter>
         </activity-alias>
+        <!-- Issue #141: the home-screen widget provider. exported="false"
+             is the current AppWidget docs shape — the system delivers
+             APPWIDGET_UPDATE with system privileges. The provider only
+             reads the shared HomeWidgetPreferences store and renders the
+             discreet state; the quick-log button opens the app (never
+             writes; the write applies after the device-credential gate). -->
+        <receiver
+            android:name=".LunarLogWidgetProvider"
+            android:exported="false"
+            android:label="lunarlog">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/lunarlog_widget_info"/>
+        </receiver>
         <!-- U8: flutter_local_notifications receivers (schedule delivery and
              restore after reboot). -->
         <receiver

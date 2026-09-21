@@ -30,6 +30,20 @@
 	     (issue #384) replaces __LUNARLOG_LINK_DOMAIN__ in both files at
 	     once, so Debug/Profile device builds and the App Store build
 	     associate the same domain. -->
+	<!-- Issue #141: the shared suite the home-screen widget extension
+	     reads (the discreet render payload written by the app's
+	     WidgetStatePublisher through the `home_widget` plugin). The SAME
+	     identifier is declared in LunarLogWidget.entitlements — an app
+	     group works only when every member declares it, and device
+	     signing requires the App Group capability on both App IDs plus
+	     regenerated profiles carrying it (see the device checklist in
+	     docs/ops/supabase-go-live.md). Unsigned CI builds are unaffected.
+	     Fields crossing this boundary: exactly the six keys documented in
+	     lib/domain/widget/widget_cycle_state.dart. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.wjdavis5.lunarlog.widgets</string>
+	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:__LUNARLOG_LINK_DOMAIN__</string>

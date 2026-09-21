@@ -68,6 +68,7 @@ import 'package:lunarlog/ui/settings/about_section.dart';
 import 'package:lunarlog/ui/settings/calendar_settings_section.dart';
 import 'package:lunarlog/ui/settings/family_sharing_section.dart';
 import 'package:lunarlog/ui/settings/health_sync_screen.dart';
+import 'package:lunarlog/ui/settings/home_widget_section.dart';
 import 'package:lunarlog/ui/settings/measurement_units_settings_section.dart';
 import 'package:lunarlog/ui/settings/predictions_settings_section.dart';
 import 'package:lunarlog/ui/settings/your_data_section.dart';
@@ -209,6 +210,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: l10n.settingsSectionAppearance,
             children: [const _AppearanceTile()],
           ),
+          // 2b. Home-screen widget (Issue #141): which profile the widget
+          // shows, plus the privacy disclosure. Self-hosts its
+          // SettingsSection so it self-hides as a unit (web/desktop render
+          // none of it).
+          const HomeWidgetSection(),
           // 3. Reminders: the per-profile local reminder configuration
           // (Issue #136) plus the caregiver alert preferences promoted out
           // of Manage Guardians (Issue #226's core fix).
