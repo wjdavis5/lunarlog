@@ -53,9 +53,9 @@ class CaregiverAttributionBadge extends StatelessWidget {
   String _sourceLabel(AppLocalizations l10n, String source) =>
       switch (source) {
         'clue_import' => l10n.caregiverAttributionImportedClue,
-        'healthkit' || 'apple_health' => l10n.caregiverAttributionImportedHealth,
-        'health_connect' =>
-          l10n.caregiverAttributionImportedHealthConnect,
+        'healthkit' || 'apple_health' =>
+          l10n.caregiverAttributionImportedHealth,
+        'health_connect' => l10n.caregiverAttributionImportedHealthConnect,
         'file_import' => l10n.caregiverAttributionImportedFile,
         'wearable' => l10n.caregiverAttributionImportedWearable,
         _ => l10n.caregiverAttributionImportedGeneric,
