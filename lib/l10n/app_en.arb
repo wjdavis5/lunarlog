@@ -1457,6 +1457,74 @@
   "@firstRunCreateButton": {
     "description": "Final button of the cycle-questions step; creates the profile (today's label, kept)."
   },
+  "firstRunWhoLabel": "Who is this profile for?",
+  "@firstRunWhoLabel": {
+    "description": "The household-setup question at the top of the first-run name form (issue #804). 'Me' is preselected, so today's single-profile path never answers it."
+  },
+  "firstRunWhoMe": "Me",
+  "@firstRunWhoMe": {
+    "description": "Household-setup answer: the operator's own profile (issue #804)."
+  },
+  "firstRunWhoSomeone": "Someone I care for",
+  "@firstRunWhoSomeone": {
+    "description": "Household-setup answer: a profile for a family member (issue #804)."
+  },
+  "firstRunWhoBoth": "Both",
+  "@firstRunWhoBoth": {
+    "description": "Household-setup answer: the operator's own profile plus family members (issue #804)."
+  },
+  "firstRunRelationshipLabel": "Relationship",
+  "@firstRunRelationshipLabel": {
+    "description": "Label above the relationship dropdown on a first-run card for someone other than the operator (issue #804)."
+  },
+  "firstRunTeenSuggestedHint": "Teen mode is suggested for a minor — change it any time.",
+  "@firstRunTeenSuggestedHint": {
+    "description": "Hint under the care-mode dropdown when Teen was preselected as a suggestion for a minor (issue #804; suggested, never forced — #131)."
+  },
+  "firstRunCycleShortCaption": "Optional: if you know when her last period started, add it below. Not sure? Just continue.",
+  "@firstRunCycleShortCaption": {
+    "description": "Caption on the shortened cycle step for a family member's profile: the last-period question only, visibly skippable (issue #804)."
+  },
+  "firstRunWrapUpTitle": "Add another person?",
+  "@firstRunWrapUpTitle": {
+    "description": "Title of the household wrap-up step after a profile was created (issue #804)."
+  },
+  "firstRunWrapUpBody": "Everyone you set up now is ready to log. You can also add profiles later from the profile picker.",
+  "@firstRunWrapUpBody": {
+    "description": "Body of the household wrap-up step; states that the loop is optional (issue #804)."
+  },
+  "firstRunWrapUpAddAnother": "Add another person",
+  "@firstRunWrapUpAddAnother": {
+    "description": "Button looping back to a fresh person card on the household wrap-up step (issue #804)."
+  },
+  "firstRunInviteTitle": "Does someone else help?",
+  "@firstRunInviteTitle": {
+    "description": "Title of the first-run invite step (issue #804)."
+  },
+  "firstRunInviteBody": "Invite a co-parent or a caregiver to any profile you just created. You can skip this and send invites later from Manage guardians.",
+  "@firstRunInviteBody": {
+    "description": "Body of the first-run invite step; states skippability and the later path (issue #804)."
+  },
+  "firstRunInviteWhyAccount": "Invites travel through your lunarlog account so the link reaches the other person's device. Sign in or create an account to send one now.",
+  "@firstRunInviteWhyAccount": {
+    "description": "Shown on the invite step when there is no session: why an account is required here and only here (issue #804 AC3)."
+  },
+  "firstRunInviteSignInAction": "Sign in or create account",
+  "@firstRunInviteSignInAction": {
+    "description": "Button on the invite step opening the embedded sign-in screen (issue #804)."
+  },
+  "firstRunInviteCoParent": "Invite a co-parent",
+  "@firstRunInviteCoParent": {
+    "description": "Per-profile button opening the invite dialog with the guardian presets (issue #804)."
+  },
+  "firstRunInviteSkip": "Skip for now",
+  "@firstRunInviteSkip": {
+    "description": "Button ending the household flow without any invite (issue #804; always available)."
+  },
+  "firstRunInviteDone": "Done",
+  "@firstRunInviteDone": {
+    "description": "Button ending the household flow after (possibly zero) invites (issue #804)."
+  },
   "lifeStageModeLabel": "Life-stage mode",
   "@lifeStageModeLabel": {
     "description": "Label above the life-stage-mode dropdown in the profile edit dialog."
