@@ -3899,6 +3899,246 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Couldn\'t confirm it\'s you — try again'**
   String get accountReauthFailed;
+
+  /// Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces.
+  ///
+  /// In en, this message translates to:
+  /// **'An unexpected error occurred.'**
+  String get sharingUnexpectedError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to join {profileName}\'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.'**
+  String sharingAcceptInvitePreviewIntro(String profileName, String roleLabel);
+
+  /// Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'You\'ve been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.'**
+  String get sharingAcceptInviteNeutralIntro;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status while loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading invite details…'**
+  String get sharingAcceptInvitePreviewLoading;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load invite details, but you can still continue.'**
+  String get sharingAcceptInvitePreviewError;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview.
+  ///
+  /// In en, this message translates to:
+  /// **'This invite link may have expired or already been used.'**
+  String get sharingAcceptInvitePreviewUnavailable;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Join Shared Profile'**
+  String get sharingAcceptInviteTitle;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptInviteDecline;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet accept button.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept & Sync'**
+  String get sharingAcceptInviteAccept;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Your display name (e.g. Dad, Mom, Grandma)'**
+  String get sharingAcceptInviteNameLabel;
+
+  /// Issue #1004 (tranche 1): accept-invite sheet display-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when you log entries'**
+  String get sharingAcceptInviteNameHint;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to cycle predictions'**
+  String get sharingAcceptPredictionTitle;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet body.
+  ///
+  /// In en, this message translates to:
+  /// **'Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.'**
+  String get sharingAcceptPredictionBody;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingAcceptPredictionDecline;
+
+  /// Issue #1004 (tranche 1): accept-prediction-connection sheet connect button.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get sharingAcceptPredictionConnect;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Become the Owner'**
+  String get sharingClaimProfileTitle;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet decline button.
+  ///
+  /// In en, this message translates to:
+  /// **'Decline'**
+  String get sharingClaimProfileDecline;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet become-owner button.
+  ///
+  /// In en, this message translates to:
+  /// **'Become Owner'**
+  String get sharingClaimProfileBecomeOwner;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet body.
+  ///
+  /// In en, this message translates to:
+  /// **'Claiming this link makes you the owner of this profile. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.'**
+  String get sharingClaimProfileBody;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Child\'s display name (optional)'**
+  String get sharingClaimProfileChildNameLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet child-name field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows on the profile'**
+  String get sharingClaimProfileChildNameHint;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Label for the parent (optional)'**
+  String get sharingClaimProfileParentLabelLabel;
+
+  /// Issue #1004 (tranche 1): claim-profile sheet parent-label field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'Shows when they log entries'**
+  String get sharingClaimProfileParentLabelHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to generate invite. Please check your connection and try again.'**
+  String get sharingInviteGuardianGenerateFailed;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog preset picker label.
+  ///
+  /// In en, this message translates to:
+  /// **'Role:'**
+  String get sharingInviteGuardianRoleLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Co-Parent (Can log, edit profile & invite)'**
+  String get sharingInviteGuardianPresetCoParent;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Caregiver (Can log symptoms & periods)'**
+  String get sharingInviteGuardianPresetCaregiver;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice.
+  ///
+  /// In en, this message translates to:
+  /// **'Viewer (Read-only access)'**
+  String get sharingInviteGuardianPresetViewer;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invitation Created'**
+  String get sharingInviteGuardianCreatedTitle;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires in 48 hours. Can be redeemed once.'**
+  String get sharingInviteGuardianExpiry;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Copied to clipboard'**
+  String get sharingInviteGuardianCopied;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get sharingInviteGuardianDone;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog copy-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy Link'**
+  String get sharingInviteGuardianCopyLink;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog share button.
+  ///
+  /// In en, this message translates to:
+  /// **'Share'**
+  String get sharingInviteGuardianShare;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite guardian to {profileName}'**
+  String sharingInviteGuardianTitle(String profileName);
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname / Label (Optional)'**
+  String get sharingInviteGuardianNicknameLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog nickname field hint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Dad, Grandma, School Nurse'**
+  String get sharingInviteGuardianNicknameHint;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog help-card link label.
+  ///
+  /// In en, this message translates to:
+  /// **'How do invitations work?'**
+  String get sharingInviteGuardianHelpLabel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingInviteGuardianCancel;
+
+  /// Issue #1004 (tranche 1): invite-guardian dialog create-link button.
+  ///
+  /// In en, this message translates to:
+  /// **'Create Link'**
+  String get sharingInviteGuardianCreateLink;
 }
 
 class _AppLocalizationsDelegate

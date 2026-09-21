@@ -2438,4 +2438,143 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
+
+  @override
+  String get sharingUnexpectedError => 'An unexpected error occurred.';
+
+  @override
+  String sharingAcceptInvitePreviewIntro(String profileName, String roleLabel) {
+    return 'You\'ve been invited to join $profileName\'s shared profile as $roleLabel. Accepting will sync its cycle calendar and health logs to this device.';
+  }
+
+  @override
+  String get sharingAcceptInviteNeutralIntro =>
+      'You\'ve been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.';
+
+  @override
+  String get sharingAcceptInvitePreviewLoading => 'Loading invite details…';
+
+  @override
+  String get sharingAcceptInvitePreviewError =>
+      'Couldn\'t load invite details, but you can still continue.';
+
+  @override
+  String get sharingAcceptInvitePreviewUnavailable =>
+      'This invite link may have expired or already been used.';
+
+  @override
+  String get sharingAcceptInviteTitle => 'Join Shared Profile';
+
+  @override
+  String get sharingAcceptInviteDecline => 'Decline';
+
+  @override
+  String get sharingAcceptInviteAccept => 'Accept & Sync';
+
+  @override
+  String get sharingAcceptInviteNameLabel =>
+      'Your display name (e.g. Dad, Mom, Grandma)';
+
+  @override
+  String get sharingAcceptInviteNameHint => 'Shows when you log entries';
+
+  @override
+  String get sharingAcceptPredictionTitle => 'Connect to cycle predictions';
+
+  @override
+  String get sharingAcceptPredictionBody =>
+      'Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.';
+
+  @override
+  String get sharingAcceptPredictionDecline => 'Decline';
+
+  @override
+  String get sharingAcceptPredictionConnect => 'Connect';
+
+  @override
+  String get sharingClaimProfileTitle => 'Become the Owner';
+
+  @override
+  String get sharingClaimProfileDecline => 'Decline';
+
+  @override
+  String get sharingClaimProfileBecomeOwner => 'Become Owner';
+
+  @override
+  String get sharingClaimProfileBody =>
+      'Claiming this link makes you the owner of this profile. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.';
+
+  @override
+  String get sharingClaimProfileChildNameLabel =>
+      'Child\'s display name (optional)';
+
+  @override
+  String get sharingClaimProfileChildNameHint => 'Shows on the profile';
+
+  @override
+  String get sharingClaimProfileParentLabelLabel =>
+      'Label for the parent (optional)';
+
+  @override
+  String get sharingClaimProfileParentLabelHint =>
+      'Shows when they log entries';
+
+  @override
+  String get sharingInviteGuardianGenerateFailed =>
+      'Failed to generate invite. Please check your connection and try again.';
+
+  @override
+  String get sharingInviteGuardianRoleLabel => 'Role:';
+
+  @override
+  String get sharingInviteGuardianPresetCoParent =>
+      'Co-Parent (Can log, edit profile & invite)';
+
+  @override
+  String get sharingInviteGuardianPresetCaregiver =>
+      'Caregiver (Can log symptoms & periods)';
+
+  @override
+  String get sharingInviteGuardianPresetViewer => 'Viewer (Read-only access)';
+
+  @override
+  String get sharingInviteGuardianCreatedTitle => 'Invitation Created';
+
+  @override
+  String get sharingInviteGuardianExpiry =>
+      'Expires in 48 hours. Can be redeemed once.';
+
+  @override
+  String get sharingInviteGuardianCopied => 'Copied to clipboard';
+
+  @override
+  String get sharingInviteGuardianDone => 'Done';
+
+  @override
+  String get sharingInviteGuardianCopyLink => 'Copy Link';
+
+  @override
+  String get sharingInviteGuardianShare => 'Share';
+
+  @override
+  String sharingInviteGuardianTitle(String profileName) {
+    return 'Invite guardian to $profileName';
+  }
+
+  @override
+  String get sharingInviteGuardianNicknameLabel =>
+      'Nickname / Label (Optional)';
+
+  @override
+  String get sharingInviteGuardianNicknameHint =>
+      'e.g. Dad, Grandma, School Nurse';
+
+  @override
+  String get sharingInviteGuardianHelpLabel => 'How do invitations work?';
+
+  @override
+  String get sharingInviteGuardianCancel => 'Cancel';
+
+  @override
+  String get sharingInviteGuardianCreateLink => 'Create Link';
 }

@@ -3112,5 +3112,178 @@
   "accountReauthFailed": "Couldn't confirm it's you — try again",
   "@accountReauthFailed": {
     "description": "Issue #984: shown under the identity tile when a device-credential re-auth for adding or removing a sign-in method fails (declined, unavailable, or a genuine walk-away). The failing action used to return with no copy at all, which read as an endless Face ID loop."
+  },
+  "sharingUnexpectedError": "An unexpected error occurred.",
+  "@sharingUnexpectedError": {
+    "description": "Issue #1004 (tranche 1): shared catch-all error copy in the sharing flows (accept invite, accept prediction connection, claim profile, redeem prediction code). Moved verbatim from the literals it replaces."
+  },
+  "sharingAcceptInvitePreviewIntro": "You've been invited to join {profileName}'s shared profile as {roleLabel}. Accepting will sync its cycle calendar and health logs to this device.",
+  "@sharingAcceptInvitePreviewIntro": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet personalized intro when the invite preview resolved.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      },
+      "roleLabel": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingAcceptInviteNeutralIntro": "You've been invited to a shared profile in lunarlog. Accepting will sync its cycle calendar and health logs to this device.",
+  "@sharingAcceptInviteNeutralIntro": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet neutral intro used while the preview loads or is unavailable."
+  },
+  "sharingAcceptInvitePreviewLoading": "Loading invite details…",
+  "@sharingAcceptInvitePreviewLoading": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet preview status while loading."
+  },
+  "sharingAcceptInvitePreviewError": "Couldn't load invite details, but you can still continue.",
+  "@sharingAcceptInvitePreviewError": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet preview status on a fetch error."
+  },
+  "sharingAcceptInvitePreviewUnavailable": "This invite link may have expired or already been used.",
+  "@sharingAcceptInvitePreviewUnavailable": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet preview status when the token returns no preview."
+  },
+  "sharingAcceptInviteTitle": "Join Shared Profile",
+  "@sharingAcceptInviteTitle": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet title."
+  },
+  "sharingAcceptInviteDecline": "Decline",
+  "@sharingAcceptInviteDecline": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet decline button."
+  },
+  "sharingAcceptInviteAccept": "Accept & Sync",
+  "@sharingAcceptInviteAccept": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet accept button."
+  },
+  "sharingAcceptInviteNameLabel": "Your display name (e.g. Dad, Mom, Grandma)",
+  "@sharingAcceptInviteNameLabel": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field label."
+  },
+  "sharingAcceptInviteNameHint": "Shows when you log entries",
+  "@sharingAcceptInviteNameHint": {
+    "description": "Issue #1004 (tranche 1): accept-invite sheet display-name field hint."
+  },
+  "sharingAcceptPredictionTitle": "Connect to cycle predictions",
+  "@sharingAcceptPredictionTitle": {
+    "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet title."
+  },
+  "sharingAcceptPredictionBody": "Accepting adds a read-only calendar of their estimated period, fertile, ovulation, and PMS days. No notes, tags, or logs are ever shared or synced to this device.",
+  "@sharingAcceptPredictionBody": {
+    "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet body."
+  },
+  "sharingAcceptPredictionDecline": "Decline",
+  "@sharingAcceptPredictionDecline": {
+    "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet decline button."
+  },
+  "sharingAcceptPredictionConnect": "Connect",
+  "@sharingAcceptPredictionConnect": {
+    "description": "Issue #1004 (tranche 1): accept-prediction-connection sheet connect button."
+  },
+  "sharingClaimProfileTitle": "Become the Owner",
+  "@sharingClaimProfileTitle": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet title."
+  },
+  "sharingClaimProfileDecline": "Decline",
+  "@sharingClaimProfileDecline": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet decline button."
+  },
+  "sharingClaimProfileBecomeOwner": "Become Owner",
+  "@sharingClaimProfileBecomeOwner": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet become-owner button."
+  },
+  "sharingClaimProfileBody": "Claiming this link makes you the owner of this profile. The parent who shared it keeps the role they chose, and every past entry stays with whoever originally logged it.",
+  "@sharingClaimProfileBody": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet body."
+  },
+  "sharingClaimProfileChildNameLabel": "Child's display name (optional)",
+  "@sharingClaimProfileChildNameLabel": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field label."
+  },
+  "sharingClaimProfileChildNameHint": "Shows on the profile",
+  "@sharingClaimProfileChildNameHint": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet child-name field hint."
+  },
+  "sharingClaimProfileParentLabelLabel": "Label for the parent (optional)",
+  "@sharingClaimProfileParentLabelLabel": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field label."
+  },
+  "sharingClaimProfileParentLabelHint": "Shows when they log entries",
+  "@sharingClaimProfileParentLabelHint": {
+    "description": "Issue #1004 (tranche 1): claim-profile sheet parent-label field hint."
+  },
+  "sharingInviteGuardianGenerateFailed": "Failed to generate invite. Please check your connection and try again.",
+  "@sharingInviteGuardianGenerateFailed": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog unexpected create failure."
+  },
+  "sharingInviteGuardianRoleLabel": "Role:",
+  "@sharingInviteGuardianRoleLabel": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog preset picker label."
+  },
+  "sharingInviteGuardianPresetCoParent": "Co-Parent (Can log, edit profile & invite)",
+  "@sharingInviteGuardianPresetCoParent": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog co-parent preset choice."
+  },
+  "sharingInviteGuardianPresetCaregiver": "Caregiver (Can log symptoms & periods)",
+  "@sharingInviteGuardianPresetCaregiver": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog caregiver preset choice."
+  },
+  "sharingInviteGuardianPresetViewer": "Viewer (Read-only access)",
+  "@sharingInviteGuardianPresetViewer": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog viewer preset choice."
+  },
+  "sharingInviteGuardianCreatedTitle": "Invitation Created",
+  "@sharingInviteGuardianCreatedTitle": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state title."
+  },
+  "sharingInviteGuardianExpiry": "Expires in 48 hours. Can be redeemed once.",
+  "@sharingInviteGuardianExpiry": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog generated-state expiry note."
+  },
+  "sharingInviteGuardianCopied": "Copied to clipboard",
+  "@sharingInviteGuardianCopied": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog in-dialog copy confirmation."
+  },
+  "sharingInviteGuardianDone": "Done",
+  "@sharingInviteGuardianDone": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog done button."
+  },
+  "sharingInviteGuardianCopyLink": "Copy Link",
+  "@sharingInviteGuardianCopyLink": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog copy-link button."
+  },
+  "sharingInviteGuardianShare": "Share",
+  "@sharingInviteGuardianShare": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog share button."
+  },
+  "sharingInviteGuardianTitle": "Invite guardian to {profileName}",
+  "@sharingInviteGuardianTitle": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog title.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingInviteGuardianNicknameLabel": "Nickname / Label (Optional)",
+  "@sharingInviteGuardianNicknameLabel": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field label."
+  },
+  "sharingInviteGuardianNicknameHint": "e.g. Dad, Grandma, School Nurse",
+  "@sharingInviteGuardianNicknameHint": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog nickname field hint."
+  },
+  "sharingInviteGuardianHelpLabel": "How do invitations work?",
+  "@sharingInviteGuardianHelpLabel": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog help-card link label."
+  },
+  "sharingInviteGuardianCancel": "Cancel",
+  "@sharingInviteGuardianCancel": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog cancel button."
+  },
+  "sharingInviteGuardianCreateLink": "Create Link",
+  "@sharingInviteGuardianCreateLink": {
+    "description": "Issue #1004 (tranche 1): invite-guardian dialog create-link button."
   }
 }
