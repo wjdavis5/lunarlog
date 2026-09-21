@@ -1,0 +1,16 @@
+# SPA fallback for the lunarlog web build (epic #831, slice 3).
+#
+# Flutter web serves a single entry point (`index.html`) and routes entirely
+# in the browser, so any unknown path must return that page with a 200 rather
+# than a 404. This is load-bearing for two cases:
+#   * `/auth/callback` -- a slice-2 email link lands here with `?code=...`;
+#     the app reads the code from the initial `Uri.base` (see
+#     `docs/web/security-posture.md` section 4). Without the fallback the
+#     request would 404 and the code would never reach the page.
+#   * any deep link into the app from the browser.
+#
+# Cloudflare Pages / Netlify `_redirects`. The catch-all and its 200 status
+# are pinned by `test/architecture/web_headers_test.dart`, so this file and
+# that test move together.
+
+/* /index.html 200
