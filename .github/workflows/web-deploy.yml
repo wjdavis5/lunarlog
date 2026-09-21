@@ -1,0 +1,142 @@
+name: Web deploy (Cloudflare Pages)
+
+# Epic #831, slice 3: the first-class web client's deploy path. Builds the
+# sync-enabled `flutter build web --release` and publishes `build/web` to the
+# `lunarlog-app` Cloudflare Pages project, which serves `app.lunarlog.app`.
+#
+# Scope boundary: this workflow is the code half only. It deliberately does
+# not create the Pages project, hold DNS, or set any secret. The owner steps
+# that make it live -- project creation, `CLOUDFLARE_API_TOKEN` /
+# `CLOUDFLARE_ACCOUNT_ID`, the `app.lunarlog.app` custom domain, and the
+# Supabase redirect allow-list -- are checkboxes in
+# `docs/ops/supabase-go-live.md` ("Web hosting"), with the posture in
+# `docs/web/security-posture.md` section 8.
+#
+# Until both Cloudflare secrets exist the deploy step warns and is skipped;
+# the run still succeeds and the verified build is uploaded as an artifact.
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild the deployed site when the web client can change. Docs,
+    # workflow-only edits, and database migrations do not need a Pages
+    # deploy; anything that ships to the browser does.
+    paths:
+      - 'lib/**'
+      - 'web/**'
+      - 'assets/**'
+      - 'pubspec.*'
+      - 'l10n.yaml'
+      - '.github/workflows/web-deploy.yml'
+      - '.github/scripts/check-web-build-output.sh'
+  workflow_dispatch:
+
+# Supersede a queued run when main is pushed to again, but never cancel one
+# mid-deploy: an interrupted upload would leave Pages serving a partial or
+# older release.
+concurrency:
+  group: web-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # wrangler-action records the deployment through the GitHub Deployments
+  # API using the job's own token; without this it cannot open the record.
+  deployments: write
+
+env:
+  FLUTTER_CHANNEL: stable
+  # Pinned so a new stable release cannot change what is deployed without a
+  # commit here (issue #208). Keep in sync with ci.yml and AGENTS.md's
+  # "Flutter SDK" note.
+  FLUTTER_VERSION: '3.47.2'
+  CLOUDFLARE_PAGES_PROJECT: lunarlog-app
+
+jobs:
+  deploy:
+    name: Build and deploy web to Cloudflare Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build web (release, sync enabled)
+        # The eleven client-safe dart-defines match ci.yml's Verify job. They
+        # resolve to empty strings on forks and until the repository secrets
+        # exist; the app treats empty as "unconfigured", so the build must
+        # succeed either way. Unlike CI, this build sets
+        # LUNARLOG_WEB_SYNC=true: the deployed page is the signed-in web
+        # client, so accounts and sync are on, and the slice-1 disclosure
+        # surfaces are live with them.
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+          FCM_PROJECT_ID: ${{ secrets.FCM_PROJECT_ID }}
+          FCM_SENDER_ID: ${{ secrets.FCM_SENDER_ID }}
+          FCM_ANDROID_API_KEY: ${{ secrets.FCM_ANDROID_API_KEY }}
+          FCM_ANDROID_APP_ID: ${{ secrets.FCM_ANDROID_APP_ID }}
+          FCM_IOS_API_KEY: ${{ secrets.FCM_IOS_API_KEY }}
+          FCM_IOS_APP_ID: ${{ secrets.FCM_IOS_APP_ID }}
+        run: |
+          flutter build web --release \
+            --dart-define=LUNARLOG_WEB_SYNC=true \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY" \
+            --dart-define=SENTRY_DSN="$SENTRY_DSN" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID" \
+            --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+            --dart-define=FCM_PROJECT_ID="$FCM_PROJECT_ID" \
+            --dart-define=FCM_SENDER_ID="$FCM_SENDER_ID" \
+            --dart-define=FCM_ANDROID_API_KEY="$FCM_ANDROID_API_KEY" \
+            --dart-define=FCM_ANDROID_APP_ID="$FCM_ANDROID_APP_ID" \
+            --dart-define=FCM_IOS_API_KEY="$FCM_IOS_API_KEY" \
+            --dart-define=FCM_IOS_APP_ID="$FCM_IOS_APP_ID"
+
+      - name: Verify the build output carries the headers and SPA fallback
+        # Fails closed: a build missing `_headers` (the CSP) or `_redirects`
+        # (the `/auth/callback` SPA fallback) must never be published.
+        run: bash .github/scripts/check-web-build-output.sh
+
+      - name: Upload the verified web build
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-build
+          path: build/web
+          retention-days: 7
+
+      - name: Check the Cloudflare credentials
+        id: cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not configured; skipping the Cloudflare Pages deploy (the release build was verified and uploaded as the 'web-build' artifact). Owner steps: docs/ops/supabase-go-live.md ('Web hosting')."
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.cloudflare.outputs.configured == 'true'
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '3'
+          # `--branch=main` pins this to a production deployment of the Pages
+          # project (a non-production branch would publish a preview URL).
+          command: pages deploy build/web --project-name=lunarlog-app --branch=main
