@@ -1818,6 +1818,18 @@ abstract class AppLocalizations {
   /// **'Please acknowledge the minimum-age policy to continue.'**
   String get firstRunAgeAcknowledgementRequired;
 
+  /// Issue #957: the acknowledgement shown to an under-13 operator who arrived through a parent's or guardian's "her own profile" invitation, instead of the flat 13+ label. The parent's invitation is the parental-consent record.
+  ///
+  /// In en, this message translates to:
+  /// **'My parent or guardian created this profile and invited me to use it'**
+  String get firstRunAgeAcknowledgementParentInviteLabel;
+
+  /// Issue #957: one-line hint under the parent-invite acknowledgement.
+  ///
+  /// In en, this message translates to:
+  /// **'Your parent or guardian set up this profile and sent you this invitation. That invitation is their permission for you to use lunarlog and log here yourself.'**
+  String get firstRunAgeAcknowledgementParentInviteHint;
+
   /// Label above the care-mode dropdown in the first-run form (kept).
   ///
   /// In en, this message translates to:

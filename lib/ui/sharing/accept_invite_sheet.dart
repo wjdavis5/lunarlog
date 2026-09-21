@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
+import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
 import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/sharing/sharing_service.dart';
@@ -26,6 +27,7 @@ class AcceptInviteSheet extends StatefulWidget {
     this.initialProfileId,
     this.onAccepted,
     this.breadcrumbLog,
+    this.acknowledgementContext,
   });
 
   final String rawToken;
@@ -33,6 +35,13 @@ class AcceptInviteSheet extends StatefulWidget {
   final String? initialProfileId;
   final void Function(AcceptedInviteResult result)? onAccepted;
   final BreadcrumbLog? breadcrumbLog;
+
+  /// Issue #957: the minimum-age acknowledgement context to render, or null
+  /// to derive it from the preview. Left null in production, where a ready
+  /// subject preview (`preview.isSubject`) selects the parent-invite wording;
+  /// a widget test injects either context here to render both wordings
+  /// without a live preview (the injection seam).
+  final MinimumAgeAcknowledgementContext? acknowledgementContext;
 
   @override
   State<AcceptInviteSheet> createState() => _AcceptInviteSheetState();
@@ -193,6 +202,51 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
         _PreviewState.ready => null,
       };
 
+  /// Issue #957: the minimum-age acknowledgement to render, or null when
+  /// none applies. A subject invitation (the "her own profile" preset) shows
+  /// the parent-invite wording instead of the flat 13-or-older statement: the
+  /// parent's invitation is the parental-consent record, so the operator
+  /// acknowledges the invitation rather than an age she may not have. An
+  /// ordinary guardian invite (an adult co-parent/caregiver) and every
+  /// non-ready preview render nothing here. [widget.acknowledgementContext]
+  /// is the injection seam a test uses to force either outcome.
+  MinimumAgeAcknowledgementCopy? _acknowledgementCopy(AppLocalizations l10n) {
+    final context = widget.acknowledgementContext ??
+        ((_previewState == _PreviewState.ready &&
+                (_preview?.isSubject ?? false))
+            ? MinimumAgeAcknowledgementContext.parentInvite
+            : null);
+    if (context == null) return null;
+    return minimumAgeAcknowledgementCopy(l10n, context);
+  }
+
+  Widget _acknowledgementSection(MinimumAgeAcknowledgementCopy copy) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('accept-invite-subject-acknowledgement'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(copy.label, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 4),
+          Text(
+            copy.hint,
+            key: const ValueKey('accept-invite-subject-acknowledgement-hint'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Issue #642, LLA-012: the title row's [Text] is wrapped in [Expanded]
   /// (was a bare [Row] child) so a long localization or 200% text scaling
   /// wraps to a second line instead of overflowing horizontally past the
@@ -249,6 +303,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final previewStatus = _buildPreviewStatus(context, theme.textTheme);
+    final acknowledgement = _acknowledgementCopy(l10n);
 
     return SafeArea(
       // Issue #642, LLA-012: bounded via `ConstrainedBox` +
@@ -280,6 +335,10 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                   const SizedBox(height: 8),
                 ],
                 _buildIntro(context, theme.textTheme),
+                if (acknowledgement != null) ...[
+                  const SizedBox(height: 12),
+                  _acknowledgementSection(acknowledgement),
+                ],
                 const SizedBox(height: 16),
                 TextField(
                   controller: _nameController,

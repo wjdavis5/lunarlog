@@ -23,6 +23,7 @@ import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
 import 'package:lunarlog/ui/sharing/accept_invite_sheet.dart';
 import 'package:lunarlog/ui/sharing/invite_guardian_dialog.dart';
 import 'package:lunarlog/ui/sharing/manage_guardians_screen.dart';
@@ -266,6 +267,76 @@ void main() {
           findsOneWidget);
       expect(find.byKey(const ValueKey('accept-invite-subject-ready')),
           findsNothing);
+    });
+  });
+
+  group('AcceptInviteSheet parent-invite acknowledgement (Issue #957)', () {
+    const parentInviteLabel =
+        'My parent or guardian created this profile and invited me to use it';
+
+    testWidgets('a subject preview shows the parent-invite wording, never the '
+        'flat 13-or-older affirmation', (tester) async {
+      final sharing = _FakeSharing()
+        ..scriptedPreview = InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.caregiver,
+          expiresAt: DateTime.utc(2026, 9, 22),
+          isSubject: true,
+        );
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(rawToken: 'raw', sharingService: sharing),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('accept-invite-subject-acknowledgement')),
+        findsOneWidget,
+      );
+      expect(find.text(parentInviteLabel), findsOneWidget);
+      expect(
+        find.text('I am 13 or older, or a guardian managing a family profile'),
+        findsNothing,
+      );
+    });
+
+    testWidgets('an ordinary (non-subject) preview shows no acknowledgement',
+        (tester) async {
+      final sharing = _FakeSharing()
+        ..scriptedPreview = InvitePreview(
+          profileDisplayName: 'Riley',
+          role: GuardianRole.caregiver,
+          expiresAt: DateTime.utc(2026, 9, 22),
+        );
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(rawToken: 'raw', sharingService: sharing),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('accept-invite-subject-acknowledgement')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('the injected context is the seam: it renders the parent-invite '
+        'wording even when the preview is unavailable', (tester) async {
+      // No scripted preview => _PreviewState.unavailable, so the derivation
+      // alone could never pick the subject wording; the injected context does.
+      final sharing = _FakeSharing();
+      await tester.pumpWidget(_localized(
+        AcceptInviteSheet(
+          rawToken: 'raw',
+          sharingService: sharing,
+          acknowledgementContext: MinimumAgeAcknowledgementContext.parentInvite,
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('accept-invite-subject-acknowledgement')),
+        findsOneWidget,
+      );
+      expect(find.text(parentInviteLabel), findsOneWidget);
     });
   });
 
