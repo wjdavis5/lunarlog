@@ -126,7 +126,9 @@ String _firstCodePoint(String word) => String.fromCharCode(word.runes.first);
 /// Reuses the overview wheel's exact `cycleWheel*` copy so the same state
 /// reads identically everywhere it appears; the three #241-specific
 /// strings (no history / suppressed / turned off) live in the ARB
-/// alongside them.
+/// alongside them. Issue #982: a stale history ([ActivePrediction
+/// .staleHistory], #859) renders the neutral "No recent period logged"
+/// instead of the rolled day count.
 String? profileCycleStatus({
   required CyclePrediction? prediction,
   required AppLocalizations l10n,
@@ -135,6 +137,10 @@ String? profileCycleStatus({
     case null:
       return null;
     case final ActivePrediction active:
+      // Issue #982: a stale history's rolled "Cycle day N" is the count
+      // #859's overview card deliberately hides — the row reads the same
+      // neutral line instead, off the same flag (never re-derived).
+      if (active.staleHistory) return l10n.profileStatusNoRecentPeriod;
       // During a logged bleed, `cycleDay` *is* the period day (it counts
       // from the episode start), so both lines come from the same field.
       return active.duringEpisode

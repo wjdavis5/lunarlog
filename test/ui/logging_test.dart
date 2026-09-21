@@ -874,7 +874,7 @@ void main() {
     });
 
     testWidgets('tag chips render exactly the curated taxonomy; '
-        'unverified categories ship the pin-first caption; toggling two tags '
+        'unverified categories are hidden; toggling two tags '
         'persists both codes', (tester) async {
       final h = await pumpLogging(tester);
 
@@ -889,16 +889,12 @@ void main() {
         'Pain',
         'Energy',
         'Sleep',
-        'Sleep quality',
         'Skin',
         'Hair',
         'Digestion',
         'Stool',
         'Cravings',
-        'Breasts & chest',
         'Hot flashes',
-        'Urine',
-        'Vulva & vagina',
         'Body',
         // Issue #251: the old `mood` grouping rebuilt as
         // feelings/mind/lifestyle.
@@ -906,34 +902,38 @@ void main() {
         'Mind',
         'Motivation',
         'Social life',
-        'Leisure',
-        'Meditation',
-        'PMS',
         'Partying',
         // Issue #252: the events-and-care categories.
         'Collection method',
         'Exercise',
-        'Appointments',
         'Medication',
         'Ailments',
-        'Supplements',
       ];
       for (final header in headers) {
-        // Issue #251: the PMS category heading shares its exact string
-        // with the standalone #220 PMS presence chip rendered above the
-        // taxonomy grid — both are legitimately on the sheet.
-        expect(
-          find.text(header),
-          header == 'PMS' ? findsNWidgets(2) : findsOneWidget,
-        );
+        expect(find.text(header), findsOneWidget);
       }
       expectEveryTaxonomyChipVisible(tester);
-      // The nine option-set-unverified categories (four from issue #249 —
-      // hotFlashes left this set under issue #456; three from issue #251:
-      // pms, meditation, leisure; two from issue #252: appointments,
-      // supplements) render the pin-first caption where their chips would
-      // go, and ship no chips.
-      expect(find.text('Unverified — pin before shipping'), findsNWidgets(9));
+      // Issue #997: the nine option-set-unverified categories (four from
+      // issue #249 — hotFlashes left this set under issue #456; three from
+      // issue #251: pms, meditation, leisure; two from issue #252:
+      // appointments, supplements) carry no codes, so the picker hides them
+      // entirely rather than rendering the old developer placeholder. PMS
+      // still renders once — as the standalone first-class toggle (#220),
+      // never as a heading.
+      expect(find.text('PMS'), findsOneWidget);
+      for (final hidden in const [
+        'Sleep quality',
+        'Breasts & chest',
+        'Urine',
+        'Vulva & vagina',
+        'Leisure',
+        'Meditation',
+        'Appointments',
+        'Supplements',
+      ]) {
+        expect(find.text(hidden), findsNothing, reason: hidden);
+      }
+      expect(find.text('Unverified — pin before shipping'), findsNothing);
 
       await tester.tap(find.text('Headache'));
       await tester.pump();
@@ -4299,12 +4299,14 @@ group('tracking preferences read path (Issue #259)', () {
     expect(find.text('Anxious'), findsNothing);
 
     // Everything else still renders, pain first (sort_order 1) ahead of
-    // the uncurated remainder.
+    // the uncurated remainder. Issue #997: the unpinned categories
+    // (kUnverifiedTagCategories) render no heading at all.
     final headers = sheetCategoryHeaders(tester);
     expect(headers, isNot(contains('Mood')));
     final taxonomyOrder = [
       for (final category in TagCategory.values)
-        if (category != TagCategory.feelings)
+        if (category != TagCategory.feelings &&
+            !kUnverifiedTagCategories.contains(category))
           careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(category),
       // Issue #457: the standalone "Measurements" (BBT/weight) heading
       // always renders last, after every curated/taxonomy category.
@@ -4317,7 +4319,7 @@ group('tracking preferences read path (Issue #259)', () {
   });
 
   testWidgets('an absent document renders the default order and every '
-      'category (the null case stays exactly the pre-#259 sheet)',
+      'pinned category (the null case stays exactly the pre-#259 sheet)',
       (tester) async {
     final db = await pumpSheetWithPrefs(tester);
     addTearDown(db.close);
@@ -4325,7 +4327,10 @@ group('tracking preferences read path (Issue #259)', () {
     final headers = sheetCategoryHeaders(tester);
     final expected = [
       for (final category in TagCategory.values)
-        careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(category),
+        // Issue #997: unpinned categories carry no options and render no
+        // heading; every pinned category still does.
+        if (!kUnverifiedTagCategories.contains(category))
+          careModeCopyFor(ProfileMode.standard, irregularFraming: false).categoryLabel(category),
       // Issue #457: the standalone "Measurements" heading always renders
       // last.
       'Measurements',
@@ -4356,13 +4361,15 @@ group('tracking preferences read path (Issue #259)', () {
         headers.skip(2).length,
         TagCategory.values
                 .where((c) =>
-                    !kMinorDefaultHiddenTrackingCategories.contains(c.wireName))
+                    !kMinorDefaultHiddenTrackingCategories.contains(c.wireName) &&
+                    // Issue #997: unpinned categories render no heading.
+                    !kUnverifiedTagCategories.contains(c))
                 .length +
             // Issue #457: the standalone "Measurements" heading always
             // renders, regardless of tracking-preference curation.
             1,
-        reason: 'exactly the minor-hidden set is removed, plus the '
-            'standalone Measurements heading');
+        reason: 'exactly the minor-hidden set and the unpinned set are '
+            'removed, plus the standalone Measurements heading');
   });
 
   testWidgets('a minor profile with an explicit enable renders the '

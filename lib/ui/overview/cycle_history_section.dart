@@ -90,7 +90,7 @@ class CycleHistorySection extends StatefulWidget {
 
   /// Issue #816: the caller's live not-enough-history state, when it has
   /// one. The section then shows the header tally ("2 of 3 completed
-  /// cycles — estimates start after your next period.") from the engine's
+  /// cycles — estimates start after the next period.") from the engine's
   /// own count, so it can never disagree with the empty state above it.
   /// Null in every other prediction state (and for the archived-profile
   /// mount, which has no prediction but already shows the tally in its

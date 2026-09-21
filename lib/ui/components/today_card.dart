@@ -179,12 +179,12 @@ class _TodayCardState extends State<TodayCard> {
     final isLargeText = textScaler.scale(1) > 1.2;
 
     Widget buildChip() => Semantics(
-          label: AppLocalizations.of(context).futureExplainerConfidence(
-            tierLabel(AppLocalizations.of(context), widget.tier).toLowerCase(),
-          ),
-          excludeSemantics: true,
-          child: _ConfidenceChip(tier: widget.tier),
-        );
+      label: AppLocalizations.of(context).futureExplainerConfidence(
+        tierShortLabel(AppLocalizations.of(context), widget.tier),
+      ),
+      excludeSemantics: true,
+      child: _ConfidenceChip(tier: widget.tier),
+    );
 
     // Issue #836: at accessibility text scales, a side-by-side Row cramps
     // the estimate label and causes mid-word character breaks ("perio / d").
@@ -228,7 +228,8 @@ class _TodayCardState extends State<TodayCard> {
   /// visible "Period started today" copy never names a flow level itself.
   Widget _logTodayButton(AppLocalizations l10n) {
     return Tooltip(
-      message: 'Logs a ${kQuickLogFlowLevel.name}-flow period start for '
+      message:
+          'Logs a ${kQuickLogFlowLevel.name}-flow period start for '
           'today',
       child: FilledButton.icon(
         key: const ValueKey('today-card-log-action'),
@@ -256,11 +257,11 @@ class _ConfidenceChip extends StatelessWidget {
   final CycleConfidence tier;
 
   Color _colorFor(LunarLogColors colors) => switch (tier) {
-        CycleConfidence.high => colors.confidenceHigh,
-        CycleConfidence.learning => colors.confidenceLearning,
-        CycleConfidence.irregular => colors.confidenceIrregular,
-        CycleConfidence.provisional => colors.confidenceProvisional,
-      };
+    CycleConfidence.high => colors.confidenceHigh,
+    CycleConfidence.learning => colors.confidenceLearning,
+    CycleConfidence.irregular => colors.confidenceIrregular,
+    CycleConfidence.provisional => colors.confidenceProvisional,
+  };
 
   @override
   Widget build(BuildContext context) {

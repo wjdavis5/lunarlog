@@ -150,7 +150,7 @@ void main() {
     expect(privacyTile, findsOneWidget);
     expect(find.text('Privacy policy'), findsOneWidget);
     expect(
-      find.text('Sync & family sharing, protected at rest, zero tracking'),
+      find.text("How your family's data is stored, shared, and kept private"),
       findsOneWidget,
     );
 

@@ -54,7 +54,8 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
-import 'package:lunarlog/domain/perimenopause.dart' show suppressesFertileWindow;
+import 'package:lunarlog/domain/perimenopause.dart'
+    show suppressesFertileWindow;
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/forecast.dart';
@@ -72,6 +73,7 @@ import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/overview_panel.dart'
     show kEstimateDisclaimer, kFertileWindowDisclaimer;
@@ -152,9 +154,9 @@ LocalDate _lastOfMonth(int year, int month) {
 /// and pure for direct testing, mirroring [dayCellSemanticLabel] and
 /// [canDrivePageController] elsewhere in this file.
 (LocalDate, LocalDate) calendarEntriesWindowFor(int year, int month) => (
-      _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
-      _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
-    );
+  _firstOfMonth(year, month).addDays(-kCalendarWindowLookbehindDays),
+  _lastOfMonth(year, month).addDays(kCalendarWindowLookaheadDays),
+);
 
 /// Whether [entries] include any day inside [year]/[month] (issue #241,
 /// B-16): the predicate behind keeping the displayed calendar month
@@ -269,10 +271,7 @@ DayCellMetrics dayCellMetricsFor(double gridWidth, TextScaler textScaler) {
   // Issue #879: leave a gutter on each side so two adjacent circles can
   // never touch, even when the scaled numeral would otherwise claim the
   // whole column width.
-  final maxCircleSize = math.max(
-    0.0,
-    cellWidth - 2 * kDayCellCircleGutter,
-  );
+  final maxCircleSize = math.max(0.0, cellWidth - 2 * kDayCellCircleGutter);
   final circleSize = math.min(
     math.max(34.0, textScaler.scale(20)),
     maxCircleSize,
@@ -778,19 +777,29 @@ class _MonthCalendarState extends State<MonthCalendar>
 
     final byIso = {for (final entry in entries) entry.localDate.iso: entry};
     final estimateActive = prediction is ActivePrediction;
+    // Issue #982: a stale history (#859) has no forward forecast worth
+    // painting — its rolled estimate would draw predicted-period and
+    // fertile-window bands 31 cycles out, exactly the false precision the
+    // overview's stale card hides and the current-window helpers
+    // (`estimateFertileWindow`/`currentFertileWindow`, `conceive.dart`)
+    // already return null for. Suppress the whole forecast off the same
+    // flag, never a re-derived date comparison, so the calendar shows only
+    // logged days. The PMS band is anchored to the same stale estimate, so
+    // it goes too.
+    final staleHistory = estimateActive && prediction.staleHistory;
     // Issue #300: deriveForecast no longer takes history -- it now reads
     // ActivePrediction.forecast directly (the engine's own single
     // degradation curve), so the caller-computed CycleHistoryView is no
     // longer part of the forecast derivation itself (still threaded
     // through this method's own memoisation key below, unrelated to this
     // call).
-    final cycles = estimateActive
+    final cycles = estimateActive && !staleHistory
         ? deriveForecast(prediction: prediction, today: today)
         : const <ForecastCycle>[];
     // Issue #220: the PMS band is data-driven — the estimate's own
     // 6-cycle averages anchored before the next predicted start, or null
     // (no PMS badge anywhere) below the 3-logged-interval minimum.
-    final pmsEstimate = estimateActive ? prediction.pms : null;
+    final pmsEstimate = estimateActive && !staleHistory ? prediction.pms : null;
     final forecastByIso = forecastDayCells(
       cycles: cycles,
       today: today,
@@ -859,16 +868,16 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// any cell or legend renders). A teen with no explicit choice hides the
   /// fertile window until its estimate reaches `CycleConfidence.high`.
   CareModeCopy get _copy => careModeCopyFor(
-        widget.mode,
-        irregularFraming: irregularFramingInEffect(
-          mode: widget.mode,
-          stored: widget.irregularFraming,
-          tier: switch (_computeInputPrediction) {
-            ActivePrediction(:final tier) => tier,
-            _ => null,
-          },
-        ),
-      );
+    widget.mode,
+    irregularFraming: irregularFramingInEffect(
+      mode: widget.mode,
+      stored: widget.irregularFraming,
+      tier: switch (_computeInputPrediction) {
+        ActivePrediction(:final tier) => tier,
+        _ => null,
+      },
+    ),
+  );
 
   /// Issue #196 AC1: the fertile-window display is also suppressed by the
   /// Perimenopause life-stage mode, on top of the care-mode gate — a
@@ -878,7 +887,8 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// braces gate the issue names; it governs the same three surfaces the
   /// care-mode flag does (cell band, legend entry, explainer).
   bool get _showsFertileWindow =>
-      _copy.showsFertileWindow && !suppressesFertileWindow(widget.lifecycleMode);
+      _copy.showsFertileWindow &&
+      !suppressesFertileWindow(widget.lifecycleMode);
 
   /// Care-mode gate for a forecast cell's fertile-window flag (issue #143):
   /// when the mode hides the estimate, this strips [ForecastDayCell
@@ -934,8 +944,11 @@ class _MonthCalendarState extends State<MonthCalendar>
           .watch(SettingsKeys.calendarFirstDayOfWeek)
           .listen((value) {
             if (mounted) {
-              setState(() => _firstDayOfWeek =
-                  CalendarFirstDay.fromStored(value).weekday);
+              setState(
+                () =>
+                    _firstDayOfWeek = CalendarFirstDay.fromStored(value)
+                        .weekday,
+              );
             }
           });
     }
@@ -970,8 +983,11 @@ class _MonthCalendarState extends State<MonthCalendar>
   // in the meantime (residual note on #11) — [GuardianWatchMixin] does
   // this before subscribing.
   void _watchGuardians() {
-    watchGuardiansForProfile(widget.guardiansRepository, widget.profileId,
-        (guardians) => setState(() => _guardians = guardians));
+    watchGuardiansForProfile(
+      widget.guardiansRepository,
+      widget.profileId,
+      (guardians) => setState(() => _guardians = guardians),
+    );
   }
 
   void _rewatchPrediction() {
@@ -1189,7 +1205,8 @@ class _MonthCalendarState extends State<MonthCalendar>
     final today = widget.todayProvider();
     final offTodaysMonth =
         displayedYear != today.year || displayedMonth != today.month;
-    final keepMonth = !offTodaysMonth ||
+    final keepMonth =
+        !offTodaysMonth ||
         await _hasEntriesInMonthViaListen(displayedYear, displayedMonth);
     if (!mounted || token != _profileSwitchToken) return;
     if (!keepMonth) _resetToTodaysMonth();
@@ -1524,87 +1541,87 @@ class _MonthCalendarState extends State<MonthCalendar>
     // contain it is gone -- the grid gets that vertical budget back, which is
     // also what was hiding the legend at accessibility text sizes (#879).
     return Column(
-        children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: l10n.calendarPreviousMonthTooltip,
-                icon: const Icon(Icons.chevron_left),
-                onPressed: () => _shiftMonth(-1),
-              ),
-              Expanded(
-                child: InkWell(
-                  key: const ValueKey('month-year-label'),
-                  onTap: _openMonthYearPicker,
-                  child: Center(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        l10n.calendarMonthYearLabel(
-                          dates.monthNames(locale: locale)[_displayedMonth - 1],
-                          _displayedYear,
-                        ),
-                        style: theme.textTheme.titleLarge,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              tooltip: l10n.calendarPreviousMonthTooltip,
+              icon: const Icon(Icons.chevron_left),
+              onPressed: () => _shiftMonth(-1),
+            ),
+            Expanded(
+              child: InkWell(
+                key: const ValueKey('month-year-label'),
+                onTap: _openMonthYearPicker,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      l10n.calendarMonthYearLabel(
+                        dates.monthNames(locale: locale)[_displayedMonth - 1],
+                        _displayedYear,
                       ),
+                      style: theme.textTheme.titleLarge,
                     ),
                   ),
                 ),
               ),
-              IconButton(
-                key: const ValueKey('today-button'),
-                tooltip: l10n.calendarTodayTooltip,
-                icon: const Icon(Icons.today_outlined),
-                onPressed: _goToToday,
+            ),
+            IconButton(
+              key: const ValueKey('today-button'),
+              tooltip: l10n.calendarTodayTooltip,
+              icon: const Icon(Icons.today_outlined),
+              onPressed: _goToToday,
+            ),
+            IconButton(
+              tooltip: l10n.calendarNextMonthTooltip,
+              icon: const Icon(Icons.chevron_right),
+              onPressed: nextDisabled ? null : () => _shiftMonth(1),
+            ),
+            // Issue #810: reference material (the legend, and the
+            // symptom-layer chooser when no layer is active) moves behind
+            // this one info action. It keeps the `legend-toggle` key and
+            // `calendarShowLegend` semantics label the old inline toggle
+            // carried, so the accessibility pass that asserts them is
+            // unchanged in intent.
+            Semantics(
+              button: true,
+              label: l10n.calendarShowLegend,
+              excludeSemantics: true,
+              onTap: _openCalendarInfoSheet,
+              child: IconButton(
+                key: const ValueKey('legend-toggle'),
+                tooltip: l10n.calendarShowLegend,
+                icon: const Icon(Icons.info_outline),
+                onPressed: _openCalendarInfoSheet,
               ),
-              IconButton(
-                tooltip: l10n.calendarNextMonthTooltip,
-                icon: const Icon(Icons.chevron_right),
-                onPressed: nextDisabled ? null : () => _shiftMonth(1),
-              ),
-              // Issue #810: reference material (the legend, and the
-              // symptom-layer chooser when no layer is active) moves behind
-              // this one info action. It keeps the `legend-toggle` key and
-              // `calendarShowLegend` semantics label the old inline toggle
-              // carried, so the accessibility pass that asserts them is
-              // unchanged in intent.
-              Semantics(
-                button: true,
-                label: l10n.calendarShowLegend,
-                excludeSemantics: true,
-                onTap: _openCalendarInfoSheet,
-                child: IconButton(
-                  key: const ValueKey('legend-toggle'),
-                  tooltip: l10n.calendarShowLegend,
-                  icon: const Icon(Icons.info_outline),
-                  onPressed: _openCalendarInfoSheet,
-                ),
-              ),
-            ],
-          ),
-          // Issue #810: the layers summary row only earns its place when at
-          // least one layer is active. With none, the empty-state entry
-          // point lives in the info sheet's "Symptom layers" action instead
-          // (see [_openCalendarInfoSheet]).
-          //
-          // Issue #809: the row's appearance/disappearance is wrapped in an
-          // [AnimatedSize] so the grid below glides into its new position
-          // instead of jumping a whole row when a layer is toggled on or
-          // off. The empty replacement keeps the column's full width so the
-          // animated box only ever changes height; `alignment: topCenter`
-          // pins the collapse to the row's own top edge.
-          AnimatedSize(
-            duration: LLMotion.resolve(context, LLMotion.base),
-            alignment: Alignment.topCenter,
-            child: layerList.isNotEmpty
-                ? _layersHeader(layerList, theme)
-                : const SizedBox(width: double.infinity),
-          ),
-          ResponsiveBody(
-            maxWidth: kCalendarGridMaxWidth,
-            child: Padding(
-              key: const ValueKey('calendar-weekday-header'),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
+            ),
+          ],
+        ),
+        // Issue #810: the layers summary row only earns its place when at
+        // least one layer is active. With none, the empty-state entry
+        // point lives in the info sheet's "Symptom layers" action instead
+        // (see [_openCalendarInfoSheet]).
+        //
+        // Issue #809: the row's appearance/disappearance is wrapped in an
+        // [AnimatedSize] so the grid below glides into its new position
+        // instead of jumping a whole row when a layer is toggled on or
+        // off. The empty replacement keeps the column's full width so the
+        // animated box only ever changes height; `alignment: topCenter`
+        // pins the collapse to the row's own top edge.
+        AnimatedSize(
+          duration: LLMotion.resolve(context, LLMotion.base),
+          alignment: Alignment.topCenter,
+          child: layerList.isNotEmpty
+              ? _layersHeader(layerList, theme)
+              : const SizedBox(width: double.infinity),
+        ),
+        ResponsiveBody(
+          maxWidth: kCalendarGridMaxWidth,
+          child: Padding(
+            key: const ValueKey('calendar-weekday-header'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
               children: [
                 // #138 (B-23): the narrow initial stays the visual child, but
                 // each column carries the full day name as its Semantics
@@ -1629,40 +1646,40 @@ class _MonthCalendarState extends State<MonthCalendar>
                     ),
                   ),
               ],
-              ),
             ),
           ),
-          if (!estimateActive) _keepLoggingStrip(theme),
-          Expanded(
-            child: PageView.builder(
-              key: const ValueKey('calendar-page-view'),
-              controller: _pageController,
-              onPageChanged: _onPageChanged,
-              itemCount: maxPageIndex + 1,
-              itemBuilder: (context, pageIndex) {
-                final (year, month) = _monthForPageIndex(pageIndex);
-                // #138: the cell geometry derives from this page's own width
-                // and the ambient text scale, so the number circle and the
-                // cell row both grow with large text instead of clipping, and
-                // every cell keeps a 48dp-tall touch target.
-                return LayoutBuilder(
-                  builder: (context, constraints) {
-                    // Issue #262: cap the width the cell geometry derives
-                    // from, so a 900dp tablet does not stretch each of the
-                    // seven columns to ~128dp of empty space. The column
-                    // count itself never changes — it is a calendar.
-                    final gridWidth = math.min(
-                      constraints.maxWidth,
-                      kCalendarGridMaxWidth,
-                    );
-                    final metrics = dayCellMetricsFor(
-                      gridWidth,
-                      MediaQuery.textScalerOf(context),
-                    );
-                    return SingleChildScrollView(
-                      child: ResponsiveBody(
-                        maxWidth: kCalendarGridMaxWidth,
-                        child: Column(
+        ),
+        if (!estimateActive) _keepLoggingStrip(theme),
+        Expanded(
+          child: PageView.builder(
+            key: const ValueKey('calendar-page-view'),
+            controller: _pageController,
+            onPageChanged: _onPageChanged,
+            itemCount: maxPageIndex + 1,
+            itemBuilder: (context, pageIndex) {
+              final (year, month) = _monthForPageIndex(pageIndex);
+              // #138: the cell geometry derives from this page's own width
+              // and the ambient text scale, so the number circle and the
+              // cell row both grow with large text instead of clipping, and
+              // every cell keeps a 48dp-tall touch target.
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  // Issue #262: cap the width the cell geometry derives
+                  // from, so a 900dp tablet does not stretch each of the
+                  // seven columns to ~128dp of empty space. The column
+                  // count itself never changes — it is a calendar.
+                  final gridWidth = math.min(
+                    constraints.maxWidth,
+                    kCalendarGridMaxWidth,
+                  );
+                  final metrics = dayCellMetricsFor(
+                    gridWidth,
+                    MediaQuery.textScalerOf(context),
+                  );
+                  return SingleChildScrollView(
+                    child: ResponsiveBody(
+                      maxWidth: kCalendarGridMaxWidth,
+                      child: Column(
                         children: [
                           // Issue #187 (B-8): a month with zero entries otherwise
                           // renders as a silent grid of bare day numbers with no
@@ -1724,15 +1741,15 @@ class _MonthCalendarState extends State<MonthCalendar>
                             ),
                           ),
                         ],
-                        ),
                       ),
-                    );
-                  },
-                );
-              },
-            ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
+        ),
+      ],
     );
   }
 
@@ -2105,7 +2122,11 @@ class _MonthCalendarState extends State<MonthCalendar>
     // longer `weekday % 7` arithmetic — and since #226 that seam is fed by
     // the user's Calendar → "First day of week" override ([_firstDayOfWeek])
     // rather than the constant alone.
-    final leadingBlanks = leadingBlanksFor(year, month, firstDayOfWeek: _firstDayOfWeek);
+    final leadingBlanks = leadingBlanksFor(
+      year,
+      month,
+      firstDayOfWeek: _firstDayOfWeek,
+    );
     return [
       // #138 (B-23): the blanks before day 1 are layout filler with no
       // meaning — explicitly excluded so no screen reader step lands on
@@ -3007,7 +3028,9 @@ class _FutureDayExplainer extends StatelessWidget {
         ),
       const SizedBox(height: LLSpace.space2),
       Text(
-        l10n.futureExplainerConfidence(_confidenceLabel(cell).toLowerCase()),
+        l10n.futureExplainerConfidence(
+          tierShortLabel(l10n, _confidenceTier(cell)),
+        ),
         key: const ValueKey('future-explainer-confidence'),
         style: body,
       ),
@@ -3018,8 +3041,8 @@ class _FutureDayExplainer extends StatelessWidget {
       ? 0
       : cycles[cell.cycleIndex.clamp(0, cycles.length - 1)].spreadDays;
 
-  /// The confidence label this explainer's bottom line names (issue #143
-  /// review): for a fertile-window day, [ForecastDayCell.fertileTier] —
+  /// The confidence tier this explainer's bottom line names (issue #143
+  /// review, #1000): for a fertile-window day, [ForecastDayCell.fertileTier] —
   /// the fertile window's own source cycle, which can differ from
   /// [ForecastDayCell.tier] (the cycle whose band/numeral claimed this
   /// date first, see [ForecastDayCell.fertileTier]'s own doc comment) —
@@ -3028,11 +3051,10 @@ class _FutureDayExplainer extends StatelessWidget {
   /// that band is this cell's primary content, and (per
   /// `fertile_window.dart`'s own doc comment) a fertile window never
   /// actually overlaps its own cycle's bleed band in practice.
-  String _confidenceLabel(ForecastDayCell cell) {
-    final tier = cell.predictedBleed || !cell.fertileWindow
+  CycleConfidence _confidenceTier(ForecastDayCell cell) {
+    return cell.predictedBleed || !cell.fertileWindow
         ? cell.tier
         : (cell.fertileTier ?? cell.tier);
-    return tier.label;
   }
 
   /// Split out of [_body] (issue #143) purely to keep that method's own

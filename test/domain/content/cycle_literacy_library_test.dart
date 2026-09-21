@@ -40,6 +40,52 @@ void main() {
     });
   });
 
+  group('Issue #1006 accuracy and coverage', () {
+    String paragraph(String articleId, String headingSubstring) {
+      final article = CycleLiteracyLibrary.getArticleById(articleId)!;
+      return article.sections
+          .firstWhere((s) => s.heading.contains(headingSubstring))
+          .paragraphs
+          .join(' ');
+    }
+
+    test('BBT conversion uses the correct Celsius range', () {
+      final luteal = paragraph('luteal-phase-and-progesterone', 'Thermal');
+      expect(luteal, contains('0.3°C to 0.6°C'),
+          reason: '0.5–1.0 °F converts to ~0.3–0.6 °C, not 0.2–0.5 °C');
+      expect(luteal, isNot(contains('0.2°C to 0.5°C')));
+    });
+
+    test('follicular summary hedges the energy claim', () {
+      final article =
+          CycleLiteracyLibrary.getArticleById('understanding-follicular-phase')!;
+      expect(article.summary, isNot(contains('elevates energy levels')));
+      expect(article.summary, contains('often'));
+    });
+
+    test('PMS mechanism is stated as a hypothesis, not settled fact', () {
+      final pms = paragraph('pms-and-progesterone', 'Serotonin');
+      expect(pms, contains('may contribute'));
+      expect(pms, contains('researchers think'));
+      expect(pms, isNot(contains('explaining premenstrual')));
+    });
+
+    test('cycle-length article covers first cycles and red flags', () {
+      final article =
+          CycleLiteracyLibrary.getArticleById('cycle-length-variability')!;
+      final headings = article.sections.map((s) => s.heading).toList();
+      expect(headings, contains('The First Few Years'));
+      expect(headings, contains('When to Ask a Doctor'));
+
+      final body = article.sections.expand((s) => s.paragraphs).join(' ');
+      expect(body, contains('21 to 45 days'));
+      expect(body, contains('three months'));
+      expect(body, contains('longer than about a week'));
+      expect(body, contains('every hour'));
+      expect(article.source, contains('ACOG'));
+    });
+  });
+
   group('CycleLiteracyLibrary query methods', () {
     test('getArticleById returns matching article or null', () {
       final phases = CycleLiteracyLibrary.getArticleById('menstrual-cycle-phases');

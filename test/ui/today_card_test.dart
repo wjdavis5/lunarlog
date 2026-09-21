@@ -24,12 +24,14 @@ import 'package:lunarlog/ui/theme/app_theme.dart';
 final AppLocalizations kL10n = lookupAppLocalizations(const Locale('en'));
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
-  await tester.pumpWidget(MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    theme: AppTheme.lightTheme,
-    home: Scaffold(body: Center(child: child)),
-  ));
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: AppTheme.lightTheme,
+      home: Scaffold(body: Center(child: child)),
+    ),
+  );
 }
 
 void main() {
@@ -78,9 +80,13 @@ void main() {
       expect(dashes, hasLength(3));
       expect(dashes[0], closeTo(0.3, 1e-9));
       expect(dashes[1], closeTo(0.3, 1e-9));
-      expect(dashes[2], closeTo(0.2, 1e-9),
-          reason: 'the final dash is shortened to fit within the sweep, '
-              'never omitted or overrun');
+      expect(
+        dashes[2],
+        closeTo(0.2, 1e-9),
+        reason:
+            'the final dash is shortened to fit within the sweep, '
+            'never omitted or overrun',
+      );
     });
 
     test('a sweep that lands exactly on the end of a dash (not a gap) '
@@ -121,19 +127,22 @@ void main() {
       );
     });
 
-    test('when overdue the label leads with days late', () {
-      expect(
-        cycleWheelSemanticsLabel(
-          cycleDay: 32,
-          duringEpisode: false,
-          cycleLengthDays: 30,
-          periodLengthDays: 4,
-          daysUntilNextPeriod: -2,
-          l10n: kL10n,
-        ),
-        '2 days late. Cycle day 32 of about 30 days. Period usually runs about 4 days.',
-      );
-    });
+    test(
+      'when overdue the label leads with days past estimate (issue #1000)',
+      () {
+        expect(
+          cycleWheelSemanticsLabel(
+            cycleDay: 32,
+            duringEpisode: false,
+            cycleLengthDays: 30,
+            periodLengthDays: 4,
+            daysUntilNextPeriod: -2,
+            l10n: kL10n,
+          ),
+          '2 days past the estimate. Cycle day 32 of about 30 days. Period usually runs about 4 days.',
+        );
+      },
+    );
 
     test('never uses fertility/ovulation vocabulary (R13)', () {
       final label = cycleWheelSemanticsLabel(
@@ -166,7 +175,9 @@ void main() {
       expect(find.text('days'), findsOneWidget);
     });
 
-    testWidgets('renders "Day N" and "of period" during an episode', (tester) async {
+    testWidgets('renders "Day N" and "of period" during an episode', (
+      tester,
+    ) async {
       await _pump(
         tester,
         const CycleWheel(
@@ -242,39 +253,53 @@ void main() {
       );
     }
 
-    testWidgets('renders the wheel, cycle day line, estimate, chip, and button',
-        (tester) async {
-      await _pump(tester, cardFor());
+    testWidgets(
+      'renders the wheel, cycle day line, estimate, chip, and button',
+      (tester) async {
+        await _pump(tester, cardFor());
 
-      expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
-      expect(find.text('9'), findsOneWidget);
-      expect(find.text('days'), findsOneWidget);
-      expect(find.byKey(const ValueKey('today-card-cycle-day')), findsOneWidget);
-      expect(find.text('Cycle day 14'), findsOneWidget);
-      expect(find.text('Next period estimate: September 4, 2026'),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey('today-card-confidence-chip')),
-          findsOneWidget);
-      expect(find.text('Learning'), findsOneWidget);
-      expect(find.byKey(const ValueKey('today-card-log-action')),
-          findsOneWidget);
-      expect(find.text('Period started today'), findsOneWidget);
-    });
+        expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
+        expect(find.text('9'), findsOneWidget);
+        expect(find.text('days'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('today-card-cycle-day')),
+          findsOneWidget,
+        );
+        expect(find.text('Cycle day 14'), findsOneWidget);
+        expect(
+          find.text('Next period estimate: September 4, 2026'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('today-card-confidence-chip')),
+          findsOneWidget,
+        );
+        expect(find.text('Learning'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('today-card-log-action')),
+          findsOneWidget,
+        );
+        expect(find.text('Period started today'), findsOneWidget);
+      },
+    );
 
-    testWidgets('omits the confidence chip when showConfidenceChip is false',
-        (tester) async {
+    testWidgets('omits the confidence chip when showConfidenceChip is false', (
+      tester,
+    ) async {
       await _pump(tester, cardFor(showConfidenceChip: false));
 
-      expect(find.byKey(const ValueKey('today-card-confidence-chip')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey('today-card-confidence-chip')),
+        findsNothing,
+      );
     });
 
-    testWidgets('omits the log action entirely when canLog is false',
-        (tester) async {
+    testWidgets('omits the log action entirely when canLog is false', (
+      tester,
+    ) async {
       await _pump(tester, cardFor(canLog: false));
 
-      expect(find.byKey(const ValueKey('today-card-log-action')),
-          findsNothing);
+      expect(find.byKey(const ValueKey('today-card-log-action')), findsNothing);
     });
 
     testWidgets('tapping the log action calls onLogToday and disables the '
@@ -283,10 +308,12 @@ void main() {
       var calls = 0;
       await _pump(
         tester,
-        cardFor(onLogToday: () {
-          calls++;
-          return gate.future;
-        }),
+        cardFor(
+          onLogToday: () {
+            calls++;
+            return gate.future;
+          },
+        ),
       );
 
       final button = find.byKey(const ValueKey('today-card-log-action'));
@@ -297,7 +324,8 @@ void main() {
       expect(
         tester.widget<FilledButton>(button).onPressed,
         isNull,
-        reason: 'a second tap while the first write is in flight must not '
+        reason:
+            'a second tap while the first write is in flight must not '
             'fire another one',
       );
 
@@ -314,10 +342,12 @@ void main() {
       var shouldThrow = true;
       await _pump(
         tester,
-        cardFor(onLogToday: () async {
-          calls++;
-          if (shouldThrow) throw Exception('write failed');
-        }),
+        cardFor(
+          onLogToday: () async {
+            calls++;
+            if (shouldThrow) throw Exception('write failed');
+          },
+        ),
       );
 
       final button = find.byKey(const ValueKey('today-card-log-action'));
@@ -325,13 +355,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, 1);
-      expect(find.byType(InlineError), findsOneWidget,
-          reason: 'a throwing write must surface in-place, not vanish '
-              'silently while the button just re-enables');
+      expect(
+        find.byType(InlineError),
+        findsOneWidget,
+        reason:
+            'a throwing write must surface in-place, not vanish '
+            'silently while the button just re-enables',
+      );
       expect(
         tester.widget<FilledButton>(button).onPressed,
         isNotNull,
-        reason: 'the button stays usable after a failed write, not stuck '
+        reason:
+            'the button stays usable after a failed write, not stuck '
             'disabled',
       );
 
@@ -340,29 +375,41 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(calls, 2, reason: 'Retry re-runs the same write');
-      expect(find.byType(InlineError), findsNothing,
-          reason: 'a successful retry clears the error');
+      expect(
+        find.byType(InlineError),
+        findsNothing,
+        reason: 'a successful retry clears the error',
+      );
     });
 
-    testWidgets('dynamic type accessibility (#836): stacks estimate and chip at large text scale with no overflow',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.lightTheme,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: const TextScaler.linear(3.1),
+    testWidgets(
+      'dynamic type accessibility (#836): stacks estimate and chip at large text scale with no overflow',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: AppTheme.lightTheme,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: const TextScaler.linear(3.1)),
+              child: child!,
+            ),
+            home: Scaffold(body: SingleChildScrollView(child: cardFor())),
           ),
-          child: child!,
-        ),
-        home: Scaffold(body: SingleChildScrollView(child: cardFor())),
-      ));
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(tester.takeException(), isNull);
-      expect(find.text('Next period estimate: September 4, 2026'), findsOneWidget);
-      expect(find.byKey(const ValueKey('today-card-confidence-chip')), findsOneWidget);
-    });
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text('Next period estimate: September 4, 2026'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('today-card-confidence-chip')),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }

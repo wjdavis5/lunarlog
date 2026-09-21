@@ -347,19 +347,49 @@ void main() {
       );
     });
 
-    test('PredictionsSuppressed and PredictionsDisabled read as off', () {
+    test('PredictionsSuppressed reads as paused, PredictionsDisabled as off',
+        () {
       expect(
         profileCycleStatus(
           prediction:
               PredictionsSuppressed(method: BirthControlMethod.pill),
           l10n: l10n,
         ),
-        'Period predictions off',
+        'Period estimates paused',
+        reason: 'issue #1005: nothing was toggled off — a birth-control '
+            'method or life-stage mode paused the estimates',
       );
       expect(
         profileCycleStatus(
             prediction: const PredictionsDisabled(), l10n: l10n),
         'Period predictions off',
+        reason: 'the operator actually turned predictions off in settings',
+      );
+    });
+
+    test('issue #982: a stale history reads the neutral line, never the '
+        'rolled "Cycle day N"', () {
+      final stale = ActivePrediction(
+        today: kToday,
+        lastEpisodeStart: LocalDate(2024, 4, 27),
+        estimatedNextStart: LocalDate(2026, 9, 25),
+        originalEstimatedNextStart: LocalDate(2024, 5, 25),
+        averagedCycleLengths: const [29, 29, 30],
+        meanCycleLengthDays: 29.33,
+        cycleDay: 867,
+        duringEpisode: false,
+        completedCycleCount: 3,
+        validCycleCount: 3,
+        staleHistory: true,
+      );
+
+      expect(
+        profileCycleStatus(prediction: stale, l10n: l10n),
+        'No recent period logged',
+      );
+      expect(
+        profileCycleStatus(prediction: stale, l10n: l10n),
+        isNot(contains('Cycle day')),
       );
     });
   });
@@ -390,6 +420,22 @@ void main() {
       await pumpCard(tester, entries: entries, service: _service(entries));
 
       expect(find.text('Period, day 2'), findsOneWidget);
+    });
+
+    testWidgets('issue #982: a stale history row reads the neutral line, '
+        'never a rolled "Cycle day N"', (tester) async {
+      // Last period 2024-04-27, today 2026-09-10: ~866 days open, far past
+      // the stale threshold for a ~29-day mean (issue #859).
+      final entries = _StubDayEntries(_episodes('p-card-1', [
+        LocalDate(2024, 1, 30),
+        LocalDate(2024, 2, 28),
+        LocalDate(2024, 3, 28),
+        LocalDate(2024, 4, 27),
+      ]));
+      await pumpCard(tester, entries: entries, service: _service(entries));
+
+      expect(find.text('No recent period logged'), findsOneWidget);
+      expect(find.textContaining('Cycle day'), findsNothing);
     });
 
     testWidgets('a profile with no entries reads "No history yet"',

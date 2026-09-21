@@ -18,10 +18,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/app_lifecycle.dart';
 import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/app.dart';
 import 'package:lunarlog/ui/gate/lock_screen.dart';
+import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
 
@@ -69,7 +71,10 @@ void main() {
       expect(l10n.calendarMonthYearLabel('September', 2026), 'September 2026');
       expect(l10n.calendarNoEntriesTitle, 'No entries this month');
       expect(l10n.calendarNoEntriesBody, 'Tap a day to log it');
-      expect(l10n.calendarLayerLimitSnack, 'Up to three symptom layers at once');
+      expect(
+        l10n.calendarLayerLimitSnack,
+        'Up to three symptom layers at once',
+      );
       expect(l10n.calendarShowLegend, 'Show legend');
       expect(l10n.calendarHideLegend, 'Hide legend');
       expect(l10n.calendarLegend, 'Legend');
@@ -86,7 +91,10 @@ void main() {
       expect(l10n.calendarLegendCramps, 'Cramps window');
       expect(l10n.calendarLegendLayerDots, 'Symptom layer dots');
       expect(l10n.calendarSymptomLayers, 'Symptom layers');
-      expect(l10n.calendarLayersSummary('Light, Cramps'), 'Layers: Light, Cramps');
+      expect(
+        l10n.calendarLayersSummary('Light, Cramps'),
+        'Layers: Light, Cramps',
+      );
       expect(l10n.calendarShowSymptomLayers, 'Show symptom layers');
       expect(l10n.calendarHideSymptomLayers, 'Hide symptom layers');
       expect(
@@ -141,7 +149,34 @@ void main() {
         'predicted cycle is counted day by day — estimates compound too '
         'much further out.',
       );
-      expect(l10n.futureExplainerConfidence('high'), 'Estimate confidence: high.');
+      expect(
+        l10n.futureExplainerConfidence('high'),
+        'Estimate confidence: high.',
+      );
+      expect(
+        l10n.futureExplainerConfidence(
+          tierShortLabel(l10n, CycleConfidence.high),
+        ),
+        'Estimate confidence: high.',
+      );
+      expect(
+        l10n.futureExplainerConfidence(
+          tierShortLabel(l10n, CycleConfidence.learning),
+        ),
+        'Estimate confidence: learning.',
+      );
+      expect(
+        l10n.futureExplainerConfidence(
+          tierShortLabel(l10n, CycleConfidence.irregular),
+        ),
+        'Estimate confidence: rough.',
+      );
+      expect(
+        l10n.futureExplainerConfidence(
+          tierShortLabel(l10n, CycleConfidence.provisional),
+        ),
+        'Estimate confidence: provisional.',
+      );
     });
 
     testWidgets('day sheet', (tester) async {
@@ -206,47 +241,40 @@ void main() {
         'exclude it from future averages, or turn off predictions if long '
         'cycles are common for this profile.',
       );
-      expect(
-        l10n.overviewLongCyclePredictionsOff,
-        'Turn off predictions',
-      );
-      expect(
-        l10n.overviewIrregularSuggestionTitle,
-        'Cycles vary a lot',
-      );
+      expect(l10n.overviewLongCyclePredictionsOff, 'Turn off predictions');
+      expect(l10n.overviewIrregularSuggestionTitle, 'Cycles vary a lot');
       expect(
         l10n.overviewIrregularSuggestionBody,
         'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.',
       );
-      expect(
-        l10n.overviewIrregularSuggestionSettings,
-        'Manage in Settings',
-      );
-      expect(
-        l10n.overviewIrregularSuggestionDismiss,
-        'Dismiss',
-      );
-      expect(
-        l10n.predictionsDisabledTitle,
-        'Predictions turned off',
-      );
+      expect(l10n.overviewIrregularSuggestionSettings, 'Manage in Settings');
+      expect(l10n.overviewIrregularSuggestionDismiss, 'Dismiss');
+      expect(l10n.predictionsDisabledTitle, 'Predictions turned off');
       expect(
         l10n.predictionsDisabledBody,
         'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.',
       );
-      expect(
-        l10n.predictionsDisabledAction,
-        'Manage in Settings',
-      );
+      expect(l10n.predictionsDisabledAction, 'Manage in Settings');
       expect(
         l10n.overviewReminderHint,
         'Reminders unavailable — notifications are off',
       );
       expect(l10n.overviewTurnOnReminders, 'Turn on reminders');
+      expect(
+        l10n.overviewPmsBandLabel('May 1 – May 2', 1, 1),
+        'Predicted PMS: May 1 – May 2 — usually starts about 1 day before your period and lasts about 1 day.',
+      );
+      expect(
+        l10n.overviewPmsBandLabel('May 1 – May 4', 4, 3),
+        'Predicted PMS: May 1 – May 4 — usually starts about 4 days before your period and lasts about 3 days.',
+      );
+      expect(l10n.householdTimingPastEstimate(1), '1 day past the estimate');
+      expect(l10n.householdTimingPastEstimate(4), '4 days past the estimate');
     });
 
-    testWidgets('settings screen, including the privacy dialog body',
-        (tester) async {
+    testWidgets('settings screen, including the privacy dialog body', (
+      tester,
+    ) async {
       final l10n = await pumpL10n(tester);
       expect(l10n.settingsTitle, 'Settings');
       expect(l10n.settingsSendFeedback, 'Send feedback');
@@ -255,7 +283,10 @@ void main() {
         'Report a bug, ask a question, or share an idea',
       );
       expect(l10n.settingsContactSupport, 'Contact support');
-      expect(l10n.settingsContactSupportSubtitle, 'Email us with a bug or question');
+      expect(
+        l10n.settingsContactSupportSubtitle,
+        'Email us with a bug or question',
+      );
       expect(
         l10n.settingsContactSupportDialogBody,
         'Email us with a bug report, question, or idea:',
@@ -276,7 +307,8 @@ void main() {
       expect(
         l10n.settingsRelockSubtitle('2 minutes'),
         contains('Locks the app after 2 minutes without input.'),
-        reason: 'issue #762: the selected duration is interpolated, never '
+        reason:
+            'issue #762: the selected duration is interpolated, never '
             'hard-coded',
       );
       expect(l10n.settingsRelockTimeoutTitle, 'Inactivity timeout');
@@ -301,12 +333,25 @@ void main() {
       expect(l10n.settingsPrivacyTitle, 'Privacy policy');
       expect(
         l10n.settingsPrivacySubtitle,
-        'Sync & family sharing, protected at rest, zero tracking',
+        "How your family's data is stored, shared, and kept private",
       );
       expect(l10n.settingsPrivacyDialogTitle, 'lunarlog Privacy Policy');
-      expect(l10n.settingsPrivacyDialogBody, startsWith(
-        'lunarlog is a family cycle tracker built for sync and sharing.',
-      ));
+      expect(
+        l10n.settingsPrivacyDialogBody,
+        startsWith(
+          'lunarlog is a family cycle tracker built for sync and sharing.',
+        ),
+      );
+      // Issue #1002: the gate is the device credential, which accepts a
+      // passcode, not biometrics alone.
+      expect(
+        l10n.settingsPrivacyDialogBody,
+        contains('passcode or biometrics'),
+      );
+      expect(
+        l10n.settingsPrivacyDialogBody,
+        isNot(contains('biometric authentication')),
+      );
       expect(
         l10n.settingsPrivacyDialogBody,
         endsWith(
@@ -323,6 +368,16 @@ void main() {
         ),
       );
       expect(l10n.settingsClose, 'Close');
+      // Issue #1002: the reminder editor must warn that custom text is
+      // shown on the lock screen, not only that lunarlog adds nothing.
+      expect(
+        l10n.reminderTextDiscretionNote,
+        contains('appears on the lock screen'),
+      );
+      expect(
+        l10n.reminderTextDiscretionNote,
+        contains('keep it something anyone may see'),
+      );
     });
 
     testWidgets('first-run flow (#216): extracted pre-existing literals '
@@ -343,8 +398,7 @@ void main() {
       expect(l10n.firstRunCareModeLabel, 'Care mode');
       expect(l10n.firstRunCreateButton, 'Create profile');
       // New #216 copy, pinned for review.
-      expect(l10n.firstRunValueHeadline,
-          'A private cycle log for your family');
+      expect(l10n.firstRunValueHeadline, 'A private cycle log for your family');
       expect(
         l10n.firstRunValueBody,
         'Guardians can share a profile and log it together. Everything '
@@ -381,25 +435,33 @@ void main() {
       expect(
         l10n.firstRunCycleCaption,
         'A few optional questions to set this profile up — every one can '
-        'be skipped. The goal and birth-control answers can be changed '
-        'later when editing the profile.',
+        'be skipped. The life-stage mode and birth-control answers can be '
+        'changed later from Edit profile.',
       );
       expect(l10n.firstRunCycleLastPeriodLabel, 'Last period start');
       expect(l10n.firstRunCycleChooseDate, 'Choose date');
       expect(l10n.firstRunCycleChangeDate, 'Change date');
       expect(l10n.firstRunCycleClearDate, 'Clear');
-      expect(l10n.firstRunCycleTypicalCycleLabel,
-          'Typical cycle length (days)');
+      expect(
+        l10n.firstRunCycleTypicalCycleLabel,
+        'Typical cycle length (days)',
+      );
       expect(l10n.firstRunCycleTypicalCycleHint, 'e.g. 28');
-      expect(l10n.firstRunCycleTypicalPeriodLabel,
-          'Typical period length (days)');
+      expect(
+        l10n.firstRunCycleTypicalPeriodLabel,
+        'Typical period length (days)',
+      );
       expect(l10n.firstRunCycleTypicalPeriodHint, 'e.g. 5');
-      expect(l10n.firstRunCycleLengthRangeError,
-          'Enter a number between 15 and 60');
-      expect(l10n.firstRunPeriodLengthRangeError,
-          'Enter a number between 1 and 14');
+      expect(
+        l10n.firstRunCycleLengthRangeError,
+        'Enter a number between 15 and 60',
+      );
+      expect(
+        l10n.firstRunPeriodLengthRangeError,
+        'Enter a number between 1 and 14',
+      );
       expect(l10n.firstRunCycleBirthControlLabel, 'Birth-control method');
-      expect(l10n.firstRunCycleGoalLabel, 'Goal / mode');
+      expect(l10n.firstRunCycleGoalLabel, 'Life-stage mode');
       expect(l10n.lifeStageModeLabel, 'Life-stage mode');
       expect(l10n.birthControlNotAnswered, 'Not answered');
       expect(l10n.birthControlNone, 'None');
@@ -429,10 +491,7 @@ void main() {
         l10n.overviewEstimateLoadError,
         'Could not load your cycle estimate.',
       );
-      expect(
-        l10n.activityFeedLoadError,
-        'Could not load the activity feed.',
-      );
+      expect(l10n.activityFeedLoadError, 'Could not load the activity feed.');
     });
   });
 
@@ -448,23 +507,42 @@ void main() {
 
     testWidgets('summaries', (tester) async {
       final l10n = await pumpL10n(tester);
-      expect(l10n.cycleConfidenceSummaryHigh,
-          'Recent cycles are steady — estimates are at their most reliable.');
-      expect(l10n.cycleConfidenceSummaryLearning,
-          'Still learning — estimates improve after a few more cycles.');
-      expect(l10n.cycleConfidenceSummaryIrregular,
-          'Cycles vary a lot — treat estimates as rough guides.');
+      expect(
+        l10n.cycleConfidenceSummaryHigh,
+        'Recent cycles are steady — estimates are at their most reliable.',
+      );
+      expect(
+        l10n.cycleConfidenceSummaryLearning,
+        'Still learning — estimates improve after a few more cycles.',
+      );
+      expect(
+        l10n.cycleConfidenceSummaryIrregular,
+        'Cycles vary a lot — treat estimates as rough guides.',
+      );
       expect(
         l10n.cycleConfidenceSummaryProvisional,
         'Based on your onboarding answers — estimates improve once real '
         'cycles are logged.',
       );
     });
+
+    testWidgets('short labels (issue #1000)', (tester) async {
+      final l10n = await pumpL10n(tester);
+      expect(l10n.cycleConfidenceShortHigh, 'high');
+      expect(l10n.cycleConfidenceShortLearning, 'learning');
+      expect(l10n.cycleConfidenceShortIrregular, 'rough');
+      expect(l10n.cycleConfidenceShortProvisional, 'provisional');
+      expect(tierShortLabel(l10n, CycleConfidence.high), 'high');
+      expect(tierShortLabel(l10n, CycleConfidence.learning), 'learning');
+      expect(tierShortLabel(l10n, CycleConfidence.irregular), 'rough');
+      expect(tierShortLabel(l10n, CycleConfidence.provisional), 'provisional');
+    });
   });
 
   group('delegate registration (both MaterialApps)', () {
-    testWidgets("LunarLogApp's MaterialApp registers delegates + locales",
-        (tester) async {
+    testWidgets("LunarLogApp's MaterialApp registers delegates + locales", (
+      tester,
+    ) async {
       final db = LunarLogDatabase(NativeDatabase.memory());
       await tester.pumpWidget(LunarLogApp.withCollaborators(db: db));
       await tester.pump();
@@ -481,8 +559,9 @@ void main() {
       await db.close();
     });
 
-    testWidgets("LockScreen's own MaterialApp registers delegates + locales",
-        (tester) async {
+    testWidgets("LockScreen's own MaterialApp registers delegates + locales", (
+      tester,
+    ) async {
       final controller = GateController(gate: _NoopGate());
       addTearDown(controller.dispose);
       await tester.pumpWidget(LockScreen(controller: controller));
@@ -496,8 +575,9 @@ void main() {
   });
 
   group('non-English device locale falls back to en (#160)', () {
-    testWidgets('SettingsScreen renders en copy under a fr device locale',
-        (tester) async {
+    testWidgets('SettingsScreen renders en copy under a fr device locale', (
+      tester,
+    ) async {
       tester.platformDispatcher.localeTestValue = const Locale('fr');
       addTearDown(tester.platformDispatcher.clearLocaleTestValue);
       await tester.pumpWidget(
