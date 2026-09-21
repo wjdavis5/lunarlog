@@ -22,6 +22,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:provider/provider.dart';
@@ -210,6 +211,8 @@ Future<void> _pump(
   addTearDown(profiles.dispose);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           Provider<ProfilesRepository>.value(value: profiles),
@@ -249,7 +252,11 @@ void main() {
         'no ProfilesRepository provided at all: the tile is absent, same '
         'as no profiles', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: ClinicalExportTile())),
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: ClinicalExportTile()),
+        ),
       );
       await tester.pumpAndSettle();
       expect(key('clinical-export-fhir'), findsNothing);
@@ -538,6 +545,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               Provider<ProfilesRepository>.value(value: profiles),

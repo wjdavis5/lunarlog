@@ -3832,4 +3832,177 @@ class AppLocalizationsEn extends AppLocalizations {
   String accountSectionOtherDevicesNotSignedOut(String failureCopy) {
     return '$failureCopy Other devices were not signed out.';
   }
+
+  @override
+  String get settingsExportRangeTitle => 'Export range';
+
+  @override
+  String get settingsExportRangeCancel => 'Cancel';
+
+  @override
+  String get settingsExportRangeConfirm => 'Export';
+
+  @override
+  String get settingsExportRangeStartDate => 'Start date';
+
+  @override
+  String get settingsExportRangeEndDate => 'End date';
+
+  @override
+  String get settingsClinicalExportFhirTitle =>
+      'Export clinical summary (FHIR)';
+
+  @override
+  String get settingsCsvExportTitle => 'Export as CSV';
+
+  @override
+  String get settingsCsvExportForTitle => 'Export CSV data for';
+
+  @override
+  String healthSyncBindTitle(String name) {
+    return 'Sync $name to this phone?';
+  }
+
+  @override
+  String healthSyncBindWriteBody(String name) {
+    return 'Only $name\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  }
+
+  @override
+  String healthSyncBindImportBody(String name) {
+    return 'Only $name\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  }
+
+  @override
+  String get healthSyncBindCancel => 'Cancel';
+
+  @override
+  String healthSyncSyncFailed(String name) {
+    return 'Couldn\'t sync $name — try again.';
+  }
+
+  @override
+  String get healthSyncImportFailed =>
+      'Couldn\'t finish the import. Please try again.';
+
+  @override
+  String get healthSyncLoadFailed => 'Couldn\'t load profiles for health sync.';
+
+  @override
+  String get healthSyncRetry => 'Retry';
+
+  @override
+  String healthSyncImporting(String source) {
+    return 'Importing from $source…';
+  }
+
+  @override
+  String get healthSyncFlowCollapseNote =>
+      'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.';
+
+  @override
+  String get healthSyncRevocationNote =>
+      'Turning sync off, or later revoking this phone\'s Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.';
+
+  @override
+  String healthSyncImportFrom(String source) {
+    return 'Import from $source';
+  }
+
+  @override
+  String get healthSyncUnbindAction => 'Stop syncing to this phone';
+
+  @override
+  String get importScreenTitle => 'Import from file';
+
+  @override
+  String get importScreenPickBody =>
+      'Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.';
+
+  @override
+  String get importScreenChooseFileAction => 'Choose file';
+
+  @override
+  String get importScreenImportAction => 'Import';
+
+  @override
+  String get importScreenCancel => 'Cancel';
+
+  @override
+  String get importScreenDone => 'Done';
+
+  @override
+  String get reminderNoProfile => 'Create a profile to set up reminders.';
+
+  @override
+  String get reminderPrivacyNote =>
+      'Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.';
+
+  @override
+  String get reminderProfileLabel => 'Profile';
+
+  @override
+  String get reminderCadenceLabel => 'Cadence';
+
+  @override
+  String get reminderTimeLabel => 'Time';
+
+  @override
+  String get reminderQuietHoursTitle => 'Quiet hours';
+
+  @override
+  String get reminderQuietHoursSubtitle =>
+      'A reminder that lands inside the window waits until it ends';
+
+  @override
+  String get reminderQuietStart => 'Starts';
+
+  @override
+  String get reminderQuietEnd => 'Ends';
+
+  @override
+  String get yourDataExportTitle => 'Export my data';
+
+  @override
+  String get yourDataExportSubtitleSignedIn =>
+      'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account\'s server data.';
+
+  @override
+  String get yourDataExportSubtitleLocal =>
+      'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.';
+
+  @override
+  String get yourDataImportTitle => 'Import from file';
+
+  @override
+  String get yourDataImportSubtitle =>
+      'Restore from a JSON backup, or bring in a Clue export (.zip).';
+
+  @override
+  String get yourDataPurgeTitle => 'Purge imported data';
+
+  @override
+  String get yourDataPurgeSubtitle =>
+      'Remove only the entries a specific import brought in — manually logged data is never touched.';
+
+  @override
+  String yourDataPurgedSnack(String source) {
+    return 'Purged $source data';
+  }
+
+  @override
+  String get yourDataPurgeDialogBody =>
+      'Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.';
+
+  @override
+  String get yourDataPurgeProfileLabel => 'Profile';
+
+  @override
+  String get yourDataPurgeCancel => 'Cancel';
+
+  @override
+  String get yourDataPurgeConfirm => 'Purge';
+
+  @override
+  String get yourDataImportSourceLabel => 'Import source';
 }

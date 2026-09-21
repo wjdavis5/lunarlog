@@ -6031,6 +6031,300 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{failureCopy} Other devices were not signed out.'**
   String accountSectionOtherDevicesNotSignedOut(String failureCopy);
+
+  /// Issue #1004 (tranche 2): export-range picker sheet title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export range'**
+  String get settingsExportRangeTitle;
+
+  /// Issue #1004 (tranche 2): export-range picker cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get settingsExportRangeCancel;
+
+  /// Issue #1004 (tranche 2): export-range picker confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Export'**
+  String get settingsExportRangeConfirm;
+
+  /// Issue #1004 (tranche 2): export-range custom start-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'Start date'**
+  String get settingsExportRangeStartDate;
+
+  /// Issue #1004 (tranche 2): export-range custom end-date button.
+  ///
+  /// In en, this message translates to:
+  /// **'End date'**
+  String get settingsExportRangeEndDate;
+
+  /// Issue #1004 (tranche 2): FHIR clinical-export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export clinical summary (FHIR)'**
+  String get settingsClinicalExportFhirTitle;
+
+  /// Issue #1004 (tranche 2): CSV export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export as CSV'**
+  String get settingsCsvExportTitle;
+
+  /// Issue #1004 (tranche 2): CSV export profile-chooser dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export CSV data for'**
+  String get settingsCsvExportForTitle;
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync {name} to this phone?'**
+  String healthSyncBindTitle(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.
+  ///
+  /// In en, this message translates to:
+  /// **'Only {name}\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name);
+
+  /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get healthSyncBindCancel;
+
+  /// Issue #1004 (tranche 2): health-sync bind failure snackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t sync {name} — try again.'**
+  String healthSyncSyncFailed(String name);
+
+  /// Issue #1004 (tranche 2): health-sync import failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportFailed;
+
+  /// Issue #1004 (tranche 2): health-sync profile-load failure line.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load profiles for health sync.'**
+  String get healthSyncLoadFailed;
+
+  /// Issue #1004 (tranche 2): health-sync retry button.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get healthSyncRetry;
+
+  /// Issue #1004 (tranche 2): health-sync import progress line before the first page reports.
+  ///
+  /// In en, this message translates to:
+  /// **'Importing from {source}…'**
+  String healthSyncImporting(String source);
+
+  /// Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.'**
+  String get healthSyncFlowCollapseNote;
+
+  /// Issue #1004 (tranche 2): health-sync revocation/off disclosure.
+  ///
+  /// In en, this message translates to:
+  /// **'Turning sync off, or later revoking this phone\'s Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.'**
+  String get healthSyncRevocationNote;
+
+  /// Issue #1004 (tranche 2): health-sync import tile title naming the source.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from {source}'**
+  String healthSyncImportFrom(String source);
+
+  /// Issue #1004 (tranche 2): health-sync unbind tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop syncing to this phone'**
+  String get healthSyncUnbindAction;
+
+  /// Issue #1004 (tranche 2): import screen app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get importScreenTitle;
+
+  /// Issue #1004 (tranche 2): import screen file-pick body.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.'**
+  String get importScreenPickBody;
+
+  /// Issue #1004 (tranche 2): import screen file-pick button.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose file'**
+  String get importScreenChooseFileAction;
+
+  /// Issue #1004 (tranche 2): import screen preview confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Import'**
+  String get importScreenImportAction;
+
+  /// Issue #1004 (tranche 2): import screen preview cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get importScreenCancel;
+
+  /// Issue #1004 (tranche 2): import screen result done button.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get importScreenDone;
+
+  /// Issue #1004 (tranche 2): reminder settings empty state.
+  ///
+  /// In en, this message translates to:
+  /// **'Create a profile to set up reminders.'**
+  String get reminderNoProfile;
+
+  /// Issue #1004 (tranche 2): reminder settings lock-screen privacy note.
+  ///
+  /// In en, this message translates to:
+  /// **'Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.'**
+  String get reminderPrivacyNote;
+
+  /// Issue #1004 (tranche 2): reminder settings profile row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get reminderProfileLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings cadence row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Cadence'**
+  String get reminderCadenceLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings time row title.
+  ///
+  /// In en, this message translates to:
+  /// **'Time'**
+  String get reminderTimeLabel;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours'**
+  String get reminderQuietHoursTitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A reminder that lands inside the window waits until it ends'**
+  String get reminderQuietHoursSubtitle;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours start row.
+  ///
+  /// In en, this message translates to:
+  /// **'Starts'**
+  String get reminderQuietStart;
+
+  /// Issue #1004 (tranche 2): reminder settings quiet-hours end row.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends'**
+  String get reminderQuietEnd;
+
+  /// Issue #1004 (tranche 2): Your data export tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Export my data'**
+  String get yourDataExportTitle;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when signed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account\'s server data.'**
+  String get yourDataExportSubtitleSignedIn;
+
+  /// Issue #1004 (tranche 2): Your data export tile subtitle when local-only.
+  ///
+  /// In en, this message translates to:
+  /// **'Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.'**
+  String get yourDataExportSubtitleLocal;
+
+  /// Issue #1004 (tranche 2): Your data import tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Import from file'**
+  String get yourDataImportTitle;
+
+  /// Issue #1004 (tranche 2): Your data import tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Restore from a JSON backup, or bring in a Clue export (.zip).'**
+  String get yourDataImportSubtitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile and dialog title.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge imported data'**
+  String get yourDataPurgeTitle;
+
+  /// Issue #1004 (tranche 2): purge-imported-data tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove only the entries a specific import brought in — manually logged data is never touched.'**
+  String get yourDataPurgeSubtitle;
+
+  /// Issue #1004 (tranche 2): purge success snackbar naming the import source.
+  ///
+  /// In en, this message translates to:
+  /// **'Purged {source} data'**
+  String yourDataPurgedSnack(String source);
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog body.
+  ///
+  /// In en, this message translates to:
+  /// **'Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.'**
+  String get yourDataPurgeDialogBody;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog profile field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get yourDataPurgeProfileLabel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog cancel button.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get yourDataPurgeCancel;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog confirm button.
+  ///
+  /// In en, this message translates to:
+  /// **'Purge'**
+  String get yourDataPurgeConfirm;
+
+  /// Issue #1004 (tranche 2): purge-imported-data dialog import-source field label.
+  ///
+  /// In en, this message translates to:
+  /// **'Import source'**
+  String get yourDataImportSourceLabel;
 }
 
 class _AppLocalizationsDelegate

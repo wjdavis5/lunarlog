@@ -17,6 +17,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
 import 'package:provider/provider.dart';
@@ -173,6 +174,8 @@ Future<void> _pump(
   addTearDown(profiles.dispose);
   await tester.pumpWidget(
     MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: MultiProvider(
         providers: [
           Provider<ProfilesRepository>.value(value: profiles),
@@ -206,7 +209,11 @@ void main() {
 
     testWidgets('no ProfilesRepository provided: tile is absent', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: CsvExportTile())),
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(body: CsvExportTile()),
+        ),
       );
       await tester.pumpAndSettle();
       expect(key('csv-export-tile'), findsNothing);
@@ -284,6 +291,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: MultiProvider(
             providers: [
               Provider<ProfilesRepository>.value(value: profiles),

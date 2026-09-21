@@ -419,7 +419,7 @@ class _AccountSectionState extends State<AccountSection> {
         title: Text(
             user?.email == null
                 ? l10n.accountSectionSignedIn
-                : l10n.accountSectionSignedInAs(user!.email)),
+                : l10n.accountSectionSignedInAs(user!.email!)),
         subtitle: providers.isEmpty
             ? null
             : Text(l10n.accountSectionSignInMethods(

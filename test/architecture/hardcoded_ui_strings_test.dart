@@ -45,13 +45,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'hardcoded_ui_strings_scanner.dart';
 
-/// The named-argument identifiers the `lib/ui/sharing` tranche check
-/// (issue #1004) treats as user-facing copy. The global backlog scan leaves
-/// this empty; the directory-specific test opts in so `labelText:`,
-/// `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
+/// The named-argument identifiers the `lib/ui/` tranche checks
+/// (issue #1004) treat as user-facing copy. The global backlog scan leaves
+/// this empty; a directory-specific fully-migrated test opts in so
+/// `labelText:`, `hintText:`, `title:`, `subtitle:`, `label:`, `message:`,
 /// `semanticLabel:` and friends cannot hide a literal the positional
 /// `Text(`/`Tooltip(` scanner never looks at.
-const Set<String> _sharingNamedUiArgs = {
+const Set<String> _trancheNamedUiArgs = {
   'labelText',
   'hintText',
   'helperText',
@@ -71,28 +71,18 @@ const Set<String> _sharingNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 (tranche 1) burned `lib/ui/sharing/` down to zero, so those
-/// entries are gone and the recorded size dropped by the same amount:
-/// 355 (main, after the widget/health/#1003 work) - 134 = 221. Every
-/// remaining entry is another directory's backlog, owned by a different
-/// tranche.
-const int _initialAllowlistSize = 221;
+/// Issue #1004 burned three directories down to zero: `lib/ui/sharing/`
+/// (tranche 1, -134) and `lib/ui/account/` + `lib/ui/settings/`
+/// (tranche 2, -113). Those entries are gone and the recorded size dropped
+/// by the same amount: 355 (main, after the widget/health/#1003 work) -
+/// 134 - 113 = 108. Every remaining entry is another directory's backlog,
+/// owned by a different tranche.
+const int _initialAllowlistSize = 108;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
 /// #460). Keys are repo-relative POSIX-style paths.
 const Map<String, int> _allowedHardcodedUiLiterals = {
-  'lib/ui/account/account_mismatch_screen.dart': 9,
-  'lib/ui/account/account_section.dart': 27,
-  'lib/ui/account/delete_account_dialog.dart': 7,
-  'lib/ui/account/mfa_settings_section.dart': 1,
-  'lib/ui/account/mfa_step_up_dialog.dart': 1,
-  'lib/ui/account/password_recovery_screen.dart': 4,
-  'lib/ui/account/restore_error_screen.dart': 4,
-  'lib/ui/account/restoring_screen.dart': 1,
-  'lib/ui/account/sign_in_screen.dart': 9,
-  'lib/ui/account/upload_consent_screen.dart': 6,
-  'lib/ui/account/sync_status_tile.dart': 1,
   'lib/ui/care/care_notes_screen.dart': 14,
   'lib/ui/components/app_shell.dart': 2,
   'lib/ui/components/inline_error.dart': 1,
@@ -117,16 +107,51 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/profiles/profile_detail_screen.dart': 4,
   'lib/ui/profiles/profile_dialogs.dart': 9,
   'lib/ui/profiles/profile_picker_screen.dart': 5,
-  'lib/ui/settings/clinical_export_tile.dart': 2,
-  'lib/ui/settings/csv_export_tile.dart': 2,
-  'lib/ui/settings/export_range_picker_sheet.dart': 3,
-  'lib/ui/settings/health_sync_screen.dart': 10,
-  'lib/ui/settings/import_screen.dart': 4,
-  'lib/ui/settings/reminder_settings_screen.dart': 10,
-  'lib/ui/settings/your_data_section.dart': 12,
   'lib/ui/startup/fail_closed_screen.dart': 2,
   'lib/ui/web/dev_banner.dart': 8,
 };
+
+/// Scans [dir] with the stricter named-argument mode and asserts every
+/// user-facing literal has been moved to `AppLocalizations`, and that no
+/// file from the directory has been re-allowlisted (issue #1004: a
+/// migrated directory is held to a zero-literal bar, not merely a
+/// non-growing one).
+void _expectDirectoryFullyLocalized(String dir) {
+  final files = Directory(dir)
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))
+      .toList();
+  expect(files, isNotEmpty, reason: 'scanned zero files under $dir');
+
+  final problems = <String>[];
+  for (final file in files) {
+    final path = file.path.replaceAll('\\', '/');
+    final found = scanHardcodedUiStrings(
+      file.readAsStringSync(),
+      namedArgs: _trancheNamedUiArgs,
+    );
+    problems.addAll(found.map((h) => '$path:${h.line}: ${h.value}'));
+  }
+
+  final allowlistEntries = _allowedHardcodedUiLiterals.keys
+      .where((k) => k.startsWith('$dir/'))
+      .toList();
+  expect(
+    problems,
+    isEmpty,
+    reason: '$dir must read every user-facing literal from '
+        'AppLocalizations (lib/l10n/app_en.arb + `flutter gen-l10n`). '
+        'Problems:\n${problems.join('\n')}',
+  );
+  expect(
+    allowlistEntries,
+    isEmpty,
+    reason: '$dir is fully migrated — do not re-allowlist one of its '
+        'files; add an ARB key instead. Entries:\n'
+        '${allowlistEntries.join('\n')}',
+  );
+}
 
 void main() {
   test('allowlist size is recorded and matches its entries', () {
@@ -203,49 +228,24 @@ void main() {
     );
   });
 
-  // Issue #1004 (tranche 1): `lib/ui/sharing/` is fully migrated, so it is
-  // held to a stricter bar than the rest of `lib/ui/`. The global scan
-  // above only sees positional `Text(`/`Tooltip(` literals; this one also
-  // catches named-argument copy the scanner's default mode ignores
-  // (`labelText:`, `hintText:`, `title:`, `subtitle:`, `label:`,
-  // `message:`, `semanticLabel:`), and it forbids the directory from
-  // reappearing in the allowlist at all — so a new literal fails even if
-  // someone tries to re-allowlist the file instead of adding an ARB key.
+  // Issue #1004: every migrated directory is held to a stricter bar than
+  // the rest of `lib/ui/`. The global scan above only sees positional
+  // `Text(`/`Tooltip(` literals; these also catch named-argument copy the
+  // scanner's default mode ignores (`labelText:`, `hintText:`, `title:`,
+  // `subtitle:`, `label:`, `message:`, `semanticLabel:`), and they forbid
+  // the directory from reappearing in the allowlist at all — so a new
+  // literal fails even if someone tries to re-allowlist the file instead
+  // of adding an ARB key.
   test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)', () {
-    final files = Directory('lib/ui/sharing')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))
-        .toList();
-    expect(files, isNotEmpty, reason: 'scanned zero files under lib/ui/sharing');
+    _expectDirectoryFullyLocalized('lib/ui/sharing');
+  });
 
-    final problems = <String>[];
-    for (final file in files) {
-      final path = file.path.replaceAll('\\', '/');
-      final found = scanHardcodedUiStrings(
-        file.readAsStringSync(),
-        namedArgs: _sharingNamedUiArgs,
-      );
-      problems.addAll(found.map((h) => '$path:${h.line}: ${h.value}'));
-    }
+  test('lib/ui/account stays fully localized (issue #1004 tranche 2)', () {
+    _expectDirectoryFullyLocalized('lib/ui/account');
+  });
 
-    final sharingAllowlistEntries = _allowedHardcodedUiLiterals.keys
-        .where((k) => k.startsWith('lib/ui/sharing/'))
-        .toList();
-    expect(
-      problems,
-      isEmpty,
-      reason: 'lib/ui/sharing must read every user-facing literal from '
-          'AppLocalizations (lib/l10n/app_en.arb + `flutter gen-l10n`). '
-          'Problems:\n${problems.join('\n')}',
-    );
-    expect(
-      sharingAllowlistEntries,
-      isEmpty,
-      reason: 'lib/ui/sharing is fully migrated — do not re-allowlist a '
-          'sharing file; add an ARB key instead. Entries:\n'
-          '${sharingAllowlistEntries.join('\n')}',
-    );
+  test('lib/ui/settings stays fully localized (issue #1004 tranche 2)', () {
+    _expectDirectoryFullyLocalized('lib/ui/settings');
   });
 
   // Falsification coverage for the detector itself, same posture as

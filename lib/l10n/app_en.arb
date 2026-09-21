@@ -4885,5 +4885,236 @@
           "type": "String"
         }
       }
+    },
+    "settingsExportRangeTitle": "Export range",
+    "@settingsExportRangeTitle": {
+      "description": "Issue #1004 (tranche 2): export-range picker sheet title."
+    },
+    "settingsExportRangeCancel": "Cancel",
+    "@settingsExportRangeCancel": {
+      "description": "Issue #1004 (tranche 2): export-range picker cancel button."
+    },
+    "settingsExportRangeConfirm": "Export",
+    "@settingsExportRangeConfirm": {
+      "description": "Issue #1004 (tranche 2): export-range picker confirm button."
+    },
+    "settingsExportRangeStartDate": "Start date",
+    "@settingsExportRangeStartDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom start-date button."
+    },
+    "settingsExportRangeEndDate": "End date",
+    "@settingsExportRangeEndDate": {
+      "description": "Issue #1004 (tranche 2): export-range custom end-date button."
+    },
+    "settingsClinicalExportFhirTitle": "Export clinical summary (FHIR)",
+    "@settingsClinicalExportFhirTitle": {
+      "description": "Issue #1004 (tranche 2): FHIR clinical-export tile title."
+    },
+    "settingsCsvExportTitle": "Export as CSV",
+    "@settingsCsvExportTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export tile title."
+    },
+    "settingsCsvExportForTitle": "Export CSV data for",
+    "@settingsCsvExportForTitle": {
+      "description": "Issue #1004 (tranche 2): CSV export profile-chooser dialog title."
+    },
+    "healthSyncBindTitle": "Sync {name} to this phone?",
+    "@healthSyncBindTitle": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation dialog title.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindWriteBody": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "@healthSyncBindImportBody": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncBindCancel": "Cancel",
+    "@healthSyncBindCancel": {
+      "description": "Issue #1004 (tranche 2): health-sync bind confirmation cancel button."
+    },
+    "healthSyncSyncFailed": "Couldn't sync {name} — try again.",
+    "@healthSyncSyncFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync bind failure snackbar.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncImportFailed": "Couldn't finish the import. Please try again.",
+    "@healthSyncImportFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync import failure line."
+    },
+    "healthSyncLoadFailed": "Couldn't load profiles for health sync.",
+    "@healthSyncLoadFailed": {
+      "description": "Issue #1004 (tranche 2): health-sync profile-load failure line."
+    },
+    "healthSyncRetry": "Retry",
+    "@healthSyncRetry": {
+      "description": "Issue #1004 (tranche 2): health-sync retry button."
+    },
+    "healthSyncImporting": "Importing from {source}…",
+    "@healthSyncImporting": {
+      "description": "Issue #1004 (tranche 2): health-sync import progress line before the first page reports.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncFlowCollapseNote": "Super heavy days are written to the Health app as Heavy. Spotting logged inside a period is written as Light bleeding; spotting between periods is written as intermenstrual bleeding.",
+    "@healthSyncFlowCollapseNote": {
+      "description": "Issue #1004 (tranche 2): health-sync lossy flow-mapping disclosure."
+    },
+    "healthSyncRevocationNote": "Turning sync off, or later revoking this phone's Health app permission, leaves everything already written in the Health app in place. To remove it, delete it in the Health app itself.",
+    "@healthSyncRevocationNote": {
+      "description": "Issue #1004 (tranche 2): health-sync revocation/off disclosure."
+    },
+    "healthSyncImportFrom": "Import from {source}",
+    "@healthSyncImportFrom": {
+      "description": "Issue #1004 (tranche 2): health-sync import tile title naming the source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncUnbindAction": "Stop syncing to this phone",
+    "@healthSyncUnbindAction": {
+      "description": "Issue #1004 (tranche 2): health-sync unbind tile title."
+    },
+    "importScreenTitle": "Import from file",
+    "@importScreenTitle": {
+      "description": "Issue #1004 (tranche 2): import screen app-bar title."
+    },
+    "importScreenPickBody": "Choose a file: a JSON backup this app exported (Settings > Your data > Export my data), or the .zip Clue emailed you. Your data is added to this device — nothing already here is ever deleted.",
+    "@importScreenPickBody": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick body."
+    },
+    "importScreenChooseFileAction": "Choose file",
+    "@importScreenChooseFileAction": {
+      "description": "Issue #1004 (tranche 2): import screen file-pick button."
+    },
+    "importScreenImportAction": "Import",
+    "@importScreenImportAction": {
+      "description": "Issue #1004 (tranche 2): import screen preview confirm button."
+    },
+    "importScreenCancel": "Cancel",
+    "@importScreenCancel": {
+      "description": "Issue #1004 (tranche 2): import screen preview cancel button."
+    },
+    "importScreenDone": "Done",
+    "@importScreenDone": {
+      "description": "Issue #1004 (tranche 2): import screen result done button."
+    },
+    "reminderNoProfile": "Create a profile to set up reminders.",
+    "@reminderNoProfile": {
+      "description": "Issue #1004 (tranche 2): reminder settings empty state."
+    },
+    "reminderPrivacyNote": "Reminders never show a name, date, or any health detail on the lock screen. Logging from a notification waits until the app is unlocked.",
+    "@reminderPrivacyNote": {
+      "description": "Issue #1004 (tranche 2): reminder settings lock-screen privacy note."
+    },
+    "reminderProfileLabel": "Profile",
+    "@reminderProfileLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings profile row title."
+    },
+    "reminderCadenceLabel": "Cadence",
+    "@reminderCadenceLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings cadence row title."
+    },
+    "reminderTimeLabel": "Time",
+    "@reminderTimeLabel": {
+      "description": "Issue #1004 (tranche 2): reminder settings time row title."
+    },
+    "reminderQuietHoursTitle": "Quiet hours",
+    "@reminderQuietHoursTitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch title."
+    },
+    "reminderQuietHoursSubtitle": "A reminder that lands inside the window waits until it ends",
+    "@reminderQuietHoursSubtitle": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours switch subtitle."
+    },
+    "reminderQuietStart": "Starts",
+    "@reminderQuietStart": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours start row."
+    },
+    "reminderQuietEnd": "Ends",
+    "@reminderQuietEnd": {
+      "description": "Issue #1004 (tranche 2): reminder settings quiet-hours end row."
+    },
+    "yourDataExportTitle": "Export my data",
+    "@yourDataExportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data export tile title."
+    },
+    "yourDataExportSubtitleSignedIn": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file, including your account's server data.",
+    "@yourDataExportSubtitleSignedIn": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when signed in."
+    },
+    "yourDataExportSubtitleLocal": "Save your profiles, day entries, care notes, and visit-prep lists as a JSON file.",
+    "@yourDataExportSubtitleLocal": {
+      "description": "Issue #1004 (tranche 2): Your data export tile subtitle when local-only."
+    },
+    "yourDataImportTitle": "Import from file",
+    "@yourDataImportTitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile title."
+    },
+    "yourDataImportSubtitle": "Restore from a JSON backup, or bring in a Clue export (.zip).",
+    "@yourDataImportSubtitle": {
+      "description": "Issue #1004 (tranche 2): Your data import tile subtitle."
+    },
+    "yourDataPurgeTitle": "Purge imported data",
+    "@yourDataPurgeTitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile and dialog title."
+    },
+    "yourDataPurgeSubtitle": "Remove only the entries a specific import brought in — manually logged data is never touched.",
+    "@yourDataPurgeSubtitle": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data tile subtitle."
+    },
+    "yourDataPurgedSnack": "Purged {source} data",
+    "@yourDataPurgedSnack": {
+      "description": "Issue #1004 (tranche 2): purge success snackbar naming the import source.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "yourDataPurgeDialogBody": "Only entries and observations tagged with the chosen import source are removed. Manually logged data, and the profile itself, are never touched. If this purge leaves the profile with no entries at all, its saved cycle details (last period start and typical cycle length) are cleared too, since they may have come from the import.",
+    "@yourDataPurgeDialogBody": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog body."
+    },
+    "yourDataPurgeProfileLabel": "Profile",
+    "@yourDataPurgeProfileLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog profile field label."
+    },
+    "yourDataPurgeCancel": "Cancel",
+    "@yourDataPurgeCancel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog cancel button."
+    },
+    "yourDataPurgeConfirm": "Purge",
+    "@yourDataPurgeConfirm": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog confirm button."
+    },
+    "yourDataImportSourceLabel": "Import source",
+    "@yourDataImportSourceLabel": {
+      "description": "Issue #1004 (tranche 2): purge-imported-data dialog import-source field label."
     }
 }
