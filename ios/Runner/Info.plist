@@ -64,9 +64,9 @@
 	     (#781's owner decision) reverses the write-only posture this
 	     comment used to describe: the app now asks for a non-empty read
 	     set so the user-initiated "Import from Apple Health" action can
-	     read menstrual-flow samples. The read set carries ONLY
-	     menstrualFlow; Apple's four computed cycle-deviation types are
-	     never requested, read, or written (App Review 5.1.3).
+	     read menstrual-flow samples. Issue #799 adds Apple's four
+	     computed cycle-deviation types to the read set as a read-only
+	     insight; they are never written (App Review 5.1.3).
 
 	     BOTH strings are required, and NSHealthShareUsageDescription
 	     must NOT be removed (issue #766). #515 removed it as a
@@ -80,7 +80,7 @@
 	     describes the read the code performs, and PRIVACY.md carries the
 	     matching disclosure. -->
 	<key>NSHealthShareUsageDescription</key>
-	<string>lunarlog reads menstrual flow from Apple Health only when you choose to import it into the profile you have bound to this device, so you can bring in history you recorded elsewhere. Nothing is read automatically, and only menstrual-flow samples in the date range you import are read.</string>
+	<string>lunarlog reads menstrual flow and Apple's own computed cycle-deviation summaries from Apple Health only when you choose to import into the profile you have bound to this device, so you can bring in history you recorded elsewhere and see Apple's cycle observations. Nothing is read automatically, and only samples in the date range you import are read.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>lunarlog writes the bound profile's period, symptom, and mood data to Apple Health, only for the one profile you choose in Settings.</string>
 	<!-- Issue #207: required by image_picker_ios the moment a gallery source

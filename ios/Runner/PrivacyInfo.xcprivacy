@@ -69,11 +69,12 @@
 		flow and spotting records, written into the OS HealthKit store on
 		this device), and #217 the user-initiated menstrual-flow import
 		(#781's owner decision reversing the earlier write-only posture).
-		The import reads only menstrualFlow, only on an explicit Settings
-		action, only for the bound profile, and only over a bounded 30-day
-		window; samples this app itself wrote are excluded by source
-		filtering, and Apple's four computed cycle-deviation types are never
-		requested, read, or written. The import keeps data on the device:
+		The import reads menstrual flow, and (issue #799) Apple's four
+		computed cycle-deviation types as a read-only insight, only on an
+		explicit Settings action, only for the bound profile, and only
+		over a bounded window; samples this app itself wrote are excluded
+		by source filtering, and the four computed deviation types are
+		never written. The import keeps data on the device:
 		the app itself never transmits HealthKit data off-device and no
 		third party receives it through this feature, so neither direction
 		is a new *collected* data type for App Store Connect purposes and
