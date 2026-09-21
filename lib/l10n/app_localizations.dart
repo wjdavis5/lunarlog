@@ -5398,6 +5398,600 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 invitation expired} other{{count} invitations expired}}'**
   String sharingPendingInviteBadgeExpiredCount(int count);
 
+  /// Issue #1004 (tranche 3): the lock screen's nested MaterialApp title.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog'**
+  String get gateLockScreenAppTitle;
+
+  /// Issue #1004 (tranche 3): headline on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'lunarlog is locked'**
+  String get gateLockScreenTitle;
+
+  /// Issue #1004 (tranche 3): body under the locked headline.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything logged on this device stays protected. Unlock to continue.'**
+  String get gateLockScreenProtectedBody;
+
+  /// Issue #1004 (tranche 3): shown when the device-credential prompt was declined.
+  ///
+  /// In en, this message translates to:
+  /// **'Not unlocked. The profiles on this device stay hidden until the device credential is accepted.'**
+  String get gateLockScreenDeniedBody;
+
+  /// Issue #1004 (tranche 3): primary unlock action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlock'**
+  String get gateLockScreenUnlockButton;
+
+  /// Issue #1004 (tranche 3): body shown when no device credential is enrolled.
+  ///
+  /// In en, this message translates to:
+  /// **'This device has no screen lock set. lunarlog protects your family\'s data using your device\'s own screen lock, so it can\'t open until you add one — a passcode, PIN, pattern, or biometric lock all work.'**
+  String get gateLockScreenNoCredentialBody;
+
+  /// Issue #1004 (tranche 3): action opening the platform device settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open device settings'**
+  String get gateLockScreenOpenDeviceSettings;
+
+  /// Issue #1004 (tranche 3): retry action on the locked screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get gateLockScreenTryAgain;
+
+  /// Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Use device credential instead'**
+  String get gatePinAuthorizationUseDeviceCredential;
+
+  /// Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinAuthorizationCancel;
+
+  /// Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get gatePinSettingsRemoveCancel;
+
+  /// Issue #1004 (tranche 3): title of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Attach a screenshot?'**
+  String get feedbackAttachmentConsentTitle;
+
+  /// Issue #1004 (tranche 3): body of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.'**
+  String get feedbackAttachmentConsentBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get feedbackAttachmentConsentCancel;
+
+  /// Issue #1004 (tranche 3): continue action of the screenshot consent dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get feedbackAttachmentConsentContinue;
+
+  /// Issue #1004 (tranche 3): button that opens the screenshot consent flow.
+  ///
+  /// In en, this message translates to:
+  /// **'Add screenshot'**
+  String get feedbackAttachmentAddScreenshot;
+
+  /// Issue #1004 (tranche 3): app-bar title of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenTitle;
+
+  /// Issue #1004 (tranche 3): label above the feedback category chips.
+  ///
+  /// In en, this message translates to:
+  /// **'Category'**
+  String get feedbackScreenCategoryLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback message field.
+  ///
+  /// In en, this message translates to:
+  /// **'What happened?'**
+  String get feedbackScreenMessageLabel;
+
+  /// Issue #1004 (tranche 3): label of the feedback reply-email field.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply email'**
+  String get feedbackScreenReplyEmailLabel;
+
+  /// Issue #1004 (tranche 3): title of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Include diagnostics'**
+  String get feedbackScreenDiagnosticsTitle;
+
+  /// Issue #1004 (tranche 3): subtitle of the diagnostics toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'App version, OS, device model, and recent activity.'**
+  String get feedbackScreenDiagnosticsSubtitle;
+
+  /// Issue #1004 (tranche 3): toggle revealing the diagnostics preview.
+  ///
+  /// In en, this message translates to:
+  /// **'See what will be attached'**
+  String get feedbackScreenDiagnosticsPreview;
+
+  /// Issue #1004 (tranche 3): submit button of the feedback screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Send feedback'**
+  String get feedbackScreenSendButton;
+
+  /// Issue #1004 (tranche 3): validation error for an over-long feedback message.
+  ///
+  /// In en, this message translates to:
+  /// **'Message must be 4000 characters or fewer.'**
+  String get feedbackScreenMessageTooLong;
+
+  /// Issue #1004 (tranche 3): validation error for an invalid reply email.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid reply email address.'**
+  String get feedbackScreenReplyEmailInvalid;
+
+  /// Issue #1004 (tranche 3): confirmation shown after a feedback submission.
+  ///
+  /// In en, this message translates to:
+  /// **'Thanks — we\'ll get back to you at {email}.'**
+  String feedbackScreenThanks(String email);
+
+  /// Issue #1004 (tranche 3): app-bar title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Support history'**
+  String get supportHistoryTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'No feedback yet'**
+  String get supportHistoryEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the support history screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Reports you send from Settings appear here.'**
+  String get supportHistoryEmptyBody;
+
+  /// Issue #1004 (tranche 3): retry action after a support history load failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get supportHistoryRetry;
+
+  /// Issue #1004 (tranche 3): label of the reply field on a support ticket.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get supportHistoryReplyLabel;
+
+  /// Issue #1004 (tranche 3): send action on a support ticket reply.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get supportHistorySend;
+
+  /// Issue #1004 (tranche 3): unarchive action on an archived profile detail.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get profileDetailUnarchive;
+
+  /// Issue #1004 (tranche 3): label of the profile detail overview tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get profileDetailOverviewTab;
+
+  /// Issue #1004 (tranche 3): label of the profile detail calendar tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get profileDetailCalendarTab;
+
+  /// Issue #1004 (tranche 3): suffix appended to an archived profile's title.
+  ///
+  /// In en, this message translates to:
+  /// **' (archived)'**
+  String get profileDetailArchivedSuffix;
+
+  /// Issue #1004 (tranche 3): co-managed indicator chip label.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared · {count} guardians'**
+  String profileDetailSharedGuardians(int count);
+
+  /// Issue #1004 (tranche 3): app-bar title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Profiles'**
+  String get profilePickerTitle;
+
+  /// Issue #1004 (tranche 3): empty-state title of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'No profiles yet'**
+  String get profilePickerEmptyTitle;
+
+  /// Issue #1004 (tranche 3): empty-state body of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a profile to start tracking.'**
+  String get profilePickerEmptyBody;
+
+  /// Issue #1004 (tranche 3): empty-state primary action of the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profilePickerEmptyAddAction;
+
+  /// Issue #1004 (tranche 3): archived section header on the profile picker.
+  ///
+  /// In en, this message translates to:
+  /// **'Archived ({count})'**
+  String profilePickerArchivedHeader(int count);
+
+  /// Issue #1004 (tranche 3): profile row subtitle naming the creation date.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {date}'**
+  String profilePickerCreated(String date);
+
+  /// Issue #1004 (tranche 3): section header for owned profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'My profiles'**
+  String get profilePickerMyProfilesHeader;
+
+  /// Issue #1004 (tranche 3): section header for profiles shared with the operator.
+  ///
+  /// In en, this message translates to:
+  /// **'Shared with me'**
+  String get profilePickerSharedWithMeHeader;
+
+  /// Issue #1004 (tranche 3): profile row menu item opening Manage Guardians.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardians'**
+  String get profilePickerMenuGuardians;
+
+  /// Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchive;
+
+  /// Issue #1004 (tranche 3): derived minor status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as a minor (derived from birth year)'**
+  String get profileDialogCountsAsMinor;
+
+  /// Issue #1004 (tranche 3): derived adult status in the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Counts as an adult (derived from birth year)'**
+  String get profileDialogCountsAsAdult;
+
+  /// Issue #1004 (tranche 3): title of the create-profile dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Add profile'**
+  String get profileDialogAddTitle;
+
+  /// Issue #1004 (tranche 3): label of the optional birth-year field.
+  ///
+  /// In en, this message translates to:
+  /// **'Birth year (optional)'**
+  String get profileDialogBirthYearLabel;
+
+  /// Issue #1004 (tranche 3): empty option in the relationship dropdown.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get profileDialogRelationshipNone;
+
+  /// Issue #1004 (tranche 3): cancel action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileDialogCancel;
+
+  /// Issue #1004 (tranche 3): create action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get profileDialogCreate;
+
+  /// Issue #1004 (tranche 3): save action of the profile edit dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileDialogSave;
+
+  /// Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive {name}?'**
+  String profileArchiveConfirmTitle(String name);
+
+  /// Issue #1004 (tranche 3): body of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.'**
+  String get profileArchiveConfirmBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileArchiveConfirmCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get profileArchiveConfirmButton;
+
+  /// Issue #1004 (tranche 3): error shown when first-run profile creation fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create the profile. Please try again.'**
+  String get firstRunCreateError;
+
+  /// Issue #1004 (tranche 3): app-bar title of the care notes screen.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} Care'**
+  String careNotesTitle(String name);
+
+  /// Issue #1004 (tranche 3): read-only reason on an archived profile's care notes.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile is archived.'**
+  String get careNotesReadOnlyArchived;
+
+  /// Issue #1004 (tranche 3): section header of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'Care notes'**
+  String get careNotesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the care notes list.
+  ///
+  /// In en, this message translates to:
+  /// **'No care notes yet.'**
+  String get careNotesEmpty;
+
+  /// Issue #1004 (tranche 3): label of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a care note'**
+  String get careNotesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-care-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Standing notes for everyone caring for this profile'**
+  String get careNotesAddHint;
+
+  /// Issue #1004 (tranche 3): add-care-note action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add note'**
+  String get careNotesAddButton;
+
+  /// Issue #1004 (tranche 3): title of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this care note?'**
+  String get careNotesDeleteTitle;
+
+  /// Issue #1004 (tranche 3): body of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.'**
+  String get careNotesDeleteBody;
+
+  /// Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get careNotesDeleteCancel;
+
+  /// Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get careNotesDeleteConfirm;
+
+  /// Issue #1004 (tranche 3): lowercase attribution for the current operator.
+  ///
+  /// In en, this message translates to:
+  /// **'you'**
+  String get careNotesActorYou;
+
+  /// Issue #1004 (tranche 3): fallback attribution for an unknown guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get careNotesActorGuardian;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note save.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the care note.'**
+  String get careNotesSaveError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the prep item.'**
+  String get careNotesAddPrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed supply-item add.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not add the supply item.'**
+  String get careNotesAddSupplyError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item update.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the prep item.'**
+  String get careNotesUpdatePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed prep-item removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the prep item.'**
+  String get careNotesRemovePrepError;
+
+  /// Issue #1004 (tranche 3): error after a failed care-note removal.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not remove the care note.'**
+  String get careNotesRemoveNoteError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-checked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the checked items.'**
+  String get careNotesClearCheckedError;
+
+  /// Issue #1004 (tranche 3): error after a failed clear-stocked action.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not clear the stocked items.'**
+  String get careNotesClearStockedError;
+
+  /// Issue #1004 (tranche 3): section header of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'Visit prep'**
+  String get careVisitPrepSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the visit-prep checklist.
+  ///
+  /// In en, this message translates to:
+  /// **'No prep items yet.'**
+  String get careVisitPrepEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing checked visit-prep items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear checked ({count})'**
+  String careVisitPrepClearChecked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a prep item'**
+  String get careVisitPrepAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-prep-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'A question or to-bring for the next appointment'**
+  String get careVisitPrepAddHint;
+
+  /// Issue #1004 (tranche 3): add-prep-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add item'**
+  String get careVisitPrepAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a checked prep item.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked by'**
+  String get careVisitPrepCheckedVerb;
+
+  /// Issue #1004 (tranche 3): section header of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplies'**
+  String get careSuppliesSectionTitle;
+
+  /// Issue #1004 (tranche 3): empty state of the household supplies list.
+  ///
+  /// In en, this message translates to:
+  /// **'No supplies tracked yet.'**
+  String get careSuppliesEmpty;
+
+  /// Issue #1004 (tranche 3): action clearing stocked supply items.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear stocked ({count})'**
+  String careSuppliesClearStocked(int count);
+
+  /// Issue #1004 (tranche 3): label of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a supply item'**
+  String get careSuppliesAddLabel;
+
+  /// Issue #1004 (tranche 3): hint of the add-supply-item field.
+  ///
+  /// In en, this message translates to:
+  /// **'Something to keep stocked, e.g. liners'**
+  String get careSuppliesAddHint;
+
+  /// Issue #1004 (tranche 3): add-supply-item action.
+  ///
+  /// In en, this message translates to:
+  /// **'Add supply'**
+  String get careSuppliesAddButton;
+
+  /// Issue #1004 (tranche 3): attribution verb for a stocked supply item.
+  ///
+  /// In en, this message translates to:
+  /// **'Stocked by'**
+  String get careSuppliesStockedVerb;
+
+  /// Issue #1004 (tranche 3): restock nudge title naming the due date.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock before {date}'**
+  String careRestockBefore(String date);
+
+  /// Issue #1004 (tranche 3): label of the guardian-note field.
+  ///
+  /// In en, this message translates to:
+  /// **'Your note for this day'**
+  String get guardianNotesFieldLabel;
+
+  /// Issue #1004 (tranche 3): fallback author name for a guardian note.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian'**
+  String get guardianNotesGuardianFallback;
+
   /// Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831.
   ///
   /// In en, this message translates to:

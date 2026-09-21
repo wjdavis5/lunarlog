@@ -152,10 +152,11 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
           children: [
             Icon(Icons.forum_outlined, size: 48, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
-            Text('No feedback yet', style: theme.textTheme.titleMedium),
+            Text(AppLocalizations.of(context).supportHistoryEmptyTitle,
+                style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              'Reports you send from Settings appear here.',
+              AppLocalizations.of(context).supportHistoryEmptyBody,
               style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
@@ -171,7 +172,7 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
             TextButton(
               key: const ValueKey('support-history-retry'),
               onPressed: _load,
-              child: const Text('Retry'),
+              child: Text(AppLocalizations.of(context).supportHistoryRetry),
             ),
           ],
         ),
@@ -235,14 +236,16 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
               onSubmitted: (_) {
                 if (!sending) unawaited(_sendReply(ticket));
               },
-              decoration: const InputDecoration(labelText: 'Reply'),
+              decoration: InputDecoration(
+                  labelText:
+                      AppLocalizations.of(context).supportHistoryReplyLabel),
             ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 key: ValueKey('support-history-reply-send-${ticket.id}'),
                 onPressed: sending ? null : () => _sendReply(ticket),
-                child: const Text('Send'),
+                child: Text(AppLocalizations.of(context).supportHistorySend),
               ),
             ),
           ],
@@ -256,7 +259,7 @@ class _SupportHistoryScreenState extends State<SupportHistoryScreen> {
     final theme = Theme.of(context);
     final tickets = _tickets;
     return Scaffold(
-      appBar: AppBar(title: const Text('Support history')),
+      appBar: AppBar(title: Text(AppLocalizations.of(context).supportHistoryTitle)),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _error != null

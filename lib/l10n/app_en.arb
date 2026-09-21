@@ -4379,6 +4379,447 @@
         }
       }
     },
+    "gateLockScreenAppTitle": "lunarlog",
+    "@gateLockScreenAppTitle": {
+      "description": "Issue #1004 (tranche 3): the lock screen's nested MaterialApp title."
+    },
+    "gateLockScreenTitle": "lunarlog is locked",
+    "@gateLockScreenTitle": {
+      "description": "Issue #1004 (tranche 3): headline on the locked screen."
+    },
+    "gateLockScreenProtectedBody": "Everything logged on this device stays protected. Unlock to continue.",
+    "@gateLockScreenProtectedBody": {
+      "description": "Issue #1004 (tranche 3): body under the locked headline."
+    },
+    "gateLockScreenDeniedBody": "Not unlocked. The profiles on this device stay hidden until the device credential is accepted.",
+    "@gateLockScreenDeniedBody": {
+      "description": "Issue #1004 (tranche 3): shown when the device-credential prompt was declined."
+    },
+    "gateLockScreenUnlockButton": "Unlock",
+    "@gateLockScreenUnlockButton": {
+      "description": "Issue #1004 (tranche 3): primary unlock action on the locked screen."
+    },
+    "gateLockScreenNoCredentialBody": "This device has no screen lock set. lunarlog protects your family's data using your device's own screen lock, so it can't open until you add one — a passcode, PIN, pattern, or biometric lock all work.",
+    "@gateLockScreenNoCredentialBody": {
+      "description": "Issue #1004 (tranche 3): body shown when no device credential is enrolled."
+    },
+    "gateLockScreenOpenDeviceSettings": "Open device settings",
+    "@gateLockScreenOpenDeviceSettings": {
+      "description": "Issue #1004 (tranche 3): action opening the platform device settings."
+    },
+    "gateLockScreenTryAgain": "Try again",
+    "@gateLockScreenTryAgain": {
+      "description": "Issue #1004 (tranche 3): retry action on the locked screen."
+    },
+    "gatePinAuthorizationUseDeviceCredential": "Use device credential instead",
+    "@gatePinAuthorizationUseDeviceCredential": {
+      "description": "Issue #1004 (tranche 3): alternate action in the current-PIN authorization dialog."
+    },
+    "gatePinAuthorizationCancel": "Cancel",
+    "@gatePinAuthorizationCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the current-PIN authorization dialog."
+    },
+    "gatePinSettingsRemoveCancel": "Cancel",
+    "@gatePinSettingsRemoveCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action in the turn-off-PIN confirmation dialog."
+    },
+    "feedbackAttachmentConsentTitle": "Attach a screenshot?",
+    "@feedbackAttachmentConsentTitle": {
+      "description": "Issue #1004 (tranche 3): title of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentBody": "Screenshots of this app usually contain cycle data for a family member. Only attach one if it helps explain the issue.",
+    "@feedbackAttachmentConsentBody": {
+      "description": "Issue #1004 (tranche 3): body of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentCancel": "Cancel",
+    "@feedbackAttachmentConsentCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentConsentContinue": "Continue",
+    "@feedbackAttachmentConsentContinue": {
+      "description": "Issue #1004 (tranche 3): continue action of the screenshot consent dialog."
+    },
+    "feedbackAttachmentAddScreenshot": "Add screenshot",
+    "@feedbackAttachmentAddScreenshot": {
+      "description": "Issue #1004 (tranche 3): button that opens the screenshot consent flow."
+    },
+    "feedbackScreenTitle": "Send feedback",
+    "@feedbackScreenTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the feedback screen."
+    },
+    "feedbackScreenCategoryLabel": "Category",
+    "@feedbackScreenCategoryLabel": {
+      "description": "Issue #1004 (tranche 3): label above the feedback category chips."
+    },
+    "feedbackScreenMessageLabel": "What happened?",
+    "@feedbackScreenMessageLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback message field."
+    },
+    "feedbackScreenReplyEmailLabel": "Reply email",
+    "@feedbackScreenReplyEmailLabel": {
+      "description": "Issue #1004 (tranche 3): label of the feedback reply-email field."
+    },
+    "feedbackScreenDiagnosticsTitle": "Include diagnostics",
+    "@feedbackScreenDiagnosticsTitle": {
+      "description": "Issue #1004 (tranche 3): title of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsSubtitle": "App version, OS, device model, and recent activity.",
+    "@feedbackScreenDiagnosticsSubtitle": {
+      "description": "Issue #1004 (tranche 3): subtitle of the diagnostics toggle."
+    },
+    "feedbackScreenDiagnosticsPreview": "See what will be attached",
+    "@feedbackScreenDiagnosticsPreview": {
+      "description": "Issue #1004 (tranche 3): toggle revealing the diagnostics preview."
+    },
+    "feedbackScreenSendButton": "Send feedback",
+    "@feedbackScreenSendButton": {
+      "description": "Issue #1004 (tranche 3): submit button of the feedback screen."
+    },
+    "feedbackScreenMessageTooLong": "Message must be 4000 characters or fewer.",
+    "@feedbackScreenMessageTooLong": {
+      "description": "Issue #1004 (tranche 3): validation error for an over-long feedback message."
+    },
+    "feedbackScreenReplyEmailInvalid": "Enter a valid reply email address.",
+    "@feedbackScreenReplyEmailInvalid": {
+      "description": "Issue #1004 (tranche 3): validation error for an invalid reply email."
+    },
+    "feedbackScreenThanks": "Thanks — we'll get back to you at {email}.",
+    "@feedbackScreenThanks": {
+      "description": "Issue #1004 (tranche 3): confirmation shown after a feedback submission.",
+      "placeholders": {
+        "email": {
+          "type": "String"
+        }
+      }
+    },
+    "supportHistoryTitle": "Support history",
+    "@supportHistoryTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the support history screen."
+    },
+    "supportHistoryEmptyTitle": "No feedback yet",
+    "@supportHistoryEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the support history screen."
+    },
+    "supportHistoryEmptyBody": "Reports you send from Settings appear here.",
+    "@supportHistoryEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the support history screen."
+    },
+    "supportHistoryRetry": "Retry",
+    "@supportHistoryRetry": {
+      "description": "Issue #1004 (tranche 3): retry action after a support history load failure."
+    },
+    "supportHistoryReplyLabel": "Reply",
+    "@supportHistoryReplyLabel": {
+      "description": "Issue #1004 (tranche 3): label of the reply field on a support ticket."
+    },
+    "supportHistorySend": "Send",
+    "@supportHistorySend": {
+      "description": "Issue #1004 (tranche 3): send action on a support ticket reply."
+    },
+    "profileDetailUnarchive": "Unarchive",
+    "@profileDetailUnarchive": {
+      "description": "Issue #1004 (tranche 3): unarchive action on an archived profile detail."
+    },
+    "profileDetailOverviewTab": "Overview",
+    "@profileDetailOverviewTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail overview tab."
+    },
+    "profileDetailCalendarTab": "Calendar",
+    "@profileDetailCalendarTab": {
+      "description": "Issue #1004 (tranche 3): label of the profile detail calendar tab."
+    },
+    "profileDetailArchivedSuffix": " (archived)",
+    "@profileDetailArchivedSuffix": {
+      "description": "Issue #1004 (tranche 3): suffix appended to an archived profile's title."
+    },
+    "profileDetailSharedGuardians": "Shared · {count} guardians",
+    "@profileDetailSharedGuardians": {
+      "description": "Issue #1004 (tranche 3): co-managed indicator chip label.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerTitle": "Profiles",
+    "@profilePickerTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the profile picker."
+    },
+    "profilePickerEmptyTitle": "No profiles yet",
+    "@profilePickerEmptyTitle": {
+      "description": "Issue #1004 (tranche 3): empty-state title of the profile picker."
+    },
+    "profilePickerEmptyBody": "Add a profile to start tracking.",
+    "@profilePickerEmptyBody": {
+      "description": "Issue #1004 (tranche 3): empty-state body of the profile picker."
+    },
+    "profilePickerEmptyAddAction": "Add profile",
+    "@profilePickerEmptyAddAction": {
+      "description": "Issue #1004 (tranche 3): empty-state primary action of the profile picker."
+    },
+    "profilePickerArchivedHeader": "Archived ({count})",
+    "@profilePickerArchivedHeader": {
+      "description": "Issue #1004 (tranche 3): archived section header on the profile picker.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "profilePickerCreated": "Created {date}",
+    "@profilePickerCreated": {
+      "description": "Issue #1004 (tranche 3): profile row subtitle naming the creation date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "profilePickerMyProfilesHeader": "My profiles",
+    "@profilePickerMyProfilesHeader": {
+      "description": "Issue #1004 (tranche 3): section header for owned profiles."
+    },
+    "profilePickerSharedWithMeHeader": "Shared with me",
+    "@profilePickerSharedWithMeHeader": {
+      "description": "Issue #1004 (tranche 3): section header for profiles shared with the operator."
+    },
+    "profilePickerMenuGuardians": "Guardians",
+    "@profilePickerMenuGuardians": {
+      "description": "Issue #1004 (tranche 3): profile row menu item opening Manage Guardians."
+    },
+    "profileArchive": "Archive",
+    "@profileArchive": {
+      "description": "Issue #1004 (tranche 3): archive action on a profile row and its confirmation dialog."
+    },
+    "profileDialogCountsAsMinor": "Counts as a minor (derived from birth year)",
+    "@profileDialogCountsAsMinor": {
+      "description": "Issue #1004 (tranche 3): derived minor status in the profile edit dialog."
+    },
+    "profileDialogCountsAsAdult": "Counts as an adult (derived from birth year)",
+    "@profileDialogCountsAsAdult": {
+      "description": "Issue #1004 (tranche 3): derived adult status in the profile edit dialog."
+    },
+    "profileDialogAddTitle": "Add profile",
+    "@profileDialogAddTitle": {
+      "description": "Issue #1004 (tranche 3): title of the create-profile dialog."
+    },
+    "profileDialogBirthYearLabel": "Birth year (optional)",
+    "@profileDialogBirthYearLabel": {
+      "description": "Issue #1004 (tranche 3): label of the optional birth-year field."
+    },
+    "profileDialogRelationshipNone": "None",
+    "@profileDialogRelationshipNone": {
+      "description": "Issue #1004 (tranche 3): empty option in the relationship dropdown."
+    },
+    "profileDialogCancel": "Cancel",
+    "@profileDialogCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the profile edit dialog."
+    },
+    "profileDialogCreate": "Create",
+    "@profileDialogCreate": {
+      "description": "Issue #1004 (tranche 3): create action of the profile edit dialog."
+    },
+    "profileDialogSave": "Save",
+    "@profileDialogSave": {
+      "description": "Issue #1004 (tranche 3): save action of the profile edit dialog."
+    },
+    "profileArchiveConfirmTitle": "Archive {name}?",
+    "@profileArchiveConfirmTitle": {
+      "description": "Issue #1004 (tranche 3): title of the archive-profile confirmation dialog.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "profileArchiveConfirmBody": "The profile moves to the archived list and out of everyday use. Its history stays on this device and can be restored at any time.",
+    "@profileArchiveConfirmBody": {
+      "description": "Issue #1004 (tranche 3): body of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmCancel": "Cancel",
+    "@profileArchiveConfirmCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the archive-profile confirmation dialog."
+    },
+    "profileArchiveConfirmButton": "Archive",
+    "@profileArchiveConfirmButton": {
+      "description": "Issue #1004 (tranche 3): confirm action of the archive-profile confirmation dialog."
+    },
+    "firstRunCreateError": "Could not create the profile. Please try again.",
+    "@firstRunCreateError": {
+      "description": "Issue #1004 (tranche 3): error shown when first-run profile creation fails."
+    },
+    "careNotesTitle": "{name} Care",
+    "@careNotesTitle": {
+      "description": "Issue #1004 (tranche 3): app-bar title of the care notes screen.",
+      "placeholders": {
+        "name": {
+          "type": "String"
+        }
+      }
+    },
+    "careNotesReadOnlyArchived": "This profile is archived.",
+    "@careNotesReadOnlyArchived": {
+      "description": "Issue #1004 (tranche 3): read-only reason on an archived profile's care notes."
+    },
+    "careNotesSectionTitle": "Care notes",
+    "@careNotesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the care notes list."
+    },
+    "careNotesEmpty": "No care notes yet.",
+    "@careNotesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the care notes list."
+    },
+    "careNotesAddLabel": "Add a care note",
+    "@careNotesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-care-note field."
+    },
+    "careNotesAddHint": "Standing notes for everyone caring for this profile",
+    "@careNotesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-care-note field."
+    },
+    "careNotesAddButton": "Add note",
+    "@careNotesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-care-note action."
+    },
+    "careNotesDeleteTitle": "Delete this care note?",
+    "@careNotesDeleteTitle": {
+      "description": "Issue #1004 (tranche 3): title of the delete-care-note confirmation."
+    },
+    "careNotesDeleteBody": "Every guardian with access to this profile can see this note. Deleting it removes it for everyone and cannot be undone.",
+    "@careNotesDeleteBody": {
+      "description": "Issue #1004 (tranche 3): body of the delete-care-note confirmation."
+    },
+    "careNotesDeleteCancel": "Cancel",
+    "@careNotesDeleteCancel": {
+      "description": "Issue #1004 (tranche 3): cancel action of the delete-care-note confirmation."
+    },
+    "careNotesDeleteConfirm": "Delete",
+    "@careNotesDeleteConfirm": {
+      "description": "Issue #1004 (tranche 3): confirm action of the delete-care-note confirmation."
+    },
+    "careNotesActorYou": "you",
+    "@careNotesActorYou": {
+      "description": "Issue #1004 (tranche 3): lowercase attribution for the current operator."
+    },
+    "careNotesActorGuardian": "Guardian",
+    "@careNotesActorGuardian": {
+      "description": "Issue #1004 (tranche 3): fallback attribution for an unknown guardian."
+    },
+    "careNotesSaveError": "Could not save the care note.",
+    "@careNotesSaveError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note save."
+    },
+    "careNotesAddPrepError": "Could not add the prep item.",
+    "@careNotesAddPrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item add."
+    },
+    "careNotesAddSupplyError": "Could not add the supply item.",
+    "@careNotesAddSupplyError": {
+      "description": "Issue #1004 (tranche 3): error after a failed supply-item add."
+    },
+    "careNotesUpdatePrepError": "Could not update the prep item.",
+    "@careNotesUpdatePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item update."
+    },
+    "careNotesRemovePrepError": "Could not remove the prep item.",
+    "@careNotesRemovePrepError": {
+      "description": "Issue #1004 (tranche 3): error after a failed prep-item removal."
+    },
+    "careNotesRemoveNoteError": "Could not remove the care note.",
+    "@careNotesRemoveNoteError": {
+      "description": "Issue #1004 (tranche 3): error after a failed care-note removal."
+    },
+    "careNotesClearCheckedError": "Could not clear the checked items.",
+    "@careNotesClearCheckedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-checked action."
+    },
+    "careNotesClearStockedError": "Could not clear the stocked items.",
+    "@careNotesClearStockedError": {
+      "description": "Issue #1004 (tranche 3): error after a failed clear-stocked action."
+    },
+    "careVisitPrepSectionTitle": "Visit prep",
+    "@careVisitPrepSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the visit-prep checklist."
+    },
+    "careVisitPrepEmpty": "No prep items yet.",
+    "@careVisitPrepEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the visit-prep checklist."
+    },
+    "careVisitPrepClearChecked": "Clear checked ({count})",
+    "@careVisitPrepClearChecked": {
+      "description": "Issue #1004 (tranche 3): action clearing checked visit-prep items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careVisitPrepAddLabel": "Add a prep item",
+    "@careVisitPrepAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-prep-item field."
+    },
+    "careVisitPrepAddHint": "A question or to-bring for the next appointment",
+    "@careVisitPrepAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-prep-item field."
+    },
+    "careVisitPrepAddButton": "Add item",
+    "@careVisitPrepAddButton": {
+      "description": "Issue #1004 (tranche 3): add-prep-item action."
+    },
+    "careVisitPrepCheckedVerb": "Checked by",
+    "@careVisitPrepCheckedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a checked prep item."
+    },
+    "careSuppliesSectionTitle": "Supplies",
+    "@careSuppliesSectionTitle": {
+      "description": "Issue #1004 (tranche 3): section header of the household supplies list."
+    },
+    "careSuppliesEmpty": "No supplies tracked yet.",
+    "@careSuppliesEmpty": {
+      "description": "Issue #1004 (tranche 3): empty state of the household supplies list."
+    },
+    "careSuppliesClearStocked": "Clear stocked ({count})",
+    "@careSuppliesClearStocked": {
+      "description": "Issue #1004 (tranche 3): action clearing stocked supply items.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "careSuppliesAddLabel": "Add a supply item",
+    "@careSuppliesAddLabel": {
+      "description": "Issue #1004 (tranche 3): label of the add-supply-item field."
+    },
+    "careSuppliesAddHint": "Something to keep stocked, e.g. liners",
+    "@careSuppliesAddHint": {
+      "description": "Issue #1004 (tranche 3): hint of the add-supply-item field."
+    },
+    "careSuppliesAddButton": "Add supply",
+    "@careSuppliesAddButton": {
+      "description": "Issue #1004 (tranche 3): add-supply-item action."
+    },
+    "careSuppliesStockedVerb": "Stocked by",
+    "@careSuppliesStockedVerb": {
+      "description": "Issue #1004 (tranche 3): attribution verb for a stocked supply item."
+    },
+    "careRestockBefore": "Restock before {date}",
+    "@careRestockBefore": {
+      "description": "Issue #1004 (tranche 3): restock nudge title naming the due date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "guardianNotesFieldLabel": "Your note for this day",
+    "@guardianNotesFieldLabel": {
+      "description": "Issue #1004 (tranche 3): label of the guardian-note field."
+    },
+    "guardianNotesGuardianFallback": "Guardian",
+    "@guardianNotesGuardianFallback": {
+      "description": "Issue #1004 (tranche 3): fallback author name for a guardian note."
+    },
   "webBannerDevCopy": "Development build — not for real data.",
   "@webBannerDevCopy": {
     "description": "Web banner for a build with sync off (LUNARLOG_WEB_SYNC unset): no account, no token, not for real data. Epic #831."
