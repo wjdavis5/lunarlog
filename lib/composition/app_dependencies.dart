@@ -27,6 +27,7 @@ import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart'
 import 'package:lunarlog/data/feedback/image_picker_attachment_source.dart';
 import 'package:lunarlog/data/feedback/supabase_feedback_service.dart';
 import 'package:lunarlog/data/health/health_channel.dart';
+import 'package:lunarlog/data/health/health_deviation_service.dart';
 import 'package:lunarlog/data/health/health_flow_write_coordinator.dart';
 import 'package:lunarlog/data/health/health_flow_write_service.dart';
 import 'package:lunarlog/data/health/health_import_service.dart';
@@ -102,6 +103,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/health/health_flow_write_coordinator.dart';
+import 'package:lunarlog/domain/health/health_deviation.dart';
 import 'package:lunarlog/domain/health/health_import.dart';
 import 'package:lunarlog/domain/health/health_platform.dart';
 import 'package:lunarlog/domain/health/health_sync_binding.dart';
@@ -673,6 +675,38 @@ HealthImportRunner? buildHealthImportRunner({
     observations: observations,
     guardiansForProfile: guardiansForProfile,
     signedInUserId: signedInUserId,
+  );
+}
+
+/// Constructs the device-local computed-cycle-deviation insight service
+/// (Issue #799, deferred from #217), or null when health sync is gated off —
+/// the same gate and wired platforms as [buildHealthImportRunner]. It shares
+/// that runner's read port, so the "Apple Health noticed…" snapshot is read
+/// over exactly the same guarded channel; it never gains a write surface.
+HealthDeviationInsights? buildHealthDeviationInsights({
+  required SettingsStore settings,
+  required ProfilesRepository profiles,
+  required Future<List<ProfileGuardian>> Function(String profileId)
+  guardiansForProfile,
+  required String? Function() signedInUserId,
+  required bool minorBindingAllowed,
+}) {
+  if (!AppConfig.hasHealthSync) return null;
+  final importPlatform = _healthImportPlatforms[defaultTargetPlatform];
+  if (kIsWeb || importPlatform == null) return null;
+  final binding = HealthSyncBinding(settings);
+  return LocalHealthDeviationService(
+    source: createHealthImportSource(
+      defaultTargetPlatform,
+      binding: binding,
+      minorBindingAllowed: minorBindingAllowed,
+    ),
+    binding: binding,
+    minorBindingAllowed: minorBindingAllowed,
+    profiles: profiles,
+    guardiansForProfile: guardiansForProfile,
+    signedInUserId: signedInUserId,
+    settings: settings,
   );
 }
 

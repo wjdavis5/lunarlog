@@ -244,6 +244,42 @@ class HealthDeviationSnapshot {
       };
 }
 
+/// How far back the deviation read looks. Apple's own cycle-detection
+/// algorithm needs several months of history before it will emit a
+/// deviation, so a 30-day window would almost never return one; six months
+/// is the bounded read the overview insight needs without turning the query
+/// into a full-history scan (the #156/A3-16 posture: bounded, never
+/// background).
+const int kHealthDeviationWindowDays = 180;
+
+/// The device-local insight surface the overview reads (Issue #799). Kept
+/// separate from [HealthImportSource] (the raw read port) so the UI depends
+/// only on what it renders: a persisted snapshot, a dismissal latch, and an
+/// explicit refresh the import flow calls after a pass. Implementations are
+/// device-local and never sync.
+abstract interface class HealthDeviationInsights {
+  /// The snapshot to render for [profileId], or null when there is nothing
+  /// to show — no snapshot was ever taken, it is empty, the profile is not
+  /// the one currently bound to this device's health store, or the operator
+  /// dismissed exactly this snapshot. **This is the import gate**: a
+  /// snapshot was only ever written after the binding guard allowed a read,
+  /// and requiring `HealthSyncBinding.boundProfileId` to still equal
+  /// [profileId] keeps the card off a profile the gate no longer covers.
+  Future<HealthDeviationSnapshot?> visibleSnapshot(String profileId);
+
+  /// Records that the operator dismissed [snapshot] on this device. The
+  /// same fingerprint stays hidden; a later, different snapshot shows again.
+  Future<void> dismiss(String profileId, HealthDeviationSnapshot snapshot);
+
+  /// Reads the currently bound profile's deviations from the OS health
+  /// store and persists the result as its snapshot. Best-effort by
+  /// contract: a missing binding, a denied guard, or a platform without a
+  /// deviation concept yields an empty snapshot rather than an error, so
+  /// this never fails an import pass it is appended to. Returns the
+  /// snapshot that was persisted.
+  Future<HealthDeviationSnapshot> refresh();
+}
+
 /// The [SettingsStore] key a profile's deviation snapshot lives under. A
 /// device-local display cache, never synced.
 String healthDeviationSnapshotSettingKey(String profileId) =>

@@ -2438,4 +2438,42 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountReauthFailed => 'Couldn\'t confirm it\'s you — try again';
+
+  @override
+  String get healthDeviationCardTitle => 'Apple Health noticed…';
+
+  @override
+  String get healthDeviationCardSubtitle =>
+      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.';
+
+  @override
+  String get healthDeviationDismiss => 'Dismiss';
+
+  @override
+  String get healthDeviationKindIrregular => 'irregular cycles';
+
+  @override
+  String get healthDeviationKindInfrequent => 'infrequent cycles';
+
+  @override
+  String get healthDeviationKindProlonged => 'prolonged periods';
+
+  @override
+  String get healthDeviationKindPersistentIntermenstrualBleeding =>
+      'bleeding between periods';
+
+  @override
+  String healthDeviationLine(String kind, String range) {
+    return 'Possible $kind ($range)';
+  }
+
+  @override
+  String healthDeviationRange(String start, String end) {
+    return '$start – $end';
+  }
+
+  @override
+  String healthDeviationRangeSingle(String date) {
+    return '$date';
+  }
 }
