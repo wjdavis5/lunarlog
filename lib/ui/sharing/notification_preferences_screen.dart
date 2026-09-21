@@ -128,23 +128,22 @@ class _NotificationPreferencesScreenState
   Future<void> _retrySave() => _apply((p) => p);
 
   Future<void> _confirmSaveWithoutTimeZone() async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Save without time zone?'),
-        content: const Text(
-          'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?',
-        ),
+        title: Text(l10n.sharingNotificationPreferencesSaveWithoutTzTitle),
+        content: Text(l10n.sharingNotificationPreferencesSaveWithoutTzBody),
         actions: [
           TextButton(
             key: const ValueKey('timezone-fallback-cancel'),
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.sharingNotificationPreferencesCancel),
           ),
           FilledButton(
             key: const ValueKey('timezone-fallback-confirm'),
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Save without time zone'),
+            child: Text(l10n.sharingNotificationPreferencesSaveWithoutTz),
           ),
         ],
       ),
@@ -269,9 +268,10 @@ class _NotificationPreferencesScreenState
         _cadenceTile(
           tileKey: 'log-cadence-tile',
           dropdownKey: 'log-cadence-dropdown',
-          title: 'Log alert delivery',
-          subtitle: 'Immediate, once a day, or off - extra alerts never '
-              'exceed a daily limit and roll into the digest',
+          title: AppLocalizations.of(context)
+              .sharingNotificationPreferencesLogDeliveryTitle,
+          subtitle: AppLocalizations.of(context)
+              .sharingNotificationPreferencesLogDeliverySubtitle,
           value: prefs.logCadence,
           enabled: prefs.alertOnLog,
           onSelect: (value) =>
@@ -280,7 +280,8 @@ class _NotificationPreferencesScreenState
         _cadenceTile(
           tileKey: 'cycle-start-cadence-tile',
           dropdownKey: 'cycle-start-cadence-dropdown',
-          title: 'Cycle-start alert delivery',
+          title: AppLocalizations.of(context)
+              .sharingNotificationPreferencesCycleStartDelivery,
           value: prefs.cycleStartCadence,
           enabled: prefs.alertOnLog && prefs.alertOnCycleStartOnly,
           onSelect: (value) =>
@@ -289,7 +290,8 @@ class _NotificationPreferencesScreenState
         _cadenceTile(
           tileKey: 'high-severity-cadence-tile',
           dropdownKey: 'high-severity-cadence-dropdown',
-          title: 'High-severity alert delivery',
+          title: AppLocalizations.of(context)
+              .sharingNotificationPreferencesHighSeverityDelivery,
           value: prefs.highSeverityCadence,
           enabled: prefs.alertOnLog && prefs.alertOnHighSeverity,
           onSelect: (value) =>
@@ -297,9 +299,14 @@ class _NotificationPreferencesScreenState
         ),
         ListTile(
           key: const ValueKey('digest-time-tile'),
-          title: const Text('Digest time'),
-          subtitle:
-              const Text('When daily digests are delivered in your time zone'),
+          title: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesDigestTimeTitle,
+          ),
+          subtitle: Text(
+            AppLocalizations.of(context)
+                .sharingNotificationPreferencesDigestTimeSubtitle,
+          ),
           trailing: Text(_digestTimeLabel(prefs)),
           onTap: _pickDigestTime,
         ),
@@ -309,7 +316,9 @@ class _NotificationPreferencesScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(
+        title: Text(AppLocalizations.of(context).sharingNotificationPreferencesTitle),
+      ),
       body: _buildBody(context),
     );
   }
@@ -324,7 +333,8 @@ class _NotificationPreferencesScreenState
       return Center(
         child: InlineError(
           key: const ValueKey('load-error'),
-          message: 'Could not load your notification settings.',
+          message: AppLocalizations.of(context)
+              .sharingNotificationPreferencesLoadError,
           onRetry: _retryLoad,
         ),
       );
@@ -337,27 +347,30 @@ class _NotificationPreferencesScreenState
 
   Widget _buildSettingsList(BuildContext context) {
     final prefs = _prefs;
+    final l10n = AppLocalizations.of(context);
     return ListView(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
             key: const ValueKey('discretion-copy'),
-            'Alerts never show what was logged - just a generic '
-            'reminder to open lunarlog.',
+            l10n.sharingNotificationPreferencesDiscretion,
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
         SwitchListTile(
           key: const ValueKey('alert-on-log-toggle'),
-          title:
-              Text('Notify me when ${widget.profile.displayName} logs an entry'),
+          title: Text(
+            l10n.sharingNotificationPreferencesNotifyOnLog(
+              widget.profile.displayName,
+            ),
+          ),
           value: prefs.alertOnLog,
           onChanged: _setAlertOnLog,
         ),
         SwitchListTile(
           key: const ValueKey('alert-cycle-start-only-toggle'),
-          title: const Text('Only notify on cycle start'),
+          title: Text(l10n.sharingNotificationPreferencesCycleStartOnly),
           value: prefs.alertOnLog && prefs.alertOnCycleStartOnly,
           onChanged: prefs.alertOnLog
               ? (value) =>
@@ -366,7 +379,7 @@ class _NotificationPreferencesScreenState
         ),
         SwitchListTile(
           key: const ValueKey('alert-high-severity-toggle'),
-          title: const Text('Notify on high-severity days'),
+          title: Text(l10n.sharingNotificationPreferencesHighSeverity),
           value: prefs.alertOnLog && prefs.alertOnHighSeverity,
           onChanged: prefs.alertOnLog
               ? (value) =>
@@ -376,9 +389,9 @@ class _NotificationPreferencesScreenState
         ..._deliverySection(prefs),
         ListTile(
           key: const ValueKey('missed-entry-threshold-tile'),
-          title: const Text('Missed-entry reminder'),
-          subtitle: const Text(
-              'Check in when no entry has been logged for a while'),
+          title: Text(l10n.sharingNotificationPreferencesMissedEntryTitle),
+          subtitle:
+              Text(l10n.sharingNotificationPreferencesMissedEntrySubtitle),
           trailing: DropdownButton<MissedEntryThreshold>(
             key: const ValueKey('missed-entry-threshold-dropdown'),
             value: prefs.missedEntryThreshold,
@@ -388,18 +401,19 @@ class _NotificationPreferencesScreenState
                     _apply((p) => p.copyWith(missedEntryThreshold: value)));
               }
             },
-            items: const [
+            items: [
               DropdownMenuItem(
-                  value: MissedEntryThreshold.off, child: Text('Off')),
+                  value: MissedEntryThreshold.off,
+                  child: Text(l10n.sharingNotificationPreferencesOff)),
               DropdownMenuItem(
                   value: MissedEntryThreshold.oneDay,
-                  child: Text('1 day')),
+                  child: Text(l10n.sharingNotificationPreferencesOneDay)),
               DropdownMenuItem(
                   value: MissedEntryThreshold.twoDays,
-                  child: Text('2 days')),
+                  child: Text(l10n.sharingNotificationPreferencesTwoDays)),
               DropdownMenuItem(
                   value: MissedEntryThreshold.threeDays,
-                  child: Text('3 days')),
+                  child: Text(l10n.sharingNotificationPreferencesThreeDays)),
             ],
           ),
         ),
@@ -419,20 +433,24 @@ class _NotificationPreferencesScreenState
   List<Widget> _quietHoursSection(QuietHours? quietHours) => [
         ListTile(
           key: const ValueKey('quiet-hours-start-tile'),
-          title: const Text('Quiet hours start'),
+          title: Text(
+            AppLocalizations.of(context).sharingNotificationPreferencesQuietStart,
+          ),
           trailing: Text(
             quietHours == null
-                ? 'Off'
+                ? AppLocalizations.of(context).sharingNotificationPreferencesOff
                 : _formatMinutes(quietHours.startMinutes),
           ),
           onTap: () => _pickTime(isStart: true),
         ),
         ListTile(
           key: const ValueKey('quiet-hours-end-tile'),
-          title: const Text('Quiet hours end'),
+          title: Text(
+            AppLocalizations.of(context).sharingNotificationPreferencesQuietEnd,
+          ),
           trailing: Text(
             quietHours == null
-                ? 'Off'
+                ? AppLocalizations.of(context).sharingNotificationPreferencesOff
                 : _formatMinutes(quietHours.endMinutes),
           ),
           onTap: () => _pickTime(isStart: false),
@@ -440,7 +458,10 @@ class _NotificationPreferencesScreenState
         if (quietHours != null)
           ListTile(
             key: const ValueKey('clear-quiet-hours-tile'),
-            title: const Text('Clear quiet hours'),
+            title: Text(
+              AppLocalizations.of(context)
+                  .sharingNotificationPreferencesClearQuietHours,
+            ),
             onTap: () => _apply((p) => p.copyWith(
                   clearQuietHours: true,
                   clearTimeZone: true,
@@ -474,7 +495,10 @@ class _NotificationPreferencesScreenState
             TextButton(
               key: const ValueKey('timezone-fallback-button'),
               onPressed: _confirmSaveWithoutTimeZone,
-              child: const Text('Save without time zone'),
+              child: Text(
+                AppLocalizations.of(context)
+                    .sharingNotificationPreferencesSaveWithoutTz,
+              ),
             ),
           ],
         ),

@@ -4485,6 +4485,156 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'(you)'**
   String get sharingManageGuardiansYouSuffix;
+
+  /// Issue #1004 (tranche 1): notification-preferences app-bar title.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications'**
+  String get sharingNotificationPreferencesTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone?'**
+  String get sharingNotificationPreferencesSaveWithoutTzTitle;
+
+  /// Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?'**
+  String get sharingNotificationPreferencesSaveWithoutTzBody;
+
+  /// Issue #1004 (tranche 1): notification-preferences dialog cancel action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sharingNotificationPreferencesCancel;
+
+  /// Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone.
+  ///
+  /// In en, this message translates to:
+  /// **'Save without time zone'**
+  String get sharingNotificationPreferencesSaveWithoutTz;
+
+  /// Issue #1004 (tranche 1): cadence selector title for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Log alert delivery'**
+  String get sharingNotificationPreferencesLogDeliveryTitle;
+
+  /// Issue #1004 (tranche 1): cadence selector subtitle for log alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest'**
+  String get sharingNotificationPreferencesLogDeliverySubtitle;
+
+  /// Issue #1004 (tranche 1): cadence selector title for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle-start alert delivery'**
+  String get sharingNotificationPreferencesCycleStartDelivery;
+
+  /// Issue #1004 (tranche 1): cadence selector title for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'High-severity alert delivery'**
+  String get sharingNotificationPreferencesHighSeverityDelivery;
+
+  /// Issue #1004 (tranche 1): digest-time tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Digest time'**
+  String get sharingNotificationPreferencesDigestTimeTitle;
+
+  /// Issue #1004 (tranche 1): digest-time tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When daily digests are delivered in your time zone'**
+  String get sharingNotificationPreferencesDigestTimeSubtitle;
+
+  /// Issue #1004 (tranche 1): inline error when notification preferences fail to load.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your notification settings.'**
+  String get sharingNotificationPreferencesLoadError;
+
+  /// Issue #1004 (tranche 1): discretion note at the top of notification preferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Alerts never show what was logged - just a generic reminder to open lunarlog.'**
+  String get sharingNotificationPreferencesDiscretion;
+
+  /// Issue #1004 (tranche 1): master alert toggle label.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify me when {profileName} logs an entry'**
+  String sharingNotificationPreferencesNotifyOnLog(String profileName);
+
+  /// Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Only notify on cycle start'**
+  String get sharingNotificationPreferencesCycleStartOnly;
+
+  /// Issue #1004 (tranche 1): narrowing toggle for high-severity alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Notify on high-severity days'**
+  String get sharingNotificationPreferencesHighSeverity;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Missed-entry reminder'**
+  String get sharingNotificationPreferencesMissedEntryTitle;
+
+  /// Issue #1004 (tranche 1): missed-entry threshold tile subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check in when no entry has been logged for a while'**
+  String get sharingNotificationPreferencesMissedEntrySubtitle;
+
+  /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get sharingNotificationPreferencesOff;
+
+  /// Issue #1004 (tranche 1): one-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'1 day'**
+  String get sharingNotificationPreferencesOneDay;
+
+  /// Issue #1004 (tranche 1): two-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'2 days'**
+  String get sharingNotificationPreferencesTwoDays;
+
+  /// Issue #1004 (tranche 1): three-day missed-entry threshold option.
+  ///
+  /// In en, this message translates to:
+  /// **'3 days'**
+  String get sharingNotificationPreferencesThreeDays;
+
+  /// Issue #1004 (tranche 1): quiet-hours start tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours start'**
+  String get sharingNotificationPreferencesQuietStart;
+
+  /// Issue #1004 (tranche 1): quiet-hours end tile title.
+  ///
+  /// In en, this message translates to:
+  /// **'Quiet hours end'**
+  String get sharingNotificationPreferencesQuietEnd;
+
+  /// Issue #1004 (tranche 1): clear-quiet-hours action.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear quiet hours'**
+  String get sharingNotificationPreferencesClearQuietHours;
 }
 
 class _AppLocalizationsDelegate

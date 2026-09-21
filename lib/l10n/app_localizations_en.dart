@@ -2809,4 +2809,96 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sharingManageGuardiansYouSuffix => '(you)';
+
+  @override
+  String get sharingNotificationPreferencesTitle => 'Notifications';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTzTitle =>
+      'Save without time zone?';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTzBody =>
+      'Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?';
+
+  @override
+  String get sharingNotificationPreferencesCancel => 'Cancel';
+
+  @override
+  String get sharingNotificationPreferencesSaveWithoutTz =>
+      'Save without time zone';
+
+  @override
+  String get sharingNotificationPreferencesLogDeliveryTitle =>
+      'Log alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesLogDeliverySubtitle =>
+      'Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest';
+
+  @override
+  String get sharingNotificationPreferencesCycleStartDelivery =>
+      'Cycle-start alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesHighSeverityDelivery =>
+      'High-severity alert delivery';
+
+  @override
+  String get sharingNotificationPreferencesDigestTimeTitle => 'Digest time';
+
+  @override
+  String get sharingNotificationPreferencesDigestTimeSubtitle =>
+      'When daily digests are delivered in your time zone';
+
+  @override
+  String get sharingNotificationPreferencesLoadError =>
+      'Could not load your notification settings.';
+
+  @override
+  String get sharingNotificationPreferencesDiscretion =>
+      'Alerts never show what was logged - just a generic reminder to open lunarlog.';
+
+  @override
+  String sharingNotificationPreferencesNotifyOnLog(String profileName) {
+    return 'Notify me when $profileName logs an entry';
+  }
+
+  @override
+  String get sharingNotificationPreferencesCycleStartOnly =>
+      'Only notify on cycle start';
+
+  @override
+  String get sharingNotificationPreferencesHighSeverity =>
+      'Notify on high-severity days';
+
+  @override
+  String get sharingNotificationPreferencesMissedEntryTitle =>
+      'Missed-entry reminder';
+
+  @override
+  String get sharingNotificationPreferencesMissedEntrySubtitle =>
+      'Check in when no entry has been logged for a while';
+
+  @override
+  String get sharingNotificationPreferencesOff => 'Off';
+
+  @override
+  String get sharingNotificationPreferencesOneDay => '1 day';
+
+  @override
+  String get sharingNotificationPreferencesTwoDays => '2 days';
+
+  @override
+  String get sharingNotificationPreferencesThreeDays => '3 days';
+
+  @override
+  String get sharingNotificationPreferencesQuietStart => 'Quiet hours start';
+
+  @override
+  String get sharingNotificationPreferencesQuietEnd => 'Quiet hours end';
+
+  @override
+  String get sharingNotificationPreferencesClearQuietHours =>
+      'Clear quiet hours';
 }

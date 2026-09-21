@@ -3592,5 +3592,110 @@
   "sharingManageGuardiansYouSuffix": "(you)",
   "@sharingManageGuardiansYouSuffix": {
     "description": "Issue #1004 (tranche 1): suffix marking the caller's own guardian row."
+  },
+  "sharingNotificationPreferencesTitle": "Notifications",
+  "@sharingNotificationPreferencesTitle": {
+    "description": "Issue #1004 (tranche 1): notification-preferences app-bar title."
+  },
+  "sharingNotificationPreferencesSaveWithoutTzTitle": "Save without time zone?",
+  "@sharingNotificationPreferencesSaveWithoutTzTitle": {
+    "description": "Issue #1004 (tranche 1): confirm dialog title when saving despite an unrecognised time zone."
+  },
+  "sharingNotificationPreferencesSaveWithoutTzBody": "Your quiet hours will not adjust for your local time zone until this is resolved. Continue anyway?",
+  "@sharingNotificationPreferencesSaveWithoutTzBody": {
+    "description": "Issue #1004 (tranche 1): confirm dialog body when saving despite an unrecognised time zone."
+  },
+  "sharingNotificationPreferencesCancel": "Cancel",
+  "@sharingNotificationPreferencesCancel": {
+    "description": "Issue #1004 (tranche 1): notification-preferences dialog cancel action."
+  },
+  "sharingNotificationPreferencesSaveWithoutTz": "Save without time zone",
+  "@sharingNotificationPreferencesSaveWithoutTz": {
+    "description": "Issue #1004 (tranche 1): save action that accepts the UTC-fallback time zone."
+  },
+  "sharingNotificationPreferencesLogDeliveryTitle": "Log alert delivery",
+  "@sharingNotificationPreferencesLogDeliveryTitle": {
+    "description": "Issue #1004 (tranche 1): cadence selector title for log alerts."
+  },
+  "sharingNotificationPreferencesLogDeliverySubtitle": "Immediate, once a day, or off - extra alerts never exceed a daily limit and roll into the digest",
+  "@sharingNotificationPreferencesLogDeliverySubtitle": {
+    "description": "Issue #1004 (tranche 1): cadence selector subtitle for log alerts."
+  },
+  "sharingNotificationPreferencesCycleStartDelivery": "Cycle-start alert delivery",
+  "@sharingNotificationPreferencesCycleStartDelivery": {
+    "description": "Issue #1004 (tranche 1): cadence selector title for cycle-start alerts."
+  },
+  "sharingNotificationPreferencesHighSeverityDelivery": "High-severity alert delivery",
+  "@sharingNotificationPreferencesHighSeverityDelivery": {
+    "description": "Issue #1004 (tranche 1): cadence selector title for high-severity alerts."
+  },
+  "sharingNotificationPreferencesDigestTimeTitle": "Digest time",
+  "@sharingNotificationPreferencesDigestTimeTitle": {
+    "description": "Issue #1004 (tranche 1): digest-time tile title."
+  },
+  "sharingNotificationPreferencesDigestTimeSubtitle": "When daily digests are delivered in your time zone",
+  "@sharingNotificationPreferencesDigestTimeSubtitle": {
+    "description": "Issue #1004 (tranche 1): digest-time tile subtitle."
+  },
+  "sharingNotificationPreferencesLoadError": "Could not load your notification settings.",
+  "@sharingNotificationPreferencesLoadError": {
+    "description": "Issue #1004 (tranche 1): inline error when notification preferences fail to load."
+  },
+  "sharingNotificationPreferencesDiscretion": "Alerts never show what was logged - just a generic reminder to open lunarlog.",
+  "@sharingNotificationPreferencesDiscretion": {
+    "description": "Issue #1004 (tranche 1): discretion note at the top of notification preferences."
+  },
+  "sharingNotificationPreferencesNotifyOnLog": "Notify me when {profileName} logs an entry",
+  "@sharingNotificationPreferencesNotifyOnLog": {
+    "description": "Issue #1004 (tranche 1): master alert toggle label.",
+    "placeholders": {
+      "profileName": {
+        "type": "String"
+      }
+    }
+  },
+  "sharingNotificationPreferencesCycleStartOnly": "Only notify on cycle start",
+  "@sharingNotificationPreferencesCycleStartOnly": {
+    "description": "Issue #1004 (tranche 1): narrowing toggle for cycle-start alerts."
+  },
+  "sharingNotificationPreferencesHighSeverity": "Notify on high-severity days",
+  "@sharingNotificationPreferencesHighSeverity": {
+    "description": "Issue #1004 (tranche 1): narrowing toggle for high-severity alerts."
+  },
+  "sharingNotificationPreferencesMissedEntryTitle": "Missed-entry reminder",
+  "@sharingNotificationPreferencesMissedEntryTitle": {
+    "description": "Issue #1004 (tranche 1): missed-entry threshold tile title."
+  },
+  "sharingNotificationPreferencesMissedEntrySubtitle": "Check in when no entry has been logged for a while",
+  "@sharingNotificationPreferencesMissedEntrySubtitle": {
+    "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
+  },
+  "sharingNotificationPreferencesOff": "Off",
+  "@sharingNotificationPreferencesOff": {
+    "description": "Issue #1004 (tranche 1): off option in the notification-preferences dropdowns."
+  },
+  "sharingNotificationPreferencesOneDay": "1 day",
+  "@sharingNotificationPreferencesOneDay": {
+    "description": "Issue #1004 (tranche 1): one-day missed-entry threshold option."
+  },
+  "sharingNotificationPreferencesTwoDays": "2 days",
+  "@sharingNotificationPreferencesTwoDays": {
+    "description": "Issue #1004 (tranche 1): two-day missed-entry threshold option."
+  },
+  "sharingNotificationPreferencesThreeDays": "3 days",
+  "@sharingNotificationPreferencesThreeDays": {
+    "description": "Issue #1004 (tranche 1): three-day missed-entry threshold option."
+  },
+  "sharingNotificationPreferencesQuietStart": "Quiet hours start",
+  "@sharingNotificationPreferencesQuietStart": {
+    "description": "Issue #1004 (tranche 1): quiet-hours start tile title."
+  },
+  "sharingNotificationPreferencesQuietEnd": "Quiet hours end",
+  "@sharingNotificationPreferencesQuietEnd": {
+    "description": "Issue #1004 (tranche 1): quiet-hours end tile title."
+  },
+  "sharingNotificationPreferencesClearQuietHours": "Clear quiet hours",
+  "@sharingNotificationPreferencesClearQuietHours": {
+    "description": "Issue #1004 (tranche 1): clear-quiet-hours action."
   }
 }
