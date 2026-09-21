@@ -693,6 +693,22 @@
   "@cycleConfidenceProvisional": {
     "description": "Confidence-tier label: estimate seeded from onboarding answers, not logged history (issue #218)."
   },
+  "cycleConfidenceShortHigh": "high",
+  "@cycleConfidenceShortHigh": {
+    "description": "Short confidence tier label for inline composition, e.g. in 'Estimate confidence: high.' (Issue #1000)."
+  },
+  "cycleConfidenceShortLearning": "learning",
+  "@cycleConfidenceShortLearning": {
+    "description": "Short confidence tier label for inline composition, e.g. in 'Estimate confidence: learning.' (Issue #1000)."
+  },
+  "cycleConfidenceShortIrregular": "rough",
+  "@cycleConfidenceShortIrregular": {
+    "description": "Short confidence tier label for inline composition, e.g. in 'Estimate confidence: rough.' (Issue #1000)."
+  },
+  "cycleConfidenceShortProvisional": "provisional",
+  "@cycleConfidenceShortProvisional": {
+    "description": "Short confidence tier label for inline composition, e.g. in 'Estimate confidence: provisional.' (Issue #1000)."
+  },
   "cycleConfidenceSummaryHigh": "Recent cycles are steady — estimates are at their most reliable.",
   "@cycleConfidenceSummaryHigh": {
     "description": "Confidence-tier summary under a high-confidence estimate. Matches CycleConfidence.high.summary exactly."
@@ -786,18 +802,9 @@
       }
     }
   },
-  "cycleWheelDaysLateUnit": "{count, plural, =1{day late} other{days late}}",
-  "@cycleWheelDaysLateUnit": {
-    "description": "Unit label beneath the days-late count in the cycle wheel centre when overdue.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "cycleWheelDaysPastEstimateUnit": "{count, plural, =1{day past estimate} other{days past estimate}}",
   "@cycleWheelDaysPastEstimateUnit": {
-    "description": "Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.",
+    "description": "Issue #853, #1000: unit label beneath the overdue count in the cycle wheel centre across all framings - names the estimate, never 'late'.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -806,7 +813,7 @@
   },
   "cycleWheelSemanticsPastEstimate": "{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
   "@cycleWheelSemanticsPastEstimate": {
-    "description": "Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.",
+    "description": "Issue #853, #1000: the overview wheel's screen-reader label when overdue across all framings - never says 'late'.",
     "placeholders": {
       "daysPast": {
         "type": "int"
@@ -882,24 +889,6 @@
     "description": "The overview wheel's screen-reader label mid-cycle, leading with the days-until figure.",
     "placeholders": {
       "daysUntil": {
-        "type": "int"
-      },
-      "cycleDay": {
-        "type": "int"
-      },
-      "cycleDays": {
-        "type": "int"
-      },
-      "periodDays": {
-        "type": "int"
-      }
-    }
-  },
-  "cycleWheelSemanticsLate": "{daysLate, plural, =1{1 day late.} other{{daysLate} days late.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.",
-  "@cycleWheelSemanticsLate": {
-    "description": "The overview wheel's screen-reader label when overdue.",
-    "placeholders": {
-      "daysLate": {
         "type": "int"
       },
       "cycleDay": {
@@ -1602,9 +1591,9 @@
   "@daySheetIntensityClear": {
     "description": "The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'."
   },
-  "overviewPmsBandLabel": "Predicted PMS: {range} — usually starts about {days} days before your period and lasts about {length} days.",
+  "overviewPmsBandLabel": "Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
   "@overviewPmsBandLabel": {
-    "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
+    "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
     "placeholders": {
       "range": {
         "type": "String"
@@ -3084,9 +3073,9 @@
       }
     }
   },
-  "householdTimingLate": "{count, plural, =1{1 day late} other{{count} days late}}",
-  "@householdTimingLate": {
-    "description": "Issue #803: household-row timing line for an open cycle past its estimate — the late resolver's own vocabulary (issue #221), never rendered for an irregular-framed profile (#853: variation is expected, not late).",
+  "householdTimingPastEstimate": "{count, plural, =1{1 day past the estimate} other{{count} days past the estimate}}",
+  "@householdTimingPastEstimate": {
+    "description": "Issue #803, #1000: household member's cycle is past the predicted start date (e.g. '1 day past the estimate', '3 days past the estimate'). Count is pluralized through the shared ICU daysCount shape.",
     "placeholders": {
       "count": {
         "type": "int"

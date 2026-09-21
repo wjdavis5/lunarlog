@@ -992,6 +992,30 @@ abstract class AppLocalizations {
   /// **'Provisional'**
   String get cycleConfidenceProvisional;
 
+  /// Short confidence tier label for inline composition, e.g. in 'Estimate confidence: high.' (Issue #1000).
+  ///
+  /// In en, this message translates to:
+  /// **'high'**
+  String get cycleConfidenceShortHigh;
+
+  /// Short confidence tier label for inline composition, e.g. in 'Estimate confidence: learning.' (Issue #1000).
+  ///
+  /// In en, this message translates to:
+  /// **'learning'**
+  String get cycleConfidenceShortLearning;
+
+  /// Short confidence tier label for inline composition, e.g. in 'Estimate confidence: rough.' (Issue #1000).
+  ///
+  /// In en, this message translates to:
+  /// **'rough'**
+  String get cycleConfidenceShortIrregular;
+
+  /// Short confidence tier label for inline composition, e.g. in 'Estimate confidence: provisional.' (Issue #1000).
+  ///
+  /// In en, this message translates to:
+  /// **'provisional'**
+  String get cycleConfidenceShortProvisional;
+
   /// Confidence-tier summary under a high-confidence estimate. Matches CycleConfidence.high.summary exactly.
   ///
   /// In en, this message translates to:
@@ -1124,19 +1148,13 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{day} other{days}}'**
   String cycleWheelDaysUntilUnit(int count);
 
-  /// Unit label beneath the days-late count in the cycle wheel centre when overdue.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{day late} other{days late}}'**
-  String cycleWheelDaysLateUnit(int count);
-
-  /// Issue #853: unit label beneath the overdue count in the cycle wheel centre when the composed irregular framing is in effect - names the estimate, never 'late'.
+  /// Issue #853, #1000: unit label beneath the overdue count in the cycle wheel centre across all framings - names the estimate, never 'late'.
   ///
   /// In en, this message translates to:
   /// **'{count, plural, =1{day past estimate} other{days past estimate}}'**
   String cycleWheelDaysPastEstimateUnit(int count);
 
-  /// Issue #853: the overview wheel's screen-reader label when overdue and the composed irregular framing is in effect - never says 'late'.
+  /// Issue #853, #1000: the overview wheel's screen-reader label when overdue across all framings - never says 'late'.
   ///
   /// In en, this message translates to:
   /// **'{daysPast, plural, =1{1 day past the estimate.} other{{daysPast} days past the estimate.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
@@ -1189,17 +1207,6 @@ abstract class AppLocalizations {
   /// **'{daysUntil, plural, =1{About 1 day until next period.} other{About {daysUntil} days until next period.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
   String cycleWheelSemanticsMidCycle(
     int daysUntil,
-    int cycleDay,
-    int cycleDays,
-    int periodDays,
-  );
-
-  /// The overview wheel's screen-reader label when overdue.
-  ///
-  /// In en, this message translates to:
-  /// **'{daysLate, plural, =1{1 day late.} other{{daysLate} days late.}} Cycle day {cycleDay} of about {cycleDays} days. Period usually runs about {periodDays} days.'**
-  String cycleWheelSemanticsLate(
-    int daysLate,
     int cycleDay,
     int cycleDays,
     int periodDays,
@@ -2069,10 +2076,10 @@ abstract class AppLocalizations {
   /// **'Clear'**
   String get daySheetIntensityClear;
 
-  /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
+  /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:
-  /// **'Predicted PMS: {range} — usually starts about {days} days before your period and lasts about {length} days.'**
+  /// **'Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
   String overviewPmsBandLabel(String range, int days, int length);
 
   /// Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.
@@ -3863,11 +3870,11 @@ abstract class AppLocalizations {
   /// **'Period expected in {count, plural, =1{1 day} other{{count} days}}'**
   String householdTimingExpectedIn(int count);
 
-  /// Issue #803: household-row timing line for an open cycle past its estimate — the late resolver's own vocabulary (issue #221), never rendered for an irregular-framed profile (#853: variation is expected, not late).
+  /// Issue #803, #1000: household member's cycle is past the predicted start date (e.g. '1 day past the estimate', '3 days past the estimate'). Count is pluralized through the shared ICU daysCount shape.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 day late} other{{count} days late}}'**
-  String householdTimingLate(int count);
+  /// **'{count, plural, =1{1 day past the estimate} other{{count} days past the estimate}}'**
+  String householdTimingPastEstimate(int count);
 
   /// Issue #803: the quiet, factual open-cycle line for an irregular-framed (#853) or stale-history (#859) profile — informative without the overdue framing.
   ///
