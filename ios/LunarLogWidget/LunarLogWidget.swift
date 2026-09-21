@@ -77,6 +77,9 @@ struct WidgetRender {
     var canQuickLog: Bool
     var profileId: String?
 
+    /// Optional countdown caption ("≈N d"); nil renders nothing.
+    var subtitle: String? = nil
+
     /// The em dash: every "nothing to show" state (thin history,
     /// suppressed predictions, predictions off) renders identically.
     static let neutral = WidgetRender(
@@ -119,12 +122,12 @@ extension WidgetRender {
         guard let baseDay = cycleDay else { return self }
         let subtitle = daysUntilNext
             .map { $0 - days }
-            .filter { $0 > 0 }
+            .flatMap { $0 > 0 ? $0 : nil }
             .map { "≈\($0) d" }
         return WidgetRender(
             title: "Day \(baseDay + days)", cycleDay: baseDay + days,
             daysUntilNext: daysUntilNext, canQuickLog: canQuickLog,
-            profileId: profileId)
+            profileId: profileId, subtitle: subtitle)
     }
 }
 
