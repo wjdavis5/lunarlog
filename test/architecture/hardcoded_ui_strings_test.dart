@@ -71,14 +71,16 @@ const Set<String> _migratedNamedUiArgs = {
 /// every burn-down PR; the assertion below keeps it equal to the sum of
 /// the per-file entries so both stay honest.
 ///
-/// Issue #1004 burned `lib/ui/sharing/` (tranche 1) and `lib/ui/profiles/`,
-/// `lib/ui/feedback/`, `lib/ui/gate/`, `lib/ui/care/` (tranche 3) down to
-/// zero, so those entries are gone and the recorded size dropped by the
-/// same amount: 355 (main, after the widget/health/#1003 work) - 134
-/// (tranche 1) - 56 (tranche 3) - 8 (epic #831 moved `lib/ui/web/
-/// dev_banner.dart` onto `AppLocalizations`) = 157. Every remaining entry
-/// is another directory's backlog, owned by a different tranche.
-const int _initialAllowlistSize = 157;
+/// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/profiles/`,
+/// `lib/ui/feedback/`, `lib/ui/gate/`, `lib/ui/care/` (tranche 3), and
+/// `lib/ui/logging/`, `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/`
+/// (tranche 4b) down to zero, so those entries are gone and the recorded
+/// size dropped by the same amount: 355 (main, after the widget/health/#1003
+/// work) - 134 (tranche 1) - 56 (tranche 3) - 8 (epic #831 moved
+/// `lib/ui/web/dev_banner.dart` onto `AppLocalizations`) - 13 (tranche 4b)
+/// = 144. Every remaining entry is another directory's backlog, owned by a
+/// different tranche.
+const int _initialAllowlistSize = 144;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
@@ -98,15 +100,9 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/components/app_shell.dart': 2,
   'lib/ui/components/inline_error.dart': 1,
   'lib/ui/components/today_log_fab.dart': 1,
-  'lib/ui/content/cycle_literacy_article_sheet.dart': 4,
-  'lib/ui/content/cycle_literacy_library_screen.dart': 2,
-  'lib/ui/help/help_card_view.dart': 2,
-  'lib/ui/help/help_library_screen.dart': 1,
   'lib/ui/insights/analysis_tab.dart': 3,
   'lib/ui/insights/phase_insights_card.dart': 3,
   'lib/ui/insights/symptom_trends_section.dart': 12,
-  'lib/ui/logging/day_sheet.dart': 1,
-  'lib/ui/logging/month_calendar.dart': 1,
   'lib/ui/overview/cycle_history_section.dart': 7,
   'lib/ui/overview/late_resolver.dart': 2,
   'lib/ui/settings/clinical_export_tile.dart': 2,
@@ -116,7 +112,6 @@ const Map<String, int> _allowedHardcodedUiLiterals = {
   'lib/ui/settings/import_screen.dart': 4,
   'lib/ui/settings/reminder_settings_screen.dart': 10,
   'lib/ui/settings/your_data_section.dart': 12,
-  'lib/ui/startup/fail_closed_screen.dart': 2,
 };
 
 /// Asserts [directory] has no user-facing literals left, under both the
