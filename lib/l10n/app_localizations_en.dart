@@ -525,6 +525,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cycleConfidenceProvisional => 'Provisional';
 
   @override
+  String get cycleConfidenceShortHigh => 'high';
+
+  @override
+  String get cycleConfidenceShortLearning => 'learning';
+
+  @override
+  String get cycleConfidenceShortIrregular => 'rough';
+
+  @override
+  String get cycleConfidenceShortProvisional => 'provisional';
+
+  @override
   String get cycleConfidenceSummaryHigh =>
       'Recent cycles are steady — estimates are at their most reliable.';
 
@@ -609,17 +621,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String cycleWheelDaysLateUnit(int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: 'days late',
-      one: 'day late',
-    );
-    return '$_temp0';
-  }
-
-  @override
   String cycleWheelDaysPastEstimateUnit(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
@@ -686,22 +687,6 @@ class AppLocalizationsEn extends AppLocalizations {
       locale: localeName,
       other: 'About $daysUntil days until next period.',
       one: 'About 1 day until next period.',
-    );
-    return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
-  }
-
-  @override
-  String cycleWheelSemanticsLate(
-    int daysLate,
-    int cycleDay,
-    int cycleDays,
-    int periodDays,
-  ) {
-    String _temp0 = intl.Intl.pluralLogic(
-      daysLate,
-      locale: localeName,
-      other: '$daysLate days late.',
-      one: '1 day late.',
     );
     return '$_temp0 Cycle day $cycleDay of about $cycleDays days. Period usually runs about $periodDays days.';
   }
@@ -1267,7 +1252,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String overviewPmsBandLabel(String range, int days, int length) {
-    return 'Predicted PMS: $range — usually starts about $days days before your period and lasts about $length days.';
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    String _temp1 = intl.Intl.pluralLogic(
+      length,
+      locale: localeName,
+      other: 'days',
+      one: 'day',
+    );
+    return 'Predicted PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
   }
 
   @override
@@ -2410,12 +2407,12 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String householdTimingLate(int count) {
+  String householdTimingPastEstimate(int count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count days late',
-      one: '1 day late',
+      other: '$count days past the estimate',
+      one: '1 day past the estimate',
     );
     return '$_temp0';
   }
