@@ -63,7 +63,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarLegendToday => 'Today';
 
   @override
-  String get calendarLegendPredicted => 'Predicted day';
+  String get calendarLegendPredicted => 'Estimated day';
 
   @override
   String get calendarLegendPms => 'PMS window';
@@ -90,7 +90,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get calendarKeepLogging =>
-      'Keep logging — predicted bands appear once a few cycles are recorded.';
+      'Keep logging — estimated bands appear once a few cycles are recorded.';
 
   @override
   String calendarCellDateLabel(String weekday, String month, int day) {
@@ -127,7 +127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarCellReadOnly => 'read-only';
 
   @override
-  String get calendarCellPredictedPeriod => 'predicted period day';
+  String get calendarCellPredictedPeriod => 'estimated period day';
 
   @override
   String calendarCellCycleDay(int day) {
@@ -136,17 +136,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String calendarCellCycleDayFirstCycle(int day) {
-    return 'cycle day $day of the first predicted cycle';
+    return 'cycle day $day of the first estimated cycle';
   }
 
   @override
-  String get calendarCellPmsWindow => 'predicted premenstrual window';
+  String get calendarCellPmsWindow => 'estimated premenstrual window';
 
   @override
-  String get calendarCellCrampsWindow => 'predicted cramps window';
+  String get calendarCellCrampsWindow => 'estimated cramps window';
 
   @override
-  String get calendarCellNoPrediction => 'no prediction for this date';
+  String get calendarCellNoPrediction => 'no estimate for this date';
 
   @override
   String get cyclePredictionLoadError => 'Could not load the cycle estimate.';
@@ -241,11 +241,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get futureExplainerNoEstimate =>
-      'No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.';
+      'No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.';
 
   @override
   String get futureExplainerNone =>
-      'No prediction for this date. Days can be logged once they arrive.';
+      'No estimate for this date. Days can be logged once they arrive.';
 
   @override
   String futureExplainerBand(int count) {
@@ -255,7 +255,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted period day. The date may shift by about $count $_temp0 either way as new periods are logged.';
+    return 'Estimated period day. The date may shift by about $count $_temp0 either way as new periods are logged.';
   }
 
   @override
@@ -266,20 +266,20 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted period day — cycle day $day of the first predicted cycle. The date may shift by about $count $_temp0 either way as new periods are logged.';
+    return 'Estimated period day — cycle day $day of the first estimated cycle. The date may shift by about $count $_temp0 either way as new periods are logged.';
   }
 
   @override
   String get futureExplainerPms =>
-      'Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.';
+      'Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.';
 
   @override
   String get futureExplainerCramps =>
-      'Inside the predicted cramps window — cramps commonly occur within two days of a period start.';
+      'Inside the estimated cramps window — cramps commonly occur within two days of a period start.';
 
   @override
   String futureExplainerNumeral(int day) {
-    return 'Cycle day $day of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.';
+    return 'Cycle day $day of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.';
   }
 
   @override
@@ -574,20 +574,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewLongCycleBody =>
-      'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.';
+      'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.';
 
   @override
   String get overviewLongCycleExclude => 'Exclude this cycle';
 
   @override
-  String get overviewLongCyclePredictionsOff => 'Turn off predictions';
+  String get overviewLongCyclePredictionsOff => 'Turn off estimates';
 
   @override
   String get overviewStaleHistoryTitle => 'Your history is out of date';
 
   @override
   String get overviewStaleHistoryBody =>
-      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.';
 
   @override
   String get overviewStaleHistoryLog => 'Log a period';
@@ -764,11 +764,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHealthHeader => 'Health';
 
   @override
-  String get settingsHealthSyncTitle => 'Health app sync';
+  String settingsHealthSyncTitle(String source) {
+    return '$source sync';
+  }
 
   @override
-  String get settingsHealthSyncSubtitle =>
-      'Choose which profile\'s data may sync to this phone\'s Health app';
+  String settingsHealthSyncSubtitle(String source) {
+    return 'Choose which profile\'s data may sync to $source';
+  }
 
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
@@ -846,10 +849,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
-    return 'Placed $_temp0 using the time zone of this phone.';
+    return 'Dated $_temp0 using the time zone of this phone.';
   }
 
   @override
@@ -857,8 +860,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no recorded time zone.';
   }
@@ -868,8 +871,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no matching flow level.';
   }
@@ -931,13 +934,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncUnbindDialogWriteBody(String name) {
-    return 'This phone will stop writing data for $name to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.';
+  String healthSyncUnbindDialogWriteBody(String name, String source) {
+    return 'This phone will stop writing data for $name to $source and stop importing from it. Nothing already logged in lunarlog, or already written to $source, is deleted.';
   }
 
   @override
-  String healthSyncUnbindDialogImportBody(String name) {
-    return 'This phone will stop importing data for $name from its Health app. Nothing already logged is deleted.';
+  String healthSyncUnbindDialogImportBody(String name, String source) {
+    return 'This phone will stop importing data for $name from $source. Nothing already logged is deleted.';
   }
 
   @override
@@ -958,7 +961,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPrivacyDialogBody =>
-      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
+      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
 
   @override
   String get settingsClose => 'Close';
@@ -1073,7 +1076,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunValueBody =>
-      'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.';
+      'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.';
 
   @override
   String get firstRunGuardiansTitle => 'Profiles and guardians';
@@ -1315,7 +1318,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
+    return 'Estimated PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
   }
 
   @override
@@ -1324,39 +1327,39 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get predictionsSuppressedTitle => 'Predictions are suppressed';
+  String get predictionsSuppressedTitle => 'Estimates paused';
 
   @override
   String predictionsSuppressedBody(String method) {
-    return 'Because $method typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.';
+    return 'Because $method typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.';
   }
 
   @override
   String predictionsSuppressedByModeBody(String mode) {
-    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.';
+    return 'Because this profile is set to $mode mode, period estimates are paused — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.';
   }
 
   @override
-  String get predictionsDisabledTitle => 'Predictions turned off';
+  String get predictionsDisabledTitle => 'Estimates off';
 
   @override
   String get predictionsDisabledBody =>
-      'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
+      'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
 
   @override
   String get predictionsDisabledAction => 'Manage in Settings';
 
   @override
-  String get settingsPredictionsTitle => 'Show predictions';
+  String get settingsPredictionsTitle => 'Show estimates';
 
   @override
   String settingsPredictionsProfileTitle(String profileName) {
-    return 'Show predictions ($profileName)';
+    return 'Show estimates ($profileName)';
   }
 
   @override
   String get settingsPredictionsSubtitle =>
-      'Show cycle estimates, fertile window, and prediction reminders';
+      'Show cycle estimates, fertile window, and estimate reminders';
 
   @override
   String settingsPredictionsSuppressedByModeSubtitle(String mode) {
@@ -1373,7 +1376,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewIrregularSuggestionBody =>
-      'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.';
+      'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.';
 
   @override
   String get overviewIrregularSuggestionSettings => 'Manage in Settings';
@@ -1402,7 +1405,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderKindPeriodDueSubtitle =>
-      'A heads-up before the predicted period starts';
+      'A heads-up before the estimated period starts';
 
   @override
   String get reminderKindPmsWatch => 'PMS watch';
@@ -1423,7 +1426,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderKindFertileWindowSoonSubtitle =>
-      'A heads-up before the predicted fertile window';
+      'A heads-up before the estimated fertile window';
 
   @override
   String get reminderKindCycleStats => 'Cycle statistic changes';
@@ -1439,14 +1442,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reminderKindLogNudgeSubtitle => 'A daily prompt to log the day';
 
   @override
-  String get reminderLeadDaysBeforeStart => 'Days before predicted start';
+  String get reminderLeadDaysBeforeStart => 'Days before estimated start';
 
   @override
-  String get reminderLeadDaysBeforePms => 'Days before predicted PMS window';
+  String get reminderLeadDaysBeforePms => 'Days before estimated PMS window';
 
   @override
   String get reminderLeadDaysBeforeFertileWindow =>
-      'Days before predicted fertile window';
+      'Days before estimated fertile window';
 
   @override
   String get reminderBirthControlTitle => 'Birth-control reminders';
@@ -1870,7 +1873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileStatusPredictionsSuppressed => 'Period estimates paused';
 
   @override
-  String get profileStatusPredictionsOff => 'Period predictions off';
+  String get profileStatusPredictionsOff => 'Period estimates off';
 
   @override
   String get profileStatusNoRecentPeriod => 'No recent period logged';
@@ -2145,7 +2148,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pregnancyExitExclusionBody =>
-      'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.';
+      'Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.';
 
   @override
   String get pregnancyExitExclusionAccept => 'Exclude pregnancy';
@@ -2183,7 +2186,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get postpartumReturnBody =>
-      'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.';
+      'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.';
 
   @override
   String get postpartumReturnAction => 'Switch to Period Tracking';
@@ -2194,7 +2197,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get postpartumExitExclusionBody =>
-      'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.';
+      'Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.';
 
   @override
   String get postpartumExitExclusionAccept => 'Exclude postpartum interval';
@@ -2509,7 +2512,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthDeviationCardSubtitle =>
-      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.';
+      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s own estimate.';
 
   @override
   String get healthDeviationDismiss => 'Dismiss';
@@ -4002,6 +4005,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountSignInEmailLabel => 'Email';
 
   @override
+  String get accountSignInEmailRequired => 'Enter your email address.';
+
+  @override
+  String get accountSignInEmailInvalid =>
+      'That doesn\'t look like an email address.';
+
+  @override
   String get accountSignInPasswordLabel => 'Password';
 
   @override
@@ -4280,13 +4290,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncBindWriteBody(String name) {
-    return 'Only $name\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindWriteBody(String name, String source) {
+    return 'Only $name\'s data will ever be written to $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override
-  String healthSyncBindImportBody(String name) {
-    return 'Only $name\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindImportBody(String name, String source) {
+    return 'Only $name\'s data will ever be imported from $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override
@@ -4487,7 +4497,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String monthCalendarFertileWindowExplainer(String label) {
-    return '$label — the days around estimated ovulation, back-calculated from the predicted period date.';
+    return '$label — the days around estimated ovulation, back-calculated from the estimated period date.';
   }
 
   @override
