@@ -27,6 +27,7 @@ import 'package:lunarlog/data/auth/auth_link_classifier.dart';
 import 'package:lunarlog/data/auth/google_sign_in_client.dart';
 import 'package:lunarlog/data/auth/passkey_ceremony_client.dart';
 import 'package:lunarlog/data/auth/supabase_auth_service.dart';
+import 'package:lunarlog/data/auth/web_url_cleaner.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -677,11 +678,13 @@ void main() {
     bool passkeysAvailable = false,
     PasskeyCeremonyClient? passkeyClient,
     Uri? webInitialUri,
+    WebUrlCleaner? webUrlCleaner,
   }) async {
     final service = SupabaseAuthService(
       gateway: gateway,
       links: links,
       webInitialUri: webInitialUri,
+      webUrlCleaner: webUrlCleaner,
       appleAvailable: appleAvailable,
       requestAppleCredential:
           requestAppleCredential ?? (({required hashedNonce}) async {
@@ -831,6 +834,106 @@ void main() {
       expect(user.email, 'a@b.c');
       expect(service.state, AuthSessionState.signedIn);
       expect(gateway.verifyOtpCalls.single.token, '12345678');
+    });
+  });
+
+  group('web URL cleanup (epic #831 slice 4)', () {
+    test('a successful web exchange cleans the URL: code removed, path and '
+        'other params preserved', () async {
+      final cleaned = <Uri>[];
+      gateway.codeVerifier = 'verifier';
+      final service = await started(
+        webInitialUri: Uri.parse(
+            'https://app.lunarlog.app/auth/callback?code=abc&foo=bar&baz=1'),
+        webUrlCleaner: cleaned.add,
+      );
+      await settle();
+      expect(service.state, AuthSessionState.signedIn);
+      expect(cleaned, hasLength(1));
+      expect(cleaned.single.toString(),
+          'https://app.lunarlog.app/auth/callback?foo=bar&baz=1');
+    });
+
+    test('a successful recovery exchange also drops the type marker',
+        () async {
+      final cleaned = <Uri>[];
+      gateway.codeVerifier = 'verifier/passwordRecovery';
+      await started(
+        webInitialUri: Uri.parse('https://app.lunarlog.app/auth/callback'
+            '?code=abc&type=recovery&foo=bar'),
+        webUrlCleaner: cleaned.add,
+      );
+      await settle();
+      expect(cleaned.single.toString(),
+          'https://app.lunarlog.app/auth/callback?foo=bar');
+    });
+
+    test('a provider-rejected web link cleans the error params, not just the '
+        'code', () async {
+      final cleaned = <Uri>[];
+      final service = await started(
+        webInitialUri: Uri.parse('https://app.lunarlog.app/auth/callback'
+            '?error=access_denied&error_description=Email+link+is+invalid'
+            '&foo=bar'),
+        webUrlCleaner: cleaned.add,
+      );
+      await settle();
+      expect(gateway.getSessionFromUrlCalls, isEmpty);
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
+      expect(cleaned, hasLength(1));
+      expect(cleaned.single.toString(),
+          'https://app.lunarlog.app/auth/callback?foo=bar');
+    });
+
+    test('native never calls the cleaner, on success or on an error link',
+        () async {
+      final cleaned = <Uri>[];
+      gateway.codeVerifier = 'verifier';
+      final service = await started(webUrlCleaner: cleaned.add);
+      await service.handleLink(Uri.parse('$callback?code=abc'));
+      await settle();
+      expect(service.state, AuthSessionState.signedIn);
+      await service.handleLink(
+          Uri.parse('$callback?error=access_denied&error_description=x'));
+      await settle();
+      expect(service.pendingLinkFailure, isA<AuthExpiredLinkFailure>());
+      expect(cleaned, isEmpty,
+          reason: 'no browser URL exists on native; the seam is a no-op '
+              'there and must not be invoked');
+    });
+
+    test('a transient network failure does NOT clean the URL, so the code '
+        'survives for a retry', () async {
+      final cleaned = <Uri>[];
+      gateway.codeVerifier = 'verifier';
+      final uri = Uri.parse(
+          'https://app.lunarlog.app/auth/callback?code=abc&foo=bar');
+      gateway.nextError = AuthRetryableFetchException();
+      final service =
+          await started(webInitialUri: uri, webUrlCleaner: cleaned.add);
+      await settle();
+      expect(service.pendingLinkFailure, isA<AuthNetworkFailure>());
+      expect(cleaned, isEmpty,
+          reason: 'the un-latched link is retryable; its code must stay');
+
+      // The same link is retried (as a stream replay would) and succeeds,
+      // and only then is the URL cleaned.
+      await service.handleLink(uri);
+      await settle();
+      expect(service.state, AuthSessionState.signedIn);
+      expect(cleaned.single.toString(),
+          'https://app.lunarlog.app/auth/callback?foo=bar');
+    });
+
+    test('a web launch that is not an auth callback is left untouched',
+        () async {
+      final cleaned = <Uri>[];
+      await started(
+        webInitialUri: Uri.parse('https://app.lunarlog.app/'),
+        webUrlCleaner: cleaned.add,
+      );
+      await settle();
+      expect(cleaned, isEmpty);
     });
   });
 
