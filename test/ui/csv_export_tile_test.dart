@@ -15,6 +15,7 @@ import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -30,6 +31,30 @@ import 'package:provider/provider.dart';
 import '../support/fake_auth_service.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
+
+/// Confirms the export-range picker sheet (Issue #115 G3) with whatever
+/// preset is already selected — the default, "last 6 cycles", for every test
+/// that does not care which range it exports. CSV now opens the same sheet
+/// the FHIR/PDF clinical tiles use, so every export-flow test must clear it
+/// before a captured export appears.
+Future<void> _confirmExportRange(WidgetTester tester) async {
+  expect(key('export-range-confirm'), findsOneWidget);
+  await tester.tap(key('export-range-confirm'));
+  await tester.pumpAndSettle();
+}
+
+/// Five single-day episode starts, 40 days apart: the newest is the open
+/// cycle; the other four are completed. Fewer than six completed cycles, so
+/// the picker's default ("last 6 cycles") has no lower bound and exports
+/// every row — a narrower preset necessarily excludes the oldest start.
+List<LocalDate> _manyCycleStarts() => [
+      for (var i = 0; i < 5; i++) LocalDate(2025, 1, 1).addDays(i * 40),
+    ];
+
+List<DayEntry> _manyCyclesEntries(String profileId, List<LocalDate> starts) => [
+      for (var i = 0; i < starts.length; i++)
+        _entry('many-e$i', profileId, date: starts[i]),
+    ];
 
 Profile _profile(
   String id, {
@@ -225,7 +250,7 @@ Future<void> _pump(
   required FakeProfilesRepository profiles,
   FakeDayEntriesRepository? dayEntries,
   FakeObservationsRepository? observations,
-  FakeSettingsStore? settingsStore,
+  CycleExclusionList? cycleExclusions,
   CsvExportCollaborator? exportCsv,
   CsvExportWriter? csvWriter,
   ProfileGuardiansRepository? guardians,
@@ -245,9 +270,12 @@ Future<void> _pump(
           Provider<ObservationsRepository>.value(
             value: observations ?? FakeObservationsRepository(),
           ),
-          Provider<SettingsStore>.value(
-            value: settingsStore ?? FakeSettingsStore(),
-          ),
+          // Issue #115 G3: the same seam `lib/app.dart` wires
+          // (`Provider<CycleExclusionList>.value`), replacing the tile's
+          // former divergent `SettingsStore` read. Only provided when a test
+          // needs it — every other test exercises the fail-open path.
+          if (cycleExclusions != null)
+            Provider<CycleExclusionList>.value(value: cycleExclusions),
           if (guardians != null)
             Provider<ProfileGuardiansRepository>.value(value: guardians),
           if (auth != null)
@@ -362,7 +390,6 @@ void main() {
               Provider<ProfilesRepository>.value(value: profiles),
               Provider<DayEntriesRepository>.value(value: dayEntries),
               Provider<ObservationsRepository>.value(value: FakeObservationsRepository()),
-              Provider<SettingsStore>.value(value: FakeSettingsStore()),
             ],
             child: Scaffold(
               // A real IndexedStack, mirroring the app shell's own retained
@@ -430,6 +457,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(capturedCycles, contains('cycle_number,start_date,end_date'));
       expect(capturedCycles, contains('1,2026-04-01'));
@@ -480,6 +508,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       final lines = capturedDailyLog!.split('\r\n');
       final fields = lines[1].split(',');
@@ -505,6 +534,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(writer.called, isTrue);
       expect(writer.cycles, contains('cycle_number'));
@@ -543,6 +573,7 @@ void main() {
       // Select Morgan
       await tester.tap(key('csv-export-profile-p2'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(capturedCycles, contains('1,2026-04-15'));
       expect(capturedCycles, isNot(contains('2026-03-01')));
@@ -566,6 +597,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(key('csv-export-error'), findsOneWidget);
       expect(find.byType(InlineError), findsOneWidget);
@@ -611,6 +643,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(capturedDailyLog, isNotNull);
       expect(capturedDailyLog, isNot(contains(privateNote)));
@@ -641,6 +674,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(capturedDailyLog, contains(privateNote));
     });
@@ -699,6 +733,7 @@ void main() {
 
       await tester.tap(key('csv-export-tile'));
       await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
 
       expect(called, isTrue);
       expect(
@@ -707,6 +742,142 @@ void main() {
         ),
         findsNothing,
       );
+    });
+  });
+
+  group('date range & shared exclusions (Issue #115 G3)', () {
+    testWidgets('the range picker is shown exactly once per export, and a '
+        'cancelled picker exports nothing', (tester) async {
+      var calls = 0;
+      final profiles =
+          FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {
+          'p1': [_entry('e1', 'p1', date: LocalDate(2026, 4, 1))],
+        };
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          calls++;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      // Exactly one sheet, and nothing exported until it is confirmed.
+      expect(key('export-range-confirm'), findsOneWidget);
+      expect(calls, 0);
+
+      await tester.tap(key('export-range-cancel'));
+      await tester.pumpAndSettle();
+      expect(key('export-range-confirm'), findsNothing);
+      expect(calls, 0);
+      // Cancelling is not a failure: no error banner.
+      expect(key('csv-export-error'), findsNothing);
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
+      expect(calls, 1);
+      expect(key('export-range-confirm'), findsNothing,
+          reason: 'the picker is shown once per export, not left open');
+    });
+
+    testWidgets('a window trims cycles.csv and daily_log.csv to the same '
+        'boundary; the "everything" preset stays whole-history',
+        (tester) async {
+      String? cycles;
+      String? dailyLog;
+      final starts = _manyCycleStarts();
+      final profiles =
+          FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {'p1': _manyCyclesEntries('p1', starts)};
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          cycles = cyclesCsv;
+          dailyLog = dailyLogCsv;
+        },
+      );
+
+      // Default ("last 6 cycles"): only four completed cycles exist, fewer
+      // than six, so every row is exported.
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
+      expect(cycles, contains(starts.first.iso));
+      expect(dailyLog, contains(starts.first.iso));
+
+      // "Last 3 cycles": the oldest start falls outside and must leave BOTH
+      // files, while the newest (open) start stays in both.
+      cycles = null;
+      dailyLog = null;
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('export-range-preset-last3Cycles'));
+      await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
+      expect(cycles, isNot(contains(starts.first.iso)));
+      expect(dailyLog, isNot(contains(starts.first.iso)),
+          reason: 'both files trim to the same boundary');
+      expect(cycles, contains(starts.last.iso));
+      expect(dailyLog, contains(starts.last.iso));
+
+      // The explicit "everything" preset restores the whole-history default.
+      cycles = null;
+      dailyLog = null;
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+      await tester.tap(key('export-range-preset-everything'));
+      await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
+      expect(cycles, contains(starts.first.iso));
+      expect(dailyLog, contains(starts.first.iso));
+    });
+
+    testWidgets('an omitted cycle is marked in cycles.csv through the shared '
+        'CycleExclusionList (Issue #115 G3 — no SettingsStore read)',
+        (tester) async {
+      String? cycles;
+      final starts = _manyCycleStarts();
+      final profiles =
+          FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final dayEntries = FakeDayEntriesRepository()
+        ..entriesByProfile = {'p1': _manyCyclesEntries('p1', starts)};
+      final settings = FakeSettingsStore();
+      await settings.set(
+        omittedCyclesSettingKey('p1'),
+        encodeOmittedCycles({starts[2]}),
+      );
+      final exclusions = CycleExclusionList(settings);
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: dayEntries,
+        cycleExclusions: exclusions,
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          cycles = cyclesCsv;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+      await _confirmExportRange(tester);
+
+      final row = cycles!
+          .split('\r\n')
+          .firstWhere((line) => line.contains(starts[2].iso));
+      expect(row.endsWith(',true'), isTrue,
+          reason: 'the shared list must mark the excluded cycle, got: $row');
     });
   });
 }
