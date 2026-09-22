@@ -534,6 +534,14 @@ class _LunarLogAppState extends State<LunarLogApp>
       birthControlStateFor: (profileId) => _profileModes
           .watch(profileId)
           .map(birthControlStateFromProfileMode),
+      // Issue #850, D-6: the per-viewer lens source gates local presets —
+      // a profile the signed-in viewer only guards (not the subject of)
+      // plans no local reminder; server caregiver alerts cover it instead.
+      // Both seams are always present in the app shell; the source fails
+      // open to "subject" for a local-only operator or a not-yet-synced
+      // membership.
+      guardians: _profileGuardians,
+      currentUserId: () => _authController?.currentUserId,
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
