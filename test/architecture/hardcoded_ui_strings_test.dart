@@ -73,29 +73,22 @@ const Set<String> _migratedNamedUiArgs = {
 ///
 /// Issue #1004 burned `lib/ui/sharing/` (tranche 1), `lib/ui/account/` and
 /// `lib/ui/settings/` (tranche 2), `lib/ui/profiles/`, `lib/ui/feedback/`,
-/// `lib/ui/gate/`, `lib/ui/care/` (tranche 3), and `lib/ui/logging/`,
-/// `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/` (tranche 4b) down to
-/// zero, so those entries are gone and the recorded size dropped by the same
-/// amount: 355 (main, after the widget/health/#1003 work) - 134 (tranche 1) -
-/// 113 (tranche 2) - 56 (tranche 3) - 8 (epic #831 moved `lib/ui/web/
-/// dev_banner.dart` onto `AppLocalizations`) - 13 (tranche 4b) = 31. Every
-/// remaining entry is another directory's backlog, owned by a different
-/// tranche.
-const int _initialAllowlistSize = 31;
+/// `lib/ui/gate/`, `lib/ui/care/` (tranche 3), `lib/ui/logging/`,
+/// `lib/ui/help/`, `lib/ui/content/`, `lib/ui/startup/`, `lib/ui/web/`
+/// (tranche 4b), and `lib/ui/components/`, `lib/ui/overview/`,
+/// `lib/ui/insights/` (tranche 4a) down to zero, so every entry is gone and
+/// the recorded size dropped to 0: 355 (main, after the widget/health/#1003
+/// work) - 134 (tranche 1) - 113 (tranche 2) - 56 (tranche 3) - 8 (epic #831
+/// moved `lib/ui/web/dev_banner.dart` onto `AppLocalizations`) - 13
+/// (tranche 4b) - 31 (tranche 4a) = 0. The allowlist is now empty — any new
+/// hardcoded literal under `lib/ui/` fails this guard.
+const int _initialAllowlistSize = 0;
 
 /// Exact per-file counts of allowed hardcoded UI string literals under
 /// `lib/ui/`, derived by scanning `main` at accd0ee2 (2026-09-14, issue
-/// #460). Keys are repo-relative POSIX-style paths.
-const Map<String, int> _allowedHardcodedUiLiterals = {
-  'lib/ui/components/app_shell.dart': 2,
-  'lib/ui/components/inline_error.dart': 1,
-  'lib/ui/components/today_log_fab.dart': 1,
-  'lib/ui/insights/analysis_tab.dart': 3,
-  'lib/ui/insights/phase_insights_card.dart': 3,
-  'lib/ui/insights/symptom_trends_section.dart': 12,
-  'lib/ui/overview/cycle_history_section.dart': 7,
-  'lib/ui/overview/late_resolver.dart': 2,
-};
+/// #460). Keys are repo-relative POSIX-style paths. Empty as of issue #1004
+/// tranche 4a: every directory is fully localized.
+const Map<String, int> _allowedHardcodedUiLiterals = {};
 
 /// Asserts [directory] has no user-facing literals left, under both the
 /// positional `Text(`/`Tooltip(` scan and [\_migratedNamedUiArgs], and that
@@ -220,7 +213,8 @@ void main() {
   // fails even if someone tries to re-allowlist the file instead of adding
   // an ARB key. Tranche 1 did `lib/ui/sharing/`; tranche 2 did `account/`
   // and `settings/`; tranche 3 did `profiles/`, `feedback/`, `gate/`, and
-  // `care/`; tranche 4b did `logging/`, `help/`, `content/`, and `startup/`.
+  // `care/`; tranche 4b did `logging/`, `help/`, `content/`, `startup/`, and
+  // `web/`; tranche 4a did `components/`, `overview/`, and `insights/`.
   test('lib/ui/sharing stays fully localized (issue #1004 tranche 1)',
       () => expectDirectoryFullyLocalized('lib/ui/sharing', 'sharing'));
 
@@ -256,6 +250,15 @@ void main() {
 
   test('lib/ui/web stays fully localized (issue #1004 tranche 4b)',
       () => expectDirectoryFullyLocalized('lib/ui/web', 'web'));
+
+  test('lib/ui/components stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/components', 'components'));
+
+  test('lib/ui/overview stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/overview', 'overview'));
+
+  test('lib/ui/insights stays fully localized (issue #1004 tranche 4a)',
+      () => expectDirectoryFullyLocalized('lib/ui/insights', 'insights'));
 
   // Falsification coverage for the detector itself, same posture as
   // `theme_wiring_test.dart`'s "detects the forms a layering violation
