@@ -215,6 +215,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
 
   Widget _card(BuildContext context, CycleHistoryView view) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Card(
       key: const ValueKey('history-card'),
       margin: const EdgeInsets.only(top: LLSpace.space3),
@@ -230,7 +231,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
               runSpacing: LLSpace.space1,
               children: [
                 Text(
-                  'Cycle history',
+                  l10n.cycleHistoryTitle,
                   style: theme.textTheme.titleMedium,
                 ),
                 Wrap(
@@ -279,7 +280,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
             for (final item in view.items) _itemRow(context, item),
             const SizedBox(height: LLSpace.space1),
             Text(
-              'Omissions sync across your devices.',
+              l10n.cycleHistorySyncNote,
               key: const ValueKey('history-sync-note'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -411,21 +412,21 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
       children: [
         _stat(
           theme,
-          label: 'Avg cycle',
+          label: l10n.cycleHistoryAvgCycle,
           value: view.meanCycleLengthDays == null
               ? '—'
               : formatDays(l10n, view.meanCycleLengthDays!),
         ),
         _stat(
           theme,
-          label: 'Avg period',
+          label: l10n.cycleHistoryAvgPeriod,
           value: view.meanPeriodLengthDays == null
               ? '—'
               : formatDays(l10n, view.meanPeriodLengthDays!),
         ),
         _stat(
           theme,
-          label: 'Variation',
+          label: l10n.cycleHistoryVariation,
           value: view.variationDays == null
               ? '—'
               : l10n.daysCount(view.variationDays!),
@@ -457,6 +458,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
 
   Widget _itemRow(BuildContext context, CycleHistoryItem item) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final iso = item.start.iso;
     if (item.isOpen) return _openRow(context, theme, item);
     return Opacity(
@@ -467,10 +469,10 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         key: ValueKey('history-item-$iso'),
         title: Text(_formatDate(item.start, context)),
         subtitle: item.omitted
-            ? const Text('Excluded from averages')
+            ? Text(l10n.cycleComparisonExcludedBadge)
             : item.outlier
             ? Text(
-                'Outlier — never averaged',
+                l10n.cycleHistoryOutlier,
                 key: ValueKey('history-outlier-$iso'),
               )
             : null,
@@ -506,7 +508,11 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
           onPressed: () => item.omitted
               ? _exclusions.include(widget.profileId, item.start)
               : _exclusions.omit(widget.profileId, item.start),
-          child: Text(item.omitted ? 'Include' : 'Omit'),
+          child: Text(
+            item.omitted
+                ? AppLocalizations.of(context).cycleHistoryInclude
+                : AppLocalizations.of(context).cycleHistoryOmit,
+          ),
         ),
       ],
     );
@@ -521,6 +527,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     ThemeData theme,
     CycleHistoryItem item,
   ) {
+    final l10n = AppLocalizations.of(context);
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
@@ -531,13 +538,13 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
         color: theme.colorScheme.primary,
       ),
       title: Text(
-        'Current cycle — started ${_formatDate(item.start, context)}',
+        l10n.cycleHistoryCurrentCycleStarted(
+          _formatDate(item.start, context),
+        ),
       ),
       subtitle: item.omitted
-          ? const Text('Skipped — excluded from averages')
-          : Text(
-              AppLocalizations.of(context).cycleHistoryOpenCycleNotCounted,
-            ),
+          ? Text(l10n.cycleHistorySkippedExcluded)
+          : Text(l10n.cycleHistoryOpenCycleNotCounted),
       trailing: _openRowTrailing(context, item),
     );
   }
@@ -548,7 +555,7 @@ class _CycleHistorySectionState extends State<CycleHistorySection> {
     return TextButton(
       key: const ValueKey('history-undo-skip'),
       onPressed: () => _exclusions.include(widget.profileId, item.start),
-      child: const Text('Undo'),
+      child: Text(AppLocalizations.of(context).cycleHistoryUndo),
     );
   }
 }

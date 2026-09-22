@@ -7249,6 +7249,336 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Imported'**
   String get caregiverAttributionImportedGeneric;
+
+  /// Issue #1004 (tranche 4a): shared retry action label (inline errors and the sync-failure banner).
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get commonRetry;
+
+  /// Issue #1004 (tranche 4a): Today destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get appShellTabToday;
+
+  /// Issue #1004 (tranche 4a): Calendar destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Calendar'**
+  String get appShellTabCalendar;
+
+  /// Issue #1004 (tranche 4a): Insights destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'Insights'**
+  String get appShellTabInsights;
+
+  /// Issue #1004 (tranche 4a): More destination label in the app shell's navigation bar.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get appShellTabMore;
+
+  /// Issue #1004 (tranche 4a): sync-failure banner action that switches to the Settings tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to Settings'**
+  String get appShellSyncBannerGoToSettings;
+
+  /// Issue #1004 (tranche 4a): tooltip on the Today card's quick-log button, naming the flow level it writes.
+  ///
+  /// In en, this message translates to:
+  /// **'Logs a {level}-flow period start for today'**
+  String todayCardLogsFlowTooltip(String level);
+
+  /// Issue #1004 (tranche 4a): heading of the cycle-history section.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle history'**
+  String get cycleHistoryTitle;
+
+  /// Issue #1004 (tranche 4a): note under the cycle-history list explaining that omissions sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Omissions sync across your devices.'**
+  String get cycleHistorySyncNote;
+
+  /// Issue #1004 (tranche 4a): label of the average-cycle-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg cycle'**
+  String get cycleHistoryAvgCycle;
+
+  /// Issue #1004 (tranche 4a): label of the average-period-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Avg period'**
+  String get cycleHistoryAvgPeriod;
+
+  /// Issue #1004 (tranche 4a): label of the cycle-length variation statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Variation'**
+  String get cycleHistoryVariation;
+
+  /// Issue #1004 (tranche 4a): subtitle marking a cycle excluded automatically as an outlier.
+  ///
+  /// In en, this message translates to:
+  /// **'Outlier — never averaged'**
+  String get cycleHistoryOutlier;
+
+  /// Issue #1004 (tranche 4a): title of the open cycle row, naming its start date.
+  ///
+  /// In en, this message translates to:
+  /// **'Current cycle — started {date}'**
+  String cycleHistoryCurrentCycleStarted(String date);
+
+  /// Issue #1004 (tranche 4a): subtitle of an open cycle the operator skipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped — excluded from averages'**
+  String get cycleHistorySkippedExcluded;
+
+  /// Issue #1004 (tranche 4a): action restoring a previously omitted cycle to the averages.
+  ///
+  /// In en, this message translates to:
+  /// **'Include'**
+  String get cycleHistoryInclude;
+
+  /// Issue #1004 (tranche 4a): action excluding a cycle from the averages.
+  ///
+  /// In en, this message translates to:
+  /// **'Omit'**
+  String get cycleHistoryOmit;
+
+  /// Issue #1004 (tranche 4a): action undoing a skipped open cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get cycleHistoryUndo;
+
+  /// Issue #1004 (tranche 4a): snoozed late-resolver line naming the date it resumes.
+  ///
+  /// In en, this message translates to:
+  /// **'We will check back on {date}.'**
+  String lateResolverSnoozedUntil(String date);
+
+  /// Issue #1004 (tranche 4a): action ending a late-resolution snooze early.
+  ///
+  /// In en, this message translates to:
+  /// **'Show options'**
+  String get lateResolverShowOptions;
+
+  /// Issue #1004 (tranche 4a): late-resolver title naming the day count, pluralised.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day late} other{{count} days late}}'**
+  String lateResolverDaysLate(int count);
+
+  /// Issue #1004 (tranche 4a): late-resolver fallback line, where {days} is an already-localized day count.
+  ///
+  /// In en, this message translates to:
+  /// **'No period logged for {days}'**
+  String lateResolverNoPeriodLoggedFor(String days);
+
+  /// Issue #1004 (tranche 4a): late-resolver prompt after a snooze expired.
+  ///
+  /// In en, this message translates to:
+  /// **'Still nothing logged — what would you like to do?'**
+  String get lateResolverPromptStillNothing;
+
+  /// Issue #1004 (tranche 4a): late-resolver prompt.
+  ///
+  /// In en, this message translates to:
+  /// **'What would you like to do?'**
+  String get lateResolverPrompt;
+
+  /// Issue #1004 (tranche 4a): late-resolver action opening the day sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'Log it'**
+  String get lateResolverLogIt;
+
+  /// Issue #1004 (tranche 4a): late-resolver action omitting the open cycle.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip this cycle'**
+  String get lateResolverSkipCycle;
+
+  /// Issue #1004 (tranche 4a): late-resolver action snoozing for three days.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me in 3 days'**
+  String get lateResolverRemindMe;
+
+  /// Issue #1004 (tranche 4a): late-resolver link to the late-period help card.
+  ///
+  /// In en, this message translates to:
+  /// **'Why is it late?'**
+  String get lateResolverWhyLate;
+
+  /// Issue #1004 (tranche 4a): label of the help-card link explaining the three-cycle threshold.
+  ///
+  /// In en, this message translates to:
+  /// **'Why three completed cycles?'**
+  String get overviewWhyThreeCompletedCycles;
+
+  /// Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load your cycle analysis.'**
+  String get analysisLoadError;
+
+  /// Issue #1004 (tranche 4a): heading of the analysis tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Analysis'**
+  String get analysisTitle;
+
+  /// Issue #1004 (tranche 4a): title of the BBT chart card.
+  ///
+  /// In en, this message translates to:
+  /// **'BBT by cycle day'**
+  String get analysisBbtChartTitle;
+
+  /// Issue #1004 (tranche 4a): title of the headline cycle-statistics card.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle statistics'**
+  String get analysisStatsTitle;
+
+  /// Issue #1004 (tranche 4a): label of the mean cycle-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Average cycle length'**
+  String get analysisMeanCycleLength;
+
+  /// Issue #1004 (tranche 4a): label of the mean period-length statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Average period length'**
+  String get analysisMeanPeriodLength;
+
+  /// Issue #1004 (tranche 4a): label of the cycle-length variability statistic.
+  ///
+  /// In en, this message translates to:
+  /// **'Variability'**
+  String get analysisVariability;
+
+  /// Issue #1004 (tranche 4a): variability value, the spread from the mean in days.
+  ///
+  /// In en, this message translates to:
+  /// **'±{days} days'**
+  String analysisSpreadDays(int days);
+
+  /// Issue #1004 (tranche 4a): empty-state title of the BBT chart.
+  ///
+  /// In en, this message translates to:
+  /// **'No BBT logged yet'**
+  String get bbtChartEmptyTitle;
+
+  /// Issue #1004 (tranche 4a): empty-state body of the BBT chart.
+  ///
+  /// In en, this message translates to:
+  /// **'Log a basal body temperature reading in the day sheet to see your curve here, plotted against cycle day.'**
+  String get bbtChartEmptyBody;
+
+  /// Issue #1004 (tranche 4a): BBT chart caption, naming the cycle count and the temperature range.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 cycle shown} other{{count} cycles shown}} · {range}'**
+  String bbtChartCaption(int count, String range);
+
+  /// Issue #1004 (tranche 4a): label introducing a subphase's what-to-track guidance.
+  ///
+  /// In en, this message translates to:
+  /// **'Helpful to track:'**
+  String get phaseInsightsHelpfulToTrack;
+
+  /// Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.
+  ///
+  /// In en, this message translates to:
+  /// **'Read: {title}'**
+  String phaseInsightsReadArticle(String title);
+
+  /// Issue #1004 (tranche 4a): provenance footnote naming the subphase content's source and review date.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {source} · Rev: {date}'**
+  String phaseInsightsSource(String source, String date);
+
+  /// Issue #1004 (tranche 4a): heading of the symptom-trends section.
+  ///
+  /// In en, this message translates to:
+  /// **'Symptom Trends & Patterns'**
+  String get symptomTrendsTitle;
+
+  /// Issue #1004 (tranche 4a): title of the recurring-symptoms card.
+  ///
+  /// In en, this message translates to:
+  /// **'Recurring Symptoms'**
+  String get symptomTrendsRecurring;
+
+  /// Issue #1004 (tranche 4a): empty state of the recurring-symptoms card.
+  ///
+  /// In en, this message translates to:
+  /// **'Log symptoms across at least 3 completed cycles to uncover recurring patterns and trends.'**
+  String get symptomTrendsEmpty;
+
+  /// Issue #1004 (tranche 4a): disclaimer under the recurring-symptoms list.
+  ///
+  /// In en, this message translates to:
+  /// **'Patterns reflect descriptive logs only and are not clinical diagnostics.'**
+  String get symptomTrendsDisclaimer;
+
+  /// Issue #1004 (tranche 4a): title of the flow-distribution summary.
+  ///
+  /// In en, this message translates to:
+  /// **'Typical Bleed Rhythm'**
+  String get symptomTrendsFlowTitle;
+
+  /// Issue #1004 (tranche 4a): flow summary subtitle naming the typical peak cycle day and flow level.
+  ///
+  /// In en, this message translates to:
+  /// **'Peak flow typically falls on Cycle Day {day} ({flow}).'**
+  String symptomTrendsFlowSubtitle(int day, String flow);
+
+  /// Issue #1004 (tranche 4a): title of the cycle-literacy library call to action.
+  ///
+  /// In en, this message translates to:
+  /// **'Cycle Literacy Library'**
+  String get symptomTrendsLibraryTitle;
+
+  /// Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action.
+  ///
+  /// In en, this message translates to:
+  /// **'Evidence-based guides on hormones, cycle phases, and body signals.'**
+  String get symptomTrendsLibrarySubtitle;
+
+  /// Issue #1004 (tranche 4a): title of the cramp-prediction card.
+  ///
+  /// In en, this message translates to:
+  /// **'Anticipated Cramp Window'**
+  String get crampPredictionTitle;
+
+  /// Issue #1004 (tranche 4a): cramp-prediction line naming the predicted dates.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimated dates: {dates}'**
+  String crampPredictionDates(String dates);
+
+  /// Issue #1004 (tranche 4a): cramp-prediction line naming how many cycles the pattern was observed in.
+  ///
+  /// In en, this message translates to:
+  /// **'Observed in {observed} of {total} recorded cycles.'**
+  String crampPredictionObserved(int observed, int total);
+
+  /// Issue #1004 (tranche 4a): per-pattern line naming its occurrence and cycle counts.
+  ///
+  /// In en, this message translates to:
+  /// **'Logged {occurrences} times across {cycles} cycles'**
+  String symptomTrendsLogged(int occurrences, int cycles);
 }
 
 class _AppLocalizationsDelegate
