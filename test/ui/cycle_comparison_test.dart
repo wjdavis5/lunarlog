@@ -19,6 +19,7 @@ import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/insights/cycle_comparison_screen.dart';
@@ -254,6 +255,58 @@ void main() {
       );
       expect(find.text('Nothing to compare yet'), findsOneWidget);
     });
+
+    testWidgets(
+      'issue #850 (U8): the empty-state body is third-person for a guardian '
+      'and unchanged for the subject',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: CycleComparisonView(
+                data: null,
+                lens: GuardianLens.guardian,
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.text(
+            "Select two cycles from this profile's cycle history to compare "
+            'them side by side.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('from your cycle history'),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: CycleComparisonView(
+                data: null,
+                lens: GuardianLens.subject,
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.text(
+            'Select two cycles from your cycle history to compare them side '
+            'by side.',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
 
     testWidgets('aligns two cycles by cycle day, showing flow, tags, and the '
         'excluded badge', (tester) async {

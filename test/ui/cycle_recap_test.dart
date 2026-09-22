@@ -11,8 +11,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/insights/cycle_recap.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -22,10 +25,14 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
 
 /// Seven 30-day episodes ending 2026-08-05: six completed cycles, all 30
 /// days, so the engine reads mean 30 and spread 0. Same fixture as
@@ -74,6 +81,28 @@ Future<void> seedEpisodes(
   }
 }
 
+/// Materializes an accepted guardian row locally (mirrors the other widget
+/// suites' helper), so the lens resolves from a real synced row.
+RemoteProfileGuardianRow guardianRow(
+  String profileId,
+  String id,
+  String userId,
+  String role, {
+  bool isSubject = false,
+}) => RemoteProfileGuardianRow(
+  id: id,
+  profileId: profileId,
+  userId: userId,
+  role: role,
+  status: 'accepted',
+  isSubject: isSubject,
+  displayName: null,
+  invitedBy: null,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+  serverVersion: 1,
+);
+
 class Harness {
   Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory());
 
@@ -87,6 +116,9 @@ class Harness {
     String profileId, {
     ProfileMode mode = ProfileMode.standard,
     LocalDate? today,
+    ProfileGuardiansRepository? guardiansRepository,
+    AuthController? authController,
+    String? subjectName,
   }) {
     return MultiProvider(
       providers: [
@@ -99,6 +131,8 @@ class Harness {
         Provider<CycleExclusionList>.value(value: CycleExclusionList(settings)),
         Provider<SettingsStore>.value(value: settings),
         Provider<DayEntriesRepository>.value(value: entries),
+        if (authController != null)
+          ChangeNotifierProvider<AuthController>.value(value: authController),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -109,6 +143,8 @@ class Harness {
             mode: mode,
             todayProvider: () => today ?? kToday,
             settingsStore: settings,
+            guardiansRepository: guardiansRepository,
+            subjectName: subjectName,
           ),
         ),
       ),
@@ -289,5 +325,82 @@ void main() {
     expect(find.byKey(const ValueKey('cycle-recap-compare')), findsNothing);
 
     await h.dispose();
+  });
+
+  group('issue #850 (U8): the recap is subject-lens only', () {
+    /// Signs in as [userId], seeds an accepted guardian row for it, writes a
+    /// one-cycle-back baseline (so the recap would otherwise render), and
+    /// pumps the tab.
+    Future<void> pumpForViewer(
+      WidgetTester tester,
+      Harness h,
+      String userId, {
+      required String role,
+      bool isSubject = false,
+    }) async {
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
+      await seedEpisodes(h.entries, profile.id, kSteadyStarts);
+      await h.settings.set(
+        cycleRecapSettingKey(profile.id),
+        encodeCycleRecapState(
+          const CycleRecapState(recorded: true, seenCycleIso: '2026-06-06'),
+        ),
+      );
+      await h.db.storage.applyRemoteRows([
+        guardianRow(profile.id, 'g-$userId', userId, role, isSubject: isSubject),
+      ]);
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn, user: AuthUser(id: userId));
+      final authController = AuthController(authService: auth);
+
+      await tester.pumpWidget(
+        h.widgetFor(
+          profile.id,
+          guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
+          authController: authController,
+          subjectName: 'Alice',
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Sanity: the tab itself rendered under the lens.
+      expect(find.byKey(const ValueKey('analysis-heading')), findsOneWidget);
+    }
+
+    testWidgets('a guardian never sees the recap, even with a due baseline', (
+      tester,
+    ) async {
+      final h = Harness(tester);
+      await pumpForViewer(tester, h, 'user-aunt', role: 'caregiver');
+
+      expect(
+        find.byKey(const ValueKey('cycle-recap-card')),
+        findsNothing,
+        reason: 'the recap speaks in the subject\'s own voice (U8)',
+      );
+
+      await h.dispose();
+    });
+
+    testWidgets('a subject membership still sees it (subject unchanged)', (
+      tester,
+    ) async {
+      final h = Harness(tester);
+      await pumpForViewer(
+        tester,
+        h,
+        'user-teen',
+        role: 'caregiver',
+        isSubject: true,
+      );
+
+      expect(find.byKey(const ValueKey('cycle-recap-card')), findsOneWidget);
+
+      await h.dispose();
+    });
   });
 }

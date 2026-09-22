@@ -12,8 +12,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -25,6 +28,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/insights/analysis_tab.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -33,6 +37,30 @@ import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:lunarlog/ui/settings/settings_screen.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
+
+/// Materializes an accepted guardian row locally (mirrors the other widget
+/// suites' helper), so the lens resolves from a real synced row.
+RemoteProfileGuardianRow guardianRow(
+  String profileId,
+  String id,
+  String userId,
+  String role, {
+  bool isSubject = false,
+}) => RemoteProfileGuardianRow(
+  id: id,
+  profileId: profileId,
+  userId: userId,
+  role: role,
+  status: 'accepted',
+  isSubject: isSubject,
+  displayName: null,
+  invitedBy: null,
+  createdAt: DateTime.utc(2026, 1, 1),
+  updatedAt: DateTime.utc(2026, 1, 1),
+  serverVersion: 1,
+);
 
 class Harness {
   Harness(this.tester) : db = LunarLogDatabase(NativeDatabase.memory()) {
@@ -58,6 +86,7 @@ class Harness {
   Widget appFor({
     required Widget home,
     ProfileController? profileController,
+    AuthController? authController,
   }) {
     return MultiProvider(
       providers: [
@@ -72,6 +101,8 @@ class Harness {
         ),
         if (profileController != null)
           ChangeNotifierProvider<ProfileController>.value(value: profileController),
+        if (authController != null)
+          ChangeNotifierProvider<AuthController>.value(value: authController),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -362,6 +393,76 @@ void main() {
       expect(find.byKey(const ValueKey('predictions-disabled')), findsOneWidget);
       expect(find.byKey(const ValueKey('analysis-stats')), findsNothing);
       expect(find.byType(CycleHistorySection), findsOneWidget);
+
+      await h.dispose();
+    });
+  });
+
+  group('issue #850 (U8): third-person predictions-off copy on a guardian', () {
+    Future<void> pumpForViewer(
+      WidgetTester tester,
+      Harness h,
+      String userId, {
+      required bool isSubject,
+    }) async {
+      final profile = await h.profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 1), 4);
+      await h.recordBleed(profile.id, LocalDate(2026, 1, 29), 4);
+      await h.settings.set(predictionsEnabledSettingKey(profile.id), 'false');
+      await h.db.storage.applyRemoteRows([
+        guardianRow(
+          profile.id,
+          'g-$userId',
+          userId,
+          'caregiver',
+          isSubject: isSubject,
+        ),
+      ]);
+      final auth = FakeAuthService()
+        ..emit(AuthSessionState.signedIn, user: AuthUser(id: userId));
+      final authController = AuthController(authService: auth);
+
+      await tester.pumpWidget(
+        h.appFor(
+          authController: authController,
+          home: AnalysisTab(
+            profileId: profile.id,
+            todayProvider: () => LocalDate(2026, 4, 1),
+            guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
+            subjectName: 'Alice',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('predictions-disabled')), findsOneWidget);
+    }
+
+    testWidgets('a guardian reads the third-person body', (tester) async {
+      final h = Harness(tester);
+      await pumpForViewer(tester, h, 'user-aunt', isSubject: false);
+
+      expect(
+        find.textContaining('Cycle history and tracking continue unchanged.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Your cycle history'), findsNothing);
+
+      await h.dispose();
+    });
+
+    testWidgets('the subject keeps the pre-#850 second-person body', (
+      tester,
+    ) async {
+      final h = Harness(tester);
+      await pumpForViewer(tester, h, 'user-teen', isSubject: true);
+
+      expect(
+        find.textContaining('Your cycle history and tracking continue'),
+        findsOneWidget,
+      );
 
       await h.dispose();
     });
