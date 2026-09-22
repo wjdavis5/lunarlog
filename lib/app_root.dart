@@ -40,6 +40,7 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart';
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/gate/app_gate.dart';
@@ -219,6 +220,7 @@ class LunarLogRoot extends StatefulWidget {
     this.predictionConnectionService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
+    this.consentService,
     this.supabaseClient,
     this.inviteLinks,
     this.initialInviteCode,
@@ -316,6 +318,12 @@ class LunarLogRoot extends StatefulWidget {
   /// the production [SupabaseAccountExportRemoteSource] - same KTD8
   /// precedent.
   final AccountExportRemoteSource? accountExportRemoteSource;
+
+  /// Account-level minimum-age consent seam (Issue #845), injectable for
+  /// tests. When null (and [supabaseClient] is present) the composition
+  /// factory constructs the production [SupabaseConsentService] - same KTD8
+  /// precedent as [accountExportRemoteSource].
+  final ConsentService? consentService;
 
   /// The Supabase client from the successful bootstrap. When present it is
   /// handed to the composition factory, which constructs the production
@@ -556,6 +564,7 @@ class LunarLogRootState extends State<LunarLogRoot> {
       predictionConnectionService: widget.predictionConnectionService,
       notificationPreferencesService: widget.notificationPreferencesService,
       accountExportRemoteSource: widget.accountExportRemoteSource,
+      consentService: widget.consentService,
       // The shared import coordinator resolves the acting user live, so its
       // view-only guard and sharing notice see the signed-in account — the
       // same source `LunarLogApp`'s own fallback bundle uses.

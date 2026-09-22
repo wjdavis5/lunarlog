@@ -330,7 +330,7 @@ select pg_temp.snapshot('a_result', public.export_account_data());
 
 select is(
   (select array_agg(k order by k) from jsonb_object_keys(pg_temp.snap('a_result')) k),
-  array['exported_at', 'feedback_tickets', 'guardian_invitations', 'import_jobs',
+  array['account_consents', 'exported_at', 'feedback_tickets', 'guardian_invitations', 'import_jobs',
         'missed_entry_alert_state', 'notification_preferences', 'ownership_transfers',
         'profile_guardians', 'profile_reminder_windows', 'profiles', 'push_devices',
         -- Issue #292: settings joins the document.
@@ -777,6 +777,8 @@ select set_eq(
       ('profiles'), ('day_entries'), ('settings'),
       ('profile_guardians'), ('notification_preferences'),
       ('push_devices'), ('missed_entry_alert_state'), ('feedback_tickets'),
+      -- Issue #845: the account-level minimum-age consent row.
+      ('account_consents'),
       -- Excluded, with a documented reason (never exported):
       -- account_deletion_progress: transient deletion-attempt bookkeeping
       -- written only by the delete-account Edge Function's service-role
