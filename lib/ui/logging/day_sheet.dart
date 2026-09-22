@@ -76,7 +76,6 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
-import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/conceive.dart' show conceiveCategoryOrder;
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show describeUnmappedRaw;
@@ -113,6 +112,7 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart'
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/components/responsive_body.dart';
