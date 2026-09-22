@@ -3395,6 +3395,38 @@ void main() {
       await disposeLogging(tester, h);
     });
 
+    testWidgets('issue #850 (U7): a logging guardian in teen mode still gets '
+        'the teen category vocabulary — the lens is threaded through the '
+        'calendar and day sheet without changing the mode copy', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final h = await pumpLogging(
+        tester,
+        mode: ProfileMode.teen,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+          ]);
+        },
+      );
+
+      // MonthCalendar resolves the lens alongside the mode; the day cell it
+      // renders is the one the sheet opens from.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // DaySheet resolves the same lens; the teen vocabulary is intact.
+      expect(find.text('How your body feels'), findsOneWidget);
+      expect(find.text('Body'), findsNothing);
+
+      await disposeLogging(tester, h);
+    });
+
     testWidgets('a saved entry reads verbatim after switching the profile '
         'to teen mode — switching touches no entry (prospective only)', (
       tester,

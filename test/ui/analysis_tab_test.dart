@@ -169,6 +169,7 @@ class Harness {
     AuthController? authController,
     ProfileGuardiansRepository? guardiansRepository,
     LocalDate? today,
+    String? subjectName,
     double textScale = 1.0,
   }) {
     final settings = DriftSettingsStore(db.storage);
@@ -201,6 +202,7 @@ class Harness {
             todayProvider: () => today ?? kToday,
             readOnly: readOnly,
             guardiansRepository: guardiansRepository,
+            subjectName: subjectName,
           ),
         ),
       ),
@@ -523,6 +525,73 @@ void main() {
       await h.tester.pumpAndSettle();
 
       expect(find.textContaining('Omit'), findsWidgets);
+
+      await h.dispose();
+    });
+  });
+
+  group('issue #850 (U7): third-person not-enough copy on a guardian device',
+      () {
+    testWidgets('the subject lens keeps the pre-#850 teen copy', (tester) async {
+      final h = Harness(tester);
+      await h.pump(mode: ProfileMode.teen, starts: kNotEnoughStarts);
+
+      expect(
+        find.text('Your record is just getting started'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Every entry builds the picture of your cycle.'),
+        findsOneWidget,
+      );
+
+      await h.dispose();
+    });
+
+    testWidgets('an accepted guardian reads the not-enough card third-person '
+        "with the subject's name", (tester) async {
+      final h = Harness(tester);
+      final profiles = DriftProfilesRepository(h.db.storage);
+      final entries = DriftDayEntriesRepository(h.db.storage);
+      final profile = await profiles.create(
+        displayName: 'Alice',
+        isMinor: false,
+      );
+      await seedEpisodes(entries, profile.id, kNotEnoughStarts);
+      await h.db.storage.applyRemoteRows([
+        guardianRow(profile.id, 'g-aunt', 'user-aunt', 'caregiver'),
+      ]);
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final authController = AuthController(authService: auth);
+
+      await h.tester.pumpWidget(
+        h.widgetFor(
+          profile.id,
+          mode: ProfileMode.teen,
+          subjectName: 'Alice',
+          authController: authController,
+          guardiansRepository: DriftProfileGuardiansRepository(h.db.storage),
+        ),
+      );
+      await h.tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('analysis-not-enough')),
+        findsOneWidget,
+      );
+      expect(
+        find.text("Alice's record is just getting started"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("Every entry builds the picture of Alice's cycle."),
+        findsOneWidget,
+      );
+      expect(find.text('Your record is just getting started'), findsNothing);
 
       await h.dispose();
     });

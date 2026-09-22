@@ -239,6 +239,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   Widget _overviewContent(ProfileGuardiansRepository? guardiansRepository) {
     return OverviewPanel(
       profileId: widget.profile.id,
+      profile: widget.profile,
       mode: widget.profile.mode,
       irregularFraming: widget.profile.irregularFraming,
       trackingPreferences: widget.profile.trackingPreferences,
@@ -247,6 +248,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
       readOnly: widget.readOnly,
       timezoneProvider: widget.timezoneProvider,
       guardiansRepository: guardiansRepository,
+      subjectName: widget.profile.displayName,
       trailingChildren: !widget.readOnly
           ? const []
           : [

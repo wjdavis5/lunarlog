@@ -94,6 +94,7 @@ import '../../domain/models/profile_mode.dart';
 import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../account/auth_controller.dart';
 import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
@@ -104,6 +105,7 @@ import 'bbt_chart.dart';
 
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/lens_copy.dart';
 import 'package:lunarlog/ui/l10n/tiers.dart';
 
 import '../overview/cycle_history_section.dart';
@@ -140,6 +142,7 @@ class AnalysisTab extends StatefulWidget {
     this.insightsCalculator,
     this.settingsStore,
     this.bbtUnit = BbtUnit.celsius,
+    this.subjectName,
   });
 
   final String profileId;
@@ -183,6 +186,12 @@ class AnalysisTab extends StatefulWidget {
   /// Test seam (issue #841): the pure insights derivation this tab caches.
   /// Null selects [CycleInsightsCalculator.compute] in production.
   final CycleInsightsComputer? insightsCalculator;
+
+  /// Issue #850 (U7): the subject's display name, for the third-person
+  /// care-mode copy a guardian reads ("Maya's record is just getting
+  /// started"). Null falls back to the gender-neutral "their"; ignored when
+  /// the viewer is the subject.
+  final String? subjectName;
 
   /// Source of this tab's device-local recap baseline (issue #852). Null
   /// falls back to `context.read<SettingsStore?>()`; when neither is
@@ -252,6 +261,12 @@ class _AnalysisTabState extends State<AnalysisTab>
   CycleInsightsReport? _recapReport;
   CycleRecapState? _recapStateUsed;
 
+  /// Issue #850 (U1/U7/U8): which lens this viewer sees the profile through,
+  /// resolved from the live guardian rows exactly as [_effectiveReadOnly]
+  /// resolves the role. Presentation only — fail-open, so no synced
+  /// membership resolves to [GuardianLens.subject].
+  GuardianLens get _lens => guardianLensFor(_guardians, _currentUserId);
+
   /// Issue #853: the composed copy — mode composed with the effective
   /// irregular framing (stored tri-state resolved against [prediction]'s
   /// tier; a null tier — not-enough-history/suppressed/disabled — keeps a
@@ -265,6 +280,11 @@ class _AnalysisTabState extends State<AnalysisTab>
           stored: widget.irregularFraming,
           tier: prediction is ActivePrediction ? prediction.tier : null,
         ),
+        // Issue #850 (U7): a guardian looking at this profile reads the
+        // not-enough-history card third-person; the subject reads it as
+        // before.
+        lens: _lens,
+        subjectName: widget.subjectName,
       );
 
   @override
@@ -581,7 +601,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   Widget build(BuildContext context) {
     return AsyncSnapshotView<CyclePrediction>(
       snapshot: _predictionSnapshot,
-      errorMessage: AppLocalizations.of(context).analysisLoadError,
+      errorMessage: lensAnalysisLoadError(AppLocalizations.of(context), _lens),
       onRetry: _retryPredictions,
       builder: (context, prediction) => ListView(
         padding: const EdgeInsets.all(LLSpace.space4),
@@ -624,7 +644,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           lifecycleMode: prediction.lifecycleMode,
         ),
         // Issue #225: per-profile toggle turning off predictions.
-        PredictionsDisabled() => const PredictionsDisabledCard(),
+        PredictionsDisabled() => PredictionsDisabledCard(lens: _lens),
       },
       const SizedBox(height: LLSpace.space4),
       CycleHistorySection(
@@ -644,6 +664,7 @@ class _AnalysisTabState extends State<AnalysisTab>
                 cycleAStart: cycleAStart,
                 cycleBStart: cycleBStart,
                 todayProvider: widget.todayProvider,
+                lens: _lens,
               ),
             ),
       ),
@@ -664,7 +685,13 @@ class _AnalysisTabState extends State<AnalysisTab>
   /// The recap section (issue #852) or nothing at all — split out of
   /// [_sections] to keep that method's own branch count low (the quality
   /// gate's per-method CRAP rule).
+  ///
+  /// Issue #850 (U8): the recap is subject-facing only. It speaks in the
+  /// subject's own voice about *their* cycle ("your usual range"), so it is
+  /// not simply a copy that can be re-worded — a guardian never sees it at
+  /// all, and this is the empty return.
   List<Widget> _recapSection(BuildContext context) {
+    if (_lens == GuardianLens.guardian) return const [];
     final recap = _recap;
     if (recap == null ||
         !_recapState.recorded ||
@@ -696,6 +723,7 @@ class _AnalysisTabState extends State<AnalysisTab>
                   cycleAStart: recap.previousCycleStart!,
                   cycleBStart: recap.cycleStart,
                   todayProvider: widget.todayProvider,
+                  lens: _lens,
                 ),
               ),
     );

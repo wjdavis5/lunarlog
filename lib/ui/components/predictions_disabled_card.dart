@@ -2,16 +2,29 @@
 /// explains that estimates, calendar prediction bands, and prediction reminders
 /// are paused while logging, history, and statistics continue unchanged.
 ///
-/// Shared by the overview panel and the Analysis tab.
+/// Shared by the overview panel and the Analysis tab. Issue #850 (U8): the
+/// body is lens-aware — a guardian on the Analysis tab reads the
+/// third-person variant (the subject's overview body only ever renders under
+/// the subject lens, so its call site keeps the default).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/l10n/lens_copy.dart';
 
 class PredictionsDisabledCard extends StatelessWidget {
-  const PredictionsDisabledCard({super.key, this.onManageSettings});
+  const PredictionsDisabledCard({
+    super.key,
+    this.onManageSettings,
+    this.lens = GuardianLens.subject,
+  });
 
   final VoidCallback? onManageSettings;
+
+  /// Which lens the reader is viewing the profile through; selects the
+  /// second- or third-person body (issue #850, U8).
+  final GuardianLens lens;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +46,7 @@ class PredictionsDisabledCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              l10n.predictionsDisabledBody,
+              lensPredictionsDisabledBody(l10n, lens),
               key: const ValueKey('predictions-disabled-body'),
               style: theme.textTheme.bodySmall,
             ),

@@ -265,6 +265,7 @@ class _AppShellState extends State<AppShell> {
           tab,
           OverviewPanel(
             profileId: widget.profile.id,
+            profile: widget.profile,
             mode: widget.profile.mode,
             irregularFraming: widget.profile.irregularFraming,
             trackingPreferences: widget.profile.trackingPreferences,
@@ -272,6 +273,7 @@ class _AppShellState extends State<AppShell> {
             todayProvider: widget.todayProvider,
             timezoneProvider: widget.timezoneProvider,
             guardiansRepository: guardiansRepository,
+            subjectName: widget.profile.displayName,
           ),
         ),
       AppTab.calendar => _withFabClearance(
@@ -296,6 +298,7 @@ class _AppShellState extends State<AppShell> {
           irregularFraming: widget.profile.irregularFraming,
           todayProvider: widget.todayProvider,
           guardiansRepository: guardiansRepository,
+          subjectName: widget.profile.displayName,
           bbtUnit: widget.profile.bbtUnit,
         ),
       // Issue #826: the shell supplies this tab's AppBar (see [build]), so
