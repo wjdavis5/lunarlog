@@ -265,6 +265,10 @@
   "@cycleComparisonNotEnoughBody": {
     "description": "Issue #235: body copy paired with cycleComparisonNotEnoughTitle."
   },
+  "cycleComparisonNotEnoughBodyGuardian": "Select two cycles from this profile's cycle history to compare them side by side.",
+  "@cycleComparisonNotEnoughBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of cycleComparisonNotEnoughBody, read by a guardian on the comparison screen."
+  },
   "cycleComparisonSideHeading": "Cycle starting {date}",
   "@cycleComparisonSideHeading": {
     "description": "Issue #235: header above a completed cycle's column in the comparison screen.",
@@ -491,6 +495,21 @@
   "daySheetCycleStartDialogBody": "This looks early — you're on cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates your averages and estimates. Spotting never starts a cycle.",
   "@daySheetCycleStartDialogBody": {
     "description": "Issue #887: body of the early-cycle-start confirmation. {cycleDay} is the 1-based day in the cycle being closed ('cycle day 17'), {flow} the tapped bleed level's label, {cycleLength} the length the closed cycle would end up with (16 for a day-17 start).",
+    "placeholders": {
+      "cycleDay": {
+        "type": "int"
+      },
+      "flow": {
+        "type": "String"
+      },
+      "cycleLength": {
+        "type": "int"
+      }
+    }
+  },
+  "daySheetCycleStartDialogBodyGuardian": "This looks early — this is cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates this profile's averages and estimates. Spotting never starts a cycle.",
+  "@daySheetCycleStartDialogBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of daySheetCycleStartDialogBody, read by a guardian logging for this profile. {cycleDay}, {flow}, and {cycleLength} carry the same meaning.",
     "placeholders": {
       "cycleDay": {
         "type": "int"
@@ -732,6 +751,10 @@
   "overviewEstimateLoadError": "Could not load your cycle estimate.",
   "@overviewEstimateLoadError": {
     "description": "InlineError message (announced as a screen-reader live region) when OverviewPanel's prediction stream errors. Issue #602."
+  },
+  "overviewEstimateLoadErrorGuardian": "Could not load this profile's cycle estimate.",
+  "@overviewEstimateLoadErrorGuardian": {
+    "description": "Issue #850 (U8): third-person variant of overviewEstimateLoadError, read by a guardian looking after someone else's profile."
   },
   "overviewLoggedSnackbar": "Recorded a medium-flow period start for today.",
   "@overviewLoggedSnackbar": {
@@ -1718,6 +1741,10 @@
   "predictionsDisabledBody": "Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
   "@predictionsDisabledBody": {
     "description": "Body of the card explaining that predictions are disabled while tracking remains active (issue #225)."
+  },
+  "predictionsDisabledBodyGuardian": "Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Cycle history and tracking continue unchanged.",
+  "@predictionsDisabledBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of predictionsDisabledBody, read by a guardian on the Analysis tab."
   },
   "predictionsDisabledAction": "Manage in Settings",
   "@predictionsDisabledAction": {
@@ -6005,6 +6032,10 @@
     "analysisLoadError": "Could not load your cycle analysis.",
     "@analysisLoadError": {
       "description": "Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails."
+    },
+    "analysisLoadErrorGuardian": "Could not load this profile's cycle analysis.",
+    "@analysisLoadErrorGuardian": {
+      "description": "Issue #850 (U8): third-person variant of analysisLoadError, read by a guardian."
     },
     "analysisTitle": "Analysis",
     "@analysisTitle": {

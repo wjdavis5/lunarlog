@@ -93,6 +93,7 @@ import 'package:lunarlog/ui/components/today_card.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/lens_copy.dart';
 import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
@@ -655,7 +656,10 @@ class _OverviewPanelState extends State<OverviewPanel>
       builder: (context, snapshot) {
         return AsyncSnapshotView<CyclePrediction>(
           snapshot: snapshot,
-          errorMessage: AppLocalizations.of(context).overviewEstimateLoadError,
+          errorMessage: lensOverviewEstimateLoadError(
+            AppLocalizations.of(context),
+            _lens,
+          ),
           onRetry: _retryPredictions,
           builder: (context, prediction) =>
               _overviewBody(context, prediction, availability),

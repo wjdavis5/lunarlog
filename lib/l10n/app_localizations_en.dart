@@ -192,6 +192,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Select two cycles from your cycle history to compare them side by side.';
 
   @override
+  String get cycleComparisonNotEnoughBodyGuardian =>
+      'Select two cycles from this profile\'s cycle history to compare them side by side.';
+
+  @override
   String cycleComparisonSideHeading(String date) {
     return 'Cycle starting $date';
   }
@@ -367,6 +371,15 @@ class AppLocalizationsEn extends AppLocalizations {
     int cycleLength,
   ) {
     return 'This looks early — you\'re on cycle day $cycleDay. Logging $flow flow starts a new cycle, closes the current one after $cycleLength days, and updates your averages and estimates. Spotting never starts a cycle.';
+  }
+
+  @override
+  String daySheetCycleStartDialogBodyGuardian(
+    int cycleDay,
+    String flow,
+    int cycleLength,
+  ) {
+    return 'This looks early — this is cycle day $cycleDay. Logging $flow flow starts a new cycle, closes the current one after $cycleLength days, and updates this profile\'s averages and estimates. Spotting never starts a cycle.';
   }
 
   @override
@@ -557,6 +570,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewEstimateLoadError => 'Could not load your cycle estimate.';
+
+  @override
+  String get overviewEstimateLoadErrorGuardian =>
+      'Could not load this profile\'s cycle estimate.';
 
   @override
   String get overviewLoggedSnackbar =>
@@ -1345,6 +1362,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get predictionsDisabledBody =>
       'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
+
+  @override
+  String get predictionsDisabledBodyGuardian =>
+      'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Cycle history and tracking continue unchanged.';
 
   @override
   String get predictionsDisabledAction => 'Manage in Settings';
@@ -4652,6 +4673,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get analysisLoadError => 'Could not load your cycle analysis.';
+
+  @override
+  String get analysisLoadErrorGuardian =>
+      'Could not load this profile\'s cycle analysis.';
 
   @override
   String get analysisTitle => 'Analysis';

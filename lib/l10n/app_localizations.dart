@@ -418,6 +418,12 @@ abstract class AppLocalizations {
   /// **'Select two cycles from your cycle history to compare them side by side.'**
   String get cycleComparisonNotEnoughBody;
 
+  /// Issue #850 (U8): third-person variant of cycleComparisonNotEnoughBody, read by a guardian on the comparison screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Select two cycles from this profile\'s cycle history to compare them side by side.'**
+  String get cycleComparisonNotEnoughBodyGuardian;
+
   /// Issue #235: header above a completed cycle's column in the comparison screen.
   ///
   /// In en, this message translates to:
@@ -693,6 +699,16 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This looks early — you\'re on cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates your averages and estimates. Spotting never starts a cycle.'**
   String daySheetCycleStartDialogBody(
+    int cycleDay,
+    String flow,
+    int cycleLength,
+  );
+
+  /// Issue #850 (U8): third-person variant of daySheetCycleStartDialogBody, read by a guardian logging for this profile. {cycleDay}, {flow}, and {cycleLength} carry the same meaning.
+  ///
+  /// In en, this message translates to:
+  /// **'This looks early — this is cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates this profile\'s averages and estimates. Spotting never starts a cycle.'**
+  String daySheetCycleStartDialogBodyGuardian(
     int cycleDay,
     String flow,
     int cycleLength,
@@ -1051,6 +1067,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not load your cycle estimate.'**
   String get overviewEstimateLoadError;
+
+  /// Issue #850 (U8): third-person variant of overviewEstimateLoadError, read by a guardian looking after someone else's profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this profile\'s cycle estimate.'**
+  String get overviewEstimateLoadErrorGuardian;
 
   /// Snackbar confirming the today card's quick-log action.
   ///
@@ -2177,6 +2199,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
   String get predictionsDisabledBody;
+
+  /// Issue #850 (U8): third-person variant of predictionsDisabledBody, read by a guardian on the Analysis tab.
+  ///
+  /// In en, this message translates to:
+  /// **'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Cycle history and tracking continue unchanged.'**
+  String get predictionsDisabledBodyGuardian;
 
   /// Button on predictions-disabled card opening Settings (issue #225).
   ///
@@ -7429,6 +7457,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not load your cycle analysis.'**
   String get analysisLoadError;
+
+  /// Issue #850 (U8): third-person variant of analysisLoadError, read by a guardian.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load this profile\'s cycle analysis.'**
+  String get analysisLoadErrorGuardian;
 
   /// Issue #1004 (tranche 4a): heading of the analysis tab.
   ///
