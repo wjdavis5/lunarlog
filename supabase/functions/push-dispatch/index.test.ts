@@ -178,6 +178,35 @@ Deno.test("a row with two devices for the recipient sends twice", async () => {
   assertEquals(deps.sent, ["row-1"]);
 });
 
+Deno.test("Issue #851: the ahead-of-time kinds render the fixed generic copy", async () => {
+  for (const kind of ["period_soon", "restock_due", "pms_soon"]) {
+    const deps = fakeDeps({
+      rows: [row({ id: `row-${kind}`, kind })],
+      devices: { "user-1": [{ id: "device-1", token: "token-1" }] },
+    });
+
+    await handlePushDispatch(deps);
+
+    assertEquals(deps.sendCalls.length, 1, kind);
+    const message = deps.sendCalls[0] as FcmMessage;
+    assertEquals(
+      message.message.notification.title,
+      "A reminder from lunarlog",
+      `${kind} uses the fixed generic title`,
+    );
+    assertEquals(
+      message.message.notification.body,
+      "Open lunarlog to see what it is about.",
+      `${kind} uses the fixed generic body`,
+    );
+    assertEquals(
+      Object.keys(message.message.data),
+      ["profile_id"],
+      `${kind} carries only profile_id in data`,
+    );
+  }
+});
+
 Deno.test("a failed send leaves sent_at null, clears claimed_at, and increments attempts", async () => {
   const deps = fakeDeps({
     rows: [row({ claimed_at: PAST })],

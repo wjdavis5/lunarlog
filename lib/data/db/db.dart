@@ -287,8 +287,13 @@ class LunarLogDatabase extends _$LunarLogDatabase {
   ///   kit: a `visit_prep` visit-prep item or a `supply` stock item,
   ///   sharing one table/sync/RLS path). Defaults to `visit_prep`, so a
   ///   pre-#851 row reads as a prep item and no backfill is needed.
+  /// * 31 — `day_entries.note_private` (Issue #849, re-scoped: a day note
+  ///   the profile subject marked private, masked to NULL for every
+  ///   non-subject guardian). NOT NULL DEFAULT FALSE, so the one `addColumn`
+  ///   is also the whole backfill: nothing was private before the flag
+  ///   existed.
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 31;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -599,6 +604,8 @@ class LunarLogDatabase extends _$LunarLogDatabase {
     await _upgradeToV29(m, from);
     // Issue #851's v30 step, same shape again.
     await _upgradeToV30(m, from);
+    // Issue #849's v31 step, same shape again.
+    await _upgradeToV31(m, from);
     // Re-assert unconditionally on every upgrade (issue #200): `onCreate` is
     // the only place this partial index was ever created, so a device whose
     // schema was reconstructed from something other than a real `onCreate`
@@ -1295,6 +1302,26 @@ class LunarLogDatabase extends _$LunarLogDatabase {
         await migrationStepHook?.call('profile_guardians.is_subject');
       }
       await _advanceSchemaVersion(29);
+    });
+  }
+
+  /// The v31 upgrade step (Issue #849): the per-note `note_private` flag on
+  /// `day_entries`. Same standalone-method shape as [_upgradeToV30]
+  /// (`day_entries` has existed since v1 on every real device, so the
+  /// addColumn is always safe regardless of `from`); the column is NOT NULL
+  /// DEFAULT FALSE locally, so every existing row reads as a shared
+  /// (non-private) note with no backfill.
+  Future<void> _upgradeToV31(Migrator m, int from) async {
+    if (from >= 31) return;
+    await transaction(() async {
+      // Same `_hasColumn` (LLA-015) real-schema guard the sibling column
+      // steps use, so a schema reconstructed by something other than a real
+      // `onCreate` (the verification harness) cannot double-add.
+      if (!await _hasColumn('day_entries', 'note_private')) {
+        await m.addColumn(dayEntries, dayEntries.notePrivate);
+        await migrationStepHook?.call('day_entries.note_private');
+      }
+      await _advanceSchemaVersion(31);
     });
   }
 }

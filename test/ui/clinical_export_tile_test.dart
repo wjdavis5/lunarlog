@@ -23,6 +23,7 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:provider/provider.dart';
@@ -462,7 +463,7 @@ void main() {
       expect(key('clinical-export-fhir-error'), findsOneWidget);
       expect(
         tester.widget<InlineError>(key('clinical-export-fhir-error')).message,
-        kClinicalExportFailureCopy,
+        AppLocalizationsEn().settingsClinicalExportFailure,
       );
     });
 

@@ -218,21 +218,25 @@ String formatLocalDateWeekdayDayDateYear(
 ///
 /// Civil date math is pure integer difference (`date.difference(today)`),
 /// immune to DST transitions and local midnight hour lengths (issue #846).
+///
+/// Issue #1004 (tranche 5): the three relative words are required — the
+/// English fallbacks this helper used to carry were hardcoded UI copy —
+/// so the caller passes the localized words it already holds.
 String relativeDayLabelForLocalDate(
   LocalDate date,
   LocalDate today, {
   String locale = kFallbackLocale,
-  String? todayLabel,
-  String? yesterdayLabel,
-  String? tomorrowLabel,
+  required String todayLabel,
+  required String yesterdayLabel,
+  required String tomorrowLabel,
   DateFormatPreference preference = DateFormatPreference.system,
 }) {
   final difference = date.difference(today);
   if (difference == 0) {
-    return '${todayLabel ?? 'Today'} · ${formatShortDayDate(date.toDateTime(), locale: locale, preference: preference)}';
+    return '$todayLabel · ${formatShortDayDate(date.toDateTime(), locale: locale, preference: preference)}';
   }
-  if (difference == -1) return yesterdayLabel ?? 'Yesterday';
-  if (difference == 1) return tomorrowLabel ?? 'Tomorrow';
+  if (difference == -1) return yesterdayLabel;
+  if (difference == 1) return tomorrowLabel;
   return formatWeekdayDayDateYear(
     date.toDateTime(),
     locale: locale,
@@ -248,18 +252,18 @@ String relativeDayLabelForLocalDate(
 /// difference is computed without instant/duration arithmetic across DST
 /// boundaries (issue #846).
 ///
-/// The relative words default to their English forms; callers that already
-/// hold localized copy may override them via [todayLabel],
-/// [yesterdayLabel], and [tomorrowLabel] so this helper needs no
-/// `AppLocalizations` dependency of its own. [preference] (Issue #226)
+/// The relative words are required (issue #1004, tranche 5 — the English
+/// defaults were hardcoded UI copy), keeping this helper free of an
+/// `AppLocalizations` dependency of its own: the caller passes the
+/// localized words it already holds. [preference] (Issue #226)
 /// reorders the month/day pair inside both absolute forms.
 String relativeDayLabel(
   DateTime date,
   DateTime today, {
   String locale = kFallbackLocale,
-  String? todayLabel,
-  String? yesterdayLabel,
-  String? tomorrowLabel,
+  required String todayLabel,
+  required String yesterdayLabel,
+  required String tomorrowLabel,
   DateFormatPreference preference = DateFormatPreference.system,
 }) =>
     relativeDayLabelForLocalDate(

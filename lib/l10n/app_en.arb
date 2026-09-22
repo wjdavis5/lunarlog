@@ -452,6 +452,22 @@
   "@daySheetNoteHint": {
     "description": "Hint text in the day sheet's free-text note field (issue #812), in the voice guide's register — an invitation, not an instruction."
   },
+  "daySheetNotePrivateToggle": "Keep this note private",
+  "@daySheetNotePrivateToggle": {
+    "description": "Issue #849 (re-scoped): the subject-only toggle that marks the day note private. Rendered only while the note is being written (the stored note is empty), and disabled once a non-empty note has been saved."
+  },
+  "daySheetNotePrivateHint": "Private notes aren't shared with guardians.",
+  "@daySheetNotePrivateHint": {
+    "description": "Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it."
+  },
+  "daySheetNotePrivateSavedHint": "Privacy is chosen when the note is written, and can't be changed after it's saved.",
+  "@daySheetNotePrivateSavedHint": {
+    "description": "Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared)."
+  },
+  "daySheetNotePrivateHidden": "Private note",
+  "@daySheetNotePrivateHidden": {
+    "description": "Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device."
+  },
   "daySheetDoneLabel": "Done",
   "@daySheetDoneLabel": {
     "description": "The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means \"save\"."
@@ -1576,6 +1592,14 @@
   "firstRunInviteSignInAction": "Sign in to invite",
   "@firstRunInviteSignInAction": {
     "description": "Button on the invite step opening the embedded sign-in screen; names the outcome the sign-in is for (issue #804; reworded by issue #996)."
+  },
+  "pendingInviteBannerTitle": "Sign in to accept your invite",
+  "@pendingInviteBannerTitle": {
+    "description": "Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up)."
+  },
+  "pendingInviteBannerAction": "Sign In",
+  "@pendingInviteBannerAction": {
+    "description": "Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up)."
   },
   "firstRunInviteCoParent": "Invite a guardian",
   "@firstRunInviteCoParent": {
@@ -3883,6 +3907,34 @@
     "@sharingNotificationPreferencesMissedEntrySubtitle": {
       "description": "Issue #1004 (tranche 1): missed-entry threshold tile subtitle."
     },
+    "sharingNotificationPreferencesAheadOfTimeHeader": "Ahead of time",
+    "@sharingNotificationPreferencesAheadOfTimeHeader": {
+      "description": "Issue #851: section header over the three opt-in ahead-of-time guardian alerts."
+    },
+    "sharingNotificationPreferencesPeriodSoon": "Period reminder",
+    "@sharingNotificationPreferencesPeriodSoon": {
+      "description": "Issue #851: opt-in toggle for the period_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPeriodSoonSubtitle": "A heads-up a few days before the next expected period",
+    "@sharingNotificationPreferencesPeriodSoonSubtitle": {
+      "description": "Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail)."
+    },
+    "sharingNotificationPreferencesRestock": "Restock reminder",
+    "@sharingNotificationPreferencesRestock": {
+      "description": "Issue #851: opt-in toggle for the restock_due ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesRestockSubtitle": "Remind me to restock supplies before the next expected period",
+    "@sharingNotificationPreferencesRestockSubtitle": {
+      "description": "Issue #851: restock_due toggle subtitle."
+    },
+    "sharingNotificationPreferencesPmsSoon": "PMS heads-up",
+    "@sharingNotificationPreferencesPmsSoon": {
+      "description": "Issue #851: opt-in toggle for the pms_soon ahead-of-time alert."
+    },
+    "sharingNotificationPreferencesPmsSoonSubtitle": "A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)",
+    "@sharingNotificationPreferencesPmsSoonSubtitle": {
+      "description": "Issue #851: pms_soon toggle subtitle, naming the three-interval gate."
+    },
     "sharingNotificationPreferencesOff": "Off",
     "@sharingNotificationPreferencesOff": {
       "description": "Issue #1004 (tranche 1): off option in the notification-preferences dropdowns."
@@ -6160,5 +6212,650 @@
           "type": "int"
         }
       }
+    },
+    "accountSyncStatusSyncing": "Syncing…",
+    "@accountSyncStatusSyncing": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a push/pull/restore cycle runs."
+    },
+    "accountSyncStatusUploadPending": "Upload pending — tap to review",
+    "@accountSyncStatusUploadPending": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while upload consent is pending."
+    },
+    "accountSyncStatusWebSyncOff": "Sync is off in this web build",
+    "@accountSyncStatusWebSyncOff": {
+      "description": "Issue #1004 (tranche 5): sync-status copy on the web build without the sync define."
+    },
+    "accountSyncStatusSignInAgain": "Sign in again to sync",
+    "@accountSyncStatusSignInAgain": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for an expired session or an auth failure."
+    },
+    "accountSyncStatusRejected": "Some entries could not be uploaded",
+    "@accountSyncStatusRejected": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when rejected rows exist."
+    },
+    "accountSyncStatusAwaitingConfirmation": "Waiting for email confirmation — open the link on this device",
+    "@accountSyncStatusAwaitingConfirmation": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a sign-up confirmation email is pending."
+    },
+    "accountSyncStatusAwaitingMagicLink": "Sign-in email sent — open the link on this device or enter the code",
+    "@accountSyncStatusAwaitingMagicLink": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a passwordless sign-in email is pending."
+    },
+    "accountSyncStatusOfflineSaved": "Saved on this device · will sync",
+    "@accountSyncStatusOfflineSaved": {
+      "description": "Issue #1004 (tranche 5): day-sheet micro-confirmation after an offline save (#182 AC8)."
+    },
+    "accountSyncStatusJustNow": "just now",
+    "@accountSyncStatusJustNow": {
+      "description": "Issue #1004 (tranche 5): relative time under a minute."
+    },
+    "accountSyncStatusMinutesAgo": "{minutes} min ago",
+    "@accountSyncStatusMinutesAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in minutes.",
+      "placeholders": {
+        "minutes": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusHoursAgo": "{hours} h ago",
+    "@accountSyncStatusHoursAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in hours.",
+      "placeholders": {
+        "hours": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusDaysAgo": "{days} d ago",
+    "@accountSyncStatusDaysAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in days.",
+      "placeholders": {
+        "days": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusUnavailable": "Sync is not available in this build",
+    "@accountSyncStatusUnavailable": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when no sync engine is wired."
+    },
+    "accountSyncStatusNetworkRetry": "Could not reach the server — will retry",
+    "@accountSyncStatusNetworkRetry": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for a network failure."
+    },
+    "accountSyncStatusFailedRetry": "Sync failed — will retry",
+    "@accountSyncStatusFailedRetry": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for an unclassified sync failure."
+    },
+    "accountSyncStatusAccountMismatch": "Signed in as a different account",
+    "@accountSyncStatusAccountMismatch": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when the server account no longer matches."
+    },
+    "accountSyncStatusUploading": "Uploading {pushed} of {total}",
+    "@accountSyncStatusUploading": {
+      "description": "Issue #1004 (tranche 5): live push progress; both counts arrive pre-formatted so the thousands separator stays the app's own.",
+      "placeholders": {
+        "pushed": {
+          "type": "String"
+        },
+        "total": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSyncStatusNotSignedIn": "Not signed in",
+    "@accountSyncStatusNotSignedIn": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when signed out."
+    },
+    "accountSyncStatusPaused": "Sync paused",
+    "@accountSyncStatusPaused": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while the device gate pauses sync."
+    },
+    "accountSyncStatusNotSyncedYet": "Not synced yet",
+    "@accountSyncStatusNotSyncedYet": {
+      "description": "Issue #1004 (tranche 5): sync-status copy before the first completed sync."
+    },
+    "accountSyncStatusUpToDate": "Up to date · {relative}",
+    "@accountSyncStatusUpToDate": {
+      "description": "Issue #1004 (tranche 5): resting sync-status copy; the relative time arrives pre-formatted.",
+      "placeholders": {
+        "relative": {
+          "type": "String"
+        }
+      }
+    },
+    "accountExportFailure": "Could not export your data. Please try again.",
+    "@accountExportFailure": {
+      "description": "Issue #1004 (tranche 5): one-line JSON-export failure copy, no exception text (R10)."
+    },
+    "accountGoogleButtonLabel": "Sign in with Google",
+    "@accountGoogleButtonLabel": {
+      "description": "Issue #1004 (tranche 5): branded Google button label per Google's branding guidelines wording."
+    },
+    "accountDeletionNetworkFailure": "Could not reach the server. Check your connection and try again. Your account was not deleted.",
+    "@accountDeletionNetworkFailure": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (network)."
+    },
+    "accountDeletionAppleCodeRequired": "Nothing was deleted. We couldn't confirm your Apple sign-in before starting, so the deletion never began - please try again.",
+    "@accountDeletionAppleCodeRequired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (missing Apple authorization code)."
+    },
+    "accountDeletionAppleCeremonyUnavailable": "Nothing was deleted. This account's Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.",
+    "@accountDeletionAppleCeremonyUnavailable": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (no native Apple ceremony on this device)."
+    },
+    "accountDeletionAttachmentCleanupFailed": "Nothing was deleted. We couldn't remove your support attachments, so the deletion never began - please try again.",
+    "@accountDeletionAttachmentCleanupFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment cleanup failed closed)."
+    },
+    "accountDeletionAttachmentCleanupUnbounded": "Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won't help - please contact support so we can finish removing your account.",
+    "@accountDeletionAttachmentCleanupUnbounded": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment count unbounded; support needed)."
+    },
+    "accountDeletionMfaRequired": "Nothing was deleted. Please confirm your two-factor code and try again.",
+    "@accountDeletionMfaRequired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (AAL2 step-up needed)."
+    },
+    "accountDeletionAppleRevokeFailed": "Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you're concerned about the lingering Apple access.",
+    "@accountDeletionAppleRevokeFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (Apple revocation failed)."
+    },
+    "accountDeletionRevocationMarkerFailed": "Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn't safely record that on our end. Please try again in a moment, or contact support if it keeps failing.",
+    "@accountDeletionRevocationMarkerFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (revocation marker not persisted)."
+    },
+    "accountDeletionDeleteUserFailed": "Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.",
+    "@accountDeletionDeleteUserFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (auth row deletion failed)."
+    },
+    "accountDeletionSessionExpired": "Your session has expired. Sign in again and retry - your account was not deleted.",
+    "@accountDeletionSessionExpired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (unauthorized)."
+    },
+    "accountDeletionTimeout": "This is taking longer than expected and we can't confirm whether your account was deleted. Wait a moment and check whether you're still signed in before retrying - retrying is safe either way.",
+    "@accountDeletionTimeout": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure with an unknown outcome (timeout)."
+    },
+    "accountDeletionUnknown": "Something went wrong. Your account was not deleted. Please try again.",
+    "@accountDeletionUnknown": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure with an unclassified error."
+    },
+
+    "settingsExportRangePresetLast3Cycles": "Last 3 cycles",
+    "@settingsExportRangePresetLast3Cycles": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsExportRangePresetLast6Cycles": "Last 6 cycles",
+    "@settingsExportRangePresetLast6Cycles": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsExportRangePresetLast12Cycles": "Last 12 cycles",
+    "@settingsExportRangePresetLast12Cycles": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsExportRangePresetLast12Months": "Last 12 months",
+    "@settingsExportRangePresetLast12Months": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsExportRangePresetEverything": "Everything",
+    "@settingsExportRangePresetEverything": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsExportRangePresetCustom": "Custom range\u2026",
+    "@settingsExportRangePresetCustom": {
+      "description": "Issue #1004 (tranche 5): export-range preset radio label."
+    },
+    "settingsCsvExportFailure": "Could not export your cycle data as CSV. Please try again.",
+    "@settingsCsvExportFailure": {
+      "description": "Issue #1004 (tranche 5): CSV export failure copy, no exception text."
+    },
+    "settingsCsvExportSubtitleNoEntries": "Add at least one day entry to export CSV tables.",
+    "@settingsCsvExportSubtitleNoEntries": {
+      "description": "Issue #1004 (tranche 5): CSV tile subtitle with nothing logged yet."
+    },
+    "settingsCsvExportSubtitleOneProfile": "Export {profileName}'s cycle data as spreadsheet-compatible CSV files.",
+    "@settingsCsvExportSubtitleOneProfile": {
+      "description": "Issue #1004 (tranche 5): CSV tile subtitle naming the one live profile.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "settingsCsvExportSubtitleGeneric": "Export your cycles and daily log as spreadsheet-compatible CSV files.",
+    "@settingsCsvExportSubtitleGeneric": {
+      "description": "Issue #1004 (tranche 5): CSV tile subtitle with several live profiles."
+    },
+    "settingsClinicalExportFailure": "Could not export your clinical summary. Please try again.",
+    "@settingsClinicalExportFailure": {
+      "description": "Issue #1004 (tranche 5): shared FHIR/PDF clinical-export failure copy, no exception text."
+    },
+    "settingsClinicalExportSubtitleNoEntries": "Add at least one day entry to export a clinical summary.",
+    "@settingsClinicalExportSubtitleNoEntries": {
+      "description": "Issue #1004 (tranche 5): FHIR tile subtitle with nothing logged yet."
+    },
+    "settingsClinicalExportSubtitleOneProfile": "Export {profileName}'s clinical summary.",
+    "@settingsClinicalExportSubtitleOneProfile": {
+      "description": "Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "settingsClinicalExportSubtitleGeneric": "Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.",
+    "@settingsClinicalExportSubtitleGeneric": {
+      "description": "Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles."
+    },
+    "settingsClinicalPdfSubtitleNoEntries": "Add at least one day entry to export a PDF clinical summary.",
+    "@settingsClinicalPdfSubtitleNoEntries": {
+      "description": "Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet."
+    },
+    "settingsClinicalPdfSubtitleOneProfile": "Export {profileName}'s clinical summary as a PDF.",
+    "@settingsClinicalPdfSubtitleOneProfile": {
+      "description": "Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.",
+      "placeholders": {
+        "profileName": {
+          "type": "String"
+        }
+      }
+    },
+    "settingsClinicalPdfSubtitleGeneric": "Share an on-device PDF summary of logged cycle data.",
+    "@settingsClinicalPdfSubtitleGeneric": {
+      "description": "Issue #1004 (tranche 5): PDF tile subtitle with several live profiles."
+    },
+    "settingsClinicalPdfRangeCustom": "{start} to {end}",
+    "@settingsClinicalPdfRangeCustom": {
+      "description": "Issue #1004 (tranche 5): custom export-range label naming its explicit start/end dates.",
+      "placeholders": {
+        "start": {
+          "type": "String"
+        },
+        "end": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncSourceNameAppleHealth": "the Health app",
+    "@healthSyncSourceNameAppleHealth": {
+      "description": "Issue #1004 (tranche 5): Apple Health store name as used mid-sentence."
+    },
+    "healthSyncSourceNameHealthConnect": "Health Connect",
+    "@healthSyncSourceNameHealthConnect": {
+      "description": "Issue #1004 (tranche 5): Health Connect store name as used mid-sentence."
+    },
+    "healthSyncSourceTitleAppleHealth": "Health app",
+    "@healthSyncSourceTitleAppleHealth": {
+      "description": "Issue #1004 (tranche 5): Apple Health store name for titles and headings."
+    },
+    "healthSyncSourceTitleHealthConnect": "Health Connect",
+    "@healthSyncSourceTitleHealthConnect": {
+      "description": "Issue #1004 (tranche 5): Health Connect store name for titles and headings."
+    },
+    "healthSyncUnavailableAppleHealth": "The Health app isn't available on this device.",
+    "@healthSyncUnavailableAppleHealth": {
+      "description": "Issue #1004 (tranche 5): Apple Health unavailable copy."
+    },
+    "healthSyncUnavailableHealthConnect": "Health Connect isn't available on this device.",
+    "@healthSyncUnavailableHealthConnect": {
+      "description": "Issue #1004 (tranche 5): Health Connect unavailable copy."
+    },
+    "healthSyncImportEmptyAppleHealth": "The Health app returned no menstrual-flow data. The Health app doesn't tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.",
+    "@healthSyncImportEmptyAppleHealth": {
+      "description": "Issue #1004 (tranche 5): neutral no-data import copy (Apple Health; deliberately ambiguous about denial)."
+    },
+    "healthSyncImportEmptyHealthConnect": "Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.",
+    "@healthSyncImportEmptyHealthConnect": {
+      "description": "Issue #1004 (tranche 5): neutral no-data import copy (Health Connect)."
+    },
+    "healthSyncWriteIntro": "Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone's Health app entirely.",
+    "@healthSyncWriteIntro": {
+      "description": "Issue #1004 (tranche 5): bind-screen intro on a write-wired platform (iOS)."
+    },
+    "healthSyncImportIntro": "Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.",
+    "@healthSyncImportIntro": {
+      "description": "Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android)."
+    },
+    "healthSyncWriteForwardOnly": "Only days logged after sync is turned on are written \u2014 nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.",
+    "@healthSyncWriteForwardOnly": {
+      "description": "Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS)."
+    },
+    "healthSyncWriteSymptoms": "Symptoms you tag \u2014 cramps, headache, bloating, and mood \u2014 are written to the Health app as symptom entries. Mood tags are written as 'Mood Changes' without saying which mood.",
+    "@healthSyncWriteSymptoms": {
+      "description": "Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918)."
+    },
+    "healthSyncImportOnly": "Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself \u2014 nothing is read or written automatically.",
+    "@healthSyncImportOnly": {
+      "description": "Issue #1004 (tranche 5): import-only explanation (Android, #458)."
+    },
+    "healthSyncDenyMinorOff": "Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.",
+    "@healthSyncDenyMinorOff": {
+      "description": "Issue #1004 (tranche 5): bind deny reason when minor health sync is off."
+    },
+    "healthSyncDenyNotOwnerSignedOut": "Sign in and sync once so this device can confirm you own this profile.",
+    "@healthSyncDenyNotOwnerSignedOut": {
+      "description": "Issue #1004 (tranche 5): bind deny reason when no account is signed in to prove ownership."
+    },
+    "healthSyncDenyNotOwner": "You are not this profile's owner \u2014 only its accepted primary guardian can bind health sync.",
+    "@healthSyncDenyNotOwner": {
+      "description": "Issue #1004 (tranche 5): bind deny reason for a non-owner."
+    },
+    "healthSyncUnboundProfileName": "this profile",
+    "@healthSyncUnboundProfileName": {
+      "description": "Issue #1004 (tranche 5): neutral stand-in when the bound profile id no longer resolves."
+    },
+    "healthSyncImportBlockedRefused": "This profile can't import from {source} right now.",
+    "@healthSyncImportBlockedRefused": {
+      "description": "Issue #1004 (tranche 5): import blocked by the binding guard.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        }
+      }
+    },
+    "healthSyncImportBlockedFailed": "Couldn't finish the import. Please try again.",
+    "@healthSyncImportBlockedFailed": {
+      "description": "Issue #1004 (tranche 5): import pass failed at the platform layer."
+    },
+    "importApplyFailure": "Could not finish the import. Nothing was written \u2014 please try again.",
+    "@importApplyFailure": {
+      "description": "Issue #1004 (tranche 5): account-import apply failure; the write is all-or-nothing."
+    },
+    "importStalePlan": "Your data changed while this was open. Please choose the file again to include the latest changes.",
+    "@importStalePlan": {
+      "description": "Issue #1004 (tranche 5): stale import plan (#140 review, LLA-085)."
+    },
+    "importSharedProfileGuardian": "One of these profiles has another guardian \u2014 the rows you import will sync to their device too.",
+    "@importSharedProfileGuardian": {
+      "description": "Issue #1004 (tranche 5): shared-profile import disclosure (#140 review, item 10)."
+    },
+    "importClueReadFailure": "Could not read that Clue export. Check the file and the password from your export email, then try again.",
+    "@importClueReadFailure": {
+      "description": "Issue #1004 (tranche 5): Clue zip read failure; the raw exception is never rendered (#452)."
+    },
+    "importClueNotClue": "That ZIP is not a Clue export. Choose the .zip file Clue emailed you.",
+    "@importClueNotClue": {
+      "description": "Issue #1004 (tranche 5): the picked ZIP is not a Clue export (#452)."
+    },
+    "importClueApplyFailure": "Could not finish the Clue import. Nothing was written \u2014 please try again.",
+    "@importClueApplyFailure": {
+      "description": "Issue #1004 (tranche 5): Clue write failure (#452)."
+    },
+    "importClueImportedProfileDefaultName": "Imported from Clue",
+    "@importClueImportedProfileDefaultName": {
+      "description": "Issue #1004 (tranche 5): default name offered when a Clue import creates a new profile."
+    },
+    "importClueMergePolicy": "Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.",
+    "@importClueMergePolicy": {
+      "description": "Issue #1004 (tranche 5): Clue preview merge disclosure (#452)."
+    },
+    "importCluePreviewSummary": "Ready to import: {days}, {datapoints}.",
+    "@importCluePreviewSummary": {
+      "description": "Issue #1004 (tranche 5): Clue preview summary line; both counts arrive pre-pluralized.",
+      "placeholders": {
+        "days": {
+          "type": "String"
+        },
+        "datapoints": {
+          "type": "String"
+        }
+      }
+    },
+    "importPreviewProfileCount": "{count, plural, =1{1 profile} other{{count} profiles}}",
+    "@importPreviewProfileCount": {
+      "description": "Issue #1004 (tranche 5): account-import preview profile count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importPreviewDayEntryCount": "{count, plural, =1{1 day entry} other{{count} day entries}}",
+    "@importPreviewDayEntryCount": {
+      "description": "Issue #1004 (tranche 5): account-import preview day-entry count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importPreviewObservationCount": "{count, plural, =1{1 observation} other{{count} observations}}",
+    "@importPreviewObservationCount": {
+      "description": "Issue #1004 (tranche 5): account-import preview observation count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importPreviewDateRange": " ({earliest} to {latest})",
+    "@importPreviewDateRange": {
+      "description": "Issue #1004 (tranche 5): account-import preview date-range suffix.",
+      "placeholders": {
+        "earliest": {
+          "type": "String"
+        },
+        "latest": {
+          "type": "String"
+        }
+      }
+    },
+    "importPreviewSummary": "{profiles}, {dayEntries}, {observations}{dateRange}",
+    "@importPreviewSummary": {
+      "description": "Issue #1004 (tranche 5): account-import preview summary line; counts arrive pre-pluralized.",
+      "placeholders": {
+        "profiles": {
+          "type": "String"
+        },
+        "dayEntries": {
+          "type": "String"
+        },
+        "observations": {
+          "type": "String"
+        },
+        "dateRange": {
+          "type": "String"
+        }
+      }
+    },
+    "importPlanSummaryNewProfileCount": "{count, plural, =1{1 new profile} other{{count} new profiles}}",
+    "@importPlanSummaryNewProfileCount": {
+      "description": "Issue #1004 (tranche 5): import plan profile-creation count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importPlanSummaryMatchedProfileCount": "{count, plural, =1{1 matched profile} other{{count} matched profiles}}",
+    "@importPlanSummaryMatchedProfileCount": {
+      "description": "Issue #1004 (tranche 5): import plan profile-match count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importPlanSummary": "{created}, {matched} ({added} entries added, {merged} merged).",
+    "@importPlanSummary": {
+      "description": "Issue #1004 (tranche 5): import plan summary line.",
+      "placeholders": {
+        "created": {
+          "type": "String"
+        },
+        "matched": {
+          "type": "String"
+        },
+        "added": {
+          "type": "int"
+        },
+        "merged": {
+          "type": "int"
+        }
+      }
+    },
+    "importCluePreviewDayCount": "{count, plural, =1{1 day} other{{count} days}}",
+    "@importCluePreviewDayCount": {
+      "description": "Issue #1004 (tranche 5): Clue preview day count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importCluePreviewDatapointCount": "{count, plural, =1{1 datapoint} other{{count} datapoints}}",
+    "@importCluePreviewDatapointCount": {
+      "description": "Issue #1004 (tranche 5): Clue preview datapoint count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+
+    "importResultProfileCreatedCount": "{count, plural, =1{1 profile} other{{count} profiles}}",
+    "@importResultProfileCreatedCount": {
+      "description": "Issue #1004 (tranche 5): account-import result profile-creation count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importResultFileNoteCount": "{count, plural, =1{1 file note} other{{count} file notes}}",
+    "@importResultFileNoteCount": {
+      "description": "Issue #1004 (tranche 5): account-import result discarded-file-note count.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "importResultNotesDiscardedSuffix": ", {notes} not applied (an existing note was kept)",
+    "@importResultNotesDiscardedSuffix": {
+      "description": "Issue #1004 (tranche 5): account-import result note-merge honesty suffix (#140 review, item 9); the note count arrives pre-pluralized.",
+      "placeholders": {
+        "notes": {
+          "type": "String"
+        }
+      }
+    },
+    "importResultSummary": "Import complete: {created} created, {matched} matched, {added} entries added, {merged} merged, {observationsAdded} observations added, {observationsSkipped} skipped{rejected}{notesDiscarded}.",
+    "@importResultSummary": {
+      "description": "Issue #1004 (tranche 5): account-import result summary line; counts arrive pre-pluralized where pluralized.",
+      "placeholders": {
+        "created": {
+          "type": "String"
+        },
+        "matched": {
+          "type": "int"
+        },
+        "added": {
+          "type": "int"
+        },
+        "merged": {
+          "type": "int"
+        },
+        "observationsAdded": {
+          "type": "int"
+        },
+        "observationsSkipped": {
+          "type": "int"
+        },
+        "rejected": {
+          "type": "String"
+        },
+        "notesDiscarded": {
+          "type": "String"
+        }
+      }
+    },
+
+    "profileDialogNameEmpty": "Name cannot be empty",
+    "@profileDialogNameEmpty": {
+      "description": "Issue #1004 (tranche 5): profile-name validation error for a blank name."
+    },
+    "profileDialogNameTooLong": "Name is too long ({maxLength} characters max)",
+    "@profileDialogNameTooLong": {
+      "description": "Issue #1004 (tranche 5): profile-name validation error past the server's limit.",
+      "placeholders": {
+        "maxLength": {
+          "type": "int"
+        }
+      }
+    },
+    "profileDialogBirthYearInvalid": "Enter a valid year",
+    "@profileDialogBirthYearInvalid": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error for a non-numeric value."
+    },
+    "profileDialogBirthYearOutOfRange": "Enter a year between {minYear} and {maxYear}",
+    "@profileDialogBirthYearOutOfRange": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error outside the server's CHECK bounds.",
+      "placeholders": {
+        "minYear": {
+          "type": "int"
+        },
+        "maxYear": {
+          "type": "int"
+        }
+      }
+    },
+    "profileDialogBirthYearBeforeEntries": "This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.",
+    "@profileDialogBirthYearBeforeEntries": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error naming the conflict with the earliest logged entry (#923).",
+      "placeholders": {
+        "earliestEntryYear": {
+          "type": "int"
+        }
+      }
+    },
+
+    "careGuardianNoteDisclosure": "Anyone with access to this profile can read this note \u2014 including the person it is about.",
+    "@careGuardianNoteDisclosure": {
+      "description": "Issue #1004 (tranche 5): the transparency disclosure beside every guardian-note input (#801)."
+    },
+    "careNotesDisclosure": "Anyone with access to this profile can read these notes \u2014 including the person they are about.",
+    "@careNotesDisclosure": {
+      "description": "Issue #1004 (tranche 5): the same transparency rule, worded for the standing care-notes surface."
+    },
+    "helpCardLearnMore": "Learn more",
+    "@helpCardLearnMore": {
+      "description": "Issue #1004 (tranche 5): default label of the contextual help-card entry point."
+    },
+    "feedbackAttachmentSizeKb": "{kilobytes} KB",
+    "@feedbackAttachmentSizeKb": {
+      "description": "Issue #1004 (tranche 5): attachment size label in kilobytes.",
+      "placeholders": {
+        "kilobytes": {
+          "type": "int"
+        }
+      }
+    },
+
+    "relativeDayToday": "Today",
+    "@relativeDayToday": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for today."
+    },
+    "relativeDayYesterday": "Yesterday",
+    "@relativeDayYesterday": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for yesterday."
+    },
+    "relativeDayTomorrow": "Tomorrow",
+    "@relativeDayTomorrow": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for tomorrow."
+    },
+
+    "accountProviderLabelEmail": "Email",
+    "@accountProviderLabelEmail": {
+      "description": "Issue #1004 (tranche 5): human label for the email identity provider."
+    },
+    "accountProviderLabelGoogle": "Google",
+    "@accountProviderLabelGoogle": {
+      "description": "Issue #1004 (tranche 5): human label for the Google identity provider."
+    },
+    "accountProviderLabelApple": "Apple",
+    "@accountProviderLabelApple": {
+      "description": "Issue #1004 (tranche 5): human label for the Apple identity provider."
     }
 }

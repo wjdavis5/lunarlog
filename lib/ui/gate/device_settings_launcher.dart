@@ -15,23 +15,28 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/components/safe_launch_url.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart' show LaunchMode;
 
 /// Injectable seam for [LockScreen]'s `openDeviceSettings` field, so tests
 /// substitute a fake and never touch `url_launcher`'s platform channel —
 /// same pattern as `AccountSection`'s `appleAuthorizationCodeRequest`.
 typedef DeviceSettingsLauncher = Future<void> Function();
 
-/// The `url_launcher` call shape [openDeviceSettingsWith] depends on,
-/// narrowed to the two arguments it actually uses so a test can substitute
-/// a recording fake without depending on the package's own surface.
-typedef LaunchUrlFn = Future<bool> Function(Uri url, {LaunchMode mode});
-
 /// Resolves this app's Android package name for the App-info fallback
 /// intent. Real implementation reads `package_info_plus`.
 typedef PackageNameProvider = Future<String> Function();
+
+/// The platform-settings schemes this file opens. Deliberately *not*
+/// [kDefaultLaunchSchemes] (http/https/mailto/tel): device settings are
+/// reached by a fixed system scheme, never a URL a user supplied, so the
+/// allowlist is narrowed to exactly what this feature needs.
+const Set<String> _deviceSettingsLaunchSchemes = <String>{
+  'app-settings',
+  'intent',
+};
 
 /// The Android intent URI for the Security settings screen
 /// (`android.provider.Settings.ACTION_SECURITY_SETTINGS`), where the
@@ -54,7 +59,11 @@ String androidAppDetailsIntent(String packageName) =>
 Future<bool> _launchUrl(
   Uri url, {
   LaunchMode mode = LaunchMode.platformDefault,
-}) => launchUrl(url, mode: mode);
+}) => safeLaunchUrl(
+  url,
+  mode: mode,
+  allowedSchemes: _deviceSettingsLaunchSchemes,
+);
 
 Future<String> _packageName() async =>
     (await PackageInfo.fromPlatform()).packageName;

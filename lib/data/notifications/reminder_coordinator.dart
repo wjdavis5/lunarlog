@@ -60,6 +60,20 @@ import 'package:timezone/timezone.dart' as tz;
 typedef BirthControlStateStream = Stream<BirthControlState?> Function(
     String profileId);
 
+/// Answers whether the current viewer is the *subject* of [profileId]
+/// (Issue #850, D-6) — the per-viewer guardian lens resolved over that
+/// profile's guardian rows plus the signed-in user id. Null keeps the
+/// pre-#850 all-subject default: every active profile counts as the
+/// viewer's own, so its mode preset arms locally. The production wiring in
+/// `lib/composition/app_dependencies.dart` builds it from `guardianLensFor`.
+///
+/// A profile the source reports as *not* subject is planned with
+/// [ReminderPreset.none]: a guardian's device never arms a local reminder
+/// for someone else's record — the server caregiver alerts (issue #5)
+/// cover that case. The source is read fresh at every replan, so a sign-in
+/// (or a membership row that arrives late) is reflected at the next pass.
+typedef SubjectProfileSource = Future<bool> Function(String profileId);
+
 class ReminderCoordinator with WidgetsBindingObserver {
   ReminderCoordinator({
     required ReminderScheduler scheduler,
@@ -68,6 +82,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
     required PredictionStream predictionFor,
     ReminderConfigService? localSettings,
     BirthControlStateStream? birthControlStateFor,
+    SubjectProfileSource? isSubjectFor,
     LocalDate Function()? today,
     LocalTimeZoneProvider? localTimeZoneProvider,
     this.replanDebounce = const Duration(milliseconds: 250),
@@ -77,6 +92,7 @@ class ReminderCoordinator with WidgetsBindingObserver {
         _predictionFor = predictionFor,
         _localSettings = localSettings,
         _birthControlStateFor = birthControlStateFor,
+        _isSubjectFor = isSubjectFor,
         today = today ?? LocalDate.today,
         _localTimeZoneProvider =
             localTimeZoneProvider ?? defaultLocalTimeZoneProvider {
@@ -95,6 +111,13 @@ class ReminderCoordinator with WidgetsBindingObserver {
   /// one, and a row emission schedules a replan so a recorded-method
   /// change re-routes the adherence reminder at the next pass.
   final BirthControlStateStream? _birthControlStateFor;
+
+  /// Issue #850, D-6: the per-viewer lens source. Null keeps the pre-#850
+  /// all-subject default (every active profile arms its mode preset), so
+  /// every existing harness that passes no source behaves exactly as
+  /// before. When present, a profile the source reports as *not* the
+  /// viewer's subject is planned with [ReminderPreset.none].
+  final SubjectProfileSource? _isSubjectFor;
 
   /// Per-profile local reminder configuration and late snoozes (Issue
   /// #136, R10/R11). Null keeps the pre-#136 shape: every profile plans
@@ -355,11 +378,13 @@ class ReminderCoordinator with WidgetsBindingObserver {
     }
     final (:configs, :lateSnoozes, :statisticSignals) =
         await _loadReplanSettings(_localSettings);
+    final subjectProfileIds = await _resolveSubjectProfileIds();
     if (_isSuperseded(generation)) return;
     final plan = _buildPlan(
       configs: configs,
       lateSnoozes: lateSnoozes,
       statisticSignals: statisticSignals,
+      subjectProfileIds: subjectProfileIds,
     );
     // Issue #840: skip rescheduleAll when the computed reminder plan is
     // element-wise unchanged from the last applied one. Each rescheduleAll
@@ -397,34 +422,29 @@ class ReminderCoordinator with WidgetsBindingObserver {
     required Map<String, ReminderConfig> configs,
     required Map<String, LocalDate> lateSnoozes,
     required Map<String, LocalDate> statisticSignals,
+    required Set<String>? subjectProfileIds,
   }) {
     return planReminders(
       today: today(),
       predictions: Map.of(_latest),
       presets: {
-        // Issue #853: the preset composes mode + the effective irregular
-        // framing (the stored tri-state resolved against the live tier from
-        // the prediction the coordinator already holds) — framing ON means
-        // no "late" nags, whatever the mode.
+        // Issue #850, D-6: the preset is gated on the per-viewer lens — a
+        // profile the viewer is not the subject of plans nothing locally.
+        // Issue #853: for a subject profile the preset composes mode + the
+        // effective irregular framing (the stored tri-state resolved against
+        // the live tier from the prediction the coordinator already holds) —
+        // framing ON means no "late" nags, whatever the mode.
         for (final entry in _modes.entries)
-          entry.key: reminderPresetFor(
+          entry.key: _presetForProfile(
+            entry.key,
             entry.value,
-            irregularFraming: irregularFramingInEffect(
-              mode: entry.value,
-              stored: _irregularFraming[entry.key],
-              // Only an ActivePrediction carries a tier; every other
-              // prediction state (not-enough-history/suppressed/disabled)
-              // reads null, which irregularFramingInEffect resolves to a
-              // teen's framing ON — the early months are exactly when the
-              // "late" nag would be wrong.
-              tier: switch (_latest[entry.key]) {
-                final ActivePrediction p => p.tier,
-                _ => null,
-              },
-            ),
+            subjectProfileIds,
           ),
       },
-      configs: configs,
+      // Issue #850, D-6: a stored per-profile config left on the device for
+      // a guarded profile must not re-arm what the lens silenced — the
+      // subject gate is on the preset *and* the explicit config.
+      configs: _subjectsOnly(configs, subjectProfileIds),
       lateSnoozes: lateSnoozes,
       statisticChangeSignals: statisticSignals,
       // Issue #183: the birth-control row watcher's last-observed
@@ -439,6 +459,80 @@ class ReminderCoordinator with WidgetsBindingObserver {
       // stream) can then never plan a reminder.
       activeProfileIds: _modes.keys.toSet(),
     );
+  }
+
+  /// Resolves which currently active profiles the signed-in viewer is the
+  /// subject of (Issue #850, D-6). Null when no [SubjectProfileSource] is
+  /// wired — the pre-#850 all-subject default — so [_buildPlan] skips the
+  /// lens gate entirely. The id set is snapshotted (`toList`) before
+  /// awaiting, so a profiles emission that lands between reads cannot mutate
+  /// the active set under iteration.
+  ///
+  /// A failed read fails open to "subject", matching `guardianLensFor`'s
+  /// own posture: a not-yet-synced membership briefly keeps the subject
+  /// preset rather than permanently silencing the operator's reminders.
+  Future<Set<String>?> _resolveSubjectProfileIds() async {
+    final isSubjectFor = _isSubjectFor;
+    if (isSubjectFor == null) return null;
+    final subjectIds = <String>{};
+    for (final id in _modes.keys.toList()) {
+      try {
+        if (await isSubjectFor(id)) subjectIds.add(id);
+      } catch (_) {
+        subjectIds.add(id);
+      }
+    }
+    return subjectIds;
+  }
+
+  /// The preset for one active profile, gated on the per-viewer lens
+  /// (Issue #850, D-6): a profile the signed-in viewer is not the subject
+  /// of plans nothing locally, whatever its mode. A null
+  /// [subjectProfileIds] is the pre-#850 all-subject default.
+  ///
+  /// For a subject profile the preset composes mode + the effective
+  /// irregular framing (Issue #853): the stored tri-state resolved against
+  /// the live tier from the prediction the coordinator already holds —
+  /// framing ON means no "late" nags, whatever the mode. Only an
+  /// [ActivePrediction] carries a tier; every other prediction state
+  /// (not-enough-history/suppressed/disabled) reads null, which
+  /// [irregularFramingInEffect] resolves to a teen's framing ON — the early
+  /// months are exactly when the "late" nag would be wrong.
+  ReminderPreset _presetForProfile(
+    String profileId,
+    ProfileMode mode,
+    Set<String>? subjectProfileIds,
+  ) {
+    if (subjectProfileIds != null && !subjectProfileIds.contains(profileId)) {
+      return ReminderPreset.none;
+    }
+    return reminderPresetFor(
+      mode,
+      irregularFraming: irregularFramingInEffect(
+        mode: mode,
+        stored: _irregularFraming[profileId],
+        tier: switch (_latest[profileId]) {
+          final ActivePrediction p => p.tier,
+          _ => null,
+        },
+      ),
+    );
+  }
+
+  /// Drops every entry for a profile the signed-in viewer is not the subject
+  /// of (Issue #850, D-6), so device-local state left behind for a guarded
+  /// profile — a stored config row, a birth-control state — cannot re-arm a
+  /// reminder the lens silenced. Null [subjectProfileIds] is the pre-#850
+  /// all-subject default, so the map passes through untouched.
+  Map<String, T> _subjectsOnly<T>(
+    Map<String, T> entries,
+    Set<String>? subjectProfileIds,
+  ) {
+    if (subjectProfileIds == null) return entries;
+    return {
+      for (final entry in entries.entries)
+        if (subjectProfileIds.contains(entry.key)) entry.key: entry.value,
+    };
   }
 
   /// The `cycleStatisticChange` detection pass (Issue #178): compares each

@@ -14,6 +14,42 @@ import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart'
     show kFirstDayOfWeek, leadingBlanksFor, weekdayHeaderLabels;
 
+/// Issue #1004 (tranche 5): the relative words are required now — the
+/// helper's English fallbacks are gone. Every assertion below pins the en
+/// words, so this wrapper supplies them once.
+String relativeDayLabelEn(
+  DateTime date,
+  DateTime today, {
+  String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) =>
+    relativeDayLabel(
+      date,
+      today,
+      locale: locale,
+      todayLabel: 'Today',
+      yesterdayLabel: 'Yesterday',
+      tomorrowLabel: 'Tomorrow',
+      preference: preference,
+    );
+
+/// The same en words for the [LocalDate] variant.
+String relativeDayLabelForLocalDateEn(
+  LocalDate date,
+  LocalDate today, {
+  String locale = kFallbackLocale,
+  DateFormatPreference preference = DateFormatPreference.system,
+}) =>
+    relativeDayLabelForLocalDate(
+      date,
+      today,
+      locale: locale,
+      todayLabel: 'Today',
+      yesterdayLabel: 'Yesterday',
+      tomorrowLabel: 'Tomorrow',
+      preference: preference,
+    );
+
 void main() {
   group('human-readable date forms (en)', () {
     test('long and short formats match the shared copy', () {
@@ -33,11 +69,11 @@ void main() {
     test('relativeDayLabel: today/yesterday/tomorrow, full form otherwise',
         () {
       final today = DateTime(2026, 9, 8);
-      expect(relativeDayLabel(today, today), 'Today · Tue Sep 8');
-      expect(relativeDayLabel(DateTime(2026, 9, 7), today), 'Yesterday');
-      expect(relativeDayLabel(DateTime(2026, 9, 9), today), 'Tomorrow');
+      expect(relativeDayLabelEn(today, today), 'Today · Tue Sep 8');
+      expect(relativeDayLabelEn(DateTime(2026, 9, 7), today), 'Yesterday');
+      expect(relativeDayLabelEn(DateTime(2026, 9, 9), today), 'Tomorrow');
       expect(
-        relativeDayLabel(DateTime(2026, 9, 5), today),
+        relativeDayLabelEn(DateTime(2026, 9, 5), today),
         'Sat Sep 5 2026',
       );
     });
@@ -45,11 +81,11 @@ void main() {
     test('relativeDayLabel compares civil days, ignoring time-of-day', () {
       final today = DateTime(2026, 9, 8, 6, 30);
       expect(
-        relativeDayLabel(DateTime(2026, 9, 8, 23, 59), today),
+        relativeDayLabelEn(DateTime(2026, 9, 8, 23, 59), today),
         'Today · Tue Sep 8',
       );
       expect(
-        relativeDayLabel(DateTime(2026, 9, 7, 0, 1), today),
+        relativeDayLabelEn(DateTime(2026, 9, 7, 0, 1), today),
         'Yesterday',
       );
     });
@@ -104,21 +140,21 @@ void main() {
       final march7 = DateTime(2026, 3, 7);
 
       // From reference of March 8:
-      expect(relativeDayLabel(march8, march8), 'Today · Sun Mar 8');
-      expect(relativeDayLabel(march9, march8), 'Tomorrow');
-      expect(relativeDayLabel(march7, march8), 'Yesterday');
+      expect(relativeDayLabelEn(march8, march8), 'Today · Sun Mar 8');
+      expect(relativeDayLabelEn(march9, march8), 'Tomorrow');
+      expect(relativeDayLabelEn(march7, march8), 'Yesterday');
 
       // From reference of March 9:
-      expect(relativeDayLabel(march9, march9), 'Today · Mon Mar 9');
-      expect(relativeDayLabel(march8, march9), 'Yesterday');
+      expect(relativeDayLabelEn(march9, march9), 'Today · Mon Mar 9');
+      expect(relativeDayLabelEn(march8, march9), 'Yesterday');
 
       // Times of day across the boundary:
       expect(
-        relativeDayLabel(DateTime(2026, 3, 9, 0, 1), DateTime(2026, 3, 8, 23, 59)),
+        relativeDayLabelEn(DateTime(2026, 3, 9, 0, 1), DateTime(2026, 3, 8, 23, 59)),
         'Tomorrow',
       );
       expect(
-        relativeDayLabel(DateTime(2026, 3, 8, 23, 59), DateTime(2026, 3, 9, 0, 1)),
+        relativeDayLabelEn(DateTime(2026, 3, 8, 23, 59), DateTime(2026, 3, 9, 0, 1)),
         'Yesterday',
       );
     });
@@ -133,13 +169,13 @@ void main() {
       final oct31 = DateTime(2026, 10, 31);
 
       // From reference of Nov 1:
-      expect(relativeDayLabel(nov1, nov1), 'Today · Sun Nov 1');
-      expect(relativeDayLabel(nov2, nov1), 'Tomorrow');
-      expect(relativeDayLabel(oct31, nov1), 'Yesterday');
+      expect(relativeDayLabelEn(nov1, nov1), 'Today · Sun Nov 1');
+      expect(relativeDayLabelEn(nov2, nov1), 'Tomorrow');
+      expect(relativeDayLabelEn(oct31, nov1), 'Yesterday');
 
       // From reference of Nov 2:
-      expect(relativeDayLabel(nov2, nov2), 'Today · Mon Nov 2');
-      expect(relativeDayLabel(nov1, nov2), 'Yesterday');
+      expect(relativeDayLabelEn(nov2, nov2), 'Today · Mon Nov 2');
+      expect(relativeDayLabelEn(nov1, nov2), 'Yesterday');
     });
 
     test(
@@ -149,19 +185,19 @@ void main() {
       final march9 = LocalDate(2026, 3, 9);
       final march7 = LocalDate(2026, 3, 7);
 
-      expect(relativeDayLabelForLocalDate(march8, march8), 'Today · Sun Mar 8');
-      expect(relativeDayLabelForLocalDate(march9, march8), 'Tomorrow');
-      expect(relativeDayLabelForLocalDate(march7, march8), 'Yesterday');
-      expect(relativeDayLabelForLocalDate(march8, march9), 'Yesterday');
+      expect(relativeDayLabelForLocalDateEn(march8, march8), 'Today · Sun Mar 8');
+      expect(relativeDayLabelForLocalDateEn(march9, march8), 'Tomorrow');
+      expect(relativeDayLabelForLocalDateEn(march7, march8), 'Yesterday');
+      expect(relativeDayLabelForLocalDateEn(march8, march9), 'Yesterday');
 
       final nov1 = LocalDate(2026, 11, 1);
       final nov2 = LocalDate(2026, 11, 2);
       final oct31 = LocalDate(2026, 10, 31);
 
-      expect(relativeDayLabelForLocalDate(nov1, nov1), 'Today · Sun Nov 1');
-      expect(relativeDayLabelForLocalDate(nov2, nov1), 'Tomorrow');
-      expect(relativeDayLabelForLocalDate(oct31, nov1), 'Yesterday');
-      expect(relativeDayLabelForLocalDate(nov1, nov2), 'Yesterday');
+      expect(relativeDayLabelForLocalDateEn(nov1, nov1), 'Today · Sun Nov 1');
+      expect(relativeDayLabelForLocalDateEn(nov2, nov1), 'Tomorrow');
+      expect(relativeDayLabelForLocalDateEn(oct31, nov1), 'Yesterday');
+      expect(relativeDayLabelForLocalDateEn(nov1, nov2), 'Yesterday');
     });
   });
 
@@ -388,12 +424,12 @@ void main() {
         () {
       final today = DateTime(2026, 9, 8);
       expect(
-        relativeDayLabel(today, today,
+        relativeDayLabelEn(today, today,
             preference: DateFormatPreference.monthDay),
         'Today · Tue Sep 8',
       );
       expect(
-        relativeDayLabel(DateTime(2026, 9, 5), today,
+        relativeDayLabelEn(DateTime(2026, 9, 5), today,
             preference: DateFormatPreference.monthDay),
         'Sat Sep 5 2026',
       );
@@ -413,12 +449,12 @@ void main() {
         'Tue Sep 8 2026',
       );
       expect(
-        relativeDayLabelForLocalDate(today, today,
+        relativeDayLabelForLocalDateEn(today, today,
             preference: DateFormatPreference.monthDay),
         'Today · Tue Sep 8',
       );
       expect(
-        relativeDayLabelForLocalDate(LocalDate(2026, 9, 5), today,
+        relativeDayLabelForLocalDateEn(LocalDate(2026, 9, 5), today,
             preference: DateFormatPreference.monthDay),
         'Sat Sep 5 2026',
       );

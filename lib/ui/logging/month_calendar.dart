@@ -5,7 +5,8 @@
 /// forward navigation with predicted bleed bands (hatched, never filled),
 /// cycle-day numerals on the first predicted cycle only, PMS/cramps badges
 /// at fixed offsets off the active estimate, up to three symptom layers
-/// (defaulting to the profile's most-used tags), a read-only explainer for
+/// (defaulting to the profile's most-used tags; under the guardian lens
+/// they default off, issue #850 U6), a read-only explainer for
 /// future cells, and a keep-logging strip when no estimate is active.
 ///
 /// The future-logging lock is deliberate and stays (KTD8): future cells
@@ -46,6 +47,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
@@ -64,6 +66,7 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/symptoms/symptom_layers.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
@@ -721,18 +724,20 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// `onPageChanged`'s own re-render of the *other* page) doesn't re-run
   /// any of it. [_ensureComputed] is the only writer; everything else reads
   /// the `_computed*` fields. Recomputed whenever [entries]/[prediction]/
-  /// [history]/`today` or the layer selection ([_layersUserSet]/
-  /// [_activeLayers]) actually changes — `==` on [_entries] and the stream
-  /// snapshots is identity by default (neither overrides it), which is
-  /// exactly the right check: those fields are only ever reassigned on a
-  /// genuine stream emission, never as a side effect of an unrelated
-  /// `setState`.
+  /// [history]/`today`, the layer selection ([_layersUserSet]/
+  /// [_activeLayers]), or the viewer lens ([_lens], issue #850 U6 — a late
+  /// guardians emission can flip the default selection) actually changes —
+  /// `==` on [_entries] and the stream snapshots is identity by default
+  /// (neither overrides it), which is exactly the right check: those fields
+  /// are only ever reassigned on a genuine stream emission, never as a side
+  /// effect of an unrelated `setState`.
   List<DayEntry>? _computeInputEntries;
   CyclePrediction? _computeInputPrediction;
   CycleHistoryView? _computeInputHistory;
   LocalDate? _computeInputToday;
   bool _computeInputLayersUserSet = false;
   Set<String> _computeInputActiveLayers = const {};
+  GuardianLens _computeInputLens = GuardianLens.subject;
 
   late Map<String, DayEntry> _computedByIso;
   late List<ForecastCycle> _computedCycles;
@@ -751,7 +756,8 @@ class _MonthCalendarState extends State<MonthCalendar>
       _computeInputHistory == history &&
       _computeInputToday == today &&
       _computeInputLayersUserSet == _layersUserSet &&
-      _setEquals(_computeInputActiveLayers, _activeLayers);
+      _setEquals(_computeInputActiveLayers, _activeLayers) &&
+      _computeInputLens == _lens;
 
   static bool _setEquals<T>(Set<T> a, Set<T> b) =>
       a.length == b.length && a.containsAll(b);
@@ -812,9 +818,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     // bug: `lib/ui/README.md`'s "Calendar windowed entries subscription"
     // section covers why this is an accepted behaviour change rather than
     // a full-history stream kept just for this.
-    final activeLayers = _layersUserSet
-        ? _activeLayers
-        : {for (final tag in defaultLayerTags(entries)) tag};
+    final activeLayers = _defaultLayerSelection(entries);
 
     _computeInputEntries = entries;
     _computeInputPrediction = prediction;
@@ -822,6 +826,7 @@ class _MonthCalendarState extends State<MonthCalendar>
     _computeInputToday = today;
     _computeInputLayersUserSet = _layersUserSet;
     _computeInputActiveLayers = Set.of(_activeLayers);
+    _computeInputLens = _lens;
 
     _computedByIso = byIso;
     _computedCycles = cycles;
@@ -867,6 +872,12 @@ class _MonthCalendarState extends State<MonthCalendar>
   /// saw ([_computeInputPrediction], assigned by `_ensureComputed` before
   /// any cell or legend renders). A teen with no explicit choice hides the
   /// fertile window until its estimate reaches `CycleConfidence.high`.
+  ///
+  /// Issue #850 (U7): the lens is passed for parity with every other
+  /// registry consumer, though no field this calendar reads varies by lens
+  /// today (the fertile-window gates are lens-independent; the third-person
+  /// strings live on the overview and Analysis). Passing it now keeps a
+  /// future copy addition from silently reading the subject lens.
   CareModeCopy get _copy => careModeCopyFor(
     widget.mode,
     irregularFraming: irregularFramingInEffect(
@@ -877,6 +888,7 @@ class _MonthCalendarState extends State<MonthCalendar>
         _ => null,
       },
     ),
+    lens: guardianLensFor(_guardians, _currentUserId),
   );
 
   /// Issue #196 AC1: the fertile-window display is also suppressed by the
@@ -1133,6 +1145,27 @@ class _MonthCalendarState extends State<MonthCalendar>
   bool get _effectiveReadOnly =>
       widget.readOnly ||
       acceptedGuardianFor(_guardians, _currentUserId)?.role.canLog == false;
+
+  /// Issue #850 (U6), plan D-8: the viewer's lens, resolved from the accepted
+  /// membership row exactly as `OverviewPanel`'s own `_lens` does — identity
+  /// (subject vs. any other accepted member), never permission. Fails open to
+  /// [GuardianLens.subject] with no synced membership, the same posture
+  /// [_effectiveReadOnly] takes.
+  GuardianLens get _lens => guardianLensFor(_guardians, _currentUserId);
+
+  /// Issue #850 (U6), plan D-8: the symptom-layer selection the calendar
+  /// opens with. Once the operator has toggled any layer, that choice wins in
+  /// both lenses ([_layersUserSet], per device — never persisted). Before
+  /// that, the subject lens keeps the pre-#850 default (the profile's
+  /// most-used tags, [defaultLayerTags]); the guardian lens opens with **no**
+  /// symptom layers, so the front calendar answers "when" without a symptom
+  /// map. Flow is not a layer — it renders from the logged entries
+  /// regardless — so "flow on" needs no code here.
+  Set<String> _defaultLayerSelection(List<DayEntry> entries) {
+    if (_layersUserSet) return _activeLayers;
+    if (_lens == GuardianLens.guardian) return const {};
+    return {for (final tag in defaultLayerTags(entries)) tag};
+  }
 
   void _resetToTodaysMonth() {
     final today = widget.todayProvider();

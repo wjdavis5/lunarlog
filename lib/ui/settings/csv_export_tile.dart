@@ -30,19 +30,23 @@ typedef CsvExportCollaborator = Future<void> Function({
   required DateTime exportedAt,
 });
 
-/// Failure copy for CSV export, matching privacy discipline (no exception details).
-const String kCsvExportFailureCopy =
-    'Could not export your cycle data as CSV. Please try again.';
-
-String _subtitleFor({required bool hasEntries, required List<Profile> liveProfiles}) {
+/// The tile's subtitle (issue #1004, tranche 5): resolved through
+/// [AppLocalizations] so the copy stays arb-backed
+/// (`settingsCsvExportSubtitle*`).
+String _subtitleFor(
+  AppLocalizations l10n, {
+  required bool hasEntries,
+  required List<Profile> liveProfiles,
+}) {
   if (!hasEntries) {
-    return 'Add at least one day entry to export CSV tables.';
+    return l10n.settingsCsvExportSubtitleNoEntries;
   }
   if (liveProfiles.length == 1) {
-    return "Export ${liveProfiles.single.displayName}'s cycle data as "
-        'spreadsheet-compatible CSV files.';
+    return l10n.settingsCsvExportSubtitleOneProfile(
+      liveProfiles.single.displayName,
+    );
   }
-  return 'Export your cycles and daily log as spreadsheet-compatible CSV files.';
+  return l10n.settingsCsvExportSubtitleGeneric;
 }
 
 List<Profile> _liveProfiles(List<Profile> profiles) =>
@@ -63,7 +67,11 @@ class _CsvExportTileState extends State<CsvExportTile>
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _error;
+
+  /// Issue #1004 (tranche 5): the failure copy this state used to store as
+  /// a resolved English string resolves through `AppLocalizations` at
+  /// render time.
+  bool _exportFailed = false;
 
   @override
   void initState() {
@@ -104,7 +112,8 @@ class _CsvExportTileState extends State<CsvExportTile>
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
     final canExport = !_exporting && hasAnyEntries;
-    final error = _error;
+    final error = _exportFailed;
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -114,7 +123,11 @@ class _CsvExportTileState extends State<CsvExportTile>
           leading: const Icon(Icons.table_view_outlined),
           title: Text(AppLocalizations.of(context).settingsCsvExportTitle),
           subtitle: Text(
-            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
+            _subtitleFor(
+              AppLocalizations.of(context),
+              hasEntries: hasAnyEntries,
+              liveProfiles: liveProfiles,
+            ),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -126,12 +139,12 @@ class _CsvExportTileState extends State<CsvExportTile>
               : null,
           onTap: canExport ? () => _handleTap(context, liveProfiles) : null,
         ),
-        if (error != null)
+        if (error)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: InlineError(
               key: const ValueKey('csv-export-error'),
-              message: error,
+              message: l10n.settingsCsvExportFailure,
             ),
           ),
       ],
@@ -172,7 +185,7 @@ class _CsvExportTileState extends State<CsvExportTile>
     final csvWriter = context.read<CsvExportWriter?>();
     setState(() {
       _exporting = true;
-      _error = null;
+      _exportFailed = false;
     });
 
     try {
@@ -222,7 +235,7 @@ class _CsvExportTileState extends State<CsvExportTile>
       }
     } catch (error) {
       debugPrint('lunarlog csv-export: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kCsvExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }

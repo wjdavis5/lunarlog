@@ -81,6 +81,7 @@ void main() {
   DayEntry makeEntry({
     List<String> tags = const ['cramps', 'headache'],
     String? note = 'a note',
+    bool notePrivate = false,
     bool pms = false,
     bool? pmsUnconfirmed,
     DateTime? deletedAt,
@@ -97,6 +98,7 @@ void main() {
         flow: flow,
         tags: tags,
         note: note,
+        notePrivate: notePrivate,
         pms: pms,
         pmsUnconfirmed: pmsUnconfirmed,
         updatedAt: micro,
@@ -632,6 +634,8 @@ void main() {
         'flow': 'medium',
         'tags': ['cramps', 'headache'],
         'note': 'a note',
+        // Issue #849.
+        'note_private': false,
         // Issue #220.
         'pms': false,
         // Issue #159.
@@ -660,6 +664,22 @@ void main() {
       expect(decoded.deletedAt, isNull);
       expect(decoded.serverVersion, 99);
       expect(decoded.table, SyncTable.dayEntries);
+    });
+
+    test('round-trips note_private; an absent key decodes false '
+        '(Issue #849)', () {
+      final json = encodeDayEntry(makeEntry(notePrivate: true));
+      expect(json['note_private'], true);
+      expect(decodeDayEntry(json).notePrivate, true);
+      // A guardian's masked pull carries the flag with a null note.
+      final masked = {...json, 'note': null};
+      final decoded = decodeDayEntry(masked);
+      expect(decoded.notePrivate, true);
+      expect(decoded.note, isNull);
+      // An old peer's or a pre-#849 server row's payload without the key
+      // decodes to false rather than failing the pull.
+      final stripped = {...json}..remove('note_private');
+      expect(decodeDayEntry(stripped).notePrivate, false);
     });
 
     test('round-trips the PMS marker; an absent key decodes false '
@@ -830,6 +850,7 @@ void main() {
         flow: FlowLevel.none,
         pms: false,
         tags: const [],
+        notePrivate: false,
         updatedAt: micro,
         dirty: true,
         localRev: 1,

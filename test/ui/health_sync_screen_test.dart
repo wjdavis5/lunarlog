@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -958,7 +959,7 @@ void main() {
 
       expect(
         find.text(
-          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+          healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth),
         ),
         findsOneWidget,
       );
@@ -980,7 +981,7 @@ void main() {
 
       expect(
         find.text(
-          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+          healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth),
         ),
         findsOneWidget,
       );
@@ -1068,7 +1069,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(healthImportEmptyCopy(HealthImportPlatform.appleHealth)),
+        find.text(healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth)),
         findsOneWidget,
       );
     });
