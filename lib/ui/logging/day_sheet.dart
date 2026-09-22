@@ -142,7 +142,11 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// Calendar → "Date format" setting; it defaults to the system order, which
 /// since issue #884 follows [locale]'s own day/month ordering (month-first
 /// for `en_US`, day-first for `en_GB`).
+/// Issue #1004 (tranche 5): the relative words come from the arb
+/// (`relativeDayToday`/`Yesterday`/`Tomorrow`) — the helper's English
+/// fallbacks are gone.
 String daySheetDateLabel(
+  AppLocalizations l10n,
   LocalDate date,
   LocalDate today, {
   String locale = dates.kFallbackLocale,
@@ -152,6 +156,9 @@ String daySheetDateLabel(
       date,
       today,
       locale: locale,
+      todayLabel: l10n.relativeDayToday,
+      yesterdayLabel: l10n.relativeDayYesterday,
+      tomorrowLabel: l10n.relativeDayTomorrow,
       preference: preference,
     );
 
@@ -1390,6 +1397,7 @@ class _DaySheetState extends State<DaySheet> {
           child: Text(
             l10n.daySheetDeleteBody(
               daySheetDateLabel(
+                l10n,
                 widget.date,
                 widget.today,
                 locale: dates.calendarLocale(context),
@@ -2366,6 +2374,7 @@ class _DaySheetState extends State<DaySheet> {
             child: Text(
               key: const ValueKey('day-sheet-date-title'),
               daySheetDateLabel(
+                AppLocalizations.of(context),
                 date,
                 widget.today,
                 locale: dates.calendarLocale(context),

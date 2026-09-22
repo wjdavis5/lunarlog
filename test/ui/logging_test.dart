@@ -3976,11 +3976,11 @@ void main() {
   group('day sheet ergonomics (issue #198)', () {
     test('daySheetDateLabel renders Today/Yesterday/absolute (B-14)', () {
       final today = LocalDate(2026, 8, 30);
-      expect(daySheetDateLabel(today, today), 'Today · Sun Aug 30');
-      expect(daySheetDateLabel(today.addDays(-1), today), 'Yesterday');
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today), 'Thu Mar 5 2026');
+      expect(daySheetDateLabel(AppLocalizationsEn(), today, today), 'Today · Sun Aug 30');
+      expect(daySheetDateLabel(AppLocalizationsEn(), today.addDays(-1), today), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today), 'Thu Mar 5 2026');
       expect(
-        daySheetDateLabel(LocalDate(2024, 12, 31), today),
+        daySheetDateLabel(AppLocalizationsEn(), LocalDate(2024, 12, 31), today),
         'Tue Dec 31 2024',
       );
     });
@@ -3991,18 +3991,18 @@ void main() {
       // US DST spring-forward: 2026-03-08 to 2026-03-09
       final march8 = LocalDate(2026, 3, 8);
       final march9 = LocalDate(2026, 3, 9);
-      expect(daySheetDateLabel(march8, march8), 'Today · Sun Mar 8');
-      expect(daySheetDateLabel(march9, march8), 'Tomorrow');
-      expect(daySheetDateLabel(march8, march9), 'Yesterday');
-      expect(daySheetDateLabel(march9, march9), 'Today · Mon Mar 9');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march8, march8), 'Today · Sun Mar 8');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march9, march8), 'Tomorrow');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march8, march9), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march9, march9), 'Today · Mon Mar 9');
 
       // US DST fall-back: 2026-11-01 to 2026-11-02
       final nov1 = LocalDate(2026, 11, 1);
       final nov2 = LocalDate(2026, 11, 2);
-      expect(daySheetDateLabel(nov1, nov1), 'Today · Sun Nov 1');
-      expect(daySheetDateLabel(nov2, nov1), 'Tomorrow');
-      expect(daySheetDateLabel(nov1, nov2), 'Yesterday');
-      expect(daySheetDateLabel(nov2, nov2), 'Today · Mon Nov 2');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov1, nov1), 'Today · Sun Nov 1');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov2, nov1), 'Tomorrow');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov1, nov2), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov2, nov2), 'Today · Mon Nov 2');
     });
 
     test(
@@ -4010,20 +4010,20 @@ void main() {
         '(the sheet resolves it from SettingsKeys.dateFormat)', () {
       final today = LocalDate(2026, 8, 30);
       expect(
-        daySheetDateLabel(today, today,
+        daySheetDateLabel(AppLocalizationsEn(), today, today,
             preference: DateFormatPreference.monthDay),
         'Today · Sun Aug 30',
       );
       expect(
-        daySheetDateLabel(LocalDate(2026, 3, 5), today,
+        daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today,
             preference: DateFormatPreference.monthDay),
         'Thu Mar 5 2026',
       );
       // The default is the system order — locale-resolved since issue #884
       // (month-first for the generic `en` fallback).
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today),
           'Thu Mar 5 2026');
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today,
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today,
           locale: 'en_GB'), 'Thu 5 Mar 2026');
     });
 

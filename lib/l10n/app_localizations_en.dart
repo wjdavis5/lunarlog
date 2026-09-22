@@ -5245,4 +5245,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String feedbackAttachmentSizeKb(int kilobytes) {
     return '$kilobytes KB';
   }
+
+  @override
+  String get relativeDayToday => 'Today';
+
+  @override
+  String get relativeDayYesterday => 'Yesterday';
+
+  @override
+  String get relativeDayTomorrow => 'Tomorrow';
 }

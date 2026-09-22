@@ -6779,5 +6779,18 @@
           "type": "int"
         }
       }
+    },
+
+    "relativeDayToday": "Today",
+    "@relativeDayToday": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for today."
+    },
+    "relativeDayYesterday": "Yesterday",
+    "@relativeDayYesterday": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for yesterday."
+    },
+    "relativeDayTomorrow": "Tomorrow",
+    "@relativeDayTomorrow": {
+      "description": "Issue #1004 (tranche 5): the relative-day header word for tomorrow."
     }
 }

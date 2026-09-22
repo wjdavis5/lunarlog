@@ -8222,6 +8222,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{kilobytes} KB'**
   String feedbackAttachmentSizeKb(int kilobytes);
+
+  /// Issue #1004 (tranche 5): the relative-day header word for today.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get relativeDayToday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get relativeDayYesterday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for tomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow'**
+  String get relativeDayTomorrow;
 }
 
 class _AppLocalizationsDelegate
