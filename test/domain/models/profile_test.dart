@@ -99,11 +99,23 @@ void main() {
   });
 
   group('ProfileMode (Issue #131)', () {
-    test('toDb/fromDb round-trip every value, and unknown degrades to '
-        'standard rather than throwing', () {
-      for (final mode in ProfileMode.values) {
+    test('toDb/fromDb round-trip the live modes, the legacy caregiver wire '
+        'value still parses (as standard), and unknown degrades to standard '
+        'rather than throwing (Issue #131/#850)', () {
+      for (final mode in [
+        ProfileMode.standard,
+        ProfileMode.teen,
+        ProfileMode.irregular,
+      ]) {
         expect(ProfileMode.fromDb(mode.toDb()), mode);
       }
+      // Issue #850: `caregiver` is retired as a mode — its wire value is
+      // still emitted by toDb and accepted by fromDb, but a parse folds it
+      // to the neutral default (the #853 `irregular` precedent).
+      expect(ProfileMode.caregiver.toDb(), 'caregiver',
+          reason: 'the legacy wire value is never renamed');
+      expect(ProfileMode.fromDb('caregiver'), ProfileMode.standard,
+          reason: 'a stored pre-#850 caregiver row reads as standard');
       expect(ProfileMode.fromDb('future_mode'), ProfileMode.standard);
       expect(ProfileMode.fromDb(null), ProfileMode.standard);
     });
