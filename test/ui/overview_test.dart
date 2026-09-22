@@ -42,6 +42,7 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
@@ -2451,6 +2452,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('1 supply item is unstocked'), findsOneWidget);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the Care details action opens the shared care screen',
+        (tester) async {
+      final h = await pumpForViewer(tester, 'user-parent', role: 'co_parent');
+
+      await tester.tap(
+        find.byKey(const ValueKey('guardian-overview-action-care')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CareNotesScreen), findsOneWidget);
       await disposeOverview(tester, h);
     });
   });
