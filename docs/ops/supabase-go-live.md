@@ -500,11 +500,16 @@ registers no device, and shows no Notifications entry (R17).
 - [ ] App Privacy details in App Store Connect updated to match
       `ios/Runner/PrivacyInfo.xcprivacy`: Health and Email Address collected,
       linked to the user, for app functionality; Crash Data collected, not
-      linked; no tracking.
+      linked; no tracking. Transcribe from
+      [`docs/ops/store-declarations.md`](store-declarations.md) (issue #21);
+      its push-token and support-ticket rows are blocked on issue #1065
+      (`PrivacyInfo.xcprivacy` omits both), so reconcile the manifest first if
+      those rows are needed.
 - [ ] Play Console Data safety updated to the same statement (health info and
       email address, encrypted in transit, user can request deletion —
       now true in-app via "Delete account" in the account section, issue
-      #17).
+      #17). Transcribe from
+      [`docs/ops/store-declarations.md`](store-declarations.md).
 - [ ] **Issue #269 (minimum-age statement):** App Store Age Rating / Privacy Details
       and Google Play Target Audience & Content questionnaires reflect
       LunarLog's minimum-age policy of 13+ (primary account management 18+;
