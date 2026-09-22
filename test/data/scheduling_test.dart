@@ -12,6 +12,7 @@ import 'package:lunarlog/domain/notifications/birth_control_reminder_kind.dart';
 import 'package:lunarlog/domain/notifications/scheduling.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_preferences.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_presets.dart';
@@ -276,6 +277,44 @@ void main() {
       );
       expect(plan, hasLength(kLatePreArmDays));
       expect(plan.every((r) => r.profileId == 'std'), isTrue);
+    });
+
+    test('the lens silences a guarded profile while the subject profile '
+        'arms its mode preset beside it (Issue #850, D-6)', () {
+      // The coordinator maps a non-subject profile to ReminderPreset.none
+      // and a subject profile to its mode preset; this pins the planner
+      // half of that contract (the coordinator half lives in
+      // reminder_coordinator_test.dart).
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'subject':
+              _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+          'guarded':
+              _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        presets: {
+          'subject': reminderPresetFor(ProfileMode.standard),
+          'guarded': ReminderPreset.none,
+        },
+      );
+      expect(plan, hasLength(kLatePreArmDays));
+      expect(plan.every((r) => r.profileId == 'subject'), isTrue,
+          reason: 'only the viewer\'s own profile arms anything');
+    });
+
+    test('the legacy caregiver mode plans exactly like standard '
+        '(Issue #850, U2/D-6)', () {
+      expect(reminderPresetFor(ProfileMode.caregiver),
+          reminderPresetFor(ProfileMode.standard));
+      final plan = planReminders(
+        today: today,
+        predictions: {
+          'p1': _prediction(today: today, estimatedNextStart: today.addDays(-6)),
+        },
+        presets: {'p1': reminderPresetFor(ProfileMode.caregiver)},
+      );
+      expect(plan, hasLength(kLatePreArmDays));
     });
   });
 
