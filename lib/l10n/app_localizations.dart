@@ -8168,6 +8168,36 @@ abstract class AppLocalizations {
     String rejected,
     String notesDiscarded,
   );
+
+  /// Issue #1004 (tranche 5): profile-name validation error for a blank name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name cannot be empty'**
+  String get profileDialogNameEmpty;
+
+  /// Issue #1004 (tranche 5): profile-name validation error past the server's limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is too long ({maxLength} characters max)'**
+  String profileDialogNameTooLong(int maxLength);
+
+  /// Issue #1004 (tranche 5): birth-year validation error for a non-numeric value.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid year'**
+  String get profileDialogBirthYearInvalid;
+
+  /// Issue #1004 (tranche 5): birth-year validation error outside the server's CHECK bounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a year between {minYear} and {maxYear}'**
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear);
+
+  /// Issue #1004 (tranche 5): birth-year validation error naming the conflict with the earliest logged entry (#923).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.'**
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear);
 }
 
 class _AppLocalizationsDelegate

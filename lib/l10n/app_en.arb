@@ -6718,5 +6718,44 @@
           "type": "String"
         }
       }
+    },
+
+    "profileDialogNameEmpty": "Name cannot be empty",
+    "@profileDialogNameEmpty": {
+      "description": "Issue #1004 (tranche 5): profile-name validation error for a blank name."
+    },
+    "profileDialogNameTooLong": "Name is too long ({maxLength} characters max)",
+    "@profileDialogNameTooLong": {
+      "description": "Issue #1004 (tranche 5): profile-name validation error past the server's limit.",
+      "placeholders": {
+        "maxLength": {
+          "type": "int"
+        }
+      }
+    },
+    "profileDialogBirthYearInvalid": "Enter a valid year",
+    "@profileDialogBirthYearInvalid": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error for a non-numeric value."
+    },
+    "profileDialogBirthYearOutOfRange": "Enter a year between {minYear} and {maxYear}",
+    "@profileDialogBirthYearOutOfRange": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error outside the server's CHECK bounds.",
+      "placeholders": {
+        "minYear": {
+          "type": "int"
+        },
+        "maxYear": {
+          "type": "int"
+        }
+      }
+    },
+    "profileDialogBirthYearBeforeEntries": "This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.",
+    "@profileDialogBirthYearBeforeEntries": {
+      "description": "Issue #1004 (tranche 5): birth-year validation error naming the conflict with the earliest logged entry (#923).",
+      "placeholders": {
+        "earliestEntryYear": {
+          "type": "int"
+        }
+      }
     }
 }

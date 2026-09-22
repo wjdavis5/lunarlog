@@ -5208,4 +5208,25 @@ class AppLocalizationsEn extends AppLocalizations {
   ) {
     return 'Import complete: $created created, $matched matched, $added entries added, $merged merged, $observationsAdded observations added, $observationsSkipped skipped$rejected$notesDiscarded.';
   }
+
+  @override
+  String get profileDialogNameEmpty => 'Name cannot be empty';
+
+  @override
+  String profileDialogNameTooLong(int maxLength) {
+    return 'Name is too long ($maxLength characters max)';
+  }
+
+  @override
+  String get profileDialogBirthYearInvalid => 'Enter a valid year';
+
+  @override
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear) {
+    return 'Enter a year between $minYear and $maxYear';
+  }
+
+  @override
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear) {
+    return 'This profile has entries from $earliestEntryYear. Enter $earliestEntryYear or earlier.';
+  }
 }
