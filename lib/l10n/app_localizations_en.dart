@@ -4753,4 +4753,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String symptomTrendsLogged(int occurrences, int cycles) {
     return 'Logged $occurrences times across $cycles cycles';
   }
+
+  @override
+  String get pendingInviteBannerDismissTooltip => 'Dismiss';
 }

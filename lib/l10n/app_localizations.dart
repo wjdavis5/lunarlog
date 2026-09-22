@@ -7579,6 +7579,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logged {occurrences} times across {cycles} cycles'**
   String symptomTrendsLogged(int occurrences, int cycles);
+
+  /// Issue #1022: tooltip/label on the pending-invite banner's quiet close, which clears the latched invite code for this session (the single-use link stays in the recipient's messages).
+  ///
+  /// In en, this message translates to:
+  /// **'Dismiss'**
+  String get pendingInviteBannerDismissTooltip;
 }
 
 class _AppLocalizationsDelegate

@@ -6160,5 +6160,9 @@
           "type": "int"
         }
       }
+    },
+    "pendingInviteBannerDismissTooltip": "Dismiss",
+    "@pendingInviteBannerDismissTooltip": {
+      "description": "Issue #1022: tooltip/label on the pending-invite banner's quiet close, which clears the latched invite code for this session (the single-use link stays in the recipient's messages)."
     }
 }

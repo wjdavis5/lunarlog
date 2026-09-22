@@ -2511,6 +2511,134 @@ void main() {
       );
     });
 
+    // Issue #1022: the banner's own SafeArea already pads for the status
+    // bar, so the screens beneath it must see a MediaQuery with the top
+    // inset removed — otherwise every AppBar/SafeArea under the banner pads
+    // for the status bar a second time and a dead band appears between the
+    // banner and the content on every screen (the p120_03 repro). And the
+    // banner gains a quiet close that clears the latched code for the
+    // session.
+    group('pending-invite banner inset + dismissal (Issue #1022)', () {
+      const bannerKey = Key('pending-invite-sign-in-banner');
+      const dismissKey = Key('pending-invite-banner-dismiss');
+
+      /// Widget-test views default to zero padding, so fake the status-bar
+      /// inset the device repro ran against (47 logical px, DPR 1.0 keeps
+      /// logical == physical for the getTopLeft assertions).
+      void fakeStatusBarInset(WidgetTester tester) {
+        tester.view.devicePixelRatio = 1.0;
+        tester.view.padding = const FakeViewPadding(top: 47);
+        addTearDown(tester.view.reset);
+      }
+
+      testWidgets(
+        'the app bar under the banner lays out flush against it — the '
+        'status-bar inset is applied once, by the banner',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          fakeStatusBarInset(tester);
+          await pumpAppWithInvite(tester, auth, initialInviteCode: 'cold');
+
+          expect(find.byKey(bannerKey), findsOneWidget);
+
+          // The exact mechanism the fix introduces: the Navigator (and so
+          // every screen under the banner) sees the top inset removed — the
+          // banner's own SafeArea already consumed it.
+          final navigator = tester.element(find.byType(Navigator).first);
+          expect(MediaQuery.of(navigator).padding.top, 0.0);
+
+          // Visually: the app bar's title (an AppBar's own box always
+          // starts at y=0 — its SafeArea pads internally — so its title is
+          // the visible thing to measure) sits directly below the banner,
+          // not a full status-bar height lower (the p120_03 dead band).
+          final bannerBottom = tester.getBottomLeft(find.byKey(bannerKey)).dy;
+          final titleTop =
+              tester.getTopLeft(find.text('Profiles')).dy;
+          final gap = titleTop - bannerBottom;
+          expect(gap, greaterThan(0.0));
+          expect(
+            gap,
+            lessThan(47.0),
+            reason:
+                'the app bar title must not be pushed a second status-bar '
+                'inset below the banner',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'control: without the banner the status-bar inset still reaches '
+        'the screen for its own one-time pad',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          fakeStatusBarInset(tester);
+          await pumpAppWithInvite(tester, auth);
+
+          expect(find.byKey(bannerKey), findsNothing);
+
+          final navigator = tester.element(find.byType(Navigator).first);
+          expect(MediaQuery.of(navigator).padding.top, 47.0);
+
+          // The picker's app bar title starts below the status bar, padded
+          // by the app bar's own SafeArea (not at y=0 like a banner-stripped
+          // tree would put its first content).
+          expect(
+            tester.getTopLeft(find.text('Profiles')).dy,
+            greaterThan(47.0),
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'the repro: a link arriving while signed out shows the banner, and '
+        'its close clears the invite for the session',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            inviteLinks: Stream.value(
+              Uri.parse('lunarlog://invite?code=raw-token&profile=p-1'),
+            ),
+          );
+
+          expect(find.byKey(bannerKey), findsOneWidget);
+
+          await tester.tap(find.byKey(dismissKey));
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(bannerKey), findsNothing);
+
+          // Session-scoped: the code is gone, so the later sign-in must
+          // neither resurrect the banner nor present the invite sheet from
+          // the dismissed code.
+          auth.emit(
+            AuthSessionState.signedIn,
+            user: const AuthUser(id: 'user-dad'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byKey(bannerKey), findsNothing);
+          expect(find.text('Join Shared Profile'), findsNothing);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+    });
+
     testWidgets('links without a code are ignored', (tester) async {
       final auth = FakeAuthService();
       addTearDown(auth.dispose);

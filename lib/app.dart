@@ -794,14 +794,40 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// holds. Placed in `MaterialApp.builder` (see [build]) — above the
   /// Navigator, alongside [WebGuardrails] — so it renders over whatever the
   /// signed-out flow already shows, rather than only inside one screen.
-  Widget _wrapWithPendingInviteBanner(Widget child) {
+  ///
+  /// Issue #1022: the banner's own [SafeArea] already pads for the status
+  /// bar, so [child] is stripped of the top inset — otherwise every
+  /// `AppBar`/`SafeArea` beneath pads for the status bar a second time,
+  /// leaving a dead band between the banner and the content on every
+  /// screen. The removal wraps the Navigator side of the [Column] only;
+  /// the banner keeps the real inset. With no banner up, [child] passes
+  /// through untouched.
+  Widget _wrapWithPendingInviteBanner(BuildContext context, Widget child) {
     if (!_showPendingInviteSignInBanner) return child;
     return Column(
       children: [
-        _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
-        Expanded(child: child),
+        _PendingInviteSignInBanner(
+          onSignIn: _goToSignInForPendingInvite,
+          onDismiss: _dismissPendingInviteBanner,
+        ),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: child,
+          ),
+        ),
       ],
     );
+  }
+
+  /// Issue #1022: the banner's quiet close. Clears the latched code for
+  /// this session — the invite link itself is single-use and still in the
+  /// recipient's messages, so nothing is lost — which also keeps
+  /// [_onAuthChanged] from presenting the invite sheet on a later sign-in
+  /// (a restart clears it the same way, since the code is in-memory only).
+  void _dismissPendingInviteBanner() {
+    setState(() => _pendingInviteCode = null);
   }
 
   /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
@@ -1374,7 +1400,10 @@ class _LunarLogAppState extends State<LunarLogApp>
           // marker, never dismissed by an auth change like the invite
           // banner below it can be.
           child: _wrapWithQaBanner(
-            _wrapWithPendingInviteBanner(child ?? const SizedBox.shrink()),
+            _wrapWithPendingInviteBanner(
+              context,
+              child ?? const SizedBox.shrink(),
+            ),
           ),
         ),
         // U2 Approach 3: `home:` cannot carry a RouteSettings name (it is
@@ -1399,19 +1428,37 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 }
 
-/// Issue #535 (b): persistent, non-dismissible banner surfacing a latched
-/// invite code while the recipient is signed out — mirrors [WebDevBanner]'s
-/// shape (a colored [Material] strip above the app content) but stays
-/// mounted for as long as the invite is waiting rather than for the whole
-/// build, and clears itself the moment [_LunarLogAppState._onAuthChanged]
-/// consumes the code on sign-in.
+/// Issue #535 (b): persistent banner surfacing a latched invite code while
+/// the recipient is signed out — mirrors [WebDevBanner]'s shape (a colored
+/// [Material] strip above the app content) but stays mounted for as long as
+/// the invite is waiting rather than for the whole build, and clears itself
+/// the moment [_LunarLogAppState._onAuthChanged] consumes the code on
+/// sign-in.
+///
+/// Issue #1022: a quiet close ([Icons.close], mirroring the sync-on web
+/// notice's dismiss) lets a recipient who is not signing in on this device
+/// right now clear the banner for the session — the app state's
+/// `_dismissPendingInviteBanner` drops the latched code, so the invite
+/// sheet never surfaces from it again; the single-use link is still in the
+/// recipient's messages. Unlike the web notice this is not a device-local
+/// ack of a disclosure — just a session-scoped dismissal, never persisted.
 class _PendingInviteSignInBanner extends StatelessWidget {
-  const _PendingInviteSignInBanner({required this.onSignIn});
+  const _PendingInviteSignInBanner({
+    required this.onSignIn,
+    required this.onDismiss,
+  });
 
   final VoidCallback onSignIn;
 
+  /// Issue #1022: clears the latched invite code for this session.
+  final VoidCallback onDismiss;
+
   @visibleForTesting
   static const Key bannerKey = Key('pending-invite-sign-in-banner');
+
+  /// The quiet close's hit target (issue #1022).
+  @visibleForTesting
+  static const Key dismissKey = Key('pending-invite-banner-dismiss');
 
   @override
   Widget build(BuildContext context) {
@@ -1436,6 +1483,21 @@ class _PendingInviteSignInBanner extends StatelessWidget {
               TextButton(
                 onPressed: onSignIn,
                 child: const Text('Sign In'),
+              ),
+              // A Semantics label, not a Tooltip: the banner sits above the
+              // Navigator in `MaterialApp.builder`, where there is no
+              // Overlay for a tooltip to render into (issue #1022).
+              Semantics(
+                button: true,
+                label: AppLocalizations.of(
+                  context,
+                ).pendingInviteBannerDismissTooltip,
+                child: IconButton(
+                  key: dismissKey,
+                  onPressed: onDismiss,
+                  icon: const Icon(Icons.close),
+                  visualDensity: VisualDensity.compact,
+                ),
               ),
             ],
           ),
