@@ -153,14 +153,17 @@ void main() {
       await p1.close();
     });
 
-    // A caregiver-mode profile with a late prediction: its preset arms
-    // nothing, so the plan is empty.
-    profiles.add([_profile('p1').copyWith(mode: ProfileMode.caregiver)]);
+    // A teen-mode profile with a late prediction: its preset keeps
+    // upcoming but drops the late window, so the plan is empty.
+    // (Issue #850 retired caregiver's "arms nothing" preset — a guardian's
+    // device is gated on the per-viewer lens in U4, not on the mode — so
+    // teen now carries this case.)
+    profiles.add([_profile('p1').copyWith(mode: ProfileMode.teen)]);
     p1.add(_late(today));
     await pumpEventQueue();
     expect(scheduler.rescheduleCalls, isNotEmpty);
     expect(scheduler.rescheduleCalls.last, isEmpty,
-        reason: 'caregiver preset plans no reminders');
+        reason: 'teen preset plans no late reminder');
 
     // Switching the profile's mode rides the same profiles stream; the
     // next coordinator pass replans with the standard preset. The late

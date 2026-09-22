@@ -82,9 +82,6 @@ String _teenNotEnoughBody(int complete, int needed) =>
     'Every entry builds the picture of your cycle. '
     '${completedCycleProgress(complete, needed)}';
 
-String _caregiverNotEnoughBody(int complete, int needed) =>
-    '${completedCycleProgress(complete, needed)} Regular logging helps.';
-
 String _irregularNotEnoughBody(int complete, int needed) =>
     '${completedCycleProgress(complete, needed)} Your estimates may stay '
     'ranges rather than dates.';
@@ -208,7 +205,7 @@ class CareModeCopy {
   /// Row label for the fertile-window estimate on the Analysis tab (issue
   /// #143 review, per-mode vocabulary — the same reasoning as
   /// [nextEstimateLabel]): `teen` gets plainer, less clinical phrasing than
-  /// `standard`/`caregiver`. Meaningless (never rendered) when
+  /// `standard`. Meaningless (never rendered) when
   /// [showsFertileWindow] is false, but still a real, non-empty string —
   /// [CareModeCopy] never leaves a field blank just because one mode
   /// doesn't currently use it.
@@ -302,7 +299,7 @@ const CareModeCopy _teen = CareModeCopy(
   showsTierCaption: true,
   showsFertileWindow: true,
   // Issue #143 review: plainer, less clinical phrasing than
-  // standard/caregiver's "Estimated fertile window" — matches this mode's
+  // standard's "Estimated fertile window" — matches this mode's
   // existing body-literacy framing (e.g. `categoryLabels`'s "How your body
   // feels" above).
   fertileWindowLabel: 'Days pregnancy is more likely (estimate)',
@@ -386,20 +383,6 @@ const CareModeCopy _teen = CareModeCopy(
   },
 );
 
-const CareModeCopy _caregiver = CareModeCopy(
-  notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: _caregiverNotEnoughBody,
-  nextEstimateLabel: 'Next period estimate:',
-  overdueStatusLabel: '',
-  silencesLateBanner: false,
-  showsTierCaption: true,
-  showsFertileWindow: true,
-  fertileWindowLabel: 'Estimated fertile window',
-  fertileWindowLegend: 'Estimated fertile days',
-  categoriesInOrder: TagCategory.values,
-  categoryLabels: _standardCategoryLabels,
-);
-
 const CareModeCopy _irregular = CareModeCopy(
   notEnoughTitle: 'Not enough history yet',
   notEnoughBody: _irregularNotEnoughBody,
@@ -434,7 +417,10 @@ const CareModeCopy _irregular = CareModeCopy(
 CareModeCopy _baseCopyFor(ProfileMode mode) => switch (mode) {
       ProfileMode.standard => _standard,
       ProfileMode.teen => _teen,
-      ProfileMode.caregiver => _caregiver,
+      // Issue #850: the legacy `caregiver` wire value folds into standard —
+      // a guardian is a per-viewer lens now, not a mode, so there is no
+      // caregiver-specific vocabulary.
+      ProfileMode.caregiver => _standard,
       ProfileMode.irregular => _irregular,
     };
 
