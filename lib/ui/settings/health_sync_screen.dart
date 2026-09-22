@@ -54,8 +54,24 @@ import '../../observability/route_names.dart';
 /// The human name of [platform]'s health store, used in every import-copy
 /// string so the screen names the store the runner actually reads.
 String _sourceName(HealthImportPlatform platform) => switch (platform) {
-      HealthImportPlatform.appleHealth => 'Apple Health',
+      HealthImportPlatform.appleHealth => 'the Health app',
       HealthImportPlatform.healthConnect => 'Health Connect',
+    };
+
+/// The human name of [platform]'s health store for titles and headings.
+String _sourceTitle(HealthImportPlatform platform) => switch (platform) {
+      HealthImportPlatform.appleHealth => 'Health app',
+      HealthImportPlatform.healthConnect => 'Health Connect',
+    };
+
+/// The unavailable copy for [platform]'s health store when the device
+/// cannot run it.
+String _sourceUnavailableCopy(HealthImportPlatform platform) =>
+    switch (platform) {
+      HealthImportPlatform.appleHealth =>
+        "The Health app isn't available on this device.",
+      HealthImportPlatform.healthConnect =>
+        "Health Connect isn't available on this device.",
     };
 
 /// The neutral statement shown when an import read returned nothing usable
@@ -67,8 +83,8 @@ String _sourceName(HealthImportPlatform platform) => switch (platform) {
 String healthImportEmptyCopy(HealthImportPlatform platform) =>
     switch (platform) {
       HealthImportPlatform.appleHealth =>
-        'Apple Health returned no menstrual-flow data. '
-            "Apple Health doesn't tell apps whether read access is allowed, so "
+        'The Health app returned no menstrual-flow data. '
+            "The Health app doesn't tell apps whether read access is allowed, so "
             'this can mean nothing was tracked, or that access is off.',
       HealthImportPlatform.healthConnect =>
         'Health Connect returned no menstrual-flow data. '
@@ -86,7 +102,7 @@ const String kHealthSyncWriteIntro =
 /// (Android, Issue #458) — it must not promise writes that will not happen.
 const String kHealthSyncImportIntro =
     'Choose the one profile this phone may import health data into. Every '
-    "other profile stays out of this phone's Health app entirely.";
+    'other profile stays out of Health Connect entirely.';
 
 /// The forward-only write explanation (iOS).
 const String kHealthSyncWriteForwardOnly =
@@ -194,8 +210,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   /// The platform the runner reads — drives the copy below. Defaults to
   /// Apple Health only for the (never-shown) case where the importer is
   /// absent; every rendered path is guarded by a non-null importer.
-  HealthImportPlatform get _importPlatform =>
-      widget.importer?.platform ?? HealthImportPlatform.appleHealth;
+  HealthImportPlatform get _importPlatform {
+    if (widget.importer != null) return widget.importer!.platform;
+    return widget.writeEnabled
+        ? HealthImportPlatform.appleHealth
+        : HealthImportPlatform.healthConnect;
+  }
 
   @override
   void initState() {
@@ -387,10 +407,14 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
         content: Text(
           widget.writeEnabled
-              ? AppLocalizations.of(dialogContext)
-                  .healthSyncBindWriteBody(profile.displayName)
-              : AppLocalizations.of(dialogContext)
-                  .healthSyncBindImportBody(profile.displayName),
+              ? AppLocalizations.of(dialogContext).healthSyncBindWriteBody(
+                  profile.displayName,
+                  _sourceName(_importPlatform),
+                )
+              : AppLocalizations.of(dialogContext).healthSyncBindImportBody(
+                  profile.displayName,
+                  _sourceName(_importPlatform),
+                ),
         ),
         actions: [
           TextButton(
@@ -446,12 +470,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       routeSettings: const RouteSettings(name: kRouteHealthSyncUnbindDialog),
       builder: (dialogContext) {
         final l10n = AppLocalizations.of(dialogContext);
+        final source = _sourceName(_importPlatform);
         return AlertDialog(
           title: Text(l10n.healthSyncUnbindDialogTitle(name)),
           content: Text(
             widget.writeEnabled
-                ? l10n.healthSyncUnbindDialogWriteBody(name)
-                : l10n.healthSyncUnbindDialogImportBody(name),
+                ? l10n.healthSyncUnbindDialogWriteBody(name, source)
+                : l10n.healthSyncUnbindDialogImportBody(name, source),
           ),
           actions: [
             TextButton(
@@ -549,7 +574,7 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
     return switch (blocked) {
       HealthPlatformRefused() =>
         "This profile can't import from $source right now.",
-      HealthPlatformUnavailable() => "$source isn't available on this device.",
+      HealthPlatformUnavailable() => _sourceUnavailableCopy(_importPlatform),
       HealthPlatformPermissionDenied() => healthImportEmptyCopy(_importPlatform),
       HealthPlatformFailed() =>
         "Couldn't finish the import. Please try again.",
@@ -692,9 +717,12 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
       );
     }
     if (_loadFailed) {
+      final l10n = AppLocalizations.of(context);
       return Scaffold(
         appBar: AppBar(
-          title: Text(AppLocalizations.of(context).settingsHealthSyncTitle),
+          title: Text(
+            l10n.settingsHealthSyncTitle(_sourceTitle(_importPlatform)),
+          ),
         ),
         body: Center(
           child: Padding(
@@ -721,11 +749,13 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
         ),
       );
     }
-    final permissionSection =
-        _permissionStatusSection(AppLocalizations.of(context));
+    final l10n = AppLocalizations.of(context);
+    final permissionSection = _permissionStatusSection(l10n);
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context).settingsHealthSyncTitle),
+        title: Text(
+          l10n.settingsHealthSyncTitle(_sourceTitle(_importPlatform)),
+        ),
       ),
       body: ListView(
         children: [
