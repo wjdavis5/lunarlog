@@ -2028,6 +2028,18 @@ abstract class AppLocalizations {
   /// **'Sign in to invite'**
   String get firstRunInviteSignInAction;
 
+  /// Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to accept your invite'**
+  String get pendingInviteBannerTitle;
+
+  /// Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign In'**
+  String get pendingInviteBannerAction;
+
   /// Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent.
   ///
   /// In en, this message translates to:
@@ -4827,6 +4839,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Check in when no entry has been logged for a while'**
   String get sharingNotificationPreferencesMissedEntrySubtitle;
+
+  /// Issue #851: section header over the three opt-in ahead-of-time guardian alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Ahead of time'**
+  String get sharingNotificationPreferencesAheadOfTimeHeader;
+
+  /// Issue #851: opt-in toggle for the period_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Period reminder'**
+  String get sharingNotificationPreferencesPeriodSoon;
+
+  /// Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail).
+  ///
+  /// In en, this message translates to:
+  /// **'A heads-up a few days before the next expected period'**
+  String get sharingNotificationPreferencesPeriodSoonSubtitle;
+
+  /// Issue #851: opt-in toggle for the restock_due ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock reminder'**
+  String get sharingNotificationPreferencesRestock;
+
+  /// Issue #851: restock_due toggle subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me to restock supplies before the next expected period'**
+  String get sharingNotificationPreferencesRestockSubtitle;
+
+  /// Issue #851: opt-in toggle for the pms_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS heads-up'**
+  String get sharingNotificationPreferencesPmsSoon;
+
+  /// Issue #851: pms_soon toggle subtitle, naming the three-interval gate.
+  ///
+  /// In en, this message translates to:
+  /// **'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)'**
+  String get sharingNotificationPreferencesPmsSoonSubtitle;
 
   /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
   ///
@@ -8416,60 +8470,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Supplies'**
   String get guardianOverviewActionSupplies;
-
-  /// Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up).
-  ///
-  /// In en, this message translates to:
-  /// **'Sign in to accept your invite'**
-  String get pendingInviteBannerTitle;
-
-  /// Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up).
-  ///
-  /// In en, this message translates to:
-  /// **'Sign In'**
-  String get pendingInviteBannerAction;
-
-  /// Issue #851: section header over the three opt-in ahead-of-time guardian alerts.
-  ///
-  /// In en, this message translates to:
-  /// **'Ahead of time'**
-  String get sharingNotificationPreferencesAheadOfTimeHeader;
-
-  /// Issue #851: opt-in toggle for the period_soon ahead-of-time alert.
-  ///
-  /// In en, this message translates to:
-  /// **'Period reminder'**
-  String get sharingNotificationPreferencesPeriodSoon;
-
-  /// Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail).
-  ///
-  /// In en, this message translates to:
-  /// **'A heads-up a few days before the next expected period'**
-  String get sharingNotificationPreferencesPeriodSoonSubtitle;
-
-  /// Issue #851: opt-in toggle for the restock_due ahead-of-time alert.
-  ///
-  /// In en, this message translates to:
-  /// **'Restock reminder'**
-  String get sharingNotificationPreferencesRestock;
-
-  /// Issue #851: restock_due toggle subtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Remind me to restock supplies before the next expected period'**
-  String get sharingNotificationPreferencesRestockSubtitle;
-
-  /// Issue #851: opt-in toggle for the pms_soon ahead-of-time alert.
-  ///
-  /// In en, this message translates to:
-  /// **'PMS heads-up'**
-  String get sharingNotificationPreferencesPmsSoon;
-
-  /// Issue #851: pms_soon toggle subtitle, naming the three-interval gate.
-  ///
-  /// In en, this message translates to:
-  /// **'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)'**
-  String get sharingNotificationPreferencesPmsSoonSubtitle;
 }
 
 class _AppLocalizationsDelegate
