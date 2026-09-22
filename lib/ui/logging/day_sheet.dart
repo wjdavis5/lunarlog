@@ -103,7 +103,6 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
-import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
