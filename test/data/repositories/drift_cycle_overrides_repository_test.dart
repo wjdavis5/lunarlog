@@ -2,28 +2,28 @@
 /// narrow "excluded from average" seam [CycleExclusionList] reads and
 /// writes through over Issue #188's `cycle_overrides` storage, instead of
 /// the pre-#568 device-local settings list.
+///
+/// Issue #551 problem 1 follow-up: this used to open a real drift database
+/// solely to feed [DriftCycleOverridesRepository]. It now drives a
+/// hand-written [FakeCycleStore], so the repository's own
+/// create/withdraw/preserve rules and excluded-set shaping are tested in
+/// isolation with no database.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_cycle_overrides_repository.dart';
 
+import '../../support/fakes/fake_cycle_store.dart';
+
 void main() {
-  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-
-  late LunarLogDatabase db;
+  late FakeCycleStore store;
   late DriftCycleOverridesRepository overrides;
-  late String profileId;
+  const profileId = 'p1';
 
-  setUp(() async {
-    db = LunarLogDatabase(NativeDatabase.memory());
-    addTearDown(db.close);
-    overrides = DriftCycleOverridesRepository(db.storage);
-    final profile =
-        await db.storage.upsertProfile(displayName: 'A', isMinor: false);
-    profileId = profile.id;
+  setUp(() {
+    store = FakeCycleStore();
+    addTearDown(store.close);
+    overrides = DriftCycleOverridesRepository(store);
   });
 
   test('excludedCycleStarts is empty when no overrides exist', () async {
@@ -40,7 +40,7 @@ void main() {
     expect(
         await overrides.excludedCycleStarts(profileId), {'2026-01-01'});
     final stored =
-        (await db.storage.getCycleOverridesForProfile(profileId)).single;
+        (await store.getCycleOverridesForProfile(profileId)).single;
     expect(stored.manualStart, isFalse);
     expect(stored.noteId, isNull);
   });
@@ -52,7 +52,7 @@ void main() {
       cycleStartDate: '2026-01-01',
       excluded: false,
     );
-    expect(await db.storage.getCycleOverridesForProfile(profileId), isEmpty);
+    expect(await store.getCycleOverridesForProfile(profileId), isEmpty);
   });
 
   test('setExcludedFromAverage(false) withdraws an override that exists '
@@ -69,8 +69,8 @@ void main() {
       excluded: false,
     );
     expect(await overrides.excludedCycleStarts(profileId), isEmpty);
-    expect(await db.storage.getCycleOverridesForProfile(profileId), isEmpty);
-    final tombstoned = (await db.storage.getCycleOverridesForProfile(
+    expect(await store.getCycleOverridesForProfile(profileId), isEmpty);
+    final tombstoned = (await store.getCycleOverridesForProfile(
             profileId,
             includeTombstones: true))
         .single;
@@ -79,7 +79,7 @@ void main() {
 
   test('setExcludedFromAverage never clobbers an existing manualStart or '
       'noteId it was not asked to change', () async {
-    await db.storage.upsertCycleOverride(
+    await store.upsertCycleOverride(
       profileId: profileId,
       cycleStartDate: '2026-01-01',
       manualStart: true,
@@ -92,7 +92,7 @@ void main() {
       excluded: true,
     );
     var stored =
-        (await db.storage.getCycleOverridesForProfile(profileId)).single;
+        (await store.getCycleOverridesForProfile(profileId)).single;
     expect(stored.manualStart, isTrue);
     expect(stored.noteId, 'note-1');
     expect(stored.excludedFromAverage, isTrue);
@@ -106,7 +106,7 @@ void main() {
       excluded: false,
     );
     stored =
-        (await db.storage.getCycleOverridesForProfile(profileId)).single;
+        (await store.getCycleOverridesForProfile(profileId)).single;
     expect(stored.excludedFromAverage, isFalse);
     expect(stored.manualStart, isTrue);
     expect(stored.noteId, 'note-1');
@@ -132,12 +132,12 @@ void main() {
 
   test('excludedCycleStarts only counts live overrides — a tombstoned one '
       'is excluded from the set', () async {
-    final created = await db.storage.upsertCycleOverride(
+    final created = await store.upsertCycleOverride(
       profileId: profileId,
       cycleStartDate: '2026-01-01',
       excludedFromAverage: true,
     );
-    await db.storage
+    await store
         .softDeleteCycleOverride(id: created.id, profileId: profileId);
     expect(await overrides.excludedCycleStarts(profileId), isEmpty);
   });
@@ -146,7 +146,7 @@ void main() {
     test('returns every live override with full fidelity — id, '
         'manualStart, noteId included, not just the excluded flag',
         () async {
-      final created = await db.storage.upsertCycleOverride(
+      final created = await store.upsertCycleOverride(
         profileId: profileId,
         cycleStartDate: '2026-01-01',
         excludedFromAverage: true,
@@ -165,11 +165,11 @@ void main() {
     });
 
     test('excludes a tombstoned override', () async {
-      final created = await db.storage.upsertCycleOverride(
+      final created = await store.upsertCycleOverride(
         profileId: profileId,
         cycleStartDate: '2026-01-01',
       );
-      await db.storage
+      await store
           .softDeleteCycleOverride(id: created.id, profileId: profileId);
       expect(await overrides.listForProfile(profileId), isEmpty);
     });
