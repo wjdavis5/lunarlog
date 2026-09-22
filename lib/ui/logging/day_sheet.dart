@@ -70,6 +70,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/lens_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/merge_notice_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
@@ -612,8 +613,14 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   CareModeCopy get _copy => careModeCopyFor(
         widget.mode,
         irregularFraming: false,
-        lens: guardianLensFor(widget.guardians, widget.currentUserId),
+        lens: _lens,
       );
+
+  /// Issue #850 (U8): which lens the reader views this profile through,
+  /// resolved from the sheet's guardian rows and signed-in user — the same
+  /// [guardianLensFor] rule every other lens-aware surface uses.
+  GuardianLens get _lens =>
+      guardianLensFor(widget.guardians, widget.currentUserId);
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated
@@ -2284,7 +2291,9 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
             key: const ValueKey('cycle-start-confirm-dialog'),
             title: Text(l10n.daySheetCycleStartDialogTitle),
             content: Text(
-              l10n.daySheetCycleStartDialogBody(
+              lensDaySheetCycleStartDialogBody(
+                l10n,
+                _lens,
                 guard.cycleDay ?? 0,
                 localizedFlowLabel(level, l10n),
                 guard.closedCycleLengthDays ?? 0,

@@ -6865,5 +6865,142 @@
     "accountProviderLabelApple": "Apple",
     "@accountProviderLabelApple": {
       "description": "Issue #1004 (tranche 5): human label for the Apple identity provider."
+    },
+  "cycleComparisonNotEnoughBodyGuardian": "Select two cycles from this profile's cycle history to compare them side by side.",
+  "@cycleComparisonNotEnoughBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of cycleComparisonNotEnoughBody, read by a guardian on the comparison screen."
+  },
+  "daySheetCycleStartDialogBodyGuardian": "This looks early — this is cycle day {cycleDay}. Logging {flow} flow starts a new cycle, closes the current one after {cycleLength} days, and updates this profile's averages and estimates. Spotting never starts a cycle.",
+  "@daySheetCycleStartDialogBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of daySheetCycleStartDialogBody, read by a guardian logging for this profile. {cycleDay}, {flow}, and {cycleLength} carry the same meaning.",
+    "placeholders": {
+      "cycleDay": {
+        "type": "int"
+      },
+      "flow": {
+        "type": "String"
+      },
+      "cycleLength": {
+        "type": "int"
+      }
     }
+  },
+  "overviewEstimateLoadErrorGuardian": "Could not load this profile's cycle estimate.",
+  "@overviewEstimateLoadErrorGuardian": {
+    "description": "Issue #850 (U8): third-person variant of overviewEstimateLoadError, read by a guardian looking after someone else's profile."
+  },
+  "predictionsDisabledBodyGuardian": "Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Cycle history and tracking continue unchanged.",
+  "@predictionsDisabledBodyGuardian": {
+    "description": "Issue #850 (U8): third-person variant of predictionsDisabledBody, read by a guardian on the Analysis tab."
+  },
+  "analysisLoadErrorGuardian": "Could not load this profile's cycle analysis.",
+  "@analysisLoadErrorGuardian": {
+    "description": "Issue #850 (U8): third-person variant of analysisLoadError, read by a guardian."
+  },
+  "guardianOverviewLabel": "Guardian view",
+  "@guardianOverviewLabel": {
+    "description": "Issue #850 U5: small label at the top of the guardian logistics card, distinguishing the guardian's default view from the subject's own Today screen."
+  },
+  "guardianOverviewThisProfile": "This profile",
+  "@guardianOverviewThisProfile": {
+    "description": "Issue #850 U5: fallback name for the profile a guardian card describes when no display name is available, so the copy stays third-person (\"This profile's next period …\") rather than slipping into \"your\"."
+  },
+  "guardianOverviewNextPeriod": "{name}'s next period is estimated around {date} — {confidence}.",
+  "@guardianOverviewNextPeriod": {
+    "description": "Issue #850 U5: the guardian card's headline estimate, third-person per docs/product/voice-and-copy.md rule 2. date is the localized date or range; confidence is the existing tier vocabulary (tierLabel).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      },
+      "confidence": {
+        "type": "String"
+      }
+    }
+  },
+  "guardianOverviewNoEstimate": "There isn't enough history to estimate {name}'s next period yet.",
+  "@guardianOverviewNoEstimate": {
+    "description": "Issue #850 U5: guardian-card state when the profile has too few completed cycles for a next-period estimate.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guardianOverviewPredictionsOff": "Period estimates are off for this profile.",
+  "@guardianOverviewPredictionsOff": {
+    "description": "Issue #850 U5: guardian-card state when the profile's predictions are suppressed (a continuous birth-control method or a life-stage mode) or disabled per profile."
+  },
+  "guardianOverviewPmsWindow": "{name}'s PMS window is likely {range}.",
+  "@guardianOverviewPmsWindow": {
+    "description": "Issue #850 U5: guardian-card predicted PMS band, third-person. range is the localized start–end span; rendered only when the active estimate carries a PMS estimate.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "guardianOverviewLastLogged": "Last logged {days, plural, =1{1 day ago} other{{days} days ago}} by {name}.",
+  "@guardianOverviewLastLogged": {
+    "description": "Issue #850 U5: bounded latest-entry line on the guardian card. days is the whole-day age of the entry's civil date; name is resolved through the existing activity-actor ladder (the reader reads as \"You\" when they logged it).",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "guardianOverviewNeverLogged": "No days logged yet.",
+  "@guardianOverviewNeverLogged": {
+    "description": "Issue #850 U5: guardian-card state when the profile has no live day entries."
+  },
+  "guardianOverviewTagCount": "{count, plural, =1{1 tag logged} other{{count} tags logged}}",
+  "@guardianOverviewTagCount": {
+    "description": "Issue #850 U5: guardian-card tag count for the latest entry — a number, never a tag code or label (D-3, counts not content).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "guardianOverviewNotePresent": "A note is attached.",
+  "@guardianOverviewNotePresent": {
+    "description": "Issue #850 U5: guardian-card boolean that the latest entry has a note — never the note text (D-3)."
+  },
+  "guardianOverviewNoDetails": "No tags or note recorded for that day.",
+  "@guardianOverviewNoDetails": {
+    "description": "Issue #850 U5: guardian-card fallback when the latest entry carries neither tags nor a note."
+  },
+  "guardianOverviewSuppliesUnstocked": "{count, plural, =1{1 supply item is unstocked} other{{count} supply items are unstocked}}",
+  "@guardianOverviewSuppliesUnstocked": {
+    "description": "Issue #850 U5: guardian-card unstocked-supplies count read from the shipped supplies list (#851).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "guardianOverviewSuppliesStocked": "All supplies are stocked.",
+  "@guardianOverviewSuppliesStocked": {
+    "description": "Issue #850 U5: guardian-card state when the supplies list has no unstocked items."
+  },
+  "guardianOverviewActionNote": "Add a note",
+  "@guardianOverviewActionNote": {
+    "description": "Issue #850 U5: guardian-card action opening today's day sheet, which carries the existing guardian-note section (#801)."
+  },
+  "guardianOverviewActionCare": "Care details",
+  "@guardianOverviewActionCare": {
+    "description": "Issue #850 U5: guardian-card action opening the shared care screen (CareNotesScreen)."
+  },
+  "guardianOverviewActionSupplies": "Supplies",
+  "@guardianOverviewActionSupplies": {
+    "description": "Issue #850 U5: guardian-card action opening the supplies list, a section of the care screen."
+  }
 }

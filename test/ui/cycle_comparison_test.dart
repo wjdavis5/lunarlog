@@ -4,28 +4,46 @@
 /// rendering and empty state, and [CycleComparisonScreen]'s live wiring.
 library;
 
+import 'dart:async';
+
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
+import 'package:lunarlog/data/repositories/drift_profile_guardians_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
 import 'package:lunarlog/data/repositories/drift_settings_store.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/episodes/episodes.dart';
 import 'package:lunarlog/domain/insights/cycle_comparison.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/cycle_history_service.dart';
+import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/repositories/profiles_repository.dart';
+import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/insights/cycle_comparison_screen.dart';
 import 'package:lunarlog/ui/insights/cycle_comparison_view.dart';
 import 'package:lunarlog/ui/overview/cycle_history_section.dart';
+import 'package:lunarlog/ui/overview/notification_permission_state.dart';
+import 'package:lunarlog/ui/profiles/profile_controller.dart';
+import 'package:lunarlog/ui/profiles/profile_detail_screen.dart';
 import 'package:lunarlog/ui/theme/app_theme.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
 
 final LocalDate kToday = LocalDate(2026, 8, 30);
 
@@ -108,6 +126,131 @@ class _HistoryHarness {
   Future<void> dispose() async {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 100));
+    await db.close();
+  }
+}
+
+/// Issue #850 (U8 follow-up): mounts the archived [ProfileDetailScreen]
+/// (read-only, overview tab) over a real Drift store, optionally signing in
+/// as an accepted non-subject guardian so the screen resolves the guardian
+/// lens. The test then drives the mounted [CycleHistorySection]'s
+/// `onCompareSelected` with a deliberately stale pair of cycle starts --
+/// exactly the invalid selection that lands the pushed comparison on its
+/// empty state -- and reads which empty-state body that push renders.
+class _ArchivedDetailHarness {
+  _ArchivedDetailHarness(this.tester)
+      : db = LunarLogDatabase(NativeDatabase.memory());
+
+  final WidgetTester tester;
+  final LunarLogDatabase db;
+  AuthController? _auth;
+  FakeAuthService? _authService;
+
+  Future<void> pump({required bool guardianLens}) async {
+    tester.view.physicalSize = const Size(1200, 5000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final profiles = DriftProfilesRepository(db.storage);
+    final settings = DriftSettingsStore(db.storage);
+    final entries = DriftDayEntriesRepository(db.storage);
+    final profile = await profiles.create(displayName: 'Alice', isMinor: false);
+    await _seed(entries, profile.id, kStarts);
+
+    if (guardianLens) {
+      final service = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final auth = AuthController(authService: service);
+      _auth = auth;
+      _authService = service;
+      await db.storage.applyRemoteRows([
+        RemoteProfileGuardianRow(
+          id: 'g-aunt',
+          profileId: profile.id,
+          userId: 'user-aunt',
+          role: 'caregiver',
+          status: 'accepted',
+          displayName: 'Aunt',
+          invitedBy: null,
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 1, 1),
+          serverVersion: 1,
+          isSubject: false,
+        ),
+      ]);
+    }
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          Provider<ProfilesRepository>.value(value: profiles),
+          Provider<DayEntriesRepository>.value(value: entries),
+          Provider<SettingsStore>.value(value: settings),
+          Provider<CyclePredictionService>.value(
+            value: CyclePredictionService(entries, settings: settings),
+          ),
+          Provider<CycleHistoryService>.value(
+            value: CycleHistoryService(entries, settings: settings),
+          ),
+          Provider<CycleExclusionList>.value(
+            value: CycleExclusionList(settings),
+          ),
+          ChangeNotifierProvider<NotificationPermissionState>.value(
+            value: NotificationPermissionState(
+              NotificationAvailability.available,
+            ),
+          ),
+          Provider<ProfileGuardiansRepository>.value(
+            value: DriftProfileGuardiansRepository(db.storage),
+          ),
+          if (_auth case final auth?)
+            ChangeNotifierProvider<AuthController>.value(value: auth),
+          ChangeNotifierProvider(
+            create: (_) {
+              final controller = ProfileController(
+                profilesRepository: profiles,
+                settingsStore: settings,
+              );
+              unawaited(controller.load());
+              return controller;
+            },
+          ),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: AppTheme.lightTheme,
+          home: ProfileDetailScreen(
+            profile: profile,
+            readOnly: true,
+            initiallyShowOverview: true,
+            todayProvider: () => kToday,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// Pushes the comparison from the mounted history section with a stale
+  /// start pair (not in the seeded episodes), landing on the empty state.
+  Future<void> openStaleComparison() async {
+    final section = tester.widget<CycleHistorySection>(
+      find.byType(CycleHistorySection),
+    );
+    section.onCompareSelected!(LocalDate(2000, 1, 1), LocalDate(2000, 2, 1));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> dispose() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+    _auth?.dispose();
+    await _authService?.dispose();
     await db.close();
   }
 }
@@ -254,6 +397,58 @@ void main() {
       );
       expect(find.text('Nothing to compare yet'), findsOneWidget);
     });
+
+    testWidgets(
+      'issue #850 (U8): the empty-state body is third-person for a guardian '
+      'and unchanged for the subject',
+      (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: CycleComparisonView(
+                data: null,
+                lens: GuardianLens.guardian,
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.text(
+            "Select two cycles from this profile's cycle history to compare "
+            'them side by side.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('from your cycle history'),
+          findsNothing,
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: CycleComparisonView(
+                data: null,
+                lens: GuardianLens.subject,
+              ),
+            ),
+          ),
+        );
+        expect(
+          find.text(
+            'Select two cycles from your cycle history to compare them side '
+            'by side.',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
 
     testWidgets('aligns two cycles by cycle day, showing flow, tags, and the '
         'excluded badge', (tester) async {
@@ -412,5 +607,60 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
     });
+  });
+
+  group('issue #850 (U8 follow-up): archived-profile comparison lens', () {
+    testWidgets(
+      'a guardian reading an archived profile gets the third-person '
+      'comparison empty state',
+      (tester) async {
+        final h = _ArchivedDetailHarness(tester);
+        await h.pump(guardianLens: true);
+        await h.openStaleComparison();
+
+        expect(
+          find.byKey(const ValueKey('cycle-comparison-empty')),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            "Select two cycles from this profile's cycle history to compare "
+            'them side by side.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('from your cycle history'),
+          findsNothing,
+          reason: 'the guardian must never read the subject-voice body',
+        );
+
+        await h.dispose();
+      },
+    );
+
+    testWidgets(
+      'the subject reading the same archived profile keeps the unchanged '
+      'second-person empty state',
+      (tester) async {
+        final h = _ArchivedDetailHarness(tester);
+        await h.pump(guardianLens: false);
+        await h.openStaleComparison();
+
+        expect(
+          find.text(
+            'Select two cycles from your cycle history to compare them side '
+            'by side.',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining("from this profile's cycle history"),
+          findsNothing,
+        );
+
+        await h.dispose();
+      },
+    );
   });
 }

@@ -13,7 +13,8 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 
 import 'mappers.dart';
 
-class DriftDayEntriesRepository implements DayEntriesRepository {
+class DriftDayEntriesRepository
+    implements DayEntriesRepository, LatestDayEntryReader {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -94,6 +95,14 @@ class DriftDayEntriesRepository implements DayEntriesRepository {
   @override
   Future<bool> hasAnyEntries(String profileId) =>
       _storage.hasAnyEntries(profileId);
+
+  /// Issue #850 U5: the guardian logistics card's bounded "last logged"
+  /// read — one indexed live row at the greatest civil date.
+  @override
+  Future<domain.DayEntry?> latestEntryFor(String profileId) async {
+    final row = await _storage.getLatestDayEntry(profileId);
+    return row == null ? null : dayEntryToDomain(row);
+  }
 
   @override
   Stream<bool> watchHasAnyEntries(String profileId) =>
