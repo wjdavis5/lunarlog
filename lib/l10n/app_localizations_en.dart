@@ -4538,4 +4538,212 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get caregiverAttributionImportedGeneric => 'Imported';
+
+  @override
+  String get commonRetry => 'Retry';
+
+  @override
+  String get appShellTabToday => 'Today';
+
+  @override
+  String get appShellTabCalendar => 'Calendar';
+
+  @override
+  String get appShellTabInsights => 'Insights';
+
+  @override
+  String get appShellTabMore => 'More';
+
+  @override
+  String get appShellSyncBannerGoToSettings => 'Go to Settings';
+
+  @override
+  String todayCardLogsFlowTooltip(String level) {
+    return 'Logs a $level-flow period start for today';
+  }
+
+  @override
+  String get cycleHistoryTitle => 'Cycle history';
+
+  @override
+  String get cycleHistorySyncNote => 'Omissions sync across your devices.';
+
+  @override
+  String get cycleHistoryAvgCycle => 'Avg cycle';
+
+  @override
+  String get cycleHistoryAvgPeriod => 'Avg period';
+
+  @override
+  String get cycleHistoryVariation => 'Variation';
+
+  @override
+  String get cycleHistoryOutlier => 'Outlier — never averaged';
+
+  @override
+  String cycleHistoryCurrentCycleStarted(String date) {
+    return 'Current cycle — started $date';
+  }
+
+  @override
+  String get cycleHistorySkippedExcluded => 'Skipped — excluded from averages';
+
+  @override
+  String get cycleHistoryInclude => 'Include';
+
+  @override
+  String get cycleHistoryOmit => 'Omit';
+
+  @override
+  String get cycleHistoryUndo => 'Undo';
+
+  @override
+  String lateResolverSnoozedUntil(String date) {
+    return 'We will check back on $date.';
+  }
+
+  @override
+  String get lateResolverShowOptions => 'Show options';
+
+  @override
+  String lateResolverDaysLate(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days late',
+      one: '1 day late',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String lateResolverNoPeriodLoggedFor(String days) {
+    return 'No period logged for $days';
+  }
+
+  @override
+  String get lateResolverPromptStillNothing =>
+      'Still nothing logged — what would you like to do?';
+
+  @override
+  String get lateResolverPrompt => 'What would you like to do?';
+
+  @override
+  String get lateResolverLogIt => 'Log it';
+
+  @override
+  String get lateResolverSkipCycle => 'Skip this cycle';
+
+  @override
+  String get lateResolverRemindMe => 'Remind me in 3 days';
+
+  @override
+  String get lateResolverWhyLate => 'Why is it late?';
+
+  @override
+  String get overviewWhyThreeCompletedCycles => 'Why three completed cycles?';
+
+  @override
+  String get analysisLoadError => 'Could not load your cycle analysis.';
+
+  @override
+  String get analysisTitle => 'Analysis';
+
+  @override
+  String get analysisBbtChartTitle => 'BBT by cycle day';
+
+  @override
+  String get analysisStatsTitle => 'Cycle statistics';
+
+  @override
+  String get analysisMeanCycleLength => 'Average cycle length';
+
+  @override
+  String get analysisMeanPeriodLength => 'Average period length';
+
+  @override
+  String get analysisVariability => 'Variability';
+
+  @override
+  String analysisSpreadDays(int days) {
+    return '±$days days';
+  }
+
+  @override
+  String get bbtChartEmptyTitle => 'No BBT logged yet';
+
+  @override
+  String get bbtChartEmptyBody =>
+      'Log a basal body temperature reading in the day sheet to see your curve here, plotted against cycle day.';
+
+  @override
+  String bbtChartCaption(int count, String range) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count cycles shown',
+      one: '1 cycle shown',
+    );
+    return '$_temp0 · $range';
+  }
+
+  @override
+  String get phaseInsightsHelpfulToTrack => 'Helpful to track:';
+
+  @override
+  String phaseInsightsReadArticle(String title) {
+    return 'Read: $title';
+  }
+
+  @override
+  String phaseInsightsSource(String source, String date) {
+    return 'Source: $source · Rev: $date';
+  }
+
+  @override
+  String get symptomTrendsTitle => 'Symptom Trends & Patterns';
+
+  @override
+  String get symptomTrendsRecurring => 'Recurring Symptoms';
+
+  @override
+  String get symptomTrendsEmpty =>
+      'Log symptoms across at least 3 completed cycles to uncover recurring patterns and trends.';
+
+  @override
+  String get symptomTrendsDisclaimer =>
+      'Patterns reflect descriptive logs only and are not clinical diagnostics.';
+
+  @override
+  String get symptomTrendsFlowTitle => 'Typical Bleed Rhythm';
+
+  @override
+  String symptomTrendsFlowSubtitle(int day, String flow) {
+    return 'Peak flow typically falls on Cycle Day $day ($flow).';
+  }
+
+  @override
+  String get symptomTrendsLibraryTitle => 'Cycle Literacy Library';
+
+  @override
+  String get symptomTrendsLibrarySubtitle =>
+      'Evidence-based guides on hormones, cycle phases, and body signals.';
+
+  @override
+  String get crampPredictionTitle => 'Anticipated Cramp Window';
+
+  @override
+  String crampPredictionDates(String dates) {
+    return 'Estimated dates: $dates';
+  }
+
+  @override
+  String crampPredictionObserved(int observed, int total) {
+    return 'Observed in $observed of $total recorded cycles.';
+  }
+
+  @override
+  String symptomTrendsLogged(int occurrences, int cycles) {
+    return 'Logged $occurrences times across $cycles cycles';
+  }
 }

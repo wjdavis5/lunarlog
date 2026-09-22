@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../../domain/insights/cramp_prediction.dart';
 import '../../domain/insights/symptom_trends.dart';
@@ -22,6 +23,7 @@ class SymptomTrendsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
 
     return Column(
@@ -29,7 +31,7 @@ class SymptomTrendsSection extends StatelessWidget {
       children: [
         // Section Header
         Text(
-          'Symptom Trends & Patterns',
+          l10n.symptomTrendsTitle,
           key: const ValueKey('symptom-trends-heading'),
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
@@ -57,7 +59,7 @@ class SymptomTrendsSection extends StatelessWidget {
                         size: 20, color: colorScheme.primary),
                     const SizedBox(width: 8),
                     Text(
-                      'Recurring Symptoms',
+                      l10n.symptomTrendsRecurring,
                       style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w600,
                       ),
@@ -67,8 +69,7 @@ class SymptomTrendsSection extends StatelessWidget {
                 const SizedBox(height: 12),
                 if (!report.hasEnoughData || report.symptomPatterns.isEmpty) ...[
                   Text(
-                    'Log symptoms across at least 3 completed cycles to uncover '
-                    'recurring patterns and trends.',
+                    l10n.symptomTrendsEmpty,
                     key: const ValueKey('symptom-trends-empty-text'),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
@@ -81,7 +82,7 @@ class SymptomTrendsSection extends StatelessWidget {
                   ],
                   const SizedBox(height: 4),
                   Text(
-                    'Patterns reflect descriptive logs only and are not clinical diagnostics.',
+                    l10n.symptomTrendsDisclaimer,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -100,10 +101,12 @@ class SymptomTrendsSection extends StatelessWidget {
             child: ListTile(
               leading: Icon(Icons.water_drop_outlined,
                   color: colorScheme.secondary),
-              title: const Text('Typical Bleed Rhythm'),
+              title: Text(l10n.symptomTrendsFlowTitle),
               subtitle: Text(
-                'Peak flow typically falls on Cycle Day '
-                '${report.flowPattern!.typicalPeakDay} (${report.flowPattern!.typicalPeakFlow.name}).',
+                l10n.symptomTrendsFlowSubtitle(
+                  report.flowPattern!.typicalPeakDay,
+                  report.flowPattern!.typicalPeakFlow.name,
+                ),
               ),
             ),
           ),
@@ -117,10 +120,8 @@ class SymptomTrendsSection extends StatelessWidget {
             key: const ValueKey('browse-cycle-library-button'),
             leading: Icon(Icons.auto_stories_outlined,
                 color: colorScheme.primary),
-            title: const Text('Cycle Literacy Library'),
-            subtitle: const Text(
-              'Evidence-based guides on hormones, cycle phases, and body signals.',
-            ),
+            title: Text(l10n.symptomTrendsLibraryTitle),
+            subtitle: Text(l10n.symptomTrendsLibrarySubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.of(context).push(
               CycleLiteracyLibraryScreen.route(),
@@ -140,6 +141,7 @@ class _CrampPredictionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final locale = Localizations.localeOf(context).toString();
     // Issue #876: a predicted-cramps window is routine, expected
@@ -174,7 +176,7 @@ class _CrampPredictionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Anticipated Cramp Window',
+                    l10n.crampPredictionTitle,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
@@ -194,7 +196,7 @@ class _CrampPredictionCard extends StatelessWidget {
             if (datesText.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(
-                'Estimated dates: $datesText',
+                l10n.crampPredictionDates(datesText),
                 key: const ValueKey('cramp-prediction-dates'),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
@@ -203,8 +205,10 @@ class _CrampPredictionCard extends StatelessWidget {
             ],
             const SizedBox(height: 4),
             Text(
-              'Observed in ${prediction.observedCycleCount} of '
-              '${prediction.totalCyclesAnalyzed} recorded cycles.',
+              l10n.crampPredictionObserved(
+                prediction.observedCycleCount,
+                prediction.totalCyclesAnalyzed,
+              ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -232,6 +236,7 @@ class _SymptomPatternRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
 
     final formattedTagName = pattern.tag.replaceAll('_', ' ').capitalize();
@@ -273,7 +278,10 @@ class _SymptomPatternRow extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          'Logged ${pattern.totalOccurrences} times across ${pattern.cycleCount} cycles',
+          l10n.symptomTrendsLogged(
+            pattern.totalOccurrences,
+            pattern.cycleCount,
+          ),
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),

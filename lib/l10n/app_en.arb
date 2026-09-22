@@ -5834,5 +5834,305 @@
   "caregiverAttributionImportedGeneric": "Imported",
   "@caregiverAttributionImportedGeneric": {
     "description": "Issue #1004 (tranche 4b): generic import-source badge for an unrecognised source."
-  }
+  },
+    "commonRetry": "Retry",
+    "@commonRetry": {
+      "description": "Issue #1004 (tranche 4a): shared retry action label (inline errors and the sync-failure banner)."
+    },
+    "appShellTabToday": "Today",
+    "@appShellTabToday": {
+      "description": "Issue #1004 (tranche 4a): Today destination label in the app shell's navigation bar."
+    },
+    "appShellTabCalendar": "Calendar",
+    "@appShellTabCalendar": {
+      "description": "Issue #1004 (tranche 4a): Calendar destination label in the app shell's navigation bar."
+    },
+    "appShellTabInsights": "Insights",
+    "@appShellTabInsights": {
+      "description": "Issue #1004 (tranche 4a): Insights destination label in the app shell's navigation bar."
+    },
+    "appShellTabMore": "More",
+    "@appShellTabMore": {
+      "description": "Issue #1004 (tranche 4a): More destination label in the app shell's navigation bar."
+    },
+    "appShellSyncBannerGoToSettings": "Go to Settings",
+    "@appShellSyncBannerGoToSettings": {
+      "description": "Issue #1004 (tranche 4a): sync-failure banner action that switches to the Settings tab."
+    },
+    "todayCardLogsFlowTooltip": "Logs a {level}-flow period start for today",
+    "@todayCardLogsFlowTooltip": {
+      "description": "Issue #1004 (tranche 4a): tooltip on the Today card's quick-log button, naming the flow level it writes.",
+      "placeholders": {
+        "level": {
+          "type": "String"
+        }
+      }
+    },
+    "cycleHistoryTitle": "Cycle history",
+    "@cycleHistoryTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the cycle-history section."
+    },
+    "cycleHistorySyncNote": "Omissions sync across your devices.",
+    "@cycleHistorySyncNote": {
+      "description": "Issue #1004 (tranche 4a): note under the cycle-history list explaining that omissions sync."
+    },
+    "cycleHistoryAvgCycle": "Avg cycle",
+    "@cycleHistoryAvgCycle": {
+      "description": "Issue #1004 (tranche 4a): label of the average-cycle-length statistic."
+    },
+    "cycleHistoryAvgPeriod": "Avg period",
+    "@cycleHistoryAvgPeriod": {
+      "description": "Issue #1004 (tranche 4a): label of the average-period-length statistic."
+    },
+    "cycleHistoryVariation": "Variation",
+    "@cycleHistoryVariation": {
+      "description": "Issue #1004 (tranche 4a): label of the cycle-length variation statistic."
+    },
+    "cycleHistoryOutlier": "Outlier — never averaged",
+    "@cycleHistoryOutlier": {
+      "description": "Issue #1004 (tranche 4a): subtitle marking a cycle excluded automatically as an outlier."
+    },
+    "cycleHistoryCurrentCycleStarted": "Current cycle — started {date}",
+    "@cycleHistoryCurrentCycleStarted": {
+      "description": "Issue #1004 (tranche 4a): title of the open cycle row, naming its start date.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "cycleHistorySkippedExcluded": "Skipped — excluded from averages",
+    "@cycleHistorySkippedExcluded": {
+      "description": "Issue #1004 (tranche 4a): subtitle of an open cycle the operator skipped."
+    },
+    "cycleHistoryInclude": "Include",
+    "@cycleHistoryInclude": {
+      "description": "Issue #1004 (tranche 4a): action restoring a previously omitted cycle to the averages."
+    },
+    "cycleHistoryOmit": "Omit",
+    "@cycleHistoryOmit": {
+      "description": "Issue #1004 (tranche 4a): action excluding a cycle from the averages."
+    },
+    "cycleHistoryUndo": "Undo",
+    "@cycleHistoryUndo": {
+      "description": "Issue #1004 (tranche 4a): action undoing a skipped open cycle."
+    },
+    "lateResolverSnoozedUntil": "We will check back on {date}.",
+    "@lateResolverSnoozedUntil": {
+      "description": "Issue #1004 (tranche 4a): snoozed late-resolver line naming the date it resumes.",
+      "placeholders": {
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "lateResolverShowOptions": "Show options",
+    "@lateResolverShowOptions": {
+      "description": "Issue #1004 (tranche 4a): action ending a late-resolution snooze early."
+    },
+    "lateResolverDaysLate": "{count, plural, =1{1 day late} other{{count} days late}}",
+    "@lateResolverDaysLate": {
+      "description": "Issue #1004 (tranche 4a): late-resolver title naming the day count, pluralised.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        }
+      }
+    },
+    "lateResolverNoPeriodLoggedFor": "No period logged for {days}",
+    "@lateResolverNoPeriodLoggedFor": {
+      "description": "Issue #1004 (tranche 4a): late-resolver fallback line, where {days} is an already-localized day count.",
+      "placeholders": {
+        "days": {
+          "type": "String"
+        }
+      }
+    },
+    "lateResolverPromptStillNothing": "Still nothing logged — what would you like to do?",
+    "@lateResolverPromptStillNothing": {
+      "description": "Issue #1004 (tranche 4a): late-resolver prompt after a snooze expired."
+    },
+    "lateResolverPrompt": "What would you like to do?",
+    "@lateResolverPrompt": {
+      "description": "Issue #1004 (tranche 4a): late-resolver prompt."
+    },
+    "lateResolverLogIt": "Log it",
+    "@lateResolverLogIt": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action opening the day sheet."
+    },
+    "lateResolverSkipCycle": "Skip this cycle",
+    "@lateResolverSkipCycle": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action omitting the open cycle."
+    },
+    "lateResolverRemindMe": "Remind me in 3 days",
+    "@lateResolverRemindMe": {
+      "description": "Issue #1004 (tranche 4a): late-resolver action snoozing for three days."
+    },
+    "lateResolverWhyLate": "Why is it late?",
+    "@lateResolverWhyLate": {
+      "description": "Issue #1004 (tranche 4a): late-resolver link to the late-period help card."
+    },
+    "overviewWhyThreeCompletedCycles": "Why three completed cycles?",
+    "@overviewWhyThreeCompletedCycles": {
+      "description": "Issue #1004 (tranche 4a): label of the help-card link explaining the three-cycle threshold."
+    },
+    "analysisLoadError": "Could not load your cycle analysis.",
+    "@analysisLoadError": {
+      "description": "Issue #1004 (tranche 4a): error shown when the analysis tab's prediction stream fails."
+    },
+    "analysisTitle": "Analysis",
+    "@analysisTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the analysis tab."
+    },
+    "analysisBbtChartTitle": "BBT by cycle day",
+    "@analysisBbtChartTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the BBT chart card."
+    },
+    "analysisStatsTitle": "Cycle statistics",
+    "@analysisStatsTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the headline cycle-statistics card."
+    },
+    "analysisMeanCycleLength": "Average cycle length",
+    "@analysisMeanCycleLength": {
+      "description": "Issue #1004 (tranche 4a): label of the mean cycle-length statistic."
+    },
+    "analysisMeanPeriodLength": "Average period length",
+    "@analysisMeanPeriodLength": {
+      "description": "Issue #1004 (tranche 4a): label of the mean period-length statistic."
+    },
+    "analysisVariability": "Variability",
+    "@analysisVariability": {
+      "description": "Issue #1004 (tranche 4a): label of the cycle-length variability statistic."
+    },
+    "analysisSpreadDays": "±{days} days",
+    "@analysisSpreadDays": {
+      "description": "Issue #1004 (tranche 4a): variability value, the spread from the mean in days.",
+      "placeholders": {
+        "days": {
+          "type": "int"
+        }
+      }
+    },
+    "bbtChartEmptyTitle": "No BBT logged yet",
+    "@bbtChartEmptyTitle": {
+      "description": "Issue #1004 (tranche 4a): empty-state title of the BBT chart."
+    },
+    "bbtChartEmptyBody": "Log a basal body temperature reading in the day sheet to see your curve here, plotted against cycle day.",
+    "@bbtChartEmptyBody": {
+      "description": "Issue #1004 (tranche 4a): empty-state body of the BBT chart."
+    },
+    "bbtChartCaption": "{count, plural, =1{1 cycle shown} other{{count} cycles shown}} · {range}",
+    "@bbtChartCaption": {
+      "description": "Issue #1004 (tranche 4a): BBT chart caption, naming the cycle count and the temperature range.",
+      "placeholders": {
+        "count": {
+          "type": "int"
+        },
+        "range": {
+          "type": "String"
+        }
+      }
+    },
+    "phaseInsightsHelpfulToTrack": "Helpful to track:",
+    "@phaseInsightsHelpfulToTrack": {
+      "description": "Issue #1004 (tranche 4a): label introducing a subphase's what-to-track guidance."
+    },
+    "phaseInsightsReadArticle": "Read: {title}",
+    "@phaseInsightsReadArticle": {
+      "description": "Issue #1004 (tranche 4a): button opening the subphase's context article, naming its title.",
+      "placeholders": {
+        "title": {
+          "type": "String"
+        }
+      }
+    },
+    "phaseInsightsSource": "Source: {source} · Rev: {date}",
+    "@phaseInsightsSource": {
+      "description": "Issue #1004 (tranche 4a): provenance footnote naming the subphase content's source and review date.",
+      "placeholders": {
+        "source": {
+          "type": "String"
+        },
+        "date": {
+          "type": "String"
+        }
+      }
+    },
+    "symptomTrendsTitle": "Symptom Trends & Patterns",
+    "@symptomTrendsTitle": {
+      "description": "Issue #1004 (tranche 4a): heading of the symptom-trends section."
+    },
+    "symptomTrendsRecurring": "Recurring Symptoms",
+    "@symptomTrendsRecurring": {
+      "description": "Issue #1004 (tranche 4a): title of the recurring-symptoms card."
+    },
+    "symptomTrendsEmpty": "Log symptoms across at least 3 completed cycles to uncover recurring patterns and trends.",
+    "@symptomTrendsEmpty": {
+      "description": "Issue #1004 (tranche 4a): empty state of the recurring-symptoms card."
+    },
+    "symptomTrendsDisclaimer": "Patterns reflect descriptive logs only and are not clinical diagnostics.",
+    "@symptomTrendsDisclaimer": {
+      "description": "Issue #1004 (tranche 4a): disclaimer under the recurring-symptoms list."
+    },
+    "symptomTrendsFlowTitle": "Typical Bleed Rhythm",
+    "@symptomTrendsFlowTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the flow-distribution summary."
+    },
+    "symptomTrendsFlowSubtitle": "Peak flow typically falls on Cycle Day {day} ({flow}).",
+    "@symptomTrendsFlowSubtitle": {
+      "description": "Issue #1004 (tranche 4a): flow summary subtitle naming the typical peak cycle day and flow level.",
+      "placeholders": {
+        "day": {
+          "type": "int"
+        },
+        "flow": {
+          "type": "String"
+        }
+      }
+    },
+    "symptomTrendsLibraryTitle": "Cycle Literacy Library",
+    "@symptomTrendsLibraryTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the cycle-literacy library call to action."
+    },
+    "symptomTrendsLibrarySubtitle": "Evidence-based guides on hormones, cycle phases, and body signals.",
+    "@symptomTrendsLibrarySubtitle": {
+      "description": "Issue #1004 (tranche 4a): subtitle of the cycle-literacy library call to action."
+    },
+    "crampPredictionTitle": "Anticipated Cramp Window",
+    "@crampPredictionTitle": {
+      "description": "Issue #1004 (tranche 4a): title of the cramp-prediction card."
+    },
+    "crampPredictionDates": "Estimated dates: {dates}",
+    "@crampPredictionDates": {
+      "description": "Issue #1004 (tranche 4a): cramp-prediction line naming the predicted dates.",
+      "placeholders": {
+        "dates": {
+          "type": "String"
+        }
+      }
+    },
+    "crampPredictionObserved": "Observed in {observed} of {total} recorded cycles.",
+    "@crampPredictionObserved": {
+      "description": "Issue #1004 (tranche 4a): cramp-prediction line naming how many cycles the pattern was observed in.",
+      "placeholders": {
+        "observed": {
+          "type": "int"
+        },
+        "total": {
+          "type": "int"
+        }
+      }
+    },
+    "symptomTrendsLogged": "Logged {occurrences} times across {cycles} cycles",
+    "@symptomTrendsLogged": {
+      "description": "Issue #1004 (tranche 4a): per-pattern line naming its occurrence and cycle counts.",
+      "placeholders": {
+        "occurrences": {
+          "type": "int"
+        },
+        "cycles": {
+          "type": "int"
+        }
+      }
+    }
 }
