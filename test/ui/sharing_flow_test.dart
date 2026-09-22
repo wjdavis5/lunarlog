@@ -2334,17 +2334,34 @@ void main() {
       String? initialInviteKind,
       bool useSharing = true,
       OwnershipTransferService? ownershipTransferService,
+      double topInset = 0,
     }) async {
+      final app = LunarLogApp.withCollaborators(
+        db: db,
+        authService: auth,
+        sharingService: useSharing ? sharingService : null,
+        ownershipTransferService: ownershipTransferService,
+        inviteLinks: inviteLinks,
+        initialInviteCode: initialInviteCode,
+        initialInviteProfileId: initialInviteProfileId,
+        initialInviteKind: initialInviteKind,
+      );
+      // Issue #1022: inject the status-bar inset the banner and the screens
+      // beneath it share, without disturbing the ambient test surface's own
+      // size. `copyWith` preserves the view metrics; only the top inset
+      // changes, so a non-zero [topInset] is a real status-bar pad.
       await tester.pumpWidget(
-        LunarLogApp.withCollaborators(
-          db: db,
-          authService: auth,
-          sharingService: useSharing ? sharingService : null,
-          ownershipTransferService: ownershipTransferService,
-          inviteLinks: inviteLinks,
-          initialInviteCode: initialInviteCode,
-          initialInviteProfileId: initialInviteProfileId,
-          initialInviteKind: initialInviteKind,
+        Builder(
+          builder: (context) {
+            final media = MediaQuery.of(context);
+            return MediaQuery(
+              data: media.copyWith(
+                padding: media.padding.copyWith(top: topInset),
+                viewPadding: media.viewPadding.copyWith(top: topInset),
+              ),
+              child: app,
+            );
+          },
         ),
       );
       await tester.pumpAndSettle();
@@ -2509,6 +2526,145 @@ void main() {
           await tester.pump(const Duration(milliseconds: 100));
         },
       );
+
+      // Issue #1022: the banner's own SafeArea consumes the status-bar inset
+      // once for the whole strip, and the Navigator beneath it must see a
+      // MediaQuery with `padding.top` removed — otherwise every screen's own
+      // AppBar/SafeArea padded for the status bar a second time, leaving a
+      // dead band between the banner and the content.
+      testWidgets(
+        'consumes the status-bar inset exactly once: content sits flush '
+        'under the banner',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+            topInset: 44,
+          );
+
+          final banner = find.byKey(
+            const Key('pending-invite-sign-in-banner'),
+          );
+          final appBar = find.byType(AppBar);
+          expect(banner, findsOneWidget);
+          expect(appBar, findsOneWidget);
+
+          final bannerBottom = tester.getBottomLeft(banner).dy;
+          final appBarBottom = tester.getBottomLeft(appBar).dy;
+          expect(
+            appBarBottom - bannerBottom,
+            kToolbarHeight,
+            reason: 'the banner already consumed the 44pt status-bar inset, '
+                'so the pushed-down screen must not pad its app bar for it a '
+                'second time — the dead band issue #1022 reports',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'with no banner the screen still consumes the inset itself '
+        '(unchanged)',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(tester, auth, topInset: 44);
+
+          final appBar = find.byType(AppBar);
+          expect(appBar, findsOneWidget);
+
+          expect(
+            tester.getTopLeft(appBar).dy,
+            0,
+            reason: 'with no banner above it, the screen starts at the top of '
+                'the app',
+          );
+          expect(
+            tester.getBottomLeft(appBar).dy,
+            44 + kToolbarHeight,
+            reason: 'and the app bar carries exactly one status-bar pad — the '
+                'fix must not change the no-banner case',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets(
+        'rotation / inset-less device: banner and content stay flush at the '
+        'top',
+        (tester) async {
+          final auth = FakeAuthService();
+          addTearDown(auth.dispose);
+
+          await pumpAppWithInvite(
+            tester,
+            auth,
+            initialInviteCode: 'cold-token',
+            topInset: 0,
+          );
+
+          final banner = find.byKey(
+            const Key('pending-invite-sign-in-banner'),
+          );
+          final appBar = find.byType(AppBar);
+          expect(banner, findsOneWidget);
+          expect(appBar, findsOneWidget);
+
+          final bannerTop = tester.getTopLeft(banner).dy;
+          final bannerBottom = tester.getBottomLeft(banner).dy;
+          expect(bannerTop, 0);
+          expect(
+            tester.getBottomLeft(appBar).dy - bannerBottom,
+            kToolbarHeight,
+            reason: 'with no top inset there is nothing to consume, and the '
+                'content must still sit flush under the banner',
+          );
+
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(const Duration(milliseconds: 100));
+        },
+      );
+
+      testWidgets('the close control dismisses the banner for this session', (
+        tester,
+      ) async {
+        final auth = FakeAuthService();
+        addTearDown(auth.dispose);
+
+        await pumpAppWithInvite(
+          tester,
+          auth,
+          initialInviteCode: 'cold-token',
+        );
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.byKey(const Key('pending-invite-banner-dismiss')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('pending-invite-sign-in-banner')),
+          findsNothing,
+          reason: 'the invite link is single-use and still in the '
+              "recipient's messages, so a session-local close loses nothing",
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 100));
+      });
     });
 
     testWidgets('links without a code are ignored', (tester) async {
