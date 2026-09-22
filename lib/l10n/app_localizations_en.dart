@@ -5254,4 +5254,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get relativeDayTomorrow => 'Tomorrow';
+
+  @override
+  String get accountProviderLabelEmail => 'Email';
+
+  @override
+  String get accountProviderLabelGoogle => 'Google';
+
+  @override
+  String get accountProviderLabelApple => 'Apple';
 }

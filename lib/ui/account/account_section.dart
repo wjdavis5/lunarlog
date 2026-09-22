@@ -253,10 +253,14 @@ enum _AppleFlowOutcome { completed, cancelled }
 
 /// Human label for a Supabase identity provider id (#2 U5; R9). Known ids
 /// map to their brand names; anything else is capitalized as-is.
-String providerLabel(String provider) => switch (provider) {
-      AuthProviders.email => 'Email',
-      AuthProviders.google => 'Google',
-      AuthProviders.apple => 'Apple',
+/// Issue #1004 (tranche 5): the known brand labels are arb-backed
+/// (`accountProviderLabel*`); the wildcard still capitalizes an unknown
+/// provider id as-is.
+String providerLabel(AppLocalizations l10n, String provider) =>
+    switch (provider) {
+      AuthProviders.email => l10n.accountProviderLabelEmail,
+      AuthProviders.google => l10n.accountProviderLabelGoogle,
+      AuthProviders.apple => l10n.accountProviderLabelApple,
       '' => '',
       _ => provider[0].toUpperCase() + provider.substring(1),
     };
@@ -417,8 +421,9 @@ class _AccountSectionState extends State<AccountSection> {
                 : l10n.accountSectionSignedInAs(user!.email!)),
         subtitle: providers.isEmpty
             ? null
-            : Text(l10n.accountSectionSignInMethods(
-                providers.map(providerLabel).join(', '))),
+            : Text(l10n.accountSectionSignInMethods(providers
+                .map((provider) => providerLabel(l10n, provider))
+                .join(', '))),
       ),
       if (linkError != null)
         Padding(
@@ -619,7 +624,8 @@ class _AccountSectionState extends State<AccountSection> {
     return ListTile(
       key: ValueKey('account-remove-$provider'),
       leading: Icon(provider == AuthProviders.apple ? Icons.apple : Icons.link_off),
-      title: Text(l10n.accountSectionRemoveProvider(providerLabel(provider))),
+      title: Text(l10n.accountSectionRemoveProvider(
+          providerLabel(AppLocalizations.of(context), provider))),
       subtitle: Text(l10n.accountSectionRemoveSubtitle),
       enabled: _busyProvider == null,
       trailing: busy
@@ -708,7 +714,7 @@ class _AccountSectionState extends State<AccountSection> {
     final auth = context.read<AuthController>();
     setState(() => _linkError = null);
     final l10n = AppLocalizations.of(context);
-    final label = providerLabel(provider);
+    final label = providerLabel(AppLocalizations.of(context), provider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(

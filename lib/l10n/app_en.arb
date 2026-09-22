@@ -6792,5 +6792,18 @@
     "relativeDayTomorrow": "Tomorrow",
     "@relativeDayTomorrow": {
       "description": "Issue #1004 (tranche 5): the relative-day header word for tomorrow."
+    },
+
+    "accountProviderLabelEmail": "Email",
+    "@accountProviderLabelEmail": {
+      "description": "Issue #1004 (tranche 5): human label for the email identity provider."
+    },
+    "accountProviderLabelGoogle": "Google",
+    "@accountProviderLabelGoogle": {
+      "description": "Issue #1004 (tranche 5): human label for the Google identity provider."
+    },
+    "accountProviderLabelApple": "Apple",
+    "@accountProviderLabelApple": {
+      "description": "Issue #1004 (tranche 5): human label for the Apple identity provider."
     }
 }

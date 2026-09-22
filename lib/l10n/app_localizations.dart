@@ -8240,6 +8240,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tomorrow'**
   String get relativeDayTomorrow;
+
+  /// Issue #1004 (tranche 5): human label for the email identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountProviderLabelEmail;
+
+  /// Issue #1004 (tranche 5): human label for the Google identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Google'**
+  String get accountProviderLabelGoogle;
+
+  /// Issue #1004 (tranche 5): human label for the Apple identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple'**
+  String get accountProviderLabelApple;
 }
 
 class _AppLocalizationsDelegate
