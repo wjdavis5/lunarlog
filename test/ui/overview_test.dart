@@ -501,7 +501,7 @@ void main() {
       // joins with an en dash (see _pmsSection's formatter).
       expect(
         find.text(
-          'Predicted PMS: September 1, 2026 – September 3, 2026 — '
+          'Estimated PMS: September 1, 2026 – September 3, 2026 — '
           'usually starts about 3 days before your period and lasts '
           'about 3 days.',
         ),
@@ -705,7 +705,7 @@ void main() {
       );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions'), findsOneWidget);
+      expect(find.text('Turn off estimates'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
@@ -792,7 +792,7 @@ void main() {
       );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions'), findsOneWidget);
+      expect(find.text('Turn off estimates'), findsOneWidget);
       // The rolled estimate, the late resolver, and the days-late count all
       // stay exactly as they were before #859.
       expect(

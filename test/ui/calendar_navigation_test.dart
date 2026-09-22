@@ -363,7 +363,7 @@ void main() {
         'Super heavy flow (5 marks)',
         'Symptom day',
         'Today',
-        'Predicted day',
+        'Estimated day',
         'Cramps window',
         'Symptom layer dots',
       ]) {
