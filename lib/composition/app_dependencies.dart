@@ -123,6 +123,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
@@ -635,6 +636,11 @@ WidgetQuickLogExecutor buildWidgetQuickLogExecutor({
 
 /// Constructs the reminder coordinator. The caller owns the deferred
 /// `start()` (post-frame, inside the gate's system-UI window).
+///
+/// Issue #850, D-6: [guardians] plus [currentUserId] feed the per-viewer
+/// lens source the coordinator gates local presets on. Passing neither (as
+/// every harness that predates #850 does) leaves that source null — the
+/// pre-#850 all-subject default.
 ReminderCoordinator buildReminderCoordinator({
   required ReminderScheduler scheduler,
   required NotificationAvailabilitySink permissionState,
@@ -643,6 +649,8 @@ ReminderCoordinator buildReminderCoordinator({
   required ReminderConfigService localSettings,
   required Stream<BirthControlState?> Function(String profileId)?
   birthControlStateFor,
+  ProfileGuardiansRepository? guardians,
+  String? Function()? currentUserId,
   LocalTimeZoneProvider? localTimeZoneProvider,
 }) => ReminderCoordinator(
   scheduler: scheduler,
@@ -651,8 +659,32 @@ ReminderCoordinator buildReminderCoordinator({
   predictionFor: predictionFor,
   localSettings: localSettings,
   birthControlStateFor: birthControlStateFor,
+  isSubjectFor: _subjectProfileSource(guardians, currentUserId),
   localTimeZoneProvider: localTimeZoneProvider,
 );
+
+/// The per-viewer lens source the reminder coordinator gates local presets
+/// on (Issue #850, D-6): the signed-in viewer is the subject of [profileId]
+/// exactly when `guardianLensFor` resolves their accepted membership to the
+/// subject lens — no membership (a local-only operator, or rows not yet
+/// synced) fails open to subject, matching the lens's own posture.
+///
+/// Null unless both seams are supplied, which keeps the pre-#850
+/// all-subject default everywhere they are not. The null check is on the
+/// *seams*, never on `currentUserId()`'s current value: a user who is signed
+/// out at construction and signs in later must still be gated from the next
+/// replan on, which a value-time check would have permanently disabled.
+SubjectProfileSource? _subjectProfileSource(
+  ProfileGuardiansRepository? guardians,
+  String? Function()? currentUserId,
+) {
+  if (guardians == null || currentUserId == null) return null;
+  return (profileId) async => guardianLensFor(
+        await guardians.getForProfile(profileId),
+        currentUserId(),
+      ) ==
+      GuardianLens.subject;
+}
 
 /// Constructs the reminder-window publisher, or null when either
 /// collaborator is absent (the R17 zero-conditional gating posture).

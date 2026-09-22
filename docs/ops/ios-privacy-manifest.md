@@ -5,8 +5,9 @@ Operator checklist for `ios/Runner/PrivacyInfo.xcprivacy`'s
 C-25). Sibling to
 [`ios-export-compliance.md`](ios-export-compliance.md) (a different Apple
 regime -- encryption export compliance, not required-reason API usage) and to
-issue #254's collected-data-type / HealthKit reconciliation, which this
-manifest also carries. Never record a credential in this file.
+issue #254's collected-data-type / HealthKit reconciliation (extended by
+issue #1065), which this manifest also carries. Never record a credential in
+this file.
 
 ## The gap this closes
 
@@ -121,6 +122,34 @@ from an `.xcarchive` via `swift package plugin`, not exercised here).
       `libsqlite3`, which is Apple's responsibility, not this app's, and may
       change what needs declaring here.
 
+## Collected data types (issues #254, #1065)
+
+The same manifest's `NSPrivacyCollectedDataTypes` array is a separate Apple
+regime from the required-reason APIs above, but lives in the same file, so it
+is tracked here too.
+
+- **Declared:** Email Address, Health, and Crash Data (issue #254), plus
+  Device ID (the push registration token `register_push_device` stores and
+  FCM/APNs deliver), Customer Support (the feedback message, category, and
+  reply thread), Photos or Videos (the optional feedback screenshot), and
+  Other Diagnostic Data (the operator-approved feedback diagnostics) added by
+  issue #1065. All are linked to the account except Crash Data, which is not,
+  and every entry is `App Functionality` and not used for tracking.
+- **Not declared, by design:** the home-screen widget's App Group container
+  and both directions of the Apple Health / Health Connect sync never leave
+  the device, so they are not *collected* data types. The support-ticket reply
+  email is free text and may differ from the account email, but both are the
+  one Email Address data type. The minimum-age acknowledgement record and the
+  auth credentials/tokens have no distinct Apple nutrition category and are
+  not answered as categories of their own.
+- **Guarded by:** `test/release/privacy_manifest_collected_data_types_test.dart`,
+  which parses the manifest and fails if any off-device data type the app
+  sends is missing (or an undeclared one appears) -- not only at release time.
+- **Still open (issue #21):** the provider `sub`/account id, the per-entry
+  IANA time zone, and the content-free change history are candidates the
+  worksheet leaves to the App Store Connect transcription; decide each there
+  before declaring it here.
+
 ## Re-check triggers
 
 Re-open this checklist, the manifest's own comment, and
@@ -131,11 +160,17 @@ Re-open this checklist, the manifest's own comment, and
 - The `sqlite3` dependency's version or `source:` configuration changes.
 - `AppDelegate.swift` gains a new direct call into `UserDefaults`, file
   attributes, disk space, boot time, or keyboard APIs.
+- A new off-device data type or recipient is added (a new push, support,
+  analytics, or sync provider), or `PRIVACY.md` discloses a new one --
+  reconcile `NSPrivacyCollectedDataTypes` and update
+  `test/release/privacy_manifest_collected_data_types_test.dart` in the same
+  change.
 - Apple revises the required-reason API category list or its reason codes.
 
 ## Scope note
 
 This closes review finding C-25 and issue #265's required-reason API
-declarations only. It does not touch `NSPrivacyCollectedDataTypes` (issue
-#254) or `ITSAppUsesNonExemptEncryption` (`ios-export-compliance.md`) --
-separate Apple regimes documented separately.
+declarations. It also documents the `NSPrivacyCollectedDataTypes` array
+(issues #254 and #1065), because the two share the same file and the same
+operator checklist; it does not touch `ITSAppUsesNonExemptEncryption`
+(`ios-export-compliance.md`), a separate Apple regime documented separately.

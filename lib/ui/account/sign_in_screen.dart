@@ -268,6 +268,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _createAccount() async {
     final l10n = AppLocalizations.of(context);
+    if (!_emailLooksValid(l10n)) return;
     if (_password.text.length < kMinPasswordLength) {
       setState(() {
         _error = l10n.accountSignInUseAtLeast(kMinPasswordLength);

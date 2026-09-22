@@ -2230,6 +2230,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     ),
   };
 
+  /// Issue #551: the set of tables the push path scans for dirty rows (and
+  /// [markPushed]/[markPushedBatch] clear) — the storage-side source the
+  /// sync engine's push-descriptor guard test cross-checks against its
+  /// `_pushTables`, so a table added on one side without the other cannot
+  /// pass CI.
+  @visibleForTesting
+  Set<SyncTable> get pushableTablesForTest =>
+      _pushedTableTargets.keys.toSet();
+
   /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
   /// OR ...` statement covering [chunk] rows of [target] — semantically the
   /// per-row [markPushed] UPDATEs it replaces, folded into one statement.
