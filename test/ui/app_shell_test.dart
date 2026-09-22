@@ -38,6 +38,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/observability/route_names.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/components/app_shell.dart' show AppShell;
@@ -295,7 +296,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('sync-status-snackbar')), findsOneWidget);
-    expect(find.text(kSyncingCopy), findsWidgets);
+    expect(find.text(AppLocalizationsEn().accountSyncStatusSyncing), findsWidgets);
     await h.dispose();
   });
 
@@ -315,7 +316,7 @@ void main() {
         find.byKey(const ValueKey('sync-failure-banner')),
         findsOneWidget,
       );
-      expect(find.text(kSignInAgainCopy), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().accountSyncStatusSignInAgain), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('sync-failure-banner-action')));
       await tester.pumpAndSettle();

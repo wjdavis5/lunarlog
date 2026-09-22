@@ -92,7 +92,7 @@ this as a skeleton to walk through, not a verbatim transcript.
       no background or continuous read; no wearable-sourced value is ever
       written or conflated with a hand-logged one).
 - [ ] **Per-permission justification:** paste the justification column
-      above (or the form's closer equivalent) for each of the seven
+      above (or the form's closer equivalent) for each of the eight
       permissions.
 - [ ] **Data sharing disclosure:** confirm the form's questions about
       whether health data is shared with third parties are answered "no" —

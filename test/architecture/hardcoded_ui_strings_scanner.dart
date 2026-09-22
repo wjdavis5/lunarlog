@@ -103,6 +103,96 @@ String stripInterpolations(String value) {
 bool isHardcodedUiCopy(String value) =>
     RegExp('[A-Za-z]').hasMatch(stripInterpolations(value).trim());
 
+/// Every string literal anywhere in [source] — not just `Text(`-argument
+/// position — filtered by [isHardcodedUiCopy]. Comment-aware (a literal
+/// mentioned in a doc comment never matches) and interpolation-aware (a
+/// nested literal inside `'${f('x')}'` is not separately reported), so a
+/// new copy string can never hide in a helper's `return`, a const
+/// initializer, or a named argument the positional scan does not visit.
+/// `import`/`export`/`part` directive URIs are not literals at all and are
+/// skipped.
+///
+/// Issue #1004 (tranche 5): the fully-migrated copy modules are held to
+/// this stricter scan via [_helperCopyFileLiterals] in
+/// `hardcoded_ui_strings_test.dart`, because the burn-down there moved
+/// exactly this class of literals (string consts and copy tables
+/// resolved outside a `Text(` argument). Unlike the positional scan,
+/// nothing is filtered out by shape: the per-file allowlist enumerates
+/// every *remaining* non-copy literal (ValueKey names, observability
+/// tags, assertion messages) so a new string — copy or not — needs a
+/// deliberate, reviewed allowlist entry.
+List<HardcodedUiString> allSourceStringLiterals(String source) {
+  final found = <HardcodedUiString>[];
+  var i = 0;
+  var line = 1;
+  while (i < source.length) {
+    final c = source.codeUnitAt(i);
+    if (c == 0x0A) {
+      line++;
+      i++;
+      continue;
+    }
+    if (c == 0x2F /* / */ && i + 1 < source.length) {
+      final next = source.codeUnitAt(i + 1);
+      if (next == 0x2F /* / */) {
+        while (i < source.length && source.codeUnitAt(i) != 0x0A) {
+          i++;
+        }
+        continue;
+      }
+      if (next == 0x2A /* * */) {
+        i += 2;
+        while (i + 1 < source.length &&
+            !(source.codeUnitAt(i) == 0x2A &&
+                source.codeUnitAt(i + 1) == 0x2F)) {
+          if (source.codeUnitAt(i) == 0x0A) line++;
+          i++;
+        }
+        i += 2;
+        continue;
+      }
+    }
+    final isRawPrefix = c == 0x72 /* r */ &&
+        i + 1 < source.length &&
+        _isQuote(source.codeUnitAt(i + 1));
+    if (_isQuote(c) || isRawPrefix) {
+      final quoteIndex = isRawPrefix ? i + 1 : i;
+      if (_precededByDirectiveKeyword(source, i)) {
+        // `import '…'` / `export '…'` / `part '…'` — a URI, not copy.
+        final lit = _readLiteral(source, quoteIndex);
+        line += '\n'.allMatches(lit.value).length;
+        i = lit.end;
+        continue;
+      }
+      final lit = _readLiteral(source, quoteIndex);
+      final literalLine = line;
+      if (isHardcodedUiCopy(lit.value)) {
+        found.add(HardcodedUiString(value: lit.value, line: literalLine));
+      }
+      line += '\n'.allMatches(lit.value).length;
+      i = lit.end;
+      continue;
+    }
+    i++;
+  }
+  return found;
+}
+
+/// Whether the literal starting at [i] is a directive URI: the nearest
+/// preceding word (skipping whitespace) is `import`, `export`, or `part`.
+bool _precededByDirectiveKeyword(String source, int i) {
+  var j = i - 1;
+  while (j >= 0 && _isWs(source.codeUnitAt(j))) {
+    j--;
+  }
+  final end = j + 1;
+  while (j >= 0 && (_isIdentPart(source.codeUnitAt(j)))) {
+    j--;
+  }
+  final word = source.substring(j + 1, end);
+  return word == 'import' || word == 'export' || word == 'part';
+}
+
 /// Result of [_readLiteral]: the index just past the closing quote and
 /// the raw text between the quotes.
 class _Literal {

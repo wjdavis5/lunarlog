@@ -19,18 +19,9 @@ import '../../domain/models/profile_guardian.dart';
 import '../../domain/repositories/guardian_notes_repository.dart';
 import '../theme/tokens.dart';
 
-/// The disclosure that MUST sit beside every guardian-note input the app
-/// ever renders (issue #801, ratifying issue #800's "open and transparent"
-/// decision). Transparency nobody is told about is indistinguishable from
-/// privacy that does not exist.
-const String kGuardianNotesDisclosure =
-    'Anyone with access to this profile can read this note — including the '
-    'person it is about.';
-
-/// The same rule, worded for the standing care-notes surface.
-const String kCareNotesDisclosure =
-    'Anyone with access to this profile can read these notes — including '
-    'the person they are about.';
+// The two disclosures are arb-backed since issue #1004, tranche 5
+// (`careGuardianNoteDisclosure` / `careNotesDisclosure`) — the consts this
+// file used to carry are gone.
 
 class GuardianNotesSection extends StatefulWidget {
   const GuardianNotesSection({
@@ -180,7 +171,7 @@ class _GuardianNotesSectionState extends State<GuardianNotesSection> {
                 style: theme.textTheme.titleSmall),
             const SizedBox(height: LLSpace.space1),
             Text(
-              kGuardianNotesDisclosure,
+              l10n.careGuardianNoteDisclosure,
               key: const ValueKey('guardian-notes-disclosure'),
               style: theme.textTheme.bodySmall,
             ),

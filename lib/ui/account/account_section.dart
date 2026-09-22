@@ -151,7 +151,10 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 /// subtypes its dispatcher arm actually sends it, so its `_ =>` default
 /// (unreachable in practice) does not weaken the dispatcher's own
 /// exhaustiveness check.
-String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
+String accountDeletionFailureCopy(
+  AppLocalizations l10n,
+  AccountDeletionFailure failure,
+) =>
     switch (failure) {
       AccountDeletionNetworkFailure() ||
       AccountDeletionAppleCodeRequiredFailure() ||
@@ -159,15 +162,15 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
       AccountDeletionAttachmentCleanupFailedFailure() ||
       AccountDeletionAttachmentCleanupUnboundedFailure() ||
       AccountDeletionMfaRequiredFailure() =>
-        _nothingWasDeletedCopy(failure),
+        _nothingWasDeletedCopy(l10n, failure),
       AccountDeletionAppleRevokeFailedFailure() ||
       AccountDeletionAppleRevocationMarkerFailedFailure() ||
       AccountDeletionDeleteUserFailedFailure() =>
-        _dataAlreadyDeletedCopy(failure),
+        _dataAlreadyDeletedCopy(l10n, failure),
       AccountDeletionUnauthorizedFailure() ||
       AccountDeletionTimeoutFailure() ||
       AccountDeletionUnknownFailure() =>
-        _otherFailureCopy(failure),
+        _otherFailureCopy(l10n, failure),
     };
 
 /// The account-deletion call failed closed before touching anything -
@@ -176,31 +179,23 @@ String accountDeletionFailureCopy(AccountDeletionFailure failure) =>
 /// and [AccountDeletionFailure.attachmentCleanupUnbounded] still belong
 /// here even though a bare retry can never clear either one: "nothing was
 /// touched" is equally true for them, only the next-step guidance differs.
-String _nothingWasDeletedCopy(AccountDeletionFailure failure) =>
+String _nothingWasDeletedCopy(
+  AppLocalizations l10n,
+  AccountDeletionFailure failure,
+) =>
     switch (failure) {
       AccountDeletionNetworkFailure() =>
-        'Could not reach the server. Check your connection and try again. '
-            'Your account was not deleted.',
+        l10n.accountDeletionNetworkFailure,
       AccountDeletionAppleCodeRequiredFailure() =>
-        'Nothing was deleted. We couldn\'t confirm your Apple sign-in '
-            'before starting, so the deletion never began - please try '
-            'again.',
+        l10n.accountDeletionAppleCodeRequired,
       AccountDeletionAppleNativeCeremonyUnavailableFailure() =>
-        'Nothing was deleted. This account\'s Apple sign-in link can only '
-            'be removed from a device that supports Sign in with Apple '
-            '(iPhone or iPad) - please finish deleting your account there, '
-            'or contact support to remove the Apple link for you.',
+        l10n.accountDeletionAppleCeremonyUnavailable,
       AccountDeletionAttachmentCleanupFailedFailure() =>
-        'Nothing was deleted. We couldn\'t remove your support attachments, '
-            'so the deletion never began - please try again.',
+        l10n.accountDeletionAttachmentCleanupFailed,
       AccountDeletionAttachmentCleanupUnboundedFailure() =>
-        'Nothing was deleted. Your account has more support attachments '
-            'than we can clean up automatically, so the deletion never '
-            'began. Retrying won\'t help - please contact support so we can '
-            'finish removing your account.',
+        l10n.accountDeletionAttachmentCleanupUnbounded,
       AccountDeletionMfaRequiredFailure() =>
-        'Nothing was deleted. Please confirm your two-factor code and try '
-            'again.',
+        l10n.accountDeletionMfaRequired,
       _ => throw StateError(
           'unreachable: $failure is not a "nothing was deleted" kind'),
     };
@@ -209,40 +204,32 @@ String _nothingWasDeletedCopy(AccountDeletionFailure failure) =>
 /// (and, for [AccountDeletionFailure.appleRevocationMarkerFailed], Apple
 /// already confirmed the sign-in revocation too) - only one last step
 /// failed, so the copy must never claim "your account was not deleted".
-String _dataAlreadyDeletedCopy(AccountDeletionFailure failure) =>
+String _dataAlreadyDeletedCopy(
+  AppLocalizations l10n,
+  AccountDeletionFailure failure,
+) =>
     switch (failure) {
       AccountDeletionAppleRevokeFailedFailure() =>
-        'Your account data was deleted, but Apple could not confirm the '
-            'sign-in revocation, so your account sign-in itself still '
-            'exists. Try again to finish removing it, or contact support if '
-            'you\'re concerned about the lingering Apple access.',
+        l10n.accountDeletionAppleRevokeFailed,
       AccountDeletionAppleRevocationMarkerFailedFailure() =>
-        'Your account data was deleted, and Apple confirmed the sign-in '
-            'revocation, but we couldn\'t safely record that on our end. '
-            'Please try again in a moment, or contact support if it keeps '
-            'failing.',
+        l10n.accountDeletionRevocationMarkerFailed,
       AccountDeletionDeleteUserFailedFailure() =>
-        'Your account data has already been deleted, but removing the '
-            'account sign-in itself did not finish. Please try again in a '
-            'moment, or contact support if it keeps failing.',
+        l10n.accountDeletionDeleteUserFailed,
       _ => throw StateError(
           'unreachable: $failure is not a "data already deleted" kind'),
     };
 
 /// Everything else: an expired session, a call whose outcome is genuinely
 /// unknown (KTD4), or an unclassified error.
-String _otherFailureCopy(AccountDeletionFailure failure) => switch (failure) {
+String _otherFailureCopy(
+  AppLocalizations l10n,
+  AccountDeletionFailure failure,
+) =>
+    switch (failure) {
       AccountDeletionUnauthorizedFailure() =>
-        'Your session has expired. Sign in again and retry - your account '
-            'was not deleted.',
-      AccountDeletionTimeoutFailure() =>
-        'This is taking longer than expected and we can\'t confirm whether '
-            'your account was deleted. Wait a moment and check whether '
-            'you\'re still signed in before retrying - retrying is safe '
-            'either way.',
-      AccountDeletionUnknownFailure() =>
-        'Something went wrong. Your account was not deleted. Please try '
-            'again.',
+        l10n.accountDeletionSessionExpired,
+      AccountDeletionTimeoutFailure() => l10n.accountDeletionTimeout,
+      AccountDeletionUnknownFailure() => l10n.accountDeletionUnknown,
       _ => throw StateError('unreachable: $failure is not an "other" kind'),
     };
 
@@ -266,10 +253,14 @@ enum _AppleFlowOutcome { completed, cancelled }
 
 /// Human label for a Supabase identity provider id (#2 U5; R9). Known ids
 /// map to their brand names; anything else is capitalized as-is.
-String providerLabel(String provider) => switch (provider) {
-      AuthProviders.email => 'Email',
-      AuthProviders.google => 'Google',
-      AuthProviders.apple => 'Apple',
+/// Issue #1004 (tranche 5): the known brand labels are arb-backed
+/// (`accountProviderLabel*`); the wildcard still capitalizes an unknown
+/// provider id as-is.
+String providerLabel(AppLocalizations l10n, String provider) =>
+    switch (provider) {
+      AuthProviders.email => l10n.accountProviderLabelEmail,
+      AuthProviders.google => l10n.accountProviderLabelGoogle,
+      AuthProviders.apple => l10n.accountProviderLabelApple,
       '' => '',
       _ => provider[0].toUpperCase() + provider.substring(1),
     };
@@ -340,7 +331,12 @@ class _AccountSectionState extends State<AccountSection> {
   /// enum by Issue #222, since export no longer has a tile in this section
   /// to race against).
   bool _deleting = false;
-  String? _deleteError;
+
+  /// Issue #1004 (tranche 5): the failure itself is stored, not the copy —
+  /// `accountDeletionFailureCopy(AppLocalizations, failure)` resolves the
+  /// rendered message at build time so the arb stays the single copy
+  /// source.
+  AccountDeletionFailure? _deleteFailure;
 
   bool get _canAddGoogle => widget.showAddGoogle ?? AppConfig.hasGoogle;
 
@@ -425,8 +421,9 @@ class _AccountSectionState extends State<AccountSection> {
                 : l10n.accountSectionSignedInAs(user!.email!)),
         subtitle: providers.isEmpty
             ? null
-            : Text(l10n.accountSectionSignInMethods(
-                providers.map(providerLabel).join(', '))),
+            : Text(l10n.accountSectionSignInMethods(providers
+                .map((provider) => providerLabel(l10n, provider))
+                .join(', '))),
       ),
       if (linkError != null)
         Padding(
@@ -572,12 +569,15 @@ class _AccountSectionState extends State<AccountSection> {
               : null,
           onTap: !_deleting ? () => _deleteAccount(context) : null,
         ),
-      if (_deleteError != null)
+      if (_deleteFailure != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: InlineError(
             key: const ValueKey('account-delete-error'),
-            message: _deleteError!,
+            message: accountDeletionFailureCopy(
+              AppLocalizations.of(context),
+              _deleteFailure!,
+            ),
           ),
         ),
     ];
@@ -624,7 +624,8 @@ class _AccountSectionState extends State<AccountSection> {
     return ListTile(
       key: ValueKey('account-remove-$provider'),
       leading: Icon(provider == AuthProviders.apple ? Icons.apple : Icons.link_off),
-      title: Text(l10n.accountSectionRemoveProvider(providerLabel(provider))),
+      title: Text(l10n.accountSectionRemoveProvider(
+          providerLabel(AppLocalizations.of(context), provider))),
       subtitle: Text(l10n.accountSectionRemoveSubtitle),
       enabled: _busyProvider == null,
       trailing: busy
@@ -713,7 +714,7 @@ class _AccountSectionState extends State<AccountSection> {
     final auth = context.read<AuthController>();
     setState(() => _linkError = null);
     final l10n = AppLocalizations.of(context);
-    final label = providerLabel(provider);
+    final label = providerLabel(AppLocalizations.of(context), provider);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -987,7 +988,7 @@ class _AccountSectionState extends State<AccountSection> {
       debugPrint('lunarlog account: no gate to re-authenticate with');
       return;
     }
-    setState(() => _deleteError = null);
+    setState(() => _deleteFailure = null);
     if (!await _passesPreDeleteChecks(context, gate) || !context.mounted) {
       return;
     }
@@ -1045,14 +1046,13 @@ class _AccountSectionState extends State<AccountSection> {
       if (outcome == _AppleFlowOutcome.cancelled) return;
     } on AccountDeletionFailure catch (failure) {
       if (mounted) {
-        setState(() => _deleteError = accountDeletionFailureCopy(failure));
+        setState(() => _deleteFailure = failure);
       }
       return;
     } catch (error) {
       debugPrint('lunarlog account: delete failed (${error.runtimeType})');
       if (mounted) {
-        setState(() => _deleteError =
-            accountDeletionFailureCopy(const AccountDeletionFailure.unknown()));
+        setState(() => _deleteFailure = const AccountDeletionFailure.unknown());
       }
       return;
     } finally {

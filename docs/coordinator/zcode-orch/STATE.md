@@ -9,24 +9,12 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 
 (gf) = grandfathered claude-orch prefix from the pre-migration dispatch; PR label carries ownership.
 
-## PAUSED 2026-09-20 (owner: pause all coding 2h; resume ~2h from pause — one-shot cron armed, early "resume" from owner cancels it)
-
-## Staged for next dispatch window (in priority order)
-| issue | notes |
-|---|---|
-| 803 | household view — dispatch after #802's model lands |
-| 804 | household onboarding — after #802 |
-| 853 | teen-mode 'late' copy / irregular-as-flag |
-| 778 | sync: don't subscribe while signed out (follow-up to #771) |
-| 945 | derive minor status server-side |
-| 859 | stale-history overview state |
-| 246 | health interval type mappings (still open; modes landed) |
-| 141 | home-screen quick-log widget (P3, large) |
-
-In-flight at pause (allowed to complete + merge, no replacements dispatched): #802 (worktree zcode-orch/802-her-own-profile), #887 (worktree zcode-orch/887-cycle-start-confirm). Pipeline: PR #963 (#952) mid-merge.
+## QUEUE COMPLETE 2026-09-21 — every claimable issue has been through the loop (see Done). Remaining opens: needs-human-review set, taste-gated (#164 #258 #262 #765 #808), needs-agent-review decisions (#845 #849 #850 #851 #852 #855 #895 #898 #957 #959), claude-sonnet set, parallel-session (#841 #956), adapter-blocked (#665 #781 #799). PR #721 HELD for #723 (PITR).
 
 ## Queued (full zcode-orch markers)
 - QUEUE COMPLETE 2026-09-16: nothing else claimable: remaining opens are needs-human-review (#18 #19 #21 #22 #29 #52 #104 #117 #295 #450 #451 #464 #467 + ours #723 #724 #725 #730 #736), taste-gated (#164 #258 #262), import-epic (parallel session), health-sync/modes blocked on adapters/modes, device/console items.
 
 ## Done (this session; details in ../log.md and log.md)
 #710 (#713), #583 (#717), #400 (#719), #175 (#720), #137 (#727), #99 (#728), #693 (#731), #165 (#732), sibling rescue #268+#271 (#714), #215 (#734), #121 (#740), #460 (#741), #42 (#742), #130 (#743, post-integration), #174 (#744), #226 (#745, post-ratchet-fix), #102 (#746), #184 (#747), #241 (#749), #257 P0 (#750), #181 (#751), #170 (#752); syncs #711 #715 #716 #722 #729 #737 (identity migration).
+
+2026-09-22: flash-session wave merged #967 #981 #983 #989 #990 #1007 #1059 #1063 (+parallel #1046 won #1022). In progress: none. Queue: see log.

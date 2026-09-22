@@ -26,6 +26,7 @@ DayEntry bulkEntry({
       flow: FlowLevel.light,
       tags: const [],
       note: null,
+      notePrivate: false,
       pms: false,
       updatedAt: updatedAt ?? DateTime.utc(2026, 9, 1, 8),
       dirty: false,

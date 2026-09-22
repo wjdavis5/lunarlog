@@ -191,7 +191,10 @@ class _AttachmentFieldState extends State<AttachmentField> {
     widget.onChanged(null);
   }
 
-  String _sizeLabel(int bytes) => '${(bytes / 1024).ceil()} KB';
+  /// Issue #1004 (tranche 5): the size label is arb-backed
+  /// (`feedbackAttachmentSizeKb`).
+  String _sizeLabel(AppLocalizations l10n, int bytes) =>
+      l10n.feedbackAttachmentSizeKb((bytes / 1024).ceil());
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +216,7 @@ class _AttachmentFieldState extends State<AttachmentField> {
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.image_outlined),
             title: Text(attachment.filename),
-            subtitle: Text(_sizeLabel(attachment.sizeBytes)),
+            subtitle: Text(_sizeLabel(l10n, attachment.sizeBytes)),
             trailing: IconButton(
               key: const ValueKey('feedback-attachment-remove'),
               icon: const Icon(Icons.close),

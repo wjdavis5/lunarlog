@@ -721,6 +721,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required FlowLevel flow,
     List<String> tags = const [],
     String? note,
+    bool notePrivate = false,
     bool pms = false,
     DateTime? updatedAt,
     String source = 'manual',
@@ -735,6 +736,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         flow: flow,
         tags: tags,
         note: note,
+        notePrivate: notePrivate,
         pms: pms,
         updatedAt: updatedAt,
         source: source,
@@ -757,6 +759,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required FlowLevel flow,
     List<String> tags = const [],
     String? note,
+    bool notePrivate = false,
     bool pms = false,
     DateTime? updatedAt,
     String source = 'manual',
@@ -804,6 +807,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
         flow: flow,
         tags: tags,
         note: note,
+        notePrivate: notePrivate,
         pms: pms,
         updatedAt: updatedAt,
         source: source,
@@ -860,6 +864,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     required FlowLevel flow,
     required List<String> tags,
     required String? note,
+    required bool notePrivate,
     required bool pms,
     required DateTime? updatedAt,
     required String source,
@@ -878,6 +883,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
               flow: flow,
               tags: Value(tags),
               note: Value(note),
+              notePrivate: Value(notePrivate),
               pms: Value(pms),
               // Issue #637, LLA-039: this call is the caller's real,
               // explicit value for pms (never a stale upgrade-era
@@ -915,6 +921,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
           flow: Value(flow),
           tags: Value(tags),
           note: Value(note),
+          // Issue #849: never clear a stored private flag on a local edit
+          // (the server trigger forbids true -> false anyway), so a caller
+          // that does not carry the flag forward cannot accidentally strip
+          // it from the subject's own note.
+          notePrivate: Value(notePrivate || live.notePrivate),
           pms: Value(pms),
           pmsUnconfirmed: _pmsUnconfirmedWrite(live, pms),
           updatedAt: Value(_afterStored(now, live.updatedAt)),
@@ -1082,6 +1093,7 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       flow: entry.flow,
       tags: entry.tags,
       note: entry.note,
+      notePrivate: entry.notePrivate,
       pms: entry.pms,
       updatedAt: entry.updatedAt,
       source: entry.source,
@@ -2217,6 +2229,15 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
       revColumn: db.guardianNotes.localRev.$name,
     ),
   };
+
+  /// Issue #551: the set of tables the push path scans for dirty rows (and
+  /// [markPushed]/[markPushedBatch] clear) — the storage-side source the
+  /// sync engine's push-descriptor guard test cross-checks against its
+  /// `_pushTables`, so a table added on one side without the other cannot
+  /// pass CI.
+  @visibleForTesting
+  Set<SyncTable> get pushableTablesForTest =>
+      _pushedTableTargets.keys.toSet();
 
   /// One batched `UPDATE ... SET dirty = 0 WHERE (key = ? AND local_rev = ?)
   /// OR ...` statement covering [chunk] rows of [target] — semantically the

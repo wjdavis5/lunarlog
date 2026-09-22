@@ -35,12 +35,14 @@ import 'package:provider/provider.dart';
 
 /// Shared profile-name validation: non-blank, and no longer than the
 /// server accepts ([kMaxDisplayNameLength], mirrored from its CHECK).
-String? validateProfileName(String? value) {
+/// Issue #1004 (tranche 5): the error copy is arb-backed
+/// (`profileDialogName*`), so the validator takes [AppLocalizations].
+String? validateProfileName(AppLocalizations l10n, String? value) {
   if (value == null || value.trim().isEmpty) {
-    return 'Name cannot be empty';
+    return l10n.profileDialogNameEmpty;
   }
   if (value.trim().length > kMaxDisplayNameLength) {
-    return 'Name is too long ($kMaxDisplayNameLength characters max)';
+    return l10n.profileDialogNameTooLong(kMaxDisplayNameLength);
   }
   return null;
 }
@@ -68,17 +70,18 @@ String? acceptedPostpartumBirthDate(
 
 /// Shared birth-year validation: optional (an empty value always validates,
 /// R2), otherwise an integer within [kMinBirthYear]-[kMaxBirthYear]
-/// inclusive, matching the server's CHECK constraint exactly.
-String? validateBirthYear(String? value) {
+/// inclusive, matching the server's CHECK constraint exactly. Issue #1004
+/// (tranche 5): the error copy is arb-backed (`profileDialogBirthYear*`).
+String? validateBirthYear(AppLocalizations l10n, String? value) {
   if (value == null || value.trim().isEmpty) {
     return null;
   }
   final parsed = int.tryParse(value.trim());
   if (parsed == null) {
-    return 'Enter a valid year';
+    return l10n.profileDialogBirthYearInvalid;
   }
   if (parsed < kMinBirthYear || parsed > kMaxBirthYear) {
-    return 'Enter a year between $kMinBirthYear and $kMaxBirthYear';
+    return l10n.profileDialogBirthYearOutOfRange(kMinBirthYear, kMaxBirthYear);
   }
   return null;
 }
@@ -93,18 +96,18 @@ String? validateBirthYear(String? value) {
 /// profile whose entries were all purged) — then this adds nothing beyond
 /// [validateBirthYear].
 String? validateBirthYearForProfile(
+  AppLocalizations l10n,
   String? value, {
   int? earliestEntryYear,
 }) {
-  final base = validateBirthYear(value);
+  final base = validateBirthYear(l10n, value);
   if (base != null || earliestEntryYear == null) return base;
   final text = value?.trim() ?? '';
   if (text.isEmpty) return null;
   final parsed = int.tryParse(text);
   if (parsed == null) return null;
   if (parsed > earliestEntryYear) {
-    return 'This profile has entries from $earliestEntryYear. Enter '
-        '$earliestEntryYear or earlier.';
+    return l10n.profileDialogBirthYearBeforeEntries(earliestEntryYear);
   }
   return null;
 }
@@ -670,7 +673,8 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                             labelText: l10n.firstRunNameLabel),
                         maxLength: kMaxDisplayNameLength,
                         maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                        validator: validateProfileName,
+                        validator: (value) =>
+                            validateProfileName(l10n, value),
                         // #165: `name` is the honest hint; "next" moves to
                         // the birth-year field below.
                         textInputAction: TextInputAction.next,
@@ -742,6 +746,7 @@ class _ProfileEditDialogState extends State<_ProfileEditDialog> {
                         // save fine here but make every earlier entry
                         // unsaveable afterwards.
                         validator: (value) => validateBirthYearForProfile(
+                          l10n,
                           value,
                           earliestEntryYear: widget.earliestEntryYear,
                         ),

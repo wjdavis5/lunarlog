@@ -45,6 +45,7 @@ class DriftDayEntriesRepository
       flow: flowFromDomain(entry.flow),
       tags: entry.tags,
       note: entry.note,
+      notePrivate: entry.notePrivate,
       pms: entry.pms,
       source: entry.source.toDb(),
       sourceId: entry.sourceId,

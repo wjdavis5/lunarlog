@@ -156,6 +156,7 @@ export type Database = {
           local_date: string
           logged_by_user_id: string | null
           note: string | null
+          note_private: boolean
           pms: boolean
           profile_id: string
           server_version: number
@@ -176,6 +177,7 @@ export type Database = {
           local_date: string
           logged_by_user_id?: string | null
           note?: string | null
+          note_private?: boolean
           pms?: boolean
           profile_id: string
           server_version?: number
@@ -196,6 +198,7 @@ export type Database = {
           local_date?: string
           logged_by_user_id?: string | null
           note?: string | null
+          note_private?: boolean
           pms?: boolean
           profile_id?: string
           server_version?: number
@@ -589,16 +592,19 @@ export type Database = {
       }
       missed_entry_alert_state: {
         Row: {
+          kind: string
           last_enqueued_for: string | null
           profile_id: string
           user_id: string
         }
         Insert: {
+          kind?: string
           last_enqueued_for?: string | null
           profile_id: string
           user_id: string
         }
         Update: {
+          kind?: string
           last_enqueued_for?: string | null
           profile_id?: string
           user_id?: string
@@ -698,6 +704,9 @@ export type Database = {
           alert_on_cycle_start_only: boolean
           alert_on_high_severity: boolean
           alert_on_log: boolean
+          alert_on_period_soon: boolean
+          alert_on_pms_soon: boolean
+          alert_on_restock: boolean
           cycle_start_cadence: string
           digest_local_time: string | null
           high_severity_cadence: string
@@ -714,6 +723,9 @@ export type Database = {
           alert_on_cycle_start_only?: boolean
           alert_on_high_severity?: boolean
           alert_on_log?: boolean
+          alert_on_period_soon?: boolean
+          alert_on_pms_soon?: boolean
+          alert_on_restock?: boolean
           cycle_start_cadence?: string
           digest_local_time?: string | null
           high_severity_cadence?: string
@@ -730,6 +742,9 @@ export type Database = {
           alert_on_cycle_start_only?: boolean
           alert_on_high_severity?: boolean
           alert_on_log?: boolean
+          alert_on_period_soon?: boolean
+          alert_on_pms_soon?: boolean
+          alert_on_restock?: boolean
           cycle_start_cadence?: string
           digest_local_time?: string | null
           high_severity_cadence?: string
@@ -1405,6 +1420,8 @@ export type Database = {
         Args: { p_token_hash: string }
         Returns: Json
       }
+      ahead_of_time_lead_days: { Args: never; Returns: number }
+      ahead_of_time_min_pms_intervals: { Args: never; Returns: number }
       alert_coalesce_window: { Args: never; Returns: string }
       alert_daily_push_ceiling: { Args: never; Returns: number }
       bulk_import_entries: {
@@ -1477,6 +1494,10 @@ export type Database = {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: boolean
       }
+      is_profile_subject: {
+        Args: { p_profile_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_supported_timestamp: { Args: { p_ts: string }; Returns: boolean }
       is_valid_changed_fields: {
         Args: { p_fields: string[] }
@@ -1494,6 +1515,10 @@ export type Database = {
         Args: { p_now: string; p_zone: string }
         Returns: string
       }
+      mask_day_entry_note: {
+        Args: { p_row: Json; p_viewer: string }
+        Returns: Json
+      }
       merge_tag_arrays: { Args: { a: Json; b: Json }; Returns: Json }
       owns_feedback_ticket: {
         Args: { p_ticket_id: string; p_user_id: string }
@@ -1507,6 +1532,7 @@ export type Database = {
         Args: { p_birth_year: number; p_is_minor: boolean }
         Returns: boolean
       }
+      profile_has_subject: { Args: { p_profile_id: string }; Returns: boolean }
       reconcile_realtime_publication: { Args: never; Returns: undefined }
       record_day_entry_merge_discard: {
         Args: {
@@ -1582,6 +1608,7 @@ export type Database = {
       }
       run_caregiver_alert_drain: { Args: never; Returns: undefined }
       run_nightly_caregiver_alerts_job: { Args: never; Returns: undefined }
+      scan_ahead_of_time_alerts: { Args: never; Returns: number }
       scan_missed_entry_reminders: { Args: never; Returns: number }
       sweep_alert_digests: { Args: never; Returns: number }
       sweep_notification_outbox: { Args: never; Returns: number }

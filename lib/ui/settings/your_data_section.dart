@@ -119,10 +119,14 @@ class _YourDataSectionState extends State<YourDataSection> {
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _exportError;
+
+  /// Issue #1004 (tranche 5): the failure copy this state used to store as
+  /// a resolved English string now resolves through `AppLocalizations` at
+  /// render time.
+  bool _exportFailed = false;
 
   /// Issue #472: "Purge imported data" busy/error state — parallel to
-  /// [_exporting]/[_exportError] above, independent of the export tile.
+  /// [_exporting]/[_exportFailed] above, independent of the export tile.
   bool _purging = false;
   String? _purgeError;
 
@@ -205,7 +209,7 @@ class _YourDataSectionState extends State<YourDataSection> {
     bool signedIn,
   ) {
     if (!_canExport || profiles.isEmpty) return const [];
-    final exportError = _exportError;
+    final exportFailed = _exportFailed;
     final l10n = AppLocalizations.of(context);
     return [
       ListTile(
@@ -227,12 +231,12 @@ class _YourDataSectionState extends State<YourDataSection> {
             : null,
         onTap: !_exporting ? () => _export(context) : null,
       ),
-      if (exportError != null)
+      if (exportFailed)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: InlineError(
             key: const ValueKey('your-data-export-error'),
-            message: exportError,
+            message: l10n.accountExportFailure,
           ),
         ),
     ];
@@ -361,7 +365,7 @@ class _YourDataSectionState extends State<YourDataSection> {
     if (_exporting) return;
     setState(() {
       _exporting = true;
-      _exportError = null;
+      _exportFailed = false;
     });
     try {
       final profilesRepo = context.read<ProfilesRepository>();
@@ -418,7 +422,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       );
     } catch (error) {
       debugPrint('lunarlog your-data: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _exportError = kAccountExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }

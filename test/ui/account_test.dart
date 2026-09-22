@@ -48,9 +48,12 @@ import '../support/pump_helpers.dart';
 import 'gate_test.dart' show FakeGate, FakeInactivityTimers;
 import 'profiles_test.dart' show kNoticeText;
 
-const String kWaitingCopy =
-    'Waiting for email confirmation — open the link on this device';
-const String kUploadPendingCopy = 'Upload pending — tap to review';
+// Issue #1004 (tranche 5): the sync-status consts these tests used to
+// import from `sync_status_tile.dart` are arb-backed now; the `en` lookups
+// carry the identical strings.
+final AppLocalizationsEn _l10n = AppLocalizationsEn();
+final String kWaitingCopy = AppLocalizationsEn().accountSyncStatusAwaitingConfirmation;
+final String kUploadPendingCopy = AppLocalizationsEn().accountSyncStatusUploadPending;
 
 
 /// Issue #226 made Settings a much taller sectioned list: the Account
@@ -785,6 +788,51 @@ void main() {
 
       expect(s.auth.magicLinkCalls.single,
           (email: 'a@b.c', createAccount: false));
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('create-account with an empty or malformed email shows the '
+        'local error and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      expect(key('auth-create-account'), findsOneWidget);
+      // A password long enough to pass, so only the email guard can stop it.
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signUpCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+
+      await tester.enterText(key('auth-email'), 'not-an-email');
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signUpCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        "That doesn't look like an email address.",
+      );
+    });
+
+    testWidgets('create-account with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'new@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signUpCalls.single.email, 'new@b.c');
       expect(key('auth-error'), findsNothing);
     });
   });
@@ -2211,19 +2259,19 @@ void main() {
     test('relative time copy', () {
       final now = DateTime.utc(2026, 9, 2, 12);
       expect(
-        formatRelative(now.subtract(const Duration(seconds: 30)), now),
+        formatRelative(_l10n, now.subtract(const Duration(seconds: 30)), now),
         'just now',
       );
       expect(
-        formatRelative(now.subtract(const Duration(minutes: 5)), now),
+        formatRelative(_l10n, now.subtract(const Duration(minutes: 5)), now),
         '5 min ago',
       );
       expect(
-        formatRelative(now.subtract(const Duration(hours: 3)), now),
+        formatRelative(_l10n, now.subtract(const Duration(hours: 3)), now),
         '3 h ago',
       );
       expect(
-        formatRelative(now.subtract(const Duration(days: 2)), now),
+        formatRelative(_l10n, now.subtract(const Duration(days: 2)), now),
         '2 d ago',
       );
     });
@@ -2236,6 +2284,7 @@ void main() {
         AuthSessionState? authState,
         bool webSyncOff = false,
       }) => syncStatusCopy(
+        _l10n,
         snapshot: snapshot,
         authState: authState,
         now: now,
@@ -2246,13 +2295,14 @@ void main() {
           'confirmation email', () {
         expect(
           syncStatusCopy(
+            _l10n,
             snapshot: null,
             authState: null,
             awaitingConfirmationEmail: 'a@b.c',
             now: now,
             webSyncOff: true,
           ),
-          kWebSyncOffCopy,
+          _l10n.accountSyncStatusWebSyncOff,
         );
       });
 
@@ -2305,7 +2355,7 @@ void main() {
             snapshot: const SyncSnapshot(phase: SyncPhase.idle),
             authState: AuthSessionState.expired,
           ),
-          kSignInAgainCopy,
+          _l10n.accountSyncStatusSignInAgain,
         );
       });
 
@@ -2346,7 +2396,7 @@ void main() {
             snapshot: const SyncSnapshot(phase: SyncPhase.pushing),
             authState: AuthSessionState.signedIn,
           ),
-          kSyncingCopy,
+          _l10n.accountSyncStatusSyncing,
           reason: 'no progress reported yet still reads the plain copy',
         );
         expect(
@@ -2358,7 +2408,7 @@ void main() {
             ),
             authState: AuthSessionState.signedIn,
           ),
-          kSyncingCopy,
+          _l10n.accountSyncStatusSyncing,
           reason: 'a dirty set at or under the batch size (500) completes '
               'in one transport call — the counter is never worth showing '
               'for an ordinary sync, even mid-flight',

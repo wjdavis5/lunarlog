@@ -59,6 +59,7 @@ import 'package:lunarlog/data/repositories/drift_health_export_ledger.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
+import 'package:lunarlog/data/repositories/drift_local_row_count_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -100,6 +101,7 @@ import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
+import 'package:lunarlog/domain/repositories/local_row_count_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -121,6 +123,7 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/sharing/ownership_transfer_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_connection_service.dart';
 import 'package:lunarlog/domain/sharing/prediction_projection_publisher.dart';
@@ -143,6 +146,7 @@ class AppDependencies {
     required this.guardianNotes,
     required this.tagRegistry,
     required this.settings,
+    required this.localRowCounts,
     required this.profileModes,
     required this.profileGuardians,
     required this.activityFeed,
@@ -193,6 +197,13 @@ class AppDependencies {
   final TagRegistryRepository tagRegistry;
 
   final SettingsStore settings;
+
+  /// Issue #551 (part 3): the upload-consent row-count seam. `lib/app.dart`
+  /// provides `localRowCounts.countAllRows` as the tree's
+  /// `Provider<LocalRowCounter>` instead of tearing the count off
+  /// `LunarLogStorage` directly.
+  final LocalRowCountRepository localRowCounts;
+
   final ProfileModesRepository profileModes;
   final ProfileGuardiansRepository profileGuardians;
   final ActivityFeedRepository activityFeed;
@@ -375,6 +386,7 @@ AppDependencies buildAppDependencies({
     guardianNotes: guardianNotes,
     tagRegistry: tagRegistry,
     settings: settings,
+    localRowCounts: DriftLocalRowCountRepository(storage),
     profileModes: profileModes,
     profileGuardians: profileGuardians,
     activityFeed: DriftActivityFeedRepository(storage),
@@ -624,6 +636,11 @@ WidgetQuickLogExecutor buildWidgetQuickLogExecutor({
 
 /// Constructs the reminder coordinator. The caller owns the deferred
 /// `start()` (post-frame, inside the gate's system-UI window).
+///
+/// Issue #850, D-6: [guardians] plus [currentUserId] feed the per-viewer
+/// lens source the coordinator gates local presets on. Passing neither (as
+/// every harness that predates #850 does) leaves that source null — the
+/// pre-#850 all-subject default.
 ReminderCoordinator buildReminderCoordinator({
   required ReminderScheduler scheduler,
   required NotificationAvailabilitySink permissionState,
@@ -632,6 +649,8 @@ ReminderCoordinator buildReminderCoordinator({
   required ReminderConfigService localSettings,
   required Stream<BirthControlState?> Function(String profileId)?
   birthControlStateFor,
+  ProfileGuardiansRepository? guardians,
+  String? Function()? currentUserId,
   LocalTimeZoneProvider? localTimeZoneProvider,
 }) => ReminderCoordinator(
   scheduler: scheduler,
@@ -640,8 +659,32 @@ ReminderCoordinator buildReminderCoordinator({
   predictionFor: predictionFor,
   localSettings: localSettings,
   birthControlStateFor: birthControlStateFor,
+  isSubjectFor: _subjectProfileSource(guardians, currentUserId),
   localTimeZoneProvider: localTimeZoneProvider,
 );
+
+/// The per-viewer lens source the reminder coordinator gates local presets
+/// on (Issue #850, D-6): the signed-in viewer is the subject of [profileId]
+/// exactly when `guardianLensFor` resolves their accepted membership to the
+/// subject lens — no membership (a local-only operator, or rows not yet
+/// synced) fails open to subject, matching the lens's own posture.
+///
+/// Null unless both seams are supplied, which keeps the pre-#850
+/// all-subject default everywhere they are not. The null check is on the
+/// *seams*, never on `currentUserId()`'s current value: a user who is signed
+/// out at construction and signs in later must still be gated from the next
+/// replan on, which a value-time check would have permanently disabled.
+SubjectProfileSource? _subjectProfileSource(
+  ProfileGuardiansRepository? guardians,
+  String? Function()? currentUserId,
+) {
+  if (guardians == null || currentUserId == null) return null;
+  return (profileId) async => guardianLensFor(
+        await guardians.getForProfile(profileId),
+        currentUserId(),
+      ) ==
+      GuardianLens.subject;
+}
 
 /// Constructs the reminder-window publisher, or null when either
 /// collaborator is absent (the R17 zero-conditional gating posture).

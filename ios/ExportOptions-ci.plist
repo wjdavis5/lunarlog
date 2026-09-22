@@ -20,9 +20,17 @@
 	<string>Apple Distribution</string>
 	<key>provisioningProfiles</key>
 	<dict>
-		<!-- Bundle identifier -> provisioning profile name -->
+		<!-- Bundle identifier -> provisioning profile name. Both entries are
+	     required: the widget is a separate app extension with its own App ID,
+	     and the shared App Group must be declared on both, so each bundle id
+	     needs its own profile. The widget profile must be named exactly
+	     "LunarLogWidget" when it is generated in the portal (see the
+	     Home-screen widget checklist in docs/ops/supabase-go-live.md); the
+	     app profile is named "Lunarlog". -->
 		<key>com.wjdavis5.lunarlog</key>
 		<string>Lunarlog</string>
+		<key>com.wjdavis5.lunarlog.LunarLogWidget</key>
+		<string>LunarLogWidget</string>
 	</dict>
 	<key>uploadSymbols</key>
 	<true/>

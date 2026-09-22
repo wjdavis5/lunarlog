@@ -1607,6 +1607,21 @@ class $DayEntriesTable extends DayEntries
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _notePrivateMeta = const VerificationMeta(
+    'notePrivate',
+  );
+  @override
+  late final GeneratedColumn<bool> notePrivate = GeneratedColumn<bool>(
+    'note_private',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("note_private" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _pmsMeta = const VerificationMeta('pms');
   @override
   late final GeneratedColumn<bool> pms = GeneratedColumn<bool>(
@@ -1744,6 +1759,7 @@ class $DayEntriesTable extends DayEntries
     flow,
     tags,
     note,
+    notePrivate,
     pms,
     pmsUnconfirmed,
     updatedAt,
@@ -1798,6 +1814,15 @@ class $DayEntriesTable extends DayEntries
       context.handle(
         _noteMeta,
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
+    if (data.containsKey('note_private')) {
+      context.handle(
+        _notePrivateMeta,
+        notePrivate.isAcceptableOrUnknown(
+          data['note_private']!,
+          _notePrivateMeta,
+        ),
       );
     }
     if (data.containsKey('pms')) {
@@ -1918,6 +1943,10 @@ class $DayEntriesTable extends DayEntries
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      notePrivate: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}note_private'],
+      )!,
       pms: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}pms'],
@@ -1992,6 +2021,13 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
   final List<String> tags;
   final String? note;
 
+  /// Issue #849 (re-scoped): the day note is private to the profile's
+  /// subject. Synced like every other day-level column; the server masks
+  /// `note` to NULL for every non-subject guardian (so on a guardian's
+  /// device this reads true while [note] is null). Never cleared on a
+  /// tombstone, so a revived row keeps its flag.
+  final bool notePrivate;
+
   /// First-class PMS marker (Issue #220): the day was premenstrual,
   /// deliberately distinct from the tag taxonomy (a day can be PMS without
   /// also being tagged for every symptom present). Cleared on a tombstone
@@ -2057,6 +2093,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     required this.flow,
     required this.tags,
     this.note,
+    required this.notePrivate,
     required this.pms,
     this.pmsUnconfirmed,
     required this.updatedAt,
@@ -2089,6 +2126,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    map['note_private'] = Variable<bool>(notePrivate);
     map['pms'] = Variable<bool>(pms);
     if (!nullToAbsent || pmsUnconfirmed != null) {
       map['pms_unconfirmed'] = Variable<bool>(pmsUnconfirmed);
@@ -2124,6 +2162,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: Value(flow),
       tags: Value(tags),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      notePrivate: Value(notePrivate),
       pms: Value(pms),
       pmsUnconfirmed: pmsUnconfirmed == null && nullToAbsent
           ? const Value.absent()
@@ -2163,6 +2202,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: serializer.fromJson<FlowLevel>(json['flow']),
       tags: serializer.fromJson<List<String>>(json['tags']),
       note: serializer.fromJson<String?>(json['note']),
+      notePrivate: serializer.fromJson<bool>(json['notePrivate']),
       pms: serializer.fromJson<bool>(json['pms']),
       pmsUnconfirmed: serializer.fromJson<bool?>(json['pmsUnconfirmed']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -2189,6 +2229,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       'flow': serializer.toJson<FlowLevel>(flow),
       'tags': serializer.toJson<List<String>>(tags),
       'note': serializer.toJson<String?>(note),
+      'notePrivate': serializer.toJson<bool>(notePrivate),
       'pms': serializer.toJson<bool>(pms),
       'pmsUnconfirmed': serializer.toJson<bool?>(pmsUnconfirmed),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -2211,6 +2252,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     FlowLevel? flow,
     List<String>? tags,
     Value<String?> note = const Value.absent(),
+    bool? notePrivate,
     bool? pms,
     Value<bool?> pmsUnconfirmed = const Value.absent(),
     DateTime? updatedAt,
@@ -2230,6 +2272,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     flow: flow ?? this.flow,
     tags: tags ?? this.tags,
     note: note.present ? note.value : this.note,
+    notePrivate: notePrivate ?? this.notePrivate,
     pms: pms ?? this.pms,
     pmsUnconfirmed: pmsUnconfirmed.present
         ? pmsUnconfirmed.value
@@ -2257,6 +2300,9 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
       flow: data.flow.present ? data.flow.value : this.flow,
       tags: data.tags.present ? data.tags.value : this.tags,
       note: data.note.present ? data.note.value : this.note,
+      notePrivate: data.notePrivate.present
+          ? data.notePrivate.value
+          : this.notePrivate,
       pms: data.pms.present ? data.pms.value : this.pms,
       pmsUnconfirmed: data.pmsUnconfirmed.present
           ? data.pmsUnconfirmed.value
@@ -2287,6 +2333,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           ..write('flow: $flow, ')
           ..write('tags: $tags, ')
           ..write('note: $note, ')
+          ..write('notePrivate: $notePrivate, ')
           ..write('pms: $pms, ')
           ..write('pmsUnconfirmed: $pmsUnconfirmed, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2311,6 +2358,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
     flow,
     tags,
     note,
+    notePrivate,
     pms,
     pmsUnconfirmed,
     updatedAt,
@@ -2334,6 +2382,7 @@ class DayEntry extends DataClass implements Insertable<DayEntry> {
           other.flow == this.flow &&
           other.tags == this.tags &&
           other.note == this.note &&
+          other.notePrivate == this.notePrivate &&
           other.pms == this.pms &&
           other.pmsUnconfirmed == this.pmsUnconfirmed &&
           other.updatedAt == this.updatedAt &&
@@ -2355,6 +2404,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
   final Value<FlowLevel> flow;
   final Value<List<String>> tags;
   final Value<String?> note;
+  final Value<bool> notePrivate;
   final Value<bool> pms;
   final Value<bool?> pmsUnconfirmed;
   final Value<DateTime> updatedAt;
@@ -2375,6 +2425,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     this.flow = const Value.absent(),
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
+    this.notePrivate = const Value.absent(),
     this.pms = const Value.absent(),
     this.pmsUnconfirmed = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -2396,6 +2447,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     required FlowLevel flow,
     this.tags = const Value.absent(),
     this.note = const Value.absent(),
+    this.notePrivate = const Value.absent(),
     this.pms = const Value.absent(),
     this.pmsUnconfirmed = const Value.absent(),
     required DateTime updatedAt,
@@ -2422,6 +2474,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Expression<String>? flow,
     Expression<String>? tags,
     Expression<String>? note,
+    Expression<bool>? notePrivate,
     Expression<bool>? pms,
     Expression<bool>? pmsUnconfirmed,
     Expression<DateTime>? updatedAt,
@@ -2443,6 +2496,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       if (flow != null) 'flow': flow,
       if (tags != null) 'tags': tags,
       if (note != null) 'note': note,
+      if (notePrivate != null) 'note_private': notePrivate,
       if (pms != null) 'pms': pms,
       if (pmsUnconfirmed != null) 'pms_unconfirmed': pmsUnconfirmed,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -2467,6 +2521,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     Value<FlowLevel>? flow,
     Value<List<String>>? tags,
     Value<String?>? note,
+    Value<bool>? notePrivate,
     Value<bool>? pms,
     Value<bool?>? pmsUnconfirmed,
     Value<DateTime>? updatedAt,
@@ -2488,6 +2543,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
       flow: flow ?? this.flow,
       tags: tags ?? this.tags,
       note: note ?? this.note,
+      notePrivate: notePrivate ?? this.notePrivate,
       pms: pms ?? this.pms,
       pmsUnconfirmed: pmsUnconfirmed ?? this.pmsUnconfirmed,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -2530,6 +2586,9 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
     }
     if (note.present) {
       map['note'] = Variable<String>(note.value);
+    }
+    if (notePrivate.present) {
+      map['note_private'] = Variable<bool>(notePrivate.value);
     }
     if (pms.present) {
       map['pms'] = Variable<bool>(pms.value);
@@ -2582,6 +2641,7 @@ class DayEntriesCompanion extends UpdateCompanion<DayEntry> {
           ..write('flow: $flow, ')
           ..write('tags: $tags, ')
           ..write('note: $note, ')
+          ..write('notePrivate: $notePrivate, ')
           ..write('pms: $pms, ')
           ..write('pmsUnconfirmed: $pmsUnconfirmed, ')
           ..write('updatedAt: $updatedAt, ')
@@ -14335,6 +14395,7 @@ typedef $$DayEntriesTableCreateCompanionBuilder = DayEntriesCompanion Function({
   required FlowLevel flow,
   Value<List<String>> tags,
   Value<String?> note,
+  Value<bool> notePrivate,
   Value<bool> pms,
   Value<bool?> pmsUnconfirmed,
   required DateTime updatedAt,
@@ -14356,6 +14417,7 @@ typedef $$DayEntriesTableUpdateCompanionBuilder = DayEntriesCompanion Function({
   Value<FlowLevel> flow,
   Value<List<String>> tags,
   Value<String?> note,
+  Value<bool> notePrivate,
   Value<bool> pms,
   Value<bool?> pmsUnconfirmed,
   Value<DateTime> updatedAt,
@@ -14449,6 +14511,11 @@ class $$DayEntriesTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get notePrivate => $composableBuilder(
+    column: $table.notePrivate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -14595,6 +14662,11 @@ class $$DayEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get notePrivate => $composableBuilder(
+    column: $table.notePrivate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get pms => $composableBuilder(
     column: $table.pms,
     builder: (column) => ColumnOrderings(column),
@@ -14700,6 +14772,11 @@ class $$DayEntriesTableAnnotationComposer
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<bool> get notePrivate => $composableBuilder(
+    column: $table.notePrivate,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<bool> get pms =>
       $composableBuilder(column: $table.pms, builder: (column) => column);
@@ -14824,6 +14901,7 @@ class $$DayEntriesTableTableManager
                 Value<FlowLevel> flow = const Value.absent(),
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<bool> notePrivate = const Value.absent(),
                 Value<bool> pms = const Value.absent(),
                 Value<bool?> pmsUnconfirmed = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -14844,6 +14922,7 @@ class $$DayEntriesTableTableManager
                 flow: flow,
                 tags: tags,
                 note: note,
+                notePrivate: notePrivate,
                 pms: pms,
                 pmsUnconfirmed: pmsUnconfirmed,
                 updatedAt: updatedAt,
@@ -14866,6 +14945,7 @@ class $$DayEntriesTableTableManager
                 required FlowLevel flow,
                 Value<List<String>> tags = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<bool> notePrivate = const Value.absent(),
                 Value<bool> pms = const Value.absent(),
                 Value<bool?> pmsUnconfirmed = const Value.absent(),
                 required DateTime updatedAt,
@@ -14886,6 +14966,7 @@ class $$DayEntriesTableTableManager
                 flow: flow,
                 tags: tags,
                 note: note,
+                notePrivate: notePrivate,
                 pms: pms,
                 pmsUnconfirmed: pmsUnconfirmed,
                 updatedAt: updatedAt,

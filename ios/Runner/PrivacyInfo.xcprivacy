@@ -3,18 +3,50 @@
 <plist version="1.0">
 <dict>
 	<!--
-		lunarlog is a local-first cycle tracker with an optional account. Two
-		parties receive data off-device, both only for app functionality:
+		lunarlog is a local-first cycle tracker with an optional account.
+		Several parties receive data off-device, all only for app
+		functionality:
 
 		- Supabase (account sign-in and cross-device sync): the account email
 		  and the cycle entries the operator chooses to sync, protected by
 		  TLS in transit and Supabase's own AES-256 at-rest infrastructure
 		  encryption (not an app-managed cipher — PRIVACY.md Section 6).
-		  Both are linked to the account (Email Address, Health).
+		  Both are linked to the account (Email Address, Health). Supabase
+		  also stores the account's optional support tickets — the message,
+		  category, reply email, operator-approved diagnostics, reply
+		  thread, and any screenshot the operator attaches — because the
+		  app's own ticket store is the cloud one (issue #1065; see
+		  lib/data/feedback/supabase_feedback_service.dart). Those map to
+		  Customer Support, Other Diagnostic Data, and Photos or Videos
+		  below. The reply email is free text and may differ from the
+		  account email; both are the Email Address data type already
+		  declared.
+		- Firebase Cloud Messaging / Apple Push Notification service
+		  (caregiver alerts, only on a build with push configured and only
+		  after a guardian turns them on): the device's push registration
+		  token, an internal device id, and the profile's internal
+		  identifier — never a note, tag, flow level, date, or profile name
+		  (PRIVACY.md Sections 2.C and 4). Linked to the account
+		  (Device ID); see lib/data/notifications/supabase_push_device_registry.dart.
+		- Resend (transactional support email): the operator alert sent when
+		  a ticket is submitted, and the operator's reply carrying the reply
+		  address and reply text (PRIVACY.md Section 4). Never health content.
 		- Sentry (crash reporting via the sentry_flutter SDK): crash and error
 		  events reduced to an allowlist before upload (no user, device name,
 		  request query, header, body, note, tag, date, or profile name); see
 		  lib/observability/scrub.dart. Not linked to identity (Crash Data).
+
+		Issue #1065 reconciled this collected-data-types list with PRIVACY.md:
+		the device/push token was absent despite §9 naming it, and the
+		support-ticket content §2.C discloses was declared nowhere. The four
+		entries added below (Device ID, Customer Support, Photos or Videos,
+		Other Diagnostic Data) close both gaps. On-device-only data stays
+		undeclared by design — the home-screen widget's App Group container
+		(§2.E), and both directions of Apple Health / Health Connect sync
+		(§4) never leave the device. The candidate categories left for the
+		issue #21 transcription (provider `sub`/account id, the entry IANA
+		time zone, the content-free change history) are deliberately NOT
+		declared here yet; settling them is part of that worksheet pass.
 
 		No tracking, no advertising, no analytics beyond crash reports.
 
@@ -135,6 +167,54 @@
 			<string>NSPrivacyCollectedDataTypeCrashData</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>
 			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCustomerSupport</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
 			<key>NSPrivacyCollectedDataTypeTracking</key>
 			<false/>
 			<key>NSPrivacyCollectedDataTypePurposes</key>

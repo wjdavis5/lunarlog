@@ -877,7 +877,7 @@ class _SyncFailureBanner extends StatelessWidget {
       return MaterialBanner(
         key: const ValueKey('sync-failure-banner'),
         leading: const Icon(Icons.cloud_off_outlined),
-        content: const Text(kSignInAgainCopy),
+        content: Text(l10n.accountSyncStatusSignInAgain),
         actions: [
           TextButton(
             key: const ValueKey('sync-failure-banner-action'),
@@ -899,6 +899,7 @@ class _SyncFailureBanner extends StatelessWidget {
         key: const ValueKey('sync-failure-banner'),
         leading: const Icon(Icons.cloud_off_outlined),
         content: Text(syncStatusCopy(
+          l10n,
           snapshot: snapshot,
           authState: auth?.state,
           now: DateTime.now(),
