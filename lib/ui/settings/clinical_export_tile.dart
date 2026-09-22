@@ -25,6 +25,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../domain/export/export_redaction.dart';
 import '../../domain/export/fhir_bundle.dart';
 import '../../domain/export/fhir_bundle_writer.dart';
 import '../../domain/export/fhir_export_range.dart';
@@ -39,6 +40,7 @@ import '../../l10n/app_localizations.dart';
 import '../account/export_account_collaborator.dart' show kAppVersionForExport;
 import '../components/inline_error.dart';
 import 'entry_existence_watch_mixin.dart';
+import 'export_access.dart';
 import 'export_range_picker_sheet.dart';
 
 /// Injectable seam for FHIR delivery (mirrors
@@ -240,6 +242,17 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     final exclusions = context.read<CycleExclusionList?>();
     final entriesRepo = context.read<DayEntriesRepository>();
     final observationsRepo = context.read<ObservationsRepository>();
+    final l10n = AppLocalizations.of(context);
+
+    // Issue #115 G4: resolve the operator's lens and the minor-profile gate
+    // before the range picker and the build. A refusal surfaces the honest
+    // "not available" copy and never calls the collaborator.
+    final access = await resolveExportAccess(context, profile);
+    if (!mounted) return;
+    if (!access.allowed) {
+      setState(() => _error = l10n.exportMinorGuardianUnavailable);
+      return;
+    }
 
     // Issue #459 review: the range picker is asked *before* `_exporting`
     // flips true, not inside the same try/finally as the actual export
@@ -275,7 +288,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
       );
       final bundle = buildFhirDocumentBundle(
         profile: profile,
-        dayEntries: range.filterEntries(dayEntries),
+        // Issue #115 G4: a guardian-lens export carries no private note text
+        // (FHIR never reads DayEntry.note anyway; the shared step keeps the
+        // rule uniform across formats).
+        dayEntries: redactForLens(range.filterEntries(dayEntries), access.lens),
         observations: range.filterObservations(observations),
         prediction: prediction is ActivePrediction ? prediction : null,
         exportedAt: exportedAt,
