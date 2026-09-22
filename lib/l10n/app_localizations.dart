@@ -7609,6 +7609,685 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logged {occurrences} times across {cycles} cycles'**
   String symptomTrendsLogged(int occurrences, int cycles);
+
+  /// Issue #1004 (tranche 5): sync-status copy while a push/pull/restore cycle runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing…'**
+  String get accountSyncStatusSyncing;
+
+  /// Issue #1004 (tranche 5): sync-status copy while upload consent is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload pending — tap to review'**
+  String get accountSyncStatusUploadPending;
+
+  /// Issue #1004 (tranche 5): sync-status copy on the web build without the sync define.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is off in this web build'**
+  String get accountSyncStatusWebSyncOff;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an expired session or an auth failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again to sync'**
+  String get accountSyncStatusSignInAgain;
+
+  /// Issue #1004 (tranche 5): sync-status copy when rejected rows exist.
+  ///
+  /// In en, this message translates to:
+  /// **'Some entries could not be uploaded'**
+  String get accountSyncStatusRejected;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a sign-up confirmation email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for email confirmation — open the link on this device'**
+  String get accountSyncStatusAwaitingConfirmation;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a passwordless sign-in email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in email sent — open the link on this device or enter the code'**
+  String get accountSyncStatusAwaitingMagicLink;
+
+  /// Issue #1004 (tranche 5): day-sheet micro-confirmation after an offline save (#182 AC8).
+  ///
+  /// In en, this message translates to:
+  /// **'Saved on this device · will sync'**
+  String get accountSyncStatusOfflineSaved;
+
+  /// Issue #1004 (tranche 5): relative time under a minute.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get accountSyncStatusJustNow;
+
+  /// Issue #1004 (tranche 5): relative time in minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String accountSyncStatusMinutesAgo(int minutes);
+
+  /// Issue #1004 (tranche 5): relative time in hours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h ago'**
+  String accountSyncStatusHoursAgo(int hours);
+
+  /// Issue #1004 (tranche 5): relative time in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} d ago'**
+  String accountSyncStatusDaysAgo(int days);
+
+  /// Issue #1004 (tranche 5): sync-status copy when no sync engine is wired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is not available in this build'**
+  String get accountSyncStatusUnavailable;
+
+  /// Issue #1004 (tranche 5): sync-status copy for a network failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server — will retry'**
+  String get accountSyncStatusNetworkRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an unclassified sync failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync failed — will retry'**
+  String get accountSyncStatusFailedRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy when the server account no longer matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as a different account'**
+  String get accountSyncStatusAccountMismatch;
+
+  /// Issue #1004 (tranche 5): live push progress; both counts arrive pre-formatted so the thousands separator stays the app's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {pushed} of {total}'**
+  String accountSyncStatusUploading(String pushed, String total);
+
+  /// Issue #1004 (tranche 5): sync-status copy when signed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get accountSyncStatusNotSignedIn;
+
+  /// Issue #1004 (tranche 5): sync-status copy while the device gate pauses sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync paused'**
+  String get accountSyncStatusPaused;
+
+  /// Issue #1004 (tranche 5): sync-status copy before the first completed sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Not synced yet'**
+  String get accountSyncStatusNotSyncedYet;
+
+  /// Issue #1004 (tranche 5): resting sync-status copy; the relative time arrives pre-formatted.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date · {relative}'**
+  String accountSyncStatusUpToDate(String relative);
+
+  /// Issue #1004 (tranche 5): one-line JSON-export failure copy, no exception text (R10).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountExportFailure;
+
+  /// Issue #1004 (tranche 5): branded Google button label per Google's branding guidelines wording.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Google'**
+  String get accountGoogleButtonLabel;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (network).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your connection and try again. Your account was not deleted.'**
+  String get accountDeletionNetworkFailure;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (missing Apple authorization code).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.'**
+  String get accountDeletionAppleCodeRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (no native Apple ceremony on this device).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.'**
+  String get accountDeletionAppleCeremonyUnavailable;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment cleanup failed closed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.'**
+  String get accountDeletionAttachmentCleanupFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment count unbounded; support needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.'**
+  String get accountDeletionAttachmentCleanupUnbounded;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (AAL2 step-up needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Please confirm your two-factor code and try again.'**
+  String get accountDeletionMfaRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (Apple revocation failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.'**
+  String get accountDeletionAppleRevokeFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (revocation marker not persisted).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionRevocationMarkerFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (auth row deletion failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionDeleteUserFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (unauthorized).
+  ///
+  /// In en, this message translates to:
+  /// **'Your session has expired. Sign in again and retry - your account was not deleted.'**
+  String get accountDeletionSessionExpired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unknown outcome (timeout).
+  ///
+  /// In en, this message translates to:
+  /// **'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.'**
+  String get accountDeletionTimeout;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unclassified error.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Your account was not deleted. Please try again.'**
+  String get accountDeletionUnknown;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 3 cycles'**
+  String get settingsExportRangePresetLast3Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 6 cycles'**
+  String get settingsExportRangePresetLast6Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 cycles'**
+  String get settingsExportRangePresetLast12Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 months'**
+  String get settingsExportRangePresetLast12Months;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything'**
+  String get settingsExportRangePresetEverything;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom range…'**
+  String get settingsExportRangePresetCustom;
+
+  /// Issue #1004 (tranche 5): CSV export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your cycle data as CSV. Please try again.'**
+  String get settingsCsvExportFailure;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export CSV tables.'**
+  String get settingsCsvExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s cycle data as spreadsheet-compatible CSV files.'**
+  String settingsCsvExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Export your cycles and daily log as spreadsheet-compatible CSV files.'**
+  String get settingsCsvExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): shared FHIR/PDF clinical-export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your clinical summary. Please try again.'**
+  String get settingsClinicalExportFailure;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a clinical summary.'**
+  String get settingsClinicalExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary.'**
+  String settingsClinicalExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.'**
+  String get settingsClinicalExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a PDF clinical summary.'**
+  String get settingsClinicalPdfSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary as a PDF.'**
+  String settingsClinicalPdfSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an on-device PDF summary of logged cycle data.'**
+  String get settingsClinicalPdfSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): custom export-range label naming its explicit start/end dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} to {end}'**
+  String settingsClinicalPdfRangeCustom(String start, String end);
+
+  /// Issue #1004 (tranche 5): Apple Health store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'the Health app'**
+  String get healthSyncSourceNameAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceNameHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health app'**
+  String get healthSyncSourceTitleAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceTitleHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app isn\'t available on this device.'**
+  String get healthSyncUnavailableAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect isn\'t available on this device.'**
+  String get healthSyncUnavailableHealthConnect;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Apple Health; deliberately ambiguous about denial).
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.'**
+  String get healthSyncImportEmptyAppleHealth;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Health Connect).
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.'**
+  String get healthSyncImportEmptyHealthConnect;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on a write-wired platform (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.'**
+  String get healthSyncWriteIntro;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
+  String get healthSyncImportIntro;
+
+  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.'**
+  String get healthSyncWriteForwardOnly;
+
+  /// Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918).
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
+  String get healthSyncWriteSymptoms;
+
+  /// Issue #1004 (tranche 5): import-only explanation (Android, #458).
+  ///
+  /// In en, this message translates to:
+  /// **'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.'**
+  String get healthSyncImportOnly;
+
+  /// Issue #1004 (tranche 5): bind deny reason when minor health sync is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.'**
+  String get healthSyncDenyMinorOff;
+
+  /// Issue #1004 (tranche 5): bind deny reason when no account is signed in to prove ownership.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in and sync once so this device can confirm you own this profile.'**
+  String get healthSyncDenyNotOwnerSignedOut;
+
+  /// Issue #1004 (tranche 5): bind deny reason for a non-owner.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.'**
+  String get healthSyncDenyNotOwner;
+
+  /// Issue #1004 (tranche 5): neutral stand-in when the bound profile id no longer resolves.
+  ///
+  /// In en, this message translates to:
+  /// **'this profile'**
+  String get healthSyncUnboundProfileName;
+
+  /// Issue #1004 (tranche 5): import blocked by the binding guard.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile can\'t import from {source} right now.'**
+  String healthSyncImportBlockedRefused(String source);
+
+  /// Issue #1004 (tranche 5): import pass failed at the platform layer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportBlockedFailed;
+
+  /// Issue #1004 (tranche 5): account-import apply failure; the write is all-or-nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the import. Nothing was written — please try again.'**
+  String get importApplyFailure;
+
+  /// Issue #1004 (tranche 5): stale import plan (#140 review, LLA-085).
+  ///
+  /// In en, this message translates to:
+  /// **'Your data changed while this was open. Please choose the file again to include the latest changes.'**
+  String get importStalePlan;
+
+  /// Issue #1004 (tranche 5): shared-profile import disclosure (#140 review, item 10).
+  ///
+  /// In en, this message translates to:
+  /// **'One of these profiles has another guardian — the rows you import will sync to their device too.'**
+  String get importSharedProfileGuardian;
+
+  /// Issue #1004 (tranche 5): Clue zip read failure; the raw exception is never rendered (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read that Clue export. Check the file and the password from your export email, then try again.'**
+  String get importClueReadFailure;
+
+  /// Issue #1004 (tranche 5): the picked ZIP is not a Clue export (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.'**
+  String get importClueNotClue;
+
+  /// Issue #1004 (tranche 5): Clue write failure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the Clue import. Nothing was written — please try again.'**
+  String get importClueApplyFailure;
+
+  /// Issue #1004 (tranche 5): default name offered when a Clue import creates a new profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Clue'**
+  String get importClueImportedProfileDefaultName;
+
+  /// Issue #1004 (tranche 5): Clue preview merge disclosure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.'**
+  String get importClueMergePolicy;
+
+  /// Issue #1004 (tranche 5): Clue preview summary line; both counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to import: {days}, {datapoints}.'**
+  String importCluePreviewSummary(String days, String datapoints);
+
+  /// Issue #1004 (tranche 5): account-import preview profile count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importPreviewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview day-entry count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day entry} other{{count} day entries}}'**
+  String importPreviewDayEntryCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview observation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 observation} other{{count} observations}}'**
+  String importPreviewObservationCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview date-range suffix.
+  ///
+  /// In en, this message translates to:
+  /// **' ({earliest} to {latest})'**
+  String importPreviewDateRange(String earliest, String latest);
+
+  /// Issue #1004 (tranche 5): account-import preview summary line; counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'{profiles}, {dayEntries}, {observations}{dateRange}'**
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  );
+
+  /// Issue #1004 (tranche 5): import plan profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 new profile} other{{count} new profiles}}'**
+  String importPlanSummaryNewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan profile-match count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 matched profile} other{{count} matched profiles}}'**
+  String importPlanSummaryMatchedProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan summary line.
+  ///
+  /// In en, this message translates to:
+  /// **'{created}, {matched} ({added} entries added, {merged} merged).'**
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  );
+
+  /// Issue #1004 (tranche 5): Clue preview day count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String importCluePreviewDayCount(int count);
+
+  /// Issue #1004 (tranche 5): Clue preview datapoint count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 datapoint} other{{count} datapoints}}'**
+  String importCluePreviewDatapointCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importResultProfileCreatedCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result discarded-file-note count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file note} other{{count} file notes}}'**
+  String importResultFileNoteCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result note-merge honesty suffix (#140 review, item 9); the note count arrives pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **', {notes} not applied (an existing note was kept)'**
+  String importResultNotesDiscardedSuffix(String notes);
+
+  /// Issue #1004 (tranche 5): account-import result summary line; counts arrive pre-pluralized where pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Import complete: {created} created, {matched} matched, {added} entries added, {merged} merged, {observationsAdded} observations added, {observationsSkipped} skipped{rejected}{notesDiscarded}.'**
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  );
+
+  /// Issue #1004 (tranche 5): profile-name validation error for a blank name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name cannot be empty'**
+  String get profileDialogNameEmpty;
+
+  /// Issue #1004 (tranche 5): profile-name validation error past the server's limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is too long ({maxLength} characters max)'**
+  String profileDialogNameTooLong(int maxLength);
+
+  /// Issue #1004 (tranche 5): birth-year validation error for a non-numeric value.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid year'**
+  String get profileDialogBirthYearInvalid;
+
+  /// Issue #1004 (tranche 5): birth-year validation error outside the server's CHECK bounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a year between {minYear} and {maxYear}'**
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear);
+
+  /// Issue #1004 (tranche 5): birth-year validation error naming the conflict with the earliest logged entry (#923).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.'**
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear);
+
+  /// Issue #1004 (tranche 5): the transparency disclosure beside every guardian-note input (#801).
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read this note — including the person it is about.'**
+  String get careGuardianNoteDisclosure;
+
+  /// Issue #1004 (tranche 5): the same transparency rule, worded for the standing care-notes surface.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read these notes — including the person they are about.'**
+  String get careNotesDisclosure;
+
+  /// Issue #1004 (tranche 5): default label of the contextual help-card entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn more'**
+  String get helpCardLearnMore;
+
+  /// Issue #1004 (tranche 5): attachment size label in kilobytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{kilobytes} KB'**
+  String feedbackAttachmentSizeKb(int kilobytes);
+
+  /// Issue #1004 (tranche 5): the relative-day header word for today.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get relativeDayToday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get relativeDayYesterday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for tomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow'**
+  String get relativeDayTomorrow;
+
+  /// Issue #1004 (tranche 5): human label for the email identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountProviderLabelEmail;
+
+  /// Issue #1004 (tranche 5): human label for the Google identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Google'**
+  String get accountProviderLabelGoogle;
+
+  /// Issue #1004 (tranche 5): human label for the Apple identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple'**
+  String get accountProviderLabelApple;
 }
 
 class _AppLocalizationsDelegate

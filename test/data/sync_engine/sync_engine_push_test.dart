@@ -13,8 +13,9 @@ import 'package:lunarlog/data/sync/supabase_sync_engine.dart'
 import 'package:lunarlog/data/sync/sync_transport.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kRejectedCopy, syncStatusCopy;
+    show syncStatusCopy;
 
 import 'sync_engine_support.dart';
 
@@ -740,11 +741,12 @@ void main() {
       expect(rig.engine.snapshot.rejectedCount, 2);
       expect(
         syncStatusCopy(
+          AppLocalizationsEn(),
           snapshot: rig.engine.snapshot,
           authState: AuthSessionState.signedIn,
           now: t0,
         ),
-        kRejectedCopy,
+        AppLocalizationsEn().accountSyncStatusRejected,
         reason: 'the status reflects "some entries could not be uploaded"',
       );
 

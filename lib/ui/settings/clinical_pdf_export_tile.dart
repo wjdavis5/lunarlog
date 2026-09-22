@@ -51,22 +51,26 @@ typedef ClinicalPdfExportCollaborator = Future<void> Function({
   required DateTime exportedAt,
 });
 
-/// One line, no health content, no exception text.
-const String kClinicalPdfExportFailureCopy =
-    'Could not export your clinical summary. Please try again.';
+/// Failure copy is arb-backed (`settingsClinicalExportFailure`, shared
+/// with the FHIR tile) and resolved through [AppLocalizations] at render
+/// time (issue #1004, tranche 5).
 
-String _subtitleFor({
+/// Arb-backed subtitles (`settingsClinicalPdfSubtitle*`) since issue
+/// #1004, tranche 5.
+String _subtitleFor(
+  AppLocalizations l10n, {
   required bool hasEntries,
   required List<Profile> liveProfiles,
 }) {
   if (!hasEntries) {
-    return 'Add at least one day entry to export a PDF clinical summary.';
+    return l10n.settingsClinicalPdfSubtitleNoEntries;
   }
   if (liveProfiles.length == 1) {
-    return "Export ${liveProfiles.single.displayName}'s clinical summary as "
-        'a PDF.';
+    return l10n.settingsClinicalPdfSubtitleOneProfile(
+      liveProfiles.single.displayName,
+    );
   }
-  return 'Share an on-device PDF summary of logged cycle data.';
+  return l10n.settingsClinicalPdfSubtitleGeneric;
 }
 
 List<Profile> _liveProfiles(List<Profile> profiles) =>
@@ -89,7 +93,22 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _error;
+
+  /// Issue #1004 (tranche 5): failure state only — the copy resolves
+  /// through `AppLocalizations` at render time.
+  bool _exportFailed = false;
+
+  /// Issue #115 G4: the minor-profile guard refused this export. Distinct
+  /// from [_exportFailed] so the tile shows the honest "not available" copy
+  /// rather than the generic failure line.
+  bool _minorGuardRefused = false;
+
+  /// The copy to render beneath the tile, or null when there is none.
+  String? _errorCopy(AppLocalizations l10n) {
+    if (_minorGuardRefused) return l10n.exportMinorGuardianUnavailable;
+    if (_exportFailed) return l10n.settingsClinicalExportFailure;
+    return null;
+  }
 
   @override
   void initState() {
@@ -130,7 +149,7 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
     final canExport = !_exporting && hasAnyEntries;
-    final error = _error;
+    final error = _errorCopy(AppLocalizations.of(context));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -141,7 +160,11 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
             AppLocalizations.of(context).clinicalPdfExportTitle,
           ),
           subtitle: Text(
-            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
+            _subtitleFor(
+              AppLocalizations.of(context),
+              hasEntries: hasAnyEntries,
+              liveProfiles: liveProfiles,
+            ),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -206,6 +229,8 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
   Future<void> _export(BuildContext context, Profile profile) async {
     if (_exporting) return;
     final deps = _PdfExportDeps.read(context);
+    // Resolved before any `await` so the PDF's range label can localize
+    // without touching `context` across an async gap (issue #1004).
     final l10n = AppLocalizations.of(context);
 
     // Issue #115 G4: resolve the operator's lens and the minor-profile gate
@@ -214,7 +239,10 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     final access = await resolveExportAccessOrRefuse(
       context,
       profile,
-      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+      () => setState(() {
+        _minorGuardRefused = true;
+        _exportFailed = false;
+      }),
     );
     if (access == null) return;
 
@@ -229,7 +257,8 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
 
     setState(() {
       _exporting = true;
-      _error = null;
+      _exportFailed = false;
+      _minorGuardRefused = false;
     });
     try {
       final exportedAt = DateTime.now().toUtc();
@@ -237,14 +266,20 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
       // (the PDF summary never reads DayEntry.note; the shared step keeps
       // the rule uniform across formats).
       final redactedEntries = redactForLens(dayEntries, access.lens);
-      final bytes =
-          await _buildPdf(deps, profile, redactedEntries, range, exportedAt);
+      final bytes = await _buildPdf(
+        deps,
+        l10n,
+        profile,
+        redactedEntries,
+        range,
+        exportedAt,
+      );
       await _deliver(deps.writer, bytes, exportedAt);
     } catch (error) {
       debugPrint(
         'lunarlog clinical-pdf: export failed (${error.runtimeType})',
       );
-      if (mounted) setState(() => _error = kClinicalPdfExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -257,6 +292,7 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
   /// compute.
   Future<Uint8List> _buildPdf(
     _PdfExportDeps deps,
+    AppLocalizations l10n,
     Profile profile,
     List<DayEntry> dayEntries,
     FhirExportRange range,
@@ -275,7 +311,7 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
         observations: observations,
         customTags: customTags,
         range: range,
-        rangeLabel: _rangeLabelFor(range),
+        rangeLabel: _rangeLabelFor(l10n, range),
         generatedAt: exportedAt,
         omittedCycleStarts: omittedCycleStarts,
         birthControlMethod: mode?.birthControlMethod,
@@ -304,14 +340,19 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
   }
 
   /// A custom range names its explicit start/end dates; every preset uses
-  /// the picker's own label.
-  static String _rangeLabelFor(FhirExportRange range) {
+  /// the picker's own label. Arb-backed since issue #1004, tranche 5 —
+  /// note this label ships inside the PDF document, so its arb value is
+  /// document copy too. The `'start'`/`'end'` fallbacks only fire for a
+  /// malformed custom range the picker itself can never produce (both
+  /// endpoints are enforced) and stay literal: they are defensive
+  /// placeholders, not sentences.
+  static String _rangeLabelFor(AppLocalizations l10n, FhirExportRange range) {
     if (range.preset != FhirExportRangePreset.custom) {
-      return fhirExportRangePresetLabel(range.preset);
+      return fhirExportRangePresetLabel(l10n, range.preset);
     }
     final start = range.start?.iso ?? 'start';
     final end = range.end?.iso ?? 'end';
-    return '$start to $end';
+    return l10n.settingsClinicalPdfRangeCustom(start, end);
   }
 }
 

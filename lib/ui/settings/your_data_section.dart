@@ -123,10 +123,26 @@ class _YourDataSectionState extends State<YourDataSection> {
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _exportError;
+
+  /// Issue #1004 (tranche 5): the failure copy this state used to store as
+  /// a resolved English string now resolves through `AppLocalizations` at
+  /// render time.
+  bool _exportFailed = false;
+
+  /// Issue #115 G4: the minor-profile guard refused the household JSON
+  /// export. Distinct from [_exportFailed] so the tile shows the honest
+  /// "not available" copy rather than the generic failure line.
+  bool _minorGuardRefused = false;
+
+  /// The copy to render beneath the export tile, or null when there is none.
+  String? _exportErrorCopy(AppLocalizations l10n) {
+    if (_minorGuardRefused) return l10n.exportMinorGuardianUnavailable;
+    if (_exportFailed) return l10n.accountExportFailure;
+    return null;
+  }
 
   /// Issue #472: "Purge imported data" busy/error state — parallel to
-  /// [_exporting]/[_exportError] above, independent of the export tile.
+  /// [_exporting]/[_exportFailed] above, independent of the export tile.
   bool _purging = false;
   String? _purgeError;
 
@@ -209,8 +225,8 @@ class _YourDataSectionState extends State<YourDataSection> {
     bool signedIn,
   ) {
     if (!_canExport || profiles.isEmpty) return const [];
-    final exportError = _exportError;
     final l10n = AppLocalizations.of(context);
+    final exportError = _exportErrorCopy(l10n);
     return [
       ListTile(
         key: const ValueKey('your-data-export'),
@@ -365,7 +381,8 @@ class _YourDataSectionState extends State<YourDataSection> {
     if (_exporting) return;
     setState(() {
       _exporting = true;
-      _exportError = null;
+      _exportFailed = false;
+      _minorGuardRefused = false;
     });
     try {
       final profilesRepo = context.read<ProfilesRepository>();
@@ -387,7 +404,6 @@ class _YourDataSectionState extends State<YourDataSection> {
       // `use_build_context_synchronously` discipline as the reads above).
       final guardiansRepo = context.read<ProfileGuardiansRepository?>();
       final currentUserId = context.read<AuthController?>()?.currentUserId;
-      final l10n = AppLocalizations.of(context);
       final profiles = await profilesRepo.list();
       final entriesByProfile = <String, List<DayEntry>>{};
       final observationsByProfile = <String, List<Observation>>{};
@@ -403,7 +419,6 @@ class _YourDataSectionState extends State<YourDataSection> {
           profile,
           guardiansRepo,
           currentUserId,
-          l10n,
         );
         if (access == null) return;
         final snapshot = await snapshotRepo.forProfile(profile.id);
@@ -438,7 +453,7 @@ class _YourDataSectionState extends State<YourDataSection> {
       );
     } catch (error) {
       debugPrint('lunarlog your-data: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _exportError = kAccountExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -453,7 +468,6 @@ class _YourDataSectionState extends State<YourDataSection> {
     Profile profile,
     ProfileGuardiansRepository? guardiansRepo,
     String? currentUserId,
-    AppLocalizations l10n,
   ) async {
     final guardians = guardiansRepo == null
         ? const <ProfileGuardian>[]
@@ -465,7 +479,10 @@ class _YourDataSectionState extends State<YourDataSection> {
     );
     if (access.allowed) return access;
     if (mounted) {
-      setState(() => _exportError = l10n.exportMinorGuardianUnavailable);
+      setState(() {
+        _minorGuardRefused = true;
+        _exportFailed = false;
+      });
     }
     return null;
   }

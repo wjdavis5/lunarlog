@@ -53,25 +53,30 @@ typedef FhirExportCollaborator = Future<void> Function({
   required DateTime exportedAt,
 });
 
-/// One line, no health content, no exception text (mirrors
-/// `kAccountExportFailureCopy`'s R10 discipline).
-const String kClinicalExportFailureCopy =
-    'Could not export your clinical summary. Please try again.';
+/// Failure copy is arb-backed (`settingsClinicalExportFailure`, shared
+/// with the PDF tile — both flows render the same one-liner) and resolved
+/// through [AppLocalizations] at render time (issue #1004, tranche 5).
 
 /// [liveProfiles] excludes archived profiles (see [_liveProfiles]). With
 /// exactly one, its name goes straight into the subtitle (#157 review fix,
 /// "Export Riley's clinical summary") once there is something to export;
 /// with none or several, the copy stays generic — several because the
-/// tile doesn't yet know which one the chooser will pick.
-String _subtitleFor({required bool hasEntries, required List<Profile> liveProfiles}) {
+/// tile doesn't yet know which one the chooser will pick. Arb-backed
+/// (`settingsClinicalExportSubtitle*`) since issue #1004, tranche 5.
+String _subtitleFor(
+  AppLocalizations l10n, {
+  required bool hasEntries,
+  required List<Profile> liveProfiles,
+}) {
   if (!hasEntries) {
-    return 'Add at least one day entry to export a clinical summary.';
+    return l10n.settingsClinicalExportSubtitleNoEntries;
   }
   if (liveProfiles.length == 1) {
-    return "Export ${liveProfiles.single.displayName}'s clinical summary.";
+    return l10n.settingsClinicalExportSubtitleOneProfile(
+      liveProfiles.single.displayName,
+    );
   }
-  return 'Share an IPS-shaped FHIR R4 document with your cycle data, coded '
-      'and self-reported.';
+  return l10n.settingsClinicalExportSubtitleGeneric;
 }
 
 /// Live (non-archived) profiles, in the order [profiles] already carries
@@ -98,7 +103,22 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _error;
+
+  /// Issue #1004 (tranche 5): failure state only — the copy resolves
+  /// through `AppLocalizations` at render time.
+  bool _exportFailed = false;
+
+  /// Issue #115 G4: the minor-profile guard refused this export. Distinct
+  /// from [_exportFailed] so the tile shows the honest "not available" copy
+  /// rather than the generic failure line.
+  bool _minorGuardRefused = false;
+
+  /// The copy to render beneath the tile, or null when there is none.
+  String? _errorCopy(AppLocalizations l10n) {
+    if (_minorGuardRefused) return l10n.exportMinorGuardianUnavailable;
+    if (_exportFailed) return l10n.settingsClinicalExportFailure;
+    return null;
+  }
 
   @override
   void initState() {
@@ -145,7 +165,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
     final canExport = !_exporting && hasAnyEntries;
-    final error = _error;
+    final error = _errorCopy(AppLocalizations.of(context));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -156,7 +176,11 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
             AppLocalizations.of(context).settingsClinicalExportFhirTitle,
           ),
           subtitle: Text(
-            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
+            _subtitleFor(
+              AppLocalizations.of(context),
+              hasEntries: hasAnyEntries,
+              liveProfiles: liveProfiles,
+            ),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -249,7 +273,8 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
 
     setState(() {
       _exporting = true;
-      _error = null;
+      _exportFailed = false;
+      _minorGuardRefused = false;
     });
     try {
       final observations = await observationsRepo.listForProfile(profile.id);
@@ -282,7 +307,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     } catch (error) {
       debugPrint(
           'lunarlog clinical-export: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kClinicalExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -298,11 +323,13 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
   Future<({List<DayEntry> entries, FhirExportRange range, GuardianLens lens})?>
       _resolveExportInputs(BuildContext context, Profile profile) async {
     final entriesRepo = context.read<DayEntriesRepository>();
-    final l10n = AppLocalizations.of(context);
     final access = await resolveExportAccessOrRefuse(
       context,
       profile,
-      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+      () => setState(() {
+        _minorGuardRefused = true;
+        _exportFailed = false;
+      }),
     );
     if (access == null) return null;
     final dayEntries = await entriesRepo.listForProfile(profile.id);

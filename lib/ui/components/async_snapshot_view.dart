@@ -15,6 +15,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../theme/tokens.dart';
 import 'inline_error.dart';
 
@@ -24,7 +25,7 @@ class AsyncSnapshotView<T> extends StatelessWidget {
     required this.snapshot,
     required this.builder,
     this.onRetry,
-    this.errorMessage = 'Something went wrong. Please try again.',
+    this.errorMessage,
     this.loadingBuilder,
   });
 
@@ -37,7 +38,10 @@ class AsyncSnapshotView<T> extends StatelessWidget {
   /// this shape — most callers pass a resubscribe callback).
   final VoidCallback? onRetry;
 
-  final String errorMessage;
+  /// Null renders the arb-backed generic error copy
+  /// (`commonSomethingWentWrong`, issue #1004 tranche 5 — the defaulted
+  /// English literal this field used to carry).
+  final String? errorMessage;
 
   /// Defaults to a centered spinner; override for a call site that wants a
   /// smaller or differently-placed loading indicator.
@@ -50,7 +54,11 @@ class AsyncSnapshotView<T> extends StatelessWidget {
       child = KeyedSubtree(
         key: const ValueKey('async-snapshot-error'),
         child: Center(
-          child: InlineError(message: errorMessage, onRetry: onRetry),
+          child: InlineError(
+            message:
+                errorMessage ?? AppLocalizations.of(context).commonSomethingWentWrong,
+            onRetry: onRetry,
+          ),
         ),
       );
     } else {

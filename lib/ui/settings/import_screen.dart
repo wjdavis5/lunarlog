@@ -42,28 +42,8 @@ import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:provider/provider.dart';
 
-/// One line, no raw exception text (mirrors
-/// `export_account_collaborator.dart`'s `kAccountExportFailureCopy`).
-const String kImportApplyFailureCopy =
-    'Could not finish the import. Nothing was written — please try again.';
-
-/// Shown when [StaleImportPlanException] aborts a confirm (Issue #140
-/// review, LLA-085): distinct from [kImportApplyFailureCopy] because
-/// retrying with the SAME plan would just fail the same way again — the
-/// screen resets to the pick step instead so a fresh [_buildPlan] rebuilds
-/// against the now-current state.
-const String kImportStalePlanCopy =
-    'Your data changed while this was open. Please choose the file again '
-    'to include the latest changes.';
-
-/// Shown on the preview step when [ImportPlan.sharesWithOtherGuardians] is
-/// true (Issue #140 review, item 10): importing into a matched profile
-/// writes rows straight to the local store, which the sync engine then
-/// pushes to every other device signed onto that profile — a guardian who
-/// didn't run the import still ends up with its rows.
-const String kImportSharedProfileGuardianSentence =
-    'One of these profiles has another guardian — the rows you import will '
-    'sync to their device too.';
+// The import failure / stale-plan / guardian-disclosure copy is
+// arb-backed since issue #1004, tranche 5 (`import*` keys).
 
 /// A file at or above this size is parsed off the UI isolate (via
 /// [compute]) rather than inline (Issue #140 review, item 10): parsing is
@@ -104,42 +84,10 @@ Future<CluePrepareResult> defaultClueImportPrepare(
   return Future.value(prepareClueImportResult(request));
 }
 
-/// Shown when a picked `.zip` cannot be read as a Clue export — a wrong
-/// password, a corrupt archive, or a ZIP that simply is not Clue's (Issue
-/// #452). One honest sentence; the raw [ClueZipException] message is never
-/// rendered.
-const String kClueImportReadFailureCopy =
-    'Could not read that Clue export. Check the file and the password '
-    'from your export email, then try again.';
-
-/// Shown when a picked ZIP opens but does not contain Clue's
-/// `measurements.json` — a ZIP from somewhere else, not a Clue export
-/// (Issue #452).
-const String kClueImportNotClueCopy =
-    'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.';
-
-/// Shown when a Clue export was read and previewed but the write itself
-/// failed (Issue #452). Mirrors [kImportApplyFailureCopy]: the importer's
-/// transaction is all-or-nothing, so nothing was written.
-const String kClueImportApplyFailureCopy =
-    'Could not finish the Clue import. Nothing was written — please try '
-    'again.';
-
-/// The default name offered when a Clue import has no existing profile to
-/// write into (a first-run restore). Editable, so the operator — not this
-/// screen — decides what the imported profile is called.
-const String kClueImportedProfileDefaultName = 'Imported from Clue';
-
-/// Merge disclosure for the Clue preview step (Issue #452): unlike the
-/// JSON path, a Clue import writes into one chosen profile and never
-/// creates/removes any other.
-const String kClueImportMergePolicySentence =
-    'Nothing already on this device is deleted. Day entries and '
-    'observations are added to the profile you choose.';
-
-/// `$n $singular` or `$n $plural` (`n == 1` picks [singular]).
-String _count(int n, String singular, String plural) =>
-    '$n ${n == 1 ? singular : plural}';
+// The Clue failure copy, the default new-profile name, and the merge
+// disclosure are arb-backed since issue #1004, tranche 5
+// (`importClue*` keys). The old `_count` pluralizer is
+// `importPreview*Count`/`importCluePreview*Count` plural messages now.
 
 class ImportScreen extends StatefulWidget {
   const ImportScreen({
@@ -198,13 +146,27 @@ class _ImportScreenState extends State<ImportScreen> {
   String? _clueProfileId;
 
   final TextEditingController _cluePassword = TextEditingController();
-  final TextEditingController _clueProfileName =
-      TextEditingController(text: kClueImportedProfileDefaultName);
+
+  /// Seeded in [didChangeDependencies] with the arb-backed default name
+  /// (issue #1004, tranche 5) — a controller construction cannot resolve
+  /// `AppLocalizations`, but the first frame must already show the same
+  /// default the field initializer used to carry.
+  TextEditingController? _clueProfileName;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _clueProfileName ??= TextEditingController(
+      text: AppLocalizations.of(
+        context,
+      ).importClueImportedProfileDefaultName,
+    );
+  }
 
   @override
   void dispose() {
     _cluePassword.dispose();
-    _clueProfileName.dispose();
+    _clueProfileName?.dispose();
     super.dispose();
   }
 
@@ -248,14 +210,16 @@ class _ImportScreenState extends State<ImportScreen> {
       if (!mounted) return;
       switch (parsed) {
         case AccountImportParseFailed(:final error):
-          _showImportError(error.message);
+          // The typed exception's own (arb-free) message — the domain
+          // failure copy, outside issue #1004's UI-copy scope.
+          _showImportError((_) => error.message);
         case AccountImportParsed(:final document):
           // Only reached (and only reads `context` here) once bytes were
           // actually picked and this state is still mounted — cancelling
           // the picker never needs a coordinator at all, and a test that
           // only exercises the pick/cancel step injects its own
           // coordinator and never sees this line run.
-          await _buildPlan(_coordinator(context), document);
+          await _buildPlan(context, _coordinator(context), document);
       }
     } catch (error) {
       // Issue #140 review, item 3: `parseAccountImport` itself now rejects
@@ -269,7 +233,7 @@ class _ImportScreenState extends State<ImportScreen> {
       // LLA-089's size cap is a picker-only failure mode, never something
       // `_parse`/`_buildPlan` below could throw).
       debugPrint('lunarlog import: pick/parse failed (${error.runtimeType})');
-      _showImportError(kImportApplyFailureCopy);
+      _showImportError((l10n) => l10n.importApplyFailure);
     }
   }
 
@@ -291,15 +255,18 @@ class _ImportScreenState extends State<ImportScreen> {
       // operator still sees the identical friendly copy either way
       // ([ImportFileTooLargeException.message] is the same sentence).
       debugPrint('lunarlog import: picked file exceeds the size cap');
-      _showImportError(error.message);
+      _showImportError((_) => error.message);
       return null;
     }
   }
 
-  /// Shows [message] as the pick step's inline error, mounted-guarded like
-  /// every other `setState` this screen makes from inside an `await` gap.
-  void _showImportError(String message) {
-    if (mounted) setState(() => _error = message);
+  /// Shows the arb copy [message] resolves to as the pick step's inline
+  /// error, mounted-guarded like every other `setState` this screen makes
+  /// from inside an `await` gap (issue #1004, tranche 5: the copy is read
+  /// through `AppLocalizations` here, inside the mounted guard, rather
+  /// than stored as a resolved English string).
+  void _showImportError(String Function(AppLocalizations l10n) message) {
+    if (mounted) setState(() => _error = message(AppLocalizations.of(context)));
   }
 
   /// Parses [bytes] inline, or off the UI isolate via [compute] once the
@@ -336,7 +303,7 @@ class _ImportScreenState extends State<ImportScreen> {
       await _handleCluePrepareResult(repository, result);
     } catch (error) {
       debugPrint('lunarlog import: clue read failed (${error.runtimeType})');
-      _showImportError(kClueImportReadFailureCopy);
+      _showImportError((l10n) => l10n.importClueReadFailure);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -360,19 +327,19 @@ class _ImportScreenState extends State<ImportScreen> {
           _clueProfileId = profiles.isEmpty ? null : profiles.first.id;
         });
       case CluePrepareFailed(:final failure):
-        _showImportError(_clueReadFailureMessage(failure));
+        _showImportError((l10n) => _clueReadFailureMessage(l10n, failure));
     }
   }
 
   /// The honest copy for a typed Clue prepare failure (issue #795): a ZIP
   /// without `measurements.json` is not a Clue export; everything else
   /// (wrong password, corrupt archive, malformed entry) is the retry copy.
-  String _clueReadFailureMessage(CluePrepareFailure failure) =>
+  String _clueReadFailureMessage(AppLocalizations l10n, CluePrepareFailure failure) =>
       switch (failure) {
-        CluePrepareFailure.entryNotFound => kClueImportNotClueCopy,
+        CluePrepareFailure.entryNotFound => l10n.importClueNotClue,
         CluePrepareFailure.unreadable ||
         CluePrepareFailure.malformed =>
-          kClueImportReadFailureCopy,
+          l10n.importClueReadFailure,
       };
 
   /// Applies the prepared Clue preview to the chosen/created profile.
@@ -381,12 +348,16 @@ class _ImportScreenState extends State<ImportScreen> {
     if (preview == null || _busy) return;
     final runner = _clueRunner(context);
     final repository = _profilesRepository(context);
+    // Resolved before any `await` so failure copy and the created
+    // profile's default name localize without touching `context` across
+    // an async gap (issue #1004, tranche 5).
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final profileId = await _resolveClueProfileId(repository);
+      final profileId = await _resolveClueProfileId(repository, l10n);
       final summary = await runner.run(
         profileId: profileId,
         tz: resolveCurrentTimeZoneSync(),
@@ -396,7 +367,7 @@ class _ImportScreenState extends State<ImportScreen> {
       if (mounted) setState(() => _clueResult = summary);
     } catch (error) {
       debugPrint('lunarlog import: clue apply failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kClueImportApplyFailureCopy);
+      if (mounted) setState(() => _error = l10n.importClueApplyFailure);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -411,12 +382,17 @@ class _ImportScreenState extends State<ImportScreen> {
   /// transaction rolls back its writes but not this profile, created
   /// outside it) leaves exactly one empty profile and every retry reuses
   /// it instead of orphaning another.
-  Future<String> _resolveClueProfileId(ProfilesRepository repository) async {
+  Future<String> _resolveClueProfileId(
+    ProfilesRepository repository,
+    AppLocalizations l10n,
+  ) async {
     final selected = _clueProfileId;
     if (selected != null) return selected;
-    final name = _clueProfileName.text.trim();
+    final name = _clueProfileName!.text.trim();
     final profile = await repository.create(
-      displayName: name.isEmpty ? kClueImportedProfileDefaultName : name,
+      displayName: name.isEmpty
+          ? l10n.importClueImportedProfileDefaultName
+          : name,
       isMinor: false,
     );
     _clueProfileId = profile.id;
@@ -424,9 +400,11 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _buildPlan(
+    BuildContext context,
     AccountImportCoordinator coordinator,
     AccountImportDocument document,
   ) async {
+    final l10n = AppLocalizations.of(context);
     setState(() => _busy = true);
     try {
       final plan = await coordinator.buildPlan(document);
@@ -438,7 +416,7 @@ class _ImportScreenState extends State<ImportScreen> {
       });
     } catch (error) {
       debugPrint('lunarlog import: planning failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kImportApplyFailureCopy);
+      if (mounted) setState(() => _error = l10n.importApplyFailure);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -447,6 +425,7 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _confirm() async {
     final plan = _plan;
     if (plan == null || _busy) return;
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _busy = true;
       _error = null;
@@ -465,12 +444,12 @@ class _ImportScreenState extends State<ImportScreen> {
           _document = null;
           _preview = null;
           _plan = null;
-          _error = kImportStalePlanCopy;
+          _error = l10n.importStalePlan;
         });
       }
     } catch (error) {
       debugPrint('lunarlog import: apply failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kImportApplyFailureCopy);
+      if (mounted) setState(() => _error = l10n.importApplyFailure);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -602,9 +581,11 @@ class _ImportScreenState extends State<ImportScreen> {
     ));
   }
 
-  String _cluePreviewSummaryText(ClueImportSummary summary) =>
-      'Ready to import: ${_count(summary.dayCount, 'day', 'days')}, '
-      '${_count(summary.datapointCount, 'datapoint', 'datapoints')}.';
+  String _cluePreviewSummaryText(AppLocalizations l10n, ClueImportSummary summary) =>
+      l10n.importCluePreviewSummary(
+        l10n.importCluePreviewDayCount(summary.dayCount),
+        l10n.importCluePreviewDatapointCount(summary.datapointCount),
+      );
 
   /// The target selector: a dropdown of live profiles, or — when none exist
   /// (a first-run restore) — an editable name for the profile this import
@@ -618,7 +599,7 @@ class _ImportScreenState extends State<ImportScreen> {
           Text(l10n.importClueNewProfileNote),
           TextField(
             key: const ValueKey('clue-new-profile-name'),
-            controller: _clueProfileName,
+            controller: _clueProfileName!,
             decoration: InputDecoration(labelText: l10n.importClueProfileNameLabel),
           ),
         ],
@@ -657,11 +638,11 @@ class _ImportScreenState extends State<ImportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_cluePreviewSummaryText(preview.summary),
+          Text(_cluePreviewSummaryText(l10n, preview.summary),
               key: const ValueKey('clue-preview-summary')),
           const SizedBox(height: 8),
-          const Text(kClueImportMergePolicySentence,
-              key: ValueKey('clue-preview-policy')),
+          Text(l10n.importClueMergePolicy,
+              key: const ValueKey('clue-preview-policy')),
           const SizedBox(height: 8),
           _clueTargetSelector(context),
           const SizedBox(height: 8),
@@ -714,23 +695,28 @@ class _ImportScreenState extends State<ImportScreen> {
     ));
   }
 
-  String _previewSummaryText(ImportPreview preview) =>
-      '${_count(preview.profileCount, 'profile', 'profiles')}, '
-      '${_count(preview.entryCount, 'day entry', 'day entries')}, '
-      '${_count(preview.observationCount, 'observation', 'observations')}'
-      '${_dateRangeSuffix(preview)}';
+  String _previewSummaryText(AppLocalizations l10n, ImportPreview preview) =>
+      l10n.importPreviewSummary(
+        l10n.importPreviewProfileCount(preview.profileCount),
+        l10n.importPreviewDayEntryCount(preview.entryCount),
+        l10n.importPreviewObservationCount(preview.observationCount),
+        _dateRangeSuffix(l10n, preview),
+      );
 
-  String _dateRangeSuffix(ImportPreview preview) {
+  String _dateRangeSuffix(AppLocalizations l10n, ImportPreview preview) {
     final earliest = preview.earliestDate;
     final latest = preview.latestDate;
     if (earliest == null || latest == null) return '';
-    return ' (${earliest.iso} to ${latest.iso})';
+    return l10n.importPreviewDateRange(earliest.iso, latest.iso);
   }
 
-  String _planSummaryText(ImportPlanSummary summary) =>
-      '${_count(summary.profilesCreated, 'new profile', 'new profiles')}, '
-      '${_count(summary.profilesMatched, 'matched profile', 'matched profiles')} '
-      '(${summary.entriesAdded} entries added, ${summary.entriesMerged} merged).';
+  String _planSummaryText(AppLocalizations l10n, ImportPlanSummary summary) =>
+      l10n.importPlanSummary(
+        l10n.importPlanSummaryNewProfileCount(summary.profilesCreated),
+        l10n.importPlanSummaryMatchedProfileCount(summary.profilesMatched),
+        summary.entriesAdded,
+        summary.entriesMerged,
+      );
 
   /// Issue #925: the preview's warning for day entries the plan will drop
   /// because their date is out of bounds — shown before the user commits so
@@ -776,13 +762,13 @@ class _ImportScreenState extends State<ImportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_previewSummaryText(preview),
+          Text(_previewSummaryText(l10n, preview),
               key: const ValueKey('import-preview-summary')),
           const SizedBox(height: 8),
           const Text(kImportMergePolicySentence,
               key: ValueKey('import-preview-policy')),
           const SizedBox(height: 8),
-          Text(_planSummaryText(summary),
+          Text(_planSummaryText(l10n, summary),
               key: const ValueKey('import-preview-plan')),
           if (_entryDatesRejectedPreview(l10n, summary) case final warning?) ...[
             const SizedBox(height: 8),
@@ -791,8 +777,8 @@ class _ImportScreenState extends State<ImportScreen> {
           _skippedList(const ValueKey('import-preview-skipped'), summary.skippedProfiles),
           if (plan.sharesWithOtherGuardians) ...[
             const SizedBox(height: 8),
-            const Text(kImportSharedProfileGuardianSentence,
-                key: ValueKey('import-preview-shared-guardian')),
+            Text(l10n.importSharedProfileGuardian,
+                key: const ValueKey('import-preview-shared-guardian')),
           ],
           if (error != null) ...[
             const SizedBox(height: 8),
@@ -823,14 +809,16 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   String _resultSummaryText(AppLocalizations l10n, ImportPlanSummary summary) =>
-      'Import complete: '
-      '${_count(summary.profilesCreated, 'profile', 'profiles')} created, '
-      '${summary.profilesMatched} matched, '
-      '${summary.entriesAdded} entries added, ${summary.entriesMerged} merged, '
-      '${summary.observationsAdded} observations added, '
-      '${summary.observationsSkipped} skipped'
-      '${_entryDatesRejectedSuffix(l10n, summary)}'
-      '${_notesDiscardedSuffix(summary)}.';
+      l10n.importResultSummary(
+        l10n.importResultProfileCreatedCount(summary.profilesCreated),
+        summary.profilesMatched,
+        summary.entriesAdded,
+        summary.entriesMerged,
+        summary.observationsAdded,
+        summary.observationsSkipped,
+        _entryDatesRejectedSuffix(l10n, summary),
+        _notesDiscardedSuffix(l10n, summary),
+      );
 
   /// Issue #925: a restore whose file carried out-of-bounds dates drops them,
   /// and the bare result line's "0 skipped" (observations) otherwise reads as
@@ -851,11 +839,12 @@ class _ImportScreenState extends State<ImportScreen> {
   /// Issue #140 review, item 9: report honesty — a merged entry can keep
   /// the device's own note over the file's, and `entriesMerged` alone
   /// doesn't say so.
-  String _notesDiscardedSuffix(ImportPlanSummary summary) =>
+  String _notesDiscardedSuffix(AppLocalizations l10n, ImportPlanSummary summary) =>
       summary.notesDiscarded == 0
           ? ''
-          : ', ${_count(summary.notesDiscarded, 'file note', 'file notes')} '
-              'not applied (an existing note was kept)';
+          : l10n.importResultNotesDiscardedSuffix(
+              l10n.importResultFileNoteCount(summary.notesDiscarded),
+            );
 
   Scaffold _resultScaffold(BuildContext context, ImportPlanSummary summary) {
     final l10n = AppLocalizations.of(context);
