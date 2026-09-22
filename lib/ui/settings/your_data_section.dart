@@ -43,16 +43,19 @@ import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/logging/custom_tag_registry.dart';
 import 'package:lunarlog/domain/logging/day_entry_merge_event.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
+import 'package:lunarlog/domain/export/export_redaction.dart';
 import 'package:lunarlog/domain/models/care_note.dart';
 import 'package:lunarlog/domain/models/cycle_override.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/guardian_note.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
     show ProfileLifecycleMode;
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
@@ -65,6 +68,7 @@ import 'package:lunarlog/ui/components/destructive_button.dart';
 import 'package:lunarlog/ui/settings/clinical_export_tile.dart';
 import 'package:lunarlog/ui/settings/clinical_pdf_export_tile.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
+import 'package:lunarlog/ui/settings/export_access.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/l10n/profile_erasure_failure_copy.dart';
 import 'package:lunarlog/ui/routes.dart';
@@ -124,6 +128,18 @@ class _YourDataSectionState extends State<YourDataSection> {
   /// a resolved English string now resolves through `AppLocalizations` at
   /// render time.
   bool _exportFailed = false;
+
+  /// Issue #115 G4: the minor-profile guard refused the household JSON
+  /// export. Distinct from [_exportFailed] so the tile shows the honest
+  /// "not available" copy rather than the generic failure line.
+  bool _minorGuardRefused = false;
+
+  /// The copy to render beneath the export tile, or null when there is none.
+  String? _exportErrorCopy(AppLocalizations l10n) {
+    if (_minorGuardRefused) return l10n.exportMinorGuardianUnavailable;
+    if (_exportFailed) return l10n.accountExportFailure;
+    return null;
+  }
 
   /// Issue #472: "Purge imported data" busy/error state — parallel to
   /// [_exporting]/[_exportFailed] above, independent of the export tile.
@@ -209,8 +225,8 @@ class _YourDataSectionState extends State<YourDataSection> {
     bool signedIn,
   ) {
     if (!_canExport || profiles.isEmpty) return const [];
-    final exportFailed = _exportFailed;
     final l10n = AppLocalizations.of(context);
+    final exportError = _exportErrorCopy(l10n);
     return [
       ListTile(
         key: const ValueKey('your-data-export'),
@@ -231,12 +247,12 @@ class _YourDataSectionState extends State<YourDataSection> {
             : null,
         onTap: !_exporting ? () => _export(context) : null,
       ),
-      if (exportFailed)
+      if (exportError != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: InlineError(
             key: const ValueKey('your-data-export-error'),
-            message: l10n.accountExportFailure,
+            message: exportError,
           ),
         ),
     ];
@@ -366,6 +382,7 @@ class _YourDataSectionState extends State<YourDataSection> {
     setState(() {
       _exporting = true;
       _exportFailed = false;
+      _minorGuardRefused = false;
     });
     try {
       final profilesRepo = context.read<ProfilesRepository>();
@@ -382,6 +399,11 @@ class _YourDataSectionState extends State<YourDataSection> {
       // remote source from construction; an unconfigured build's writer
       // resolves to a local-only document (no `server` key).
       final exportWriter = context.read<AccountExportWriter>();
+      // Issue #115 G4: the operator's membership facts for the per-profile
+      // lens/minor gate, read before the first `await` below (the same
+      // `use_build_context_synchronously` discipline as the reads above).
+      final guardiansRepo = context.read<ProfileGuardiansRepository?>();
+      final currentUserId = context.read<AuthController?>()?.currentUserId;
       final profiles = await profilesRepo.list();
       final entriesByProfile = <String, List<DayEntry>>{};
       final observationsByProfile = <String, List<Observation>>{};
@@ -393,8 +415,17 @@ class _YourDataSectionState extends State<YourDataSection> {
       final customTagsByProfile = <String, List<CustomTag>>{};
       final guardianNotesByProfile = <String, List<GuardianNote>>{};
       for (final profile in profiles) {
+        final access = await _accessForProfile(
+          profile,
+          guardiansRepo,
+          currentUserId,
+        );
+        if (access == null) return;
         final snapshot = await snapshotRepo.forProfile(profile.id);
-        entriesByProfile[profile.id] = snapshot.entries;
+        // Issue #115 G4: a guardian-lens export carries no private note
+        // text; the subject's own export is byte-identical to before.
+        entriesByProfile[profile.id] =
+            redactForLens(snapshot.entries, access.lens);
         observationsByProfile[profile.id] = snapshot.observations;
         profileModesByProfile[profile.id] = snapshot.profileMode;
         cycleOverridesByProfile[profile.id] = snapshot.cycleOverrides;
@@ -426,6 +457,34 @@ class _YourDataSectionState extends State<YourDataSection> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Issue #115 G4: resolves [profile]'s export access and, when the
+  /// minor-profile guard refuses, records the honest "not available" copy
+  /// and returns null so the caller stops without exporting. A non-minor
+  /// profile, a local-only operator, and unsynced guardian rows all resolve
+  /// to "allowed" (see `canExportMinorProfile`).
+  Future<ExportAccess?> _accessForProfile(
+    Profile profile,
+    ProfileGuardiansRepository? guardiansRepo,
+    String? currentUserId,
+  ) async {
+    final guardians = guardiansRepo == null
+        ? const <ProfileGuardian>[]
+        : await guardiansRepo.getForProfile(profile.id);
+    final access = exportAccessFor(
+      profile: profile,
+      guardians: guardians,
+      currentUserId: currentUserId,
+    );
+    if (access.allowed) return access;
+    if (mounted) {
+      setState(() {
+        _minorGuardRefused = true;
+        _exportFailed = false;
+      });
+    }
+    return null;
   }
 }
 

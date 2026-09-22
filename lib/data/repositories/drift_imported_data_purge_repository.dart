@@ -8,7 +8,7 @@ class DriftImportedDataPurgeRepository
     implements ImportedDataPurgeRepository {
   DriftImportedDataPurgeRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final ImportedDataPurgeStore _storage;
 
   @override
   Future<Map<String, int>> liveSourceCounts(String profileId) =>

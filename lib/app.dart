@@ -1583,19 +1583,6 @@ class _PendingInviteSignInBanner extends StatelessWidget {
                 ),
                 visualDensity: VisualDensity.compact,
               ),
-              IconButton(
-                key: dismissButtonKey,
-                onPressed: onDismiss,
-                // The banner sits above the Navigator, so it has no Overlay
-                // for a `Tooltip`; a semantic label on the icon gets the
-                // same localized "Close" announced without one.
-                icon: Icon(
-                  Icons.close,
-                  semanticLabel:
-                      MaterialLocalizations.of(context).closeButtonTooltip,
-                ),
-                visualDensity: VisualDensity.compact,
-              ),
             ],
           ),
         ),

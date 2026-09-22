@@ -25,6 +25,7 @@ import 'package:provider/provider.dart';
 import '../../domain/export/clinical_pdf.dart';
 import '../../domain/export/clinical_pdf_summary.dart';
 import '../../domain/export/clinical_pdf_writer.dart';
+import '../../domain/export/export_redaction.dart';
 import '../../domain/export/fhir_export_range.dart';
 import '../../domain/logging/custom_tag_registry.dart';
 import '../../domain/models/day_entry.dart';
@@ -40,6 +41,7 @@ import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import '../overview/estimate_copy.dart' show kEstimateDisclaimer;
 import 'entry_existence_watch_mixin.dart';
+import 'export_access.dart';
 import 'export_range_picker_sheet.dart' show fhirExportRangePresetLabel, showExportRangePickerSheet;
 
 /// Injectable seam for PDF delivery (mirrors `FhirExportCollaborator`):
@@ -96,6 +98,18 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
   /// through `AppLocalizations` at render time.
   bool _exportFailed = false;
 
+  /// Issue #115 G4: the minor-profile guard refused this export. Distinct
+  /// from [_exportFailed] so the tile shows the honest "not available" copy
+  /// rather than the generic failure line.
+  bool _minorGuardRefused = false;
+
+  /// The copy to render beneath the tile, or null when there is none.
+  String? _errorCopy(AppLocalizations l10n) {
+    if (_minorGuardRefused) return l10n.exportMinorGuardianUnavailable;
+    if (_exportFailed) return l10n.settingsClinicalExportFailure;
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -135,7 +149,7 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
     final canExport = !_exporting && hasAnyEntries;
-    final error = _exportFailed;
+    final error = _errorCopy(AppLocalizations.of(context));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -162,13 +176,12 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
               : null,
           onTap: canExport ? () => _handleTap(context, liveProfiles) : null,
         ),
-        if (error)
+        if (error != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: InlineError(
               key: const ValueKey('clinical-pdf-export-error'),
-              message:
-                  AppLocalizations.of(context).settingsClinicalExportFailure,
+              message: error,
             ),
           ),
       ],
@@ -219,6 +232,20 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     // Resolved before any `await` so the PDF's range label can localize
     // without touching `context` across an async gap (issue #1004).
     final l10n = AppLocalizations.of(context);
+
+    // Issue #115 G4: resolve the operator's lens and the minor-profile gate
+    // before the range picker. A refusal surfaces the honest "not
+    // available" copy and never builds or hands off a document.
+    final access = await resolveExportAccessOrRefuse(
+      context,
+      profile,
+      () => setState(() {
+        _minorGuardRefused = true;
+        _exportFailed = false;
+      }),
+    );
+    if (access == null) return;
+
     final dayEntries = await deps.entries.listForProfile(profile.id);
     if (!context.mounted) return;
     final range = await showExportRangePickerSheet(
@@ -231,14 +258,19 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     setState(() {
       _exporting = true;
       _exportFailed = false;
+      _minorGuardRefused = false;
     });
     try {
       final exportedAt = DateTime.now().toUtc();
+      // Issue #115 G4: a guardian-lens export carries no private note text
+      // (the PDF summary never reads DayEntry.note; the shared step keeps
+      // the rule uniform across formats).
+      final redactedEntries = redactForLens(dayEntries, access.lens);
       final bytes = await _buildPdf(
         deps,
         l10n,
         profile,
-        dayEntries,
+        redactedEntries,
         range,
         exportedAt,
       );

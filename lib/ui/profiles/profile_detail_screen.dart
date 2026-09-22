@@ -23,8 +23,10 @@ import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/sharing/sharing_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/insights/cycle_comparison_screen.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -66,15 +68,60 @@ class ProfileDetailScreen extends StatefulWidget {
   State<ProfileDetailScreen> createState() => _ProfileDetailScreenState();
 }
 
-class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
+class _ProfileDetailScreenState extends State<ProfileDetailScreen>
+    with GuardianWatchMixin<ProfileDetailScreen> {
   late _DetailTab _tab = widget.initiallyShowOverview
       ? _DetailTab.overview
       : _DetailTab.calendar;
+
+  AuthController? _auth;
+  String? _currentUserId;
+  List<ProfileGuardian> _guardians = const [];
+
+  /// Issue #850 (U8 follow-up): the lens a guardian reads this profile
+  /// through, resolved exactly as [OverviewPanel] resolves it (D-1) so the
+  /// archived-profile comparison push can hand [CycleComparisonScreen] the
+  /// same lens the surrounding screen renders with. Presentation only —
+  /// fail open, so an unwired or local-only tree keeps the subject lens.
+  GuardianLens get _lens => guardianLensFor(_guardians, _currentUserId);
 
   /// Issue #820: minor status derives from birth year when present (falling
   /// back to the stored flag), evaluated against the injected today seam.
   bool get _isMinor =>
       widget.profile.isMinorAsOfYear(widget.todayProvider().year);
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = context.read<AuthController?>();
+    if (auth != null) {
+      _currentUserId = auth.currentUserId;
+      auth.addListener(_onAuthChanged);
+      _auth = auth;
+    }
+    _watchGuardians();
+  }
+
+  void _onAuthChanged() {
+    final auth = _auth;
+    if (auth == null || !mounted) return;
+    setState(() => _currentUserId = auth.currentUserId);
+  }
+
+  void _watchGuardians() {
+    watchGuardiansForProfile(
+      context.read<ProfileGuardiansRepository?>(),
+      widget.profile.id,
+      (guardians) => setState(() => _guardians = guardians),
+    );
+  }
+
+  @override
+  void dispose() {
+    disposeGuardianWatch();
+    _auth?.removeListener(_onAuthChanged);
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(ProfileDetailScreen oldWidget) {
@@ -87,6 +134,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     if (widget.profile.id != oldWidget.profile.id &&
         widget.initiallyShowOverview) {
       _tab = _DetailTab.overview;
+    }
+    // Issue #850 (U8 follow-up): re-resolve the lens for the new profile's
+    // own guardian rows when this State is reused across a profile switch.
+    if (widget.profile.id != oldWidget.profile.id) {
+      _watchGuardians();
     }
   }
 
@@ -239,6 +291,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   Widget _overviewContent(ProfileGuardiansRepository? guardiansRepository) {
     return OverviewPanel(
       profileId: widget.profile.id,
+      profile: widget.profile,
       mode: widget.profile.mode,
       irregularFraming: widget.profile.irregularFraming,
       trackingPreferences: widget.profile.trackingPreferences,
@@ -261,6 +314,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 // its own to reach the comparison feature through (see
                 // this screen's own doc comment), so this mount wires it
                 // directly, the same as AnalysisTab's does.
+                //
+                // Issue #850 (U8 follow-up): this push carries the lens this
+                // screen resolved, so a guardian's comparison empty state
+                // reads third-person exactly like AnalysisTab's guardian
+                // push does.
                 onCompareSelected: (cycleAStart, cycleBStart) =>
                     Navigator.of(context).push(
                       CycleComparisonScreen.route(
@@ -268,6 +326,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                         cycleAStart: cycleAStart,
                         cycleBStart: cycleBStart,
                         todayProvider: widget.todayProvider,
+                        lens: _lens,
                       ),
                     ),
               ),

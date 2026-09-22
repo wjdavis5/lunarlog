@@ -70,6 +70,7 @@ import 'package:flutter/material.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+import 'package:lunarlog/ui/l10n/lens_copy.dart';
 import 'package:lunarlog/ui/logging/widgets/merge_notice_section.dart';
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
@@ -103,7 +104,6 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
-import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
@@ -332,7 +332,7 @@ class DaySheet extends StatefulWidget {
   State<DaySheet> createState() => _DaySheetState();
 }
 
-class _DaySheetState extends State<DaySheet> {
+class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   late FlowLevel _flow;
   late final Set<String> _tags;
   late final TextEditingController _noteController;
@@ -515,6 +515,18 @@ class _DaySheetState extends State<DaySheet> {
   /// being true with an empty note (the flag can't be cleared at all).
   bool _notePrivacyLocked = false;
 
+  /// Issue #1071: the writer has explicitly touched the privacy toggle this
+  /// session. Until they do, the very first persist of a non-empty note is
+  /// held back (see [_noteHeldForPrivacy]) so a write-then-decide order can
+  /// still choose privacy — the server only allows `false -> true` while the
+  /// stored note is null/empty.
+  bool _notePrivacyTouched = false;
+
+  /// Issue #1071: set by a dismissal-time or background flush so the held
+  /// note is allowed through on the next write (persisted with whatever the
+  /// toggle currently says). Consumed on the next successful note write.
+  bool _flushDeferredNote = false;
+
   /// Review fix (blocking): `true` once [_loadExistingSpotting] finds the
   /// day already had spotting on load — kept `true` even after the user
   /// unchecks the toggle, so [_resolveEffectiveFlow] can tell "spotting
@@ -601,8 +613,14 @@ class _DaySheetState extends State<DaySheet> {
   CareModeCopy get _copy => careModeCopyFor(
         widget.mode,
         irregularFraming: false,
-        lens: guardianLensFor(widget.guardians, widget.currentUserId),
+        lens: _lens,
       );
+
+  /// Issue #850 (U8): which lens the reader views this profile through,
+  /// resolved from the sheet's guardian rows and signed-in user — the same
+  /// [guardianLensFor] rule every other lens-aware surface uses.
+  GuardianLens get _lens =>
+      guardianLensFor(widget.guardians, widget.currentUserId);
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated
@@ -692,6 +710,10 @@ class _DaySheetState extends State<DaySheet> {
   @override
   void initState() {
     super.initState();
+    // Issue #1071: the day sheet flushes a note still held back from its
+    // first persist when the app backgrounds, so a crash/kill cannot lose
+    // text the writer typed before choosing privacy.
+    WidgetsBinding.instance.addObserver(this);
     final settingsStore = context.read<SettingsStore?>();
     if (settingsStore != null) {
       _dateFormatSub = settingsStore
@@ -871,13 +893,14 @@ class _DaySheetState extends State<DaySheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _saveDebounce?.cancel();
     _savedIndicatorTimer?.cancel();
     unawaited(_dateFormatSub?.cancel());
     _dateFormatSub = null;
     unawaited(_registrySub?.cancel());
     _registrySub = null;
-    if (!_discardUnsaved) _applyDisposeAction(daySheetDisposeAction(_saveState));
+    if (!_discardUnsaved) _disposeNoteFlush();
     _noteController.dispose();
     _bbtController.dispose();
     _weightController.dispose();
@@ -907,6 +930,50 @@ class _DaySheetState extends State<DaySheet> {
       case DaySheetDisposeNoop():
         break;
     }
+  }
+
+  /// Issue #1071: dispose-time note flush. A non-empty note whose first
+  /// persist has been held back for the privacy choice must be written on
+  /// teardown (the sheet going away is the writer's decision point — it is
+  /// shared with whatever the toggle says), routed through the same
+  /// [daySheetDisposeAction] the ordinary path uses so an in-flight write is
+  /// retriggered rather than raced (issue #546).
+  void _disposeNoteFlush() {
+    if (!_noteHeldForPrivacy) {
+      _applyDisposeAction(daySheetDisposeAction(_saveState));
+      return;
+    }
+    _flushDeferredNote = true;
+    final pending = _composeEntry();
+    final next = _saveState is DaySheetSaving
+        ? daySheetMarkDirty(_saveState, pending)
+        : DaySheetDirty(pending);
+    _applyDisposeAction(daySheetDisposeAction(next));
+  }
+
+  /// Issue #1071: backgrounding is treated as a decision point for a held
+  /// note — the text is flushed (shared with whatever the toggle says) so a
+  /// crash or process kill cannot lose it. Best-effort by nature: `paused`/
+  /// `hidden` give no synchronous write guarantee. `inactive` is
+  /// deliberately excluded — a transient interruption (a notification, the
+  /// app switcher) must not share a note the writer has not decided on.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_flushHeldNoteOnBackground());
+    }
+  }
+
+  /// The backgrounding half of [didChangeAppLifecycleState] (split out for
+  /// readability): arms and runs the held-note flush. Kept a single write
+  /// path — [_performAutosave] serialises behind any in-flight write — so
+  /// backgrounding can never race a concurrent autosave.
+  Future<void> _flushHeldNoteOnBackground() async {
+    if (!mounted || !_noteHeldForPrivacy) return;
+    _flushDeferredNote = true;
+    _markDirty();
+    await _performAutosave();
   }
 
   /// Belt-and-braces flush (#198) for a teardown that bypassed the normal
@@ -1033,7 +1100,8 @@ class _DaySheetState extends State<DaySheet> {
     // nothing may start.
     if (started == null) return;
     _updateSaveState(started); // Optimistic; failure restores below.
-    final writeFuture = _writePending(started.inFlight);
+    final (toWrite, heldNote) = _entryForWrite(started.inFlight);
+    final writeFuture = _writePending(toWrite);
     // Issue #601 LLA-003: published for the exact duration of this write
     // so `_delete` can await it -- see `_inFlightWrite`'s own doc.
     _inFlightWrite = writeFuture;
@@ -1042,11 +1110,31 @@ class _DaySheetState extends State<DaySheet> {
     final (settled, retrigger) =
         daySheetSettleWrite(_saveState, succeeded: saved);
     if (saved) {
-      _onAutosaveSuccess(settled);
+      _onAutosaveSuccess(
+        settled,
+        notePersisted: !heldNote && started.inFlight.note != null,
+      );
     } else {
       _updateSaveState(settled);
     }
     if (retrigger) unawaited(_performAutosave());
+  }
+
+  /// Issue #1071: the entry the next write will actually persist — [pending]
+  /// with its non-empty note stripped while the privacy choice is still held
+  /// back ([_noteHeldForPrivacy], not overridden by a dismissal/background
+  /// flush). Flow, tags, and observations still write normally. The second
+  /// value reports whether the note was held back, so the success handler
+  /// knows not to lock the toggle.
+  ///
+  /// The rule mirrors `enforce_day_entry_note_private`: the server permits
+  /// `note_private` to flip `false -> true` only while the stored note is
+  /// null/empty, so holding the very first persist of the note keeps that
+  /// flip legal however long the writer takes to decide.
+  (DayEntry, bool) _entryForWrite(DayEntry pending) {
+    final holdNote =
+        pending.note != null && _noteHeldForPrivacy && !_flushDeferredNote;
+    return (holdNote ? pending.copyWith(note: null) : pending, holdNote);
   }
 
   /// Updates [_saveState]. Issue #546: the field always updates, even once
@@ -1119,7 +1207,19 @@ class _DaySheetState extends State<DaySheet> {
   /// micro-confirmation's own clear timer whenever [settled] actually is
   /// [DaySheetSaved] (see that class's doc for the one case it is not: a
   /// further edit already arrived and is not yet due its own retry).
-  void _onAutosaveSuccess(DaySheetSaveState settled) {
+  void _onAutosaveSuccess(
+    DaySheetSaveState settled, {
+    required bool notePersisted,
+  }) {
+    // Issue #1071: a write that actually carried a non-empty note (the
+    // writer chose, or the sheet is leaving) is what locks the toggle —
+    // the deferred first writes do not, so write-then-decide still works.
+    // A local-only operator never pushes, so nothing is shared and the
+    // toggle only locks on the next open.
+    if (notePersisted && _subjectNoteCanBeShared) {
+      _notePrivacyLocked = true;
+      _flushDeferredNote = false;
+    }
     // Issue #546: through `_updateSaveState` so the field resets even once
     // the sheet has gone — a dismissal-time success leaving it permanently
     // stuck on `DaySheetSaving` would make [_performAutosave]'s own
@@ -1135,11 +1235,6 @@ class _DaySheetState extends State<DaySheet> {
           setState(() => _saveState = const DaySheetIdle());
         }
       });
-      // Issue #849: the first write that persists text locks the privacy
-      // toggle — a saved (shared) note can never be made private.
-      if (!_notePrivacyLocked && _noteController.text.trim().isNotEmpty) {
-        setState(() => _notePrivacyLocked = true);
-      }
     }
   }
 
@@ -1650,6 +1745,10 @@ class _DaySheetState extends State<DaySheet> {
   /// flush what a debounce left pending, then show the dismissal-time
   /// snackbars.
   void _handleSheetPopped() {
+    // Issue #1071: a note still held back from its first persist is shared
+    // on the way out (with whatever the toggle says) — arm it here so the
+    // flush below carries it.
+    _armHeldNoteFlushOnPop();
     // Dirty or Failed both carry unsaved content (mirrors the old
     // `_dirty`, which failure also set) — PopScope's own `canPop` above
     // means Failed only reaches here once `_discardUnsaved` is already
@@ -1679,6 +1778,18 @@ class _DaySheetState extends State<DaySheet> {
     if (cycleStartSnackBar != null) {
       ScaffoldMessenger.of(context).showSnackBar(cycleStartSnackBar);
     }
+  }
+
+  /// Issue #1071: the held-note half of [_handleSheetPopped], split out so
+  /// that method's own cyclomatic complexity stays under the CRAP ceiling
+  /// (#1071 review). Recomposes the full note into the pending state first,
+  /// so it works whether the last autosave left the sheet clean or pending,
+  /// and marks the flush override so the note is persisted rather than held
+  /// again.
+  void _armHeldNoteFlushOnPop() {
+    if (_discardUnsaved || !_noteHeldForPrivacy) return;
+    _flushDeferredNote = true;
+    _markDirty();
   }
 
   /// Issue #887: the paths where the sheet's leaving state is not what
@@ -1954,6 +2065,11 @@ class _DaySheetState extends State<DaySheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Issue #1071: the privacy decision sits ABOVE the field it governs
+        // — seen before typing starts, never hidden afterwards (a locked,
+        // non-private note keeps it visible and disabled with the saved
+        // hint, so the state is explained instead of vanishing).
+        if (_showPrivacyToggle) _notePrivacyToggle(l10n),
         Padding(
           padding: const EdgeInsets.only(top: LLSpace.space3),
           child: TextFormField(
@@ -1978,16 +2094,20 @@ class _DaySheetState extends State<DaySheet> {
           ),
         ),
         // Issue #800/#801: who can read what a guardian writes is stated at
-        // the point of writing, not buried in settings.
+        // the point of writing, not buried in settings. Issue #1071: the
+        // disclosure swaps when the note is private — the "anyone with
+        // access" sentence would otherwise sit directly over a note
+        // guardians cannot read.
         Padding(
           padding: const EdgeInsets.only(top: LLSpace.space1),
           child: Text(
-            AppLocalizations.of(context).careNotesDisclosure,
+            _notePrivate
+                ? l10n.daySheetNotePrivateDisclosure
+                : l10n.careNotesDisclosure,
             key: const ValueKey('day-note-disclosure'),
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
-        if (_showPrivacyToggle) _notePrivacyToggle(l10n),
       ],
     );
   }
@@ -2004,12 +2124,32 @@ class _DaySheetState extends State<DaySheet> {
       (widget.existing?.notePrivate ?? false) &&
       (widget.existing?.note ?? '').trim().isEmpty;
 
-  /// Issue #849: the toggle is shown while the note is being written, or
-  /// when it is already private (so the locked state stays visible). Once a
-  /// non-empty note is saved it can no longer be made private.
-  bool get _showPrivacyToggle =>
-      _lensForViewer == GuardianLens.subject &&
-      (!_notePrivacyLocked || _notePrivate);
+  /// Issue #849/#1071: the toggle is always rendered for the subject's lens
+  /// — never hidden. While the note can still be made private it is enabled;
+  /// once the choice is locked it stays visible and disabled with the saved
+  /// hint, so the writer is never left with a vanished control and no
+  /// explanation.
+  bool get _showPrivacyToggle => _lensForViewer == GuardianLens.subject;
+
+  /// Issue #1071: whether this sheet's non-empty note could reach another
+  /// person — a signed-in subject's writes are pushed to the server and
+  /// masked to guardians. A local-only operator (`currentUserId` null) has
+  /// no one to share with and never pushes, so their note persists normally
+  /// and only locks on the next open. See [_noteHeldForPrivacy].
+  bool get _subjectNoteCanBeShared =>
+      _lensForViewer == GuardianLens.subject && widget.currentUserId != null;
+
+  /// Issue #1071: a non-empty note whose very first persist is being held
+  /// back until the writer picks private or the sheet leaves. Mirrors
+  /// `enforce_day_entry_note_private`'s rule: the server allows
+  /// `note_private` to flip `false -> true` only while the stored note is
+  /// null/empty, so keeping the first write back is what lets a
+  /// write-then-decide order still choose privacy.
+  bool get _noteHeldForPrivacy =>
+      _subjectNoteCanBeShared &&
+      !_notePrivacyLocked &&
+      !_notePrivacyTouched &&
+      _noteController.text.trim().isNotEmpty;
 
   /// Issue #849: the toggle locks once the flag is stored (it can never be
   /// cleared) or a non-empty note has been saved (privacy can't be chosen
@@ -2050,6 +2190,10 @@ class _DaySheetState extends State<DaySheet> {
   /// Issue #849: the subject-only "Keep this note private" toggle. Disabled
   /// once the note has saved text — the server enforces the same
   /// once-shared-never-private rule.
+  ///
+  /// Issue #1071: touching it is the writer's explicit choice, so it both
+  /// marks [_notePrivacyTouched] (letting the held note through on the next
+  /// write) and marks the sheet dirty so that write happens promptly.
   Widget _notePrivacyToggle(AppLocalizations l10n) {
     return Padding(
       padding: const EdgeInsets.only(top: LLSpace.space1),
@@ -2057,7 +2201,7 @@ class _DaySheetState extends State<DaySheet> {
         key: const ValueKey('note-private-toggle'),
         value: _notePrivate,
         onChanged: (!_privacyToggleLocked && !_busy)
-            ? (value) => setState(() => _notePrivate = value ?? false)
+            ? (value) => _chooseNotePrivacy(value ?? false)
             : null,
         title: Text(l10n.daySheetNotePrivateToggle),
         subtitle: Text(
@@ -2070,6 +2214,14 @@ class _DaySheetState extends State<DaySheet> {
         dense: true,
       ),
     );
+  }
+
+  /// Issue #1071: records the writer's explicit privacy choice and re-arms
+  /// the autosave so the held note is persisted with it.
+  void _chooseNotePrivacy(bool value) {
+    setState(() => _notePrivate = value);
+    _notePrivacyTouched = true;
+    _markDirty();
   }
 
   /// Selects [level] as the day's flow — the single write path behind both
@@ -2139,7 +2291,9 @@ class _DaySheetState extends State<DaySheet> {
             key: const ValueKey('cycle-start-confirm-dialog'),
             title: Text(l10n.daySheetCycleStartDialogTitle),
             content: Text(
-              l10n.daySheetCycleStartDialogBody(
+              lensDaySheetCycleStartDialogBody(
+                l10n,
+                _lens,
                 guard.cycleDay ?? 0,
                 localizedFlowLabel(level, l10n),
                 guard.closedCycleLengthDays ?? 0,

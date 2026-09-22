@@ -16,3 +16,5 @@ Migrated 2026-09-15 from the flat claude-orch state (see PROCESS.md for why).
 
 ## Done (this session; details in ../log.md and log.md)
 #710 (#713), #583 (#717), #400 (#719), #175 (#720), #137 (#727), #99 (#728), #693 (#731), #165 (#732), sibling rescue #268+#271 (#714), #215 (#734), #121 (#740), #460 (#741), #42 (#742), #130 (#743, post-integration), #174 (#744), #226 (#745, post-ratchet-fix), #102 (#746), #184 (#747), #241 (#749), #257 P0 (#750), #181 (#751), #170 (#752); syncs #711 #715 #716 #722 #729 #737 (identity migration).
+
+2026-09-22: flash-session wave merged #967 #981 #983 #989 #990 #1007 #1059 #1063 (+parallel #1046 won #1022). In progress: none. Queue: see log.

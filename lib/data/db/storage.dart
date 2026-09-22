@@ -105,6 +105,8 @@ export '../sync/remote_rows.dart'
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
+part 'storage_roles.dart';
+part 'sync_cursor_storage.dart';
 
 /// Retention horizon for local tombstones (Issue #203):
 /// The sync engine's full-reconcile interval (`kSyncFullPullInterval`, 24h) plus
@@ -153,38 +155,76 @@ class LunarLogStorage
     with
         LunarLogStorageQueries,
         LunarLogStorageLocalWrites,
-        LunarLogStorageRemoteApply {
+        LunarLogStorageSyncMetadata,
+        LunarLogStorageRemoteApply
+    implements
+        ProfileStore,
+        DayEntryStore,
+        ObservationStore,
+        CycleStore,
+        CareContentStore,
+        GuardianNoteStore,
+        TagRegistryStore,
+        AppSettingsStore,
+        MergeEventStore,
+        ProfileGuardianStore,
+        SyncCursorStore,
+        SyncDirtyStore,
+        SyncApplyStore,
+        HealthDeviceStore,
+        ImportedDataPurgeStore,
+        DayEntriesRepositoryStore,
+        ObservationsRepositoryStore,
+        ActivityFeedStore,
+        HealthTombstoneSourceStore,
+        AccountExportSnapshotStore,
+        AccountImportStore,
+        ClueImportStore,
+        LocalRowCountStore,
+        SyncEngineStore {
   LunarLogStorage(
     this.db, {
     DateTime Function()? clock,
     UlidGenerator? ulid,
     LocalDate Function()? today,
-  })  : _clock = clock ?? (() => DateTime.now().toUtc()),
+  })  : _clock = StorageClock(clock: clock),
         _generator = ulid ?? _ulid,
-        _todayProvider = today ?? LocalDate.today;
+        _todayProvider = today ?? LocalDate.today {
+    _syncMetadata = SyncCursorStorage(db, _clock);
+  }
 
   @override
   final LunarLogDatabase db;
-  final DateTime Function() _clock;
+  final StorageClock _clock;
+
+  /// The extracted sync cursor + dirty-scan store (issue #551 part 1 step
+  /// 2). Owns the same [StorageClock] as this class, so the learned offset
+  /// is one value. Handed directly to consumers that only need the
+  /// [SyncMetadataStore] role.
+  late final SyncCursorStorage _syncMetadata;
+
+  /// The narrow sync-metadata role this class delegates all
+  /// [SyncMetadataStore] members to.
+  @override
+  SyncMetadataStore get syncMetadata => _syncMetadata;
+
   @override
   final UlidGenerator _generator;
   final LocalDate Function() _todayProvider;
-  Duration _clockOffset = Duration.zero;
 
   @override
   LocalDate _today() => _todayProvider();
 
   /// `server_now - device_now`, added to the clock when stamping local
   /// writes (KTD4). Zero until the sync engine learns it.
-  Duration get clockOffset => _clockOffset;
+  Duration get clockOffset => _clock.offset;
 
   /// Sets [clockOffset]. In-memory only; the engine persists the learned
   /// value in `sync_state.server_clock_offset_ms` and restores it on open.
-  void setClockOffset(Duration offset) {
-    _clockOffset = offset;
-  }
+  @override
+  void setClockOffset(Duration offset) => _syncMetadata.setClockOffset(offset);
 
   /// The instant a local write is stamped with: injected clock + offset.
   @override
-  DateTime _now() => _clock().toUtc().add(_clockOffset);
+  DateTime _now() => _clock.now();
 }

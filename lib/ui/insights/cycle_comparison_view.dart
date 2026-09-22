@@ -31,9 +31,11 @@ import 'package:flutter/material.dart';
 import '../../domain/insights/cycle_comparison.dart';
 import '../../domain/models/flow_level.dart';
 import '../../domain/models/local_date.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../../domain/tags.dart';
 import '../components/empty_state.dart';
 import '../l10n/dates.dart' as dates;
+import '../l10n/lens_copy.dart';
 import '../overview/cycle_history_section.dart' show formatDays;
 import '../theme/lunarlog_colors.dart';
 import '../theme/tokens.dart';
@@ -41,12 +43,21 @@ import '../theme/tokens.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 
 class CycleComparisonView extends StatelessWidget {
-  const CycleComparisonView({super.key, required this.data});
+  const CycleComparisonView({
+    super.key,
+    required this.data,
+    this.lens = GuardianLens.subject,
+  });
 
   /// Null renders the honest "nothing to compare" empty state (issue #235
   /// AC: a not-enough-cycles caller, or a stale/invalid selection, must
   /// never render a broken or misleadingly partial comparison).
   final CycleComparisonData? data;
+
+  /// Which lens the reader is viewing the profile through (issue #850, U8):
+  /// the empty-state body reads third-person for a guardian, otherwise
+  /// unchanged.
+  final GuardianLens lens;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +67,7 @@ class CycleComparisonView extends StatelessWidget {
       return EmptyState(
         key: const ValueKey('cycle-comparison-empty'),
         title: l10n.cycleComparisonNotEnoughTitle,
-        body: l10n.cycleComparisonNotEnoughBody,
+        body: lensCycleComparisonNotEnoughBody(l10n, lens),
         crossAxisAlignment: CrossAxisAlignment.start,
       );
     }

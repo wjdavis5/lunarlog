@@ -14,7 +14,7 @@ import '../db/storage.dart';
 class DriftHealthSyncStateRepository implements HealthSyncStateRepository {
   DriftHealthSyncStateRepository(this.storage);
 
-  final LunarLogStorage storage;
+  final HealthDeviceStore storage;
 
   @override
   Future<HealthSyncAnchor?> readAnchor(String platform) async {
