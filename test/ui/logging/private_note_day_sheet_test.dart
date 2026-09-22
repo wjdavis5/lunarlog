@@ -20,6 +20,7 @@ import 'package:lunarlog/data/db/db.dart' show LunarLogDatabase;
 import 'package:lunarlog/data/repositories/drift_day_entries_repository.dart';
 import 'package:lunarlog/data/repositories/drift_observations_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
+import 'package:lunarlog/data/sync/remote_rows.dart' show SyncTable;
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -72,9 +73,10 @@ class _Sheet {
 
 Future<_Sheet> _pumpSheet(
   WidgetTester tester, {
-  required String viewerId,
+  required String? viewerId,
   required DayEntry? existing,
   bool readOnly = false,
+  String? pushedNote,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1.0;
@@ -88,7 +90,9 @@ Future<_Sheet> _pumpSheet(
   final entries = DriftDayEntriesRepository(db.storage);
   final observations = DriftObservationsRepository(db.storage);
 
-  final scoped = _scope(existing, profile.id);
+  final scoped = pushedNote == null
+      ? _scope(existing, profile.id)
+      : await _persistPushedNote(db, entries, profile.id, pushedNote);
 
   await tester.pumpWidget(
     MultiProvider(
@@ -133,6 +137,48 @@ DayEntry? _scope(DayEntry? existing, String profileId) => existing == null
         updatedAt: existing.updatedAt,
         loggedByUserId: existing.loggedByUserId,
       );
+
+/// Persists a note and then clears the row's `dirty` flag the way a completed
+/// sync push would, so `DayEntrySyncStateReader.hasBeenShared` reads true —
+/// the real "the note has been shared" state, no sign-in involved.
+Future<DayEntry> _persistPushedNote(
+  LunarLogDatabase db,
+  DriftDayEntriesRepository entries,
+  String profileId,
+  String note,
+) async {
+  final saved = await entries.save(
+    DayEntry(
+      id: 'entry-1',
+      profileId: profileId,
+      localDate: _today,
+      tz: 'America/New_York',
+      flow: FlowLevel.medium,
+      note: note,
+      updatedAt: DateTime.utc(2026, 8, 30, 12),
+      loggedByUserId: _daughter,
+    ),
+  );
+  final row = (await db.storage.getDayEntry(
+    profileId: profileId,
+    localDate: _today.iso,
+  ))!;
+  await db.storage.markPushed(
+    table: SyncTable.dayEntries,
+    id: saved.id,
+    localRevAtPush: row.localRev,
+  );
+  return DayEntry(
+    id: saved.id,
+    profileId: profileId,
+    localDate: _today,
+    tz: 'America/New_York',
+    flow: FlowLevel.medium,
+    note: note,
+    updatedAt: row.updatedAt,
+    loggedByUserId: _daughter,
+  );
+}
 
 DayEntry _savedNote(String? note) => DayEntry(
       id: 'entry-1',
@@ -252,13 +298,14 @@ void main() {
   );
 
   testWidgets(
-    'a saved (shared) note locks the toggle but keeps it visible with the '
-    'hint (issue #1071)',
+    'a pushed (dirty == false) note locks the toggle but keeps it visible '
+    'with the hint (issue #1071 follow-up)',
     (tester) async {
       final sheet = await _pumpSheet(
         tester,
         viewerId: _daughter,
-        existing: _savedNote('already shared'),
+        existing: null,
+        pushedNote: 'already shared',
       );
 
       final toggle = find.byKey(const ValueKey('note-private-toggle'));
@@ -278,6 +325,93 @@ void main() {
           "after it's saved.",
         ),
         findsOneWidget,
+      );
+
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'a local-only operator can type then choose private — the lock no longer '
+    'special-cases sign-in (issue #1071 follow-up)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: null,
+        existing: null,
+      );
+
+      await _enterNote(tester, 'Felt off today');
+      await _pumpAutosave(tester);
+
+      final toggle = find.byKey(const ValueKey('note-private-toggle'));
+      expect(toggle, findsOneWidget);
+      expect(
+        tester.widget<CheckboxListTile>(toggle).onChanged,
+        isNotNull,
+        reason: 'a local-only row never pushes, so its choice stays open',
+      );
+
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pump();
+      await _pumpAutosave(tester);
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(saved.note, 'Felt off today');
+      expect(saved.notePrivate, isTrue);
+
+      await _tearDown(tester, sheet.db);
+    },
+  );
+
+  testWidgets(
+    'a signed-in subject with an unpushed (dirty) note can still choose '
+    'private (issue #1071 follow-up)',
+    (tester) async {
+      final sheet = await _pumpSheet(
+        tester,
+        viewerId: _daughter,
+        existing: null,
+      );
+
+      await _enterNote(tester, 'offline note');
+      await _pumpAutosave(tester);
+
+      // The held first persist leaves the server empty and the row unsynced,
+      // so nothing has been shared and the choice is still legal.
+      final mid = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(
+        mid.note,
+        isNull,
+        reason: 'the first persist of the note is still held back',
+      );
+      expect(
+        mid.dirty,
+        isTrue,
+        reason: 'a local write is not yet shared with the server',
+      );
+
+      final toggle = find.byKey(const ValueKey('note-private-toggle'));
+      expect(
+        tester.widget<CheckboxListTile>(toggle).onChanged,
+        isNotNull,
+        reason: 'never-pushed means never-locked, signed in or not',
+      );
+
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pump();
+      await _pumpAutosave(tester);
+
+      final saved = (await sheet.db.select(sheet.db.dayEntries).get()).single;
+      expect(saved.note, 'offline note');
+      expect(
+        saved.notePrivate,
+        isTrue,
+        reason: 'the flip is still legal because the server note is empty',
       );
 
       await _tearDown(tester, sheet.db);

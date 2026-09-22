@@ -14,7 +14,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'mappers.dart';
 
 class DriftDayEntriesRepository
-    implements DayEntriesRepository, LatestDayEntryReader {
+    implements DayEntriesRepository, LatestDayEntryReader, DayEntrySyncStateReader {
   DriftDayEntriesRepository(this._storage);
 
   final DayEntriesRepositoryStore _storage;
@@ -102,6 +102,22 @@ class DriftDayEntriesRepository
   Future<domain.DayEntry?> latestEntryFor(String profileId) async {
     final row = await _storage.getLatestDayEntry(profileId);
     return row == null ? null : dayEntryToDomain(row);
+  }
+
+  /// Issue #1071 follow-up: whether the (profileId, date) row's note has been
+  /// pushed (`dirty == false`) with text still present. The live-only
+  /// `getDayEntry` read excludes tombstones for free, so a deleted note reads
+  /// as never shared — the right answer, since the note is not out there for
+  /// anyone to read.
+  @override
+  Future<bool> hasBeenShared(String profileId, domain.LocalDate date) async {
+    final row = await _storage.getDayEntry(
+      profileId: profileId,
+      localDate: date.iso,
+    );
+    return row != null &&
+        !row.dirty &&
+        (row.note?.trim().isNotEmpty ?? false);
   }
 
   @override

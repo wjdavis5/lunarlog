@@ -509,10 +509,13 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// device, so [_existingPrivateNoteHidden] is what a guardian sees.
   bool _notePrivate = false;
 
-  /// Issue #849: privacy is chosen when the note is written, so the toggle
-  /// locks itself once a non-empty note has been saved (and stays locked for
-  /// a loaded row that already has text). Cleared only by [_notePrivate]
-  /// being true with an empty note (the flag can't be cleared at all).
+  /// Issue #849, re-keyed by the #1071 follow-up: privacy is chosen when the
+  /// note is written, and the note is only *actually* shared once it has been
+  /// pushed. The toggle therefore locks on the row's real sync state —
+  /// [DayEntrySyncStateReader.hasBeenShared], read when the sheet opens —
+  /// never on the mere presence of sign-in (a signed-in subject's offline
+  /// note, still `dirty`, has not reached the server and can still be made
+  /// private). Never cleared once set during a session.
   bool _notePrivacyLocked = false;
 
   /// Issue #1071: the writer has explicitly touched the privacy toggle this
@@ -521,6 +524,14 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// still choose privacy — the server only allows `false -> true` while the
   /// stored note is null/empty.
   bool _notePrivacyTouched = false;
+
+  /// Issue #1071 follow-up: a non-empty note has already been persisted for
+  /// this row (either it was loaded with text, or a write this session
+  /// carried it). Once true, the first-persist hold no longer applies — there
+  /// is nothing left to hold, and re-stripping the note on a later autosave
+  /// (a tag or flow change) would only risk losing text that is already on
+  /// disk.
+  bool _notePersisted = false;
 
   /// Issue #1071: set by a dismissal-time or background flush so the held
   /// note is allowed through on the next write (persisted with whatever the
@@ -767,16 +778,50 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     // Issue #887: the bleed history the cycle-start guard evaluates
     // against (see [_otherBleedDates]).
     unawaited(_loadBleedHistory());
+    // Issue #1071 follow-up: whether the loaded note has already been
+    // pushed — the only thing that locks the privacy toggle.
+    unawaited(_loadNoteSharedState());
   }
 
-  /// Issue #849: seeds [_notePrivate] and [_notePrivacyLocked] from the
-  /// loaded entry. Split out of [initState] so that method's branch count
-  /// stays under the CRAP gate; [existing] is [widget.existing], and the
-  /// lock is set when the loaded note already has text (privacy can't be
-  /// chosen retroactively).
+  /// Issue #849: seeds [_notePrivate] from the loaded entry, and records
+  /// whether that entry already carries note text. Split out of [initState]
+  /// so that method's branch count stays under the CRAP gate; [existing] is
+  /// [widget.existing]. The lock itself is no longer guessed from the text
+  /// here — it is read from the row's real sync state by
+  /// [_loadNoteSharedState], because a note with text that was never pushed
+  /// can still be made private (the #1071 follow-up).
   void _initPrivateNoteState(DayEntry? existing) {
     _notePrivate = existing?.notePrivate ?? false;
-    _notePrivacyLocked = existing?.note?.trim().isNotEmpty ?? false;
+    _notePersisted = existing?.note?.trim().isNotEmpty ?? false;
+  }
+
+  /// Issue #1071 follow-up: reads whether this row's note has actually been
+  /// pushed, which is the one fact that may lock the privacy choice. Replaces
+  /// the sign-in proxy: a local-only operator's row never pushes and a
+  /// signed-in subject's offline note is still `dirty`, so both keep the
+  /// choice open (the server only enforces `false -> true` while the stored
+  /// note is empty). Absent a reader (a hand-rolled fake, or a tree wired
+  /// before this seam existed) the note is treated as never shared, matching
+  /// the U5 seam's fail-open posture.
+  Future<void> _loadNoteSharedState() async {
+    // The seam is a separate interface from [DayEntriesRepository]
+    // (interfaces do not promote to each other), so the capability is cast
+    // explicitly — the same shape issue #850 U5 used for its reader.
+    final repository = widget.repository;
+    final reader = repository is DayEntrySyncStateReader
+        ? repository as DayEntrySyncStateReader
+        : null;
+    if (reader == null) return;
+    try {
+      final shared =
+          await reader.hasBeenShared(widget.profileId, widget.date);
+      if (!mounted || !shared) return;
+      setState(() => _notePrivacyLocked = true);
+    } catch (error, stackTrace) {
+      // Fail open (the server is the backstop) but never silently: the same
+      // posture every other once-per-open read here takes.
+      unawaited(Sentry.captureException(error, stackTrace: stackTrace));
+    }
   }
 
   /// Issue #887: loads the profile's bleed dates (excluding this sheet's
@@ -1125,7 +1170,8 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// back ([_noteHeldForPrivacy], not overridden by a dismissal/background
   /// flush). Flow, tags, and observations still write normally. The second
   /// value reports whether the note was held back, so the success handler
-  /// knows not to lock the toggle.
+  /// knows whether the note's first persist has now actually happened (see
+  /// [_notePersisted]).
   ///
   /// The rule mirrors `enforce_day_entry_note_private`: the server permits
   /// `note_private` to flip `false -> true` only while the stored note is
@@ -1211,13 +1257,15 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     DaySheetSaveState settled, {
     required bool notePersisted,
   }) {
-    // Issue #1071: a write that actually carried a non-empty note (the
-    // writer chose, or the sheet is leaving) is what locks the toggle —
-    // the deferred first writes do not, so write-then-decide still works.
-    // A local-only operator never pushes, so nothing is shared and the
-    // toggle only locks on the next open.
-    if (notePersisted && _subjectNoteCanBeShared) {
-      _notePrivacyLocked = true;
+    // Issue #1071 follow-up: a write that actually carried a non-empty note
+    // marks the first persist done, so the hold stops re-engaging on later
+    // autosaves (a tag change must never re-strip a note that is already on
+    // disk). The toggle's lock is deliberately NOT set here — a local write
+    // leaves the row `dirty`, so it has not been shared, and a signed-in
+    // subject must still be able to flip to private until a push completes.
+    // The lock is established by [_loadNoteSharedState] on the next open.
+    if (notePersisted) {
+      _notePersisted = true;
       _flushDeferredNote = false;
     }
     // Issue #546: through `_updateSaveState` so the field resets even once
@@ -2134,8 +2182,11 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// Issue #1071: whether this sheet's non-empty note could reach another
   /// person — a signed-in subject's writes are pushed to the server and
   /// masked to guardians. A local-only operator (`currentUserId` null) has
-  /// no one to share with and never pushes, so their note persists normally
-  /// and only locks on the next open. See [_noteHeldForPrivacy].
+  /// no one to share with and never pushes, so their note persists normally.
+  ///
+  /// This no longer gates the toggle's lock (the #1071 follow-up keyed that
+  /// on [_loadNoteSharedState]'s real sync-state read); it scopes the
+  /// belt-and-braces first-persist hold below.
   bool get _subjectNoteCanBeShared =>
       _lensForViewer == GuardianLens.subject && widget.currentUserId != null;
 
@@ -2145,16 +2196,27 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   /// `note_private` to flip `false -> true` only while the stored note is
   /// null/empty, so keeping the first write back is what lets a
   /// write-then-decide order still choose privacy.
+  ///
+  /// Kept scoped to the signed-in subject as belt-and-braces (the #1071
+  /// follow-up): the lock now tracks whether the row was really pushed, which
+  /// already leaves an offline note flippable, but the hold adds the stronger
+  /// guarantee the lock alone cannot give — that the *stored* note stays empty
+  /// until the writer decides, so no concurrent sync push can share it out
+  /// from under the still-open choice and turn the flip into a server
+  /// rejection. It is skipped once the note is already persisted
+  /// ([_notePersisted]), since there is then nothing left to hold.
   bool get _noteHeldForPrivacy =>
       _subjectNoteCanBeShared &&
       !_notePrivacyLocked &&
       !_notePrivacyTouched &&
+      !_notePersisted &&
       _noteController.text.trim().isNotEmpty;
 
-  /// Issue #849: the toggle locks once the flag is stored (it can never be
-  /// cleared) or a non-empty note has been saved (privacy can't be chosen
-  /// retroactively). A freshly checked, unsaved new note is deliberately
-  /// NOT locked, so the subject can change her mind before the first save.
+  /// Issue #849/#1071 follow-up: the toggle locks once the flag is stored (it
+  /// can never be cleared) or the note has been pushed ([_notePrivacyLocked],
+  /// read from the row's real sync state — not from sign-in). A note with
+  /// text that has only been written locally, never pushed, stays open, so
+  /// the subject can still change her mind while the server is empty.
   bool get _privacyToggleLocked =>
       _notePrivacyLocked || (widget.existing?.notePrivate ?? false);
 
