@@ -1,31 +1,27 @@
 /// Unit tests for [DriftCareContentRepository] (Issue #128): the thin
-/// drift-row → domain mapping over [LunarLogStorage], exercised against an
-/// in-memory database. Storage semantics themselves are proven in
-/// `storage_care_content_test.dart`; this file only pins the seam.
+/// drift-row → domain mapping over [FakeCareContentStore], including the
+/// visit-prep/supply `kind` routing.
+///
+/// Issue #551 problem 1 follow-up: this used to open a real drift database
+/// solely to feed the repository. It now drives a hand-written
+/// [FakeCareContentStore] with no database at all; storage semantics
+/// themselves are proven in `storage_care_content_test.dart`.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart';
 import 'package:lunarlog/data/repositories/drift_care_content_repository.dart';
 import 'package:lunarlog/domain/models/visit_prep_item.dart';
 
-void main() {
-  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+import '../../support/fakes/fake_care_content_store.dart';
 
-  late LunarLogDatabase db;
+void main() {
+  late FakeCareContentStore store;
   late DriftCareContentRepository repository;
 
-  setUp(() async {
-    db = LunarLogDatabase(NativeDatabase.memory());
-    addTearDown(() => db.close());
-    repository = DriftCareContentRepository(db.storage);
-    await db.storage.upsertProfile(
-        id: 'p1',
-        displayName: 'Riley',
-        isMinor: true,
-        updatedAt: DateTime.utc(2026, 9, 1, 8));
+  setUp(() {
+    store = FakeCareContentStore();
+    addTearDown(store.close);
+    repository = DriftCareContentRepository(store);
   });
 
   group('care notes', () {
