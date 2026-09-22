@@ -1145,14 +1145,35 @@ device-credential gate by definition, so these items verify the two
 compensating controls: the discreet render and the gated write.
 
 - [ ] **iOS prerequisites: the App Group is provisioned before any signed
-      build.** Apple Developer portal: create App Group
-      `group.com.wjdavis5.lunarlog.widgets`; add it to BOTH App IDs
-      (`com.wjdavis5.lunarlog` and `com.wjdavis5.lunarlog.LunarLogWidget`);
-      regenerate the App Store provisioning profile so it carries the
-      capability (this compounds with the Sign in with Apple profile
-      requirement — one regeneration covers both). Until this lands,
-      unsigned builds compile and run but a signed build's widget shows
-      only the neutral dash (the app's suite writes fail silently).
+      build (issue #141, PR #1007).** The widget is a separate app extension
+      with its own App ID, and the App Group works only when every member
+      declares it — so a signed App Store build now installs **two**
+      provisioning profiles (the app's and the widget's), each carrying the
+      App Group. Owner steps, in order:
+      1. In the Apple Developer portal, create the App Group
+         `group.com.wjdavis5.lunarlog.widgets`
+         (Certificates, Identifiers & Profiles → Identifiers → App Groups).
+      2. Add that App Group to the `com.wjdavis5.lunarlog` App ID (which
+         must also keep Sign in with Apple and Push Notifications) and to
+         the `com.wjdavis5.lunarlog.LunarLogWidget` App ID (App Group only;
+         the widget needs no other capability).
+      3. Regenerate the App Store provisioning profile for the app
+         (`com.wjdavis5.lunarlog`, named `Lunarlog`) and for the widget
+         (`com.wjdavis5.lunarlog.LunarLogWidget`, named **exactly**
+         `LunarLogWidget` — `ios/ExportOptions-ci.plist` maps that bundle id
+         to that literal name). Do the app one in the same pass as the
+         pending Sign in with Apple / Push Notifications regeneration.
+      4. Replace `IOS_PROVISION_PROFILE_BASE64` with the regenerated app
+         profile, and set the new widget profile secret:
+         ```bash
+         gh secret set IOS_PROVISION_PROFILE_BASE64 --body "$(base64 -i Lunarlog.mobileprovision)"
+         gh secret set IOS_WIDGET_PROVISION_PROFILE_BASE64 --body "$(base64 -i LunarLogWidget.mobileprovision)"
+         ```
+      Until this lands, unsigned builds compile and run but a signed build's
+      widget shows only the neutral dash (the app's suite writes fail
+      silently), and `ios-release.yml` fails closed at the widget-profile
+      install step naming the missing `IOS_WIDGET_PROVISION_PROFILE_BASE64`
+      secret — before the archive, not at export.
 - [ ] **Discreet render (both platforms).** Add the widget to the home
       screen for a profile with logged history. The widget shows the app
       name, "Day <n>", and at most the "≈<n> d" countdown — never the
