@@ -23,7 +23,12 @@ name: iOS Release
 #   ASC_PRIVATE_KEY               Full contents of the AuthKey_<KEY_ID>.p8 file
 #   IOS_DIST_CERT_P12_BASE64      base64 of the Apple Distribution .p12
 #   IOS_DIST_CERT_PASSWORD        password protecting that .p12
-#   IOS_PROVISION_PROFILE_BASE64  base64 of the App Store .mobileprovision
+#   IOS_PROVISION_PROFILE_BASE64  base64 of the app's App Store .mobileprovision
+#   IOS_WIDGET_PROVISION_PROFILE_BASE64
+#                                 base64 of the LunarLogWidget extension's App
+#                                 Store .mobileprovision (issue #141/#1007); a
+#                                 signed build signs both bundles and each needs
+#                                 its own profile
 #   SUPABASE_URL                  Supabase project URL (client-safe)
 #   SUPABASE_ANON_KEY             Supabase publishable key (client-safe);
 #                                 passed as SUPABASE_PUBLISHABLE_KEY
@@ -349,6 +354,45 @@ jobs:
           echo "PROVISIONING_PROFILE_PATH=$installed_path" >> "$GITHUB_ENV"
           echo "Installed profile '$name' ($uuid)"
 
+      - name: Install the widget provisioning profile
+        # Issue #141 / PR #1007: the home-screen widget is a separate app
+        # extension with its own App ID
+        # (com.wjdavis5.lunarlog.LunarLogWidget) and its own App Store
+        # provisioning profile. Because the shared App Group
+        # (group.com.wjdavis5.lunarlog.widgets) must be declared on BOTH App
+        # IDs, a signed App Store build now needs TWO profiles; the export
+        # below fails if either bundle id has no profile in
+        # ExportOptions-ci.plist. This mirrors the step above -- same
+        # base64-decode + security cms -D UUID/Name extraction, same
+        # recorded-path cleanup, same fail-closed-on-empty handling -- so a
+        # missing secret is named here instead of surfacing as a generic
+        # export failure after a full archive. It runs before the archive
+        # deliberately: failing early is the whole point.
+        env:
+          WIDGET_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WIDGET_PROFILE_BASE64" ]; then
+            echo "::error::Secret IOS_WIDGET_PROVISION_PROFILE_BASE64 is empty or not configured. A signed build signs the LunarLogWidget extension too, and it cannot be signed without this profile; see the Home-screen widget checklist in docs/ops/supabase-go-live.md."
+            exit 1
+          fi
+
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles"
+
+          printf '%s' "$WIDGET_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/widget-profile.mobileprovision"
+
+          uuid="$(security cms -D -i "$RUNNER_TEMP/widget-profile.mobileprovision" | plutil -extract UUID raw -o - -)"
+          name="$(security cms -D -i "$RUNNER_TEMP/widget-profile.mobileprovision" | plutil -extract Name raw -o - -)"
+          installed_path="$profiles/$uuid.mobileprovision"
+          cp "$RUNNER_TEMP/widget-profile.mobileprovision" "$installed_path"
+          rm -f "$RUNNER_TEMP/widget-profile.mobileprovision"
+
+          echo "WIDGET_PROVISIONING_PROFILE_NAME=$name" >> "$GITHUB_ENV"
+          echo "WIDGET_PROVISIONING_PROFILE_PATH=$installed_path" >> "$GITHUB_ENV"
+          echo "Installed widget profile '$name' ($uuid)"
+
       - name: Cache Swift Package Manager dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -600,8 +644,8 @@ jobs:
         # the App Store Connect API key" above), not $HOME, so cleanup no
         # longer touches -- let alone unconditionally `rm -rf`s -- anything
         # under the developer's own $HOME/.appstoreconnect. The provisioning
-        # profile installed above is removed by its exact recorded path
-        # instead of being left to accumulate in
+        # profiles installed above (app and widget extension) are removed by
+        # their exact recorded paths instead of being left to accumulate in
         # $HOME/Library/MobileDevice/Provisioning Profiles across runs on
         # this non-ephemeral machine.
         if: always()
@@ -614,6 +658,10 @@ jobs:
           if [ -n "${PROVISIONING_PROFILE_PATH:-}" ] && [ -f "$PROVISIONING_PROFILE_PATH" ]; then
             rm -f "$PROVISIONING_PROFILE_PATH"
             echo "Provisioning profile removed ($PROVISIONING_PROFILE_PATH)."
+          fi
+          if [ -n "${WIDGET_PROVISIONING_PROFILE_PATH:-}" ] && [ -f "$WIDGET_PROVISIONING_PROFILE_PATH" ]; then
+            rm -f "$WIDGET_PROVISIONING_PROFILE_PATH"
+            echo "Widget provisioning profile removed ($WIDGET_PROVISIONING_PROFILE_PATH)."
           fi
           if [ -n "${SIGNING_KEYCHAIN:-}" ] && [ -f "$SIGNING_KEYCHAIN" ]; then
             security delete-keychain "$SIGNING_KEYCHAIN"

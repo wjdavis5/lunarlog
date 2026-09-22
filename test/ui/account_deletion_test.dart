@@ -46,6 +46,11 @@ import 'gate_test.dart' show FakeGate, FakeInactivityTimers;
 
 Finder key(String value) => find.byKey(ValueKey(value));
 
+/// The `en` lookups behind [accountDeletionFailureCopy]'s expected copy —
+/// the same arb values the widget tree resolves through the delegate
+/// (issue #1004, tranche 5).
+final AppLocalizations _en = lookupAppLocalizations(const Locale('en'));
+
 /// A few plain pumps for screens with a busy spinner, where `pumpAndSettle`
 /// would time out waiting on its indefinite animation (mirrors
 /// `test/ui/account_test.dart`'s `pumpFew`).
@@ -955,7 +960,7 @@ void main() {
         find.descendant(
           of: key('account-delete-error'),
           matching: find.text(
-            accountDeletionFailureCopy(const AccountDeletionFailure.unknown()),
+            accountDeletionFailureCopy(_en, const AccountDeletionFailure.unknown()),
           ),
           matchRoot: true,
         ),
@@ -1026,7 +1031,7 @@ void main() {
         expect(
           find.descendant(
             of: key('account-delete-error'),
-            matching: find.text(accountDeletionFailureCopy(
+            matching: find.text(accountDeletionFailureCopy(_en,
                 const AccountDeletionFailure.appleNativeCeremonyUnavailable())),
             matchRoot: true,
           ),
@@ -1079,7 +1084,7 @@ void main() {
         expect(
           find.descendant(
             of: key('account-delete-error'),
-            matching: find.text(accountDeletionFailureCopy(failure)),
+            matching: find.text(accountDeletionFailureCopy(_en, failure)),
             matchRoot: true,
           ),
           findsOneWidget,
@@ -1100,7 +1105,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // Unlike appleRevokeFailed, nothing was touched on this path (the
       // Edge Function fails closed before Step 4's destructive RPC even
       // runs) - the copy must say so, not the appleRevokeFailed line's
@@ -1124,7 +1129,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // Unlike appleCodeRequired, a bare retry can never succeed here - the
       // ceremony will never become available on this platform - so the
       // copy must not read as a plain "please try again" and must instead
@@ -1147,7 +1152,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // The attachment-cleanup step now runs before the destructive RPC
       // (Issue #243 round 2 fix), so a failure here leaves everything
       // untouched, exactly like appleCodeRequired - the copy must say so,
@@ -1172,7 +1177,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       expect(copy, isNot(contains('could not confirm')));
       expect(copy.toLowerCase(), contains('deleted'));
       expect(copy.toLowerCase(), contains('confirmed the sign-in'));
@@ -1194,7 +1199,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // Unlike attachmentCleanupFailed, this is a bound on the account's own
       // data - a bare retry can never clear it, so the copy must say so and
       // point to support instead of "please try again".
@@ -1217,7 +1222,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // By this point the server rows are already gone (KTD4) - the copy
       // must say so truthfully, not claim "nothing was removed".
       expect(copy, isNot(contains('Nothing was removed')));
@@ -1241,7 +1246,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       // The data really is already gone by the time this code is possible
       // (#17 P1 fix) - the copy must not claim otherwise, and must not send
       // the operator to sign back into an account that may no longer be
@@ -1265,7 +1270,7 @@ void main() {
       await tester.tap(key('account-delete-confirm'));
       await tester.pumpAndSettle();
 
-      final copy = accountDeletionFailureCopy(failure);
+      final copy = accountDeletionFailureCopy(_en, failure);
       expect(copy, isNot(contains('not deleted')));
       expect(copy.toLowerCase(), isNot(contains('sign in again')));
     });

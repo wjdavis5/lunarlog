@@ -75,6 +75,7 @@ import 'package:lunarlog/domain/logging/merge_notice_dismissals.dart';
 import 'package:lunarlog/domain/models/day_entry_history.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/sync/local_row_counts.dart';
+import 'package:meta/meta.dart';
 
 import '../sync/conflict_rules.dart';
 import '../sync/remote_rows.dart';

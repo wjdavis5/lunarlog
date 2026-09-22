@@ -12,7 +12,10 @@
 /// tap) already recorded.
 library;
 
+import '../models/day_entry.dart';
 import '../models/flow_level.dart';
+import '../models/local_date.dart';
+import '../repositories/day_entries_repository.dart';
 
 /// The flow level a bare "period started today" tap writes for a day with
 /// no existing entry (or an existing entry logged below this level).
@@ -49,4 +52,28 @@ FlowLevel quickLogFlowLevel(FlowLevel? existing) {
   return existing.index >= kQuickLogFlowLevel.index
       ? existing
       : kQuickLogFlowLevel;
+}
+
+/// Restores exactly what a quick-log write overwrote (issue #316 review
+/// item 5): the prior [DayEntry] (flow/tags/note preserved) if the day
+/// already had one, or a tombstone — through the repository's own delete
+/// path, so sync dirty-marking applies exactly as it would to any other
+/// edit — if the quick-log tap is what created it.
+///
+/// The one Undo semantics for every quick-log caller: the overview's Today
+/// card (its snackbar's Undo action) and, since issue #1016, the widget
+/// quick-log's own snackbar — [previous] is whatever the caller captured
+/// immediately before its write ([WidgetQuickLogOutcome.previousEntry] on
+/// the widget path).
+Future<void> undoQuickLog(
+  DayEntriesRepository repository, {
+  required String profileId,
+  required DayEntry? previous,
+  required LocalDate date,
+}) async {
+  if (previous == null) {
+    await repository.delete(profileId, date);
+  } else {
+    await repository.save(previous);
+  }
 }

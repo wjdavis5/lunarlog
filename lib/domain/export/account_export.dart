@@ -140,7 +140,14 @@ import 'account_export_remote_source.dart';
 /// step and the codec's read-time mapping fold any stored copy into
 /// `standard` + `irregularFraming: true` before export reads it), but the
 /// importer still accepts it from older files and applies the same fold.
-const int kAccountExportSchemaVersion = 14;
+///
+/// v15 (Issue #849, re-scoped) adds `dayEntries[].notePrivate`: the
+/// per-note privacy flag. The note's text was always exported (it is the
+/// subject's own data), but without the flag a restore would silently
+/// re-share a note the subject had marked private. A reader of an old (v14)
+/// export treats an absent key as `false` (the marker simply did not exist
+/// yet), the same default the importer applies.
+const int kAccountExportSchemaVersion = 15;
 
 /// The app doesn't read this from a plugin (KTD6: `lib/domain` stays pure
 /// Dart and untestable platform calls stay out of the builder) - it is a
@@ -417,6 +424,8 @@ Map<String, Object?> _exportDayEntry(DayEntry entry) => {
       'flow': entry.flow.toDb(),
       'tags': entry.tags,
       'note': entry.note,
+      // Issue #849 (kAccountExportSchemaVersion v15).
+      'notePrivate': entry.notePrivate,
       // Issue #220 (kAccountExportSchemaVersion v7).
       'pms': entry.pms,
       // Issue #159 (kAccountExportSchemaVersion v4).

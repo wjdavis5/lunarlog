@@ -199,7 +199,7 @@ abstract class AppLocalizations {
   /// Legend entry for a predicted (hatched) day band.
   ///
   /// In en, this message translates to:
-  /// **'Predicted day'**
+  /// **'Estimated day'**
   String get calendarLegendPredicted;
 
   /// Legend entry for the predicted premenstrual badge.
@@ -247,7 +247,7 @@ abstract class AppLocalizations {
   /// Strip shown on quiet months while no estimate is active.
   ///
   /// In en, this message translates to:
-  /// **'Keep logging — predicted bands appear once a few cycles are recorded.'**
+  /// **'Keep logging — estimated bands appear once a few cycles are recorded.'**
   String get calendarKeepLogging;
 
   /// The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.
@@ -313,7 +313,7 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike.
   ///
   /// In en, this message translates to:
-  /// **'predicted period day'**
+  /// **'estimated period day'**
   String get calendarCellPredictedPeriod;
 
   /// Screen-reader fragment for a predicted bleed day's cycle-day numeral.
@@ -325,25 +325,25 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'cycle day {day} of the first predicted cycle'**
+  /// **'cycle day {day} of the first estimated cycle'**
   String calendarCellCycleDayFirstCycle(int day);
 
   /// Screen-reader fragment for a day carrying the PMS badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted premenstrual window'**
+  /// **'estimated premenstrual window'**
   String get calendarCellPmsWindow;
 
   /// Screen-reader fragment for a day carrying the cramps badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted cramps window'**
+  /// **'estimated cramps window'**
   String get calendarCellCrampsWindow;
 
   /// Screen-reader fragment for a future day whose forecast cell carries no marker.
   ///
   /// In en, this message translates to:
-  /// **'no prediction for this date'**
+  /// **'no estimate for this date'**
   String get calendarCellNoPrediction;
 
   /// InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602.
@@ -505,43 +505,43 @@ abstract class AppLocalizations {
   /// Future-day explainer body when no estimate exists at all.
   ///
   /// In en, this message translates to:
-  /// **'No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.'**
+  /// **'No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.'**
   String get futureExplainerNoEstimate;
 
   /// Future-day explainer body when nothing is predicted for the date.
   ///
   /// In en, this message translates to:
-  /// **'No prediction for this date. Days can be logged once they arrive.'**
+  /// **'No estimate for this date. Days can be logged once they arrive.'**
   String get futureExplainerNone;
 
   /// Future-day explainer body for a predicted bleed day with no cycle-day numeral.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBand(int count);
 
   /// Future-day explainer body for a predicted bleed day inside the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day — cycle day {day} of the first estimated cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBandWithCycleDay(int day, int count);
 
   /// Future-day explainer body for a day in the predicted PMS window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
+  /// **'Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
   String get futureExplainerPms;
 
   /// Future-day explainer body for a day in the predicted cramps window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted cramps window — cramps commonly occur within two days of a period start.'**
+  /// **'Inside the estimated cramps window — cramps commonly occur within two days of a period start.'**
   String get futureExplainerCramps;
 
   /// Future-day explainer body for a counted future cycle day that is not a predicted bleed day.
   ///
   /// In en, this message translates to:
-  /// **'Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.'**
+  /// **'Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.'**
   String futureExplainerNumeral(int day);
 
   /// Future-day explainer confidence line, e.g. 'Estimate confidence: high.'.
@@ -633,6 +633,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Anything worth remembering about today?'**
   String get daySheetNoteHint;
+
+  /// Issue #849 (re-scoped): the subject-only toggle that marks the day note private. Rendered only while the note is being written (the stored note is empty), and disabled once a non-empty note has been saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep this note private'**
+  String get daySheetNotePrivateToggle;
+
+  /// Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it.
+  ///
+  /// In en, this message translates to:
+  /// **'Private notes aren\'t shared with guardians.'**
+  String get daySheetNotePrivateHint;
+
+  /// Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared).
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy is chosen when the note is written, and can\'t be changed after it\'s saved.'**
+  String get daySheetNotePrivateSavedHint;
+
+  /// Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device.
+  ///
+  /// In en, this message translates to:
+  /// **'Private note'**
+  String get daySheetNotePrivateHidden;
 
   /// The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means "save".
   ///
@@ -1079,7 +1103,7 @@ abstract class AppLocalizations {
   /// Body of the overview's unusually-long-cycle prompt.
   ///
   /// In en, this message translates to:
-  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.'**
+  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.'**
   String get overviewLongCycleBody;
 
   /// Action excluding the open cycle from future averages.
@@ -1091,7 +1115,7 @@ abstract class AppLocalizations {
   /// Action navigating to Settings to manage or turn off predictions (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Turn off predictions'**
+  /// **'Turn off estimates'**
   String get overviewLongCyclePredictionsOff;
 
   /// Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything.
@@ -1103,7 +1127,7 @@ abstract class AppLocalizations {
   /// Issue #859: calm, non-alarming body of the stale-history overview card.
   ///
   /// In en, this message translates to:
-  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.'**
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.'**
   String get overviewStaleHistoryBody;
 
   /// Issue #859: primary action on the stale-history card, logging a period start for today.
@@ -1338,17 +1362,17 @@ abstract class AppLocalizations {
   /// **'Health'**
   String get settingsHealthHeader;
 
-  /// Settings tile opening per-profile Health app sync.
+  /// Settings tile opening per-profile health sync.
   ///
   /// In en, this message translates to:
-  /// **'Health app sync'**
-  String get settingsHealthSyncTitle;
+  /// **'{source} sync'**
+  String settingsHealthSyncTitle(String source);
 
   /// Subtitle of the health-sync tile.
   ///
   /// In en, this message translates to:
-  /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
-  String get settingsHealthSyncSubtitle;
+  /// **'Choose which profile\'s data may sync to {source}'**
+  String settingsHealthSyncSubtitle(String source);
 
   /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
   ///
@@ -1356,7 +1380,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
@@ -1410,22 +1434,22 @@ abstract class AppLocalizations {
   /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
   String healthSyncImportKeptManual(int count);
 
-  /// Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.
+  /// Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.
   ///
   /// In en, this message translates to:
-  /// **'Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.'**
+  /// **'Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.'**
   String healthSyncImportPlacedDeviceZone(int count);
 
-  /// Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).
+  /// Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.'**
   String healthSyncImportSkippedNoZone(int count);
 
-  /// Health import summary: samples whose flow value has no lunarlog equivalent.
+  /// Health import summary: entries whose flow value has no lunarlog equivalent.
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
 
   /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
@@ -1473,14 +1497,14 @@ abstract class AppLocalizations {
   /// Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.'**
-  String healthSyncUnbindDialogWriteBody(String name);
+  /// **'This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.'**
+  String healthSyncUnbindDialogWriteBody(String name, String source);
 
   /// Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.'**
-  String healthSyncUnbindDialogImportBody(String name);
+  /// **'This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.'**
+  String healthSyncUnbindDialogImportBody(String name, String source);
 
   /// Confirm action of the health-sync unbind dialog (Issue #893).
   ///
@@ -1515,7 +1539,7 @@ abstract class AppLocalizations {
   /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
   ///
   /// In en, this message translates to:
-  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
+  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.
@@ -1725,7 +1749,7 @@ abstract class AppLocalizations {
   /// Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions).
   ///
   /// In en, this message translates to:
-  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.'**
+  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.'**
   String get firstRunValueBody;
 
   /// Title of the second onboarding card (what a profile and a guardian are).
@@ -2004,6 +2028,18 @@ abstract class AppLocalizations {
   /// **'Sign in to invite'**
   String get firstRunInviteSignInAction;
 
+  /// Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to accept your invite'**
+  String get pendingInviteBannerTitle;
+
+  /// Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign In'**
+  String get pendingInviteBannerAction;
+
   /// Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent.
   ///
   /// In en, this message translates to:
@@ -2139,7 +2175,7 @@ abstract class AppLocalizations {
   /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:
-  /// **'Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
+  /// **'Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
   String overviewPmsBandLabel(String range, int days, int length);
 
   /// Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.
@@ -2151,31 +2187,31 @@ abstract class AppLocalizations {
   /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Predictions are suppressed'**
+  /// **'Estimates paused'**
   String get predictionsSuppressedTitle;
 
   /// Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
+  /// **'Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.'**
   String predictionsSuppressedBody(String method);
 
   /// Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.
   ///
   /// In en, this message translates to:
-  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.'**
+  /// **'Because this profile is set to {mode} mode, period estimates are paused — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.'**
   String predictionsSuppressedByModeBody(String mode);
 
   /// Title of the card displayed when predictions are disabled for the profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions turned off'**
+  /// **'Estimates off'**
   String get predictionsDisabledTitle;
 
   /// Body of the card explaining that predictions are disabled while tracking remains active (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
+  /// **'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
   String get predictionsDisabledBody;
 
   /// Button on predictions-disabled card opening Settings (issue #225).
@@ -2187,19 +2223,19 @@ abstract class AppLocalizations {
   /// Title of the prediction toggle in Settings when only one profile exists (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions'**
+  /// **'Show estimates'**
   String get settingsPredictionsTitle;
 
   /// Title of the prediction toggle in Settings for a specific profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions ({profileName})'**
+  /// **'Show estimates ({profileName})'**
   String settingsPredictionsProfileTitle(String profileName);
 
   /// Subtitle describing the predictions toggle in Settings (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show cycle estimates, fertile window, and prediction reminders'**
+  /// **'Show cycle estimates, fertile window, and estimate reminders'**
   String get settingsPredictionsSubtitle;
 
   /// Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).
@@ -2223,7 +2259,7 @@ abstract class AppLocalizations {
   /// Body of the dismissible suggestion banner for irregular cycles (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
+  /// **'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
   String get overviewIrregularSuggestionBody;
 
   /// Action on the irregular suggestion banner opening Settings (issue #225).
@@ -2277,7 +2313,7 @@ abstract class AppLocalizations {
   /// The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted period starts'**
+  /// **'A heads-up before the estimated period starts'**
   String get reminderKindPeriodDueSubtitle;
 
   /// The PMS-watch reminder's settings row title (Issue #178 localization of the existing copy).
@@ -2313,7 +2349,7 @@ abstract class AppLocalizations {
   /// The fertile-window-soon reminder's settings row subtitle (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted fertile window'**
+  /// **'A heads-up before the estimated fertile window'**
   String get reminderKindFertileWindowSoonSubtitle;
 
   /// The cycle-statistic-change reminder's settings row title (Issue #178; Clue catalogue item 5).
@@ -2343,19 +2379,19 @@ abstract class AppLocalizations {
   /// Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted start'**
+  /// **'Days before estimated start'**
   String get reminderLeadDaysBeforeStart;
 
   /// Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted PMS window'**
+  /// **'Days before estimated PMS window'**
   String get reminderLeadDaysBeforePms;
 
   /// Lead-days row title for the fertile-window-soon reminder (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted fertile window'**
+  /// **'Days before estimated fertile window'**
   String get reminderLeadDaysBeforeFertileWindow;
 
   /// The birth-control reminders explainer row title, shown when the profile has no method-cadence reminder to configure (Issue #183).
@@ -3015,7 +3051,7 @@ abstract class AppLocalizations {
   /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
   ///
   /// In en, this message translates to:
-  /// **'Period predictions off'**
+  /// **'Period estimates off'**
   String get profileStatusPredictionsOff;
 
   /// Issue #982: the one-line cycle status on a ProfileCard row for a stale-history profile (ActivePrediction.staleHistory, issue #859) — a neutral line replacing the rolled 'Cycle day N' count the same way the overview's stale card replaces it.
@@ -3471,7 +3507,7 @@ abstract class AppLocalizations {
   /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
+  /// **'Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
   String get pregnancyExitExclusionBody;
 
   /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
@@ -3531,7 +3567,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455).
   ///
   /// In en, this message translates to:
-  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.'**
+  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.'**
   String get postpartumReturnBody;
 
   /// Action of the postpartum cycles-have-returned offer; switches the profile's life-stage mode to tracking and then offers the interval exclusion (Issue #455).
@@ -3549,7 +3585,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  /// **'Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
   String get postpartumExitExclusionBody;
 
   /// Accept action of the postpartum-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #455).
@@ -3969,7 +4005,7 @@ abstract class AppLocalizations {
   /// Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged.
   ///
   /// In en, this message translates to:
-  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.'**
+  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s own estimate.'**
   String get healthDeviationCardSubtitle;
 
   /// Issue #799: tooltip on the deviation card's dismiss button.
@@ -4803,6 +4839,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Check in when no entry has been logged for a while'**
   String get sharingNotificationPreferencesMissedEntrySubtitle;
+
+  /// Issue #851: section header over the three opt-in ahead-of-time guardian alerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Ahead of time'**
+  String get sharingNotificationPreferencesAheadOfTimeHeader;
+
+  /// Issue #851: opt-in toggle for the period_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Period reminder'**
+  String get sharingNotificationPreferencesPeriodSoon;
+
+  /// Issue #851: period_soon toggle subtitle (generic; the alert itself carries no detail).
+  ///
+  /// In en, this message translates to:
+  /// **'A heads-up a few days before the next expected period'**
+  String get sharingNotificationPreferencesPeriodSoonSubtitle;
+
+  /// Issue #851: opt-in toggle for the restock_due ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'Restock reminder'**
+  String get sharingNotificationPreferencesRestock;
+
+  /// Issue #851: restock_due toggle subtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Remind me to restock supplies before the next expected period'**
+  String get sharingNotificationPreferencesRestockSubtitle;
+
+  /// Issue #851: opt-in toggle for the pms_soon ahead-of-time alert.
+  ///
+  /// In en, this message translates to:
+  /// **'PMS heads-up'**
+  String get sharingNotificationPreferencesPmsSoon;
+
+  /// Issue #851: pms_soon toggle subtitle, naming the three-interval gate.
+  ///
+  /// In en, this message translates to:
+  /// **'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)'**
+  String get sharingNotificationPreferencesPmsSoonSubtitle;
 
   /// Issue #1004 (tranche 1): off option in the notification-preferences dropdowns.
   ///
@@ -6352,6 +6430,18 @@ abstract class AppLocalizations {
   /// **'Email'**
   String get accountSignInEmailLabel;
 
+  /// Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email address.'**
+  String get accountSignInEmailRequired;
+
+  /// Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address.
+  ///
+  /// In en, this message translates to:
+  /// **'That doesn\'t look like an email address.'**
+  String get accountSignInEmailInvalid;
+
   /// Issue #1004 (tranche 2): sign-in screen password field label.
   ///
   /// In en, this message translates to:
@@ -6776,17 +6866,17 @@ abstract class AppLocalizations {
   /// **'Sync {name} to this phone?'**
   String healthSyncBindTitle(String name);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.
+  /// health-sync bind confirmation body for a write direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindWriteBody(String name);
+  /// **'Only {name}\'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name, String source);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.
+  /// health-sync bind confirmation body for an import-only direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindImportBody(String name);
+  /// **'Only {name}\'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name, String source);
 
   /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
   ///
@@ -7115,7 +7205,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.
   ///
   /// In en, this message translates to:
-  /// **'{label} — the days around estimated ovulation, back-calculated from the predicted period date.'**
+  /// **'{label} — the days around estimated ovulation, back-calculated from the estimated period date.'**
   String monthCalendarFertileWindowExplainer(String label);
 
   /// Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button.
@@ -7567,6 +7657,685 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logged {occurrences} times across {cycles} cycles'**
   String symptomTrendsLogged(int occurrences, int cycles);
+
+  /// Issue #1004 (tranche 5): sync-status copy while a push/pull/restore cycle runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing…'**
+  String get accountSyncStatusSyncing;
+
+  /// Issue #1004 (tranche 5): sync-status copy while upload consent is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload pending — tap to review'**
+  String get accountSyncStatusUploadPending;
+
+  /// Issue #1004 (tranche 5): sync-status copy on the web build without the sync define.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is off in this web build'**
+  String get accountSyncStatusWebSyncOff;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an expired session or an auth failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again to sync'**
+  String get accountSyncStatusSignInAgain;
+
+  /// Issue #1004 (tranche 5): sync-status copy when rejected rows exist.
+  ///
+  /// In en, this message translates to:
+  /// **'Some entries could not be uploaded'**
+  String get accountSyncStatusRejected;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a sign-up confirmation email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for email confirmation — open the link on this device'**
+  String get accountSyncStatusAwaitingConfirmation;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a passwordless sign-in email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in email sent — open the link on this device or enter the code'**
+  String get accountSyncStatusAwaitingMagicLink;
+
+  /// Issue #1004 (tranche 5): day-sheet micro-confirmation after an offline save (#182 AC8).
+  ///
+  /// In en, this message translates to:
+  /// **'Saved on this device · will sync'**
+  String get accountSyncStatusOfflineSaved;
+
+  /// Issue #1004 (tranche 5): relative time under a minute.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get accountSyncStatusJustNow;
+
+  /// Issue #1004 (tranche 5): relative time in minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String accountSyncStatusMinutesAgo(int minutes);
+
+  /// Issue #1004 (tranche 5): relative time in hours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h ago'**
+  String accountSyncStatusHoursAgo(int hours);
+
+  /// Issue #1004 (tranche 5): relative time in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} d ago'**
+  String accountSyncStatusDaysAgo(int days);
+
+  /// Issue #1004 (tranche 5): sync-status copy when no sync engine is wired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is not available in this build'**
+  String get accountSyncStatusUnavailable;
+
+  /// Issue #1004 (tranche 5): sync-status copy for a network failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server — will retry'**
+  String get accountSyncStatusNetworkRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an unclassified sync failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync failed — will retry'**
+  String get accountSyncStatusFailedRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy when the server account no longer matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as a different account'**
+  String get accountSyncStatusAccountMismatch;
+
+  /// Issue #1004 (tranche 5): live push progress; both counts arrive pre-formatted so the thousands separator stays the app's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {pushed} of {total}'**
+  String accountSyncStatusUploading(String pushed, String total);
+
+  /// Issue #1004 (tranche 5): sync-status copy when signed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get accountSyncStatusNotSignedIn;
+
+  /// Issue #1004 (tranche 5): sync-status copy while the device gate pauses sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync paused'**
+  String get accountSyncStatusPaused;
+
+  /// Issue #1004 (tranche 5): sync-status copy before the first completed sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Not synced yet'**
+  String get accountSyncStatusNotSyncedYet;
+
+  /// Issue #1004 (tranche 5): resting sync-status copy; the relative time arrives pre-formatted.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date · {relative}'**
+  String accountSyncStatusUpToDate(String relative);
+
+  /// Issue #1004 (tranche 5): one-line JSON-export failure copy, no exception text (R10).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountExportFailure;
+
+  /// Issue #1004 (tranche 5): branded Google button label per Google's branding guidelines wording.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Google'**
+  String get accountGoogleButtonLabel;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (network).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your connection and try again. Your account was not deleted.'**
+  String get accountDeletionNetworkFailure;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (missing Apple authorization code).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.'**
+  String get accountDeletionAppleCodeRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (no native Apple ceremony on this device).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.'**
+  String get accountDeletionAppleCeremonyUnavailable;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment cleanup failed closed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.'**
+  String get accountDeletionAttachmentCleanupFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment count unbounded; support needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.'**
+  String get accountDeletionAttachmentCleanupUnbounded;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (AAL2 step-up needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Please confirm your two-factor code and try again.'**
+  String get accountDeletionMfaRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (Apple revocation failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.'**
+  String get accountDeletionAppleRevokeFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (revocation marker not persisted).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionRevocationMarkerFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (auth row deletion failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionDeleteUserFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (unauthorized).
+  ///
+  /// In en, this message translates to:
+  /// **'Your session has expired. Sign in again and retry - your account was not deleted.'**
+  String get accountDeletionSessionExpired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unknown outcome (timeout).
+  ///
+  /// In en, this message translates to:
+  /// **'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.'**
+  String get accountDeletionTimeout;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unclassified error.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Your account was not deleted. Please try again.'**
+  String get accountDeletionUnknown;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 3 cycles'**
+  String get settingsExportRangePresetLast3Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 6 cycles'**
+  String get settingsExportRangePresetLast6Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 cycles'**
+  String get settingsExportRangePresetLast12Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 months'**
+  String get settingsExportRangePresetLast12Months;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything'**
+  String get settingsExportRangePresetEverything;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom range…'**
+  String get settingsExportRangePresetCustom;
+
+  /// Issue #1004 (tranche 5): CSV export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your cycle data as CSV. Please try again.'**
+  String get settingsCsvExportFailure;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export CSV tables.'**
+  String get settingsCsvExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s cycle data as spreadsheet-compatible CSV files.'**
+  String settingsCsvExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Export your cycles and daily log as spreadsheet-compatible CSV files.'**
+  String get settingsCsvExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): shared FHIR/PDF clinical-export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your clinical summary. Please try again.'**
+  String get settingsClinicalExportFailure;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a clinical summary.'**
+  String get settingsClinicalExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary.'**
+  String settingsClinicalExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.'**
+  String get settingsClinicalExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a PDF clinical summary.'**
+  String get settingsClinicalPdfSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary as a PDF.'**
+  String settingsClinicalPdfSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an on-device PDF summary of logged cycle data.'**
+  String get settingsClinicalPdfSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): custom export-range label naming its explicit start/end dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} to {end}'**
+  String settingsClinicalPdfRangeCustom(String start, String end);
+
+  /// Issue #1004 (tranche 5): Apple Health store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'the Health app'**
+  String get healthSyncSourceNameAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceNameHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health app'**
+  String get healthSyncSourceTitleAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceTitleHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app isn\'t available on this device.'**
+  String get healthSyncUnavailableAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect isn\'t available on this device.'**
+  String get healthSyncUnavailableHealthConnect;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Apple Health; deliberately ambiguous about denial).
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.'**
+  String get healthSyncImportEmptyAppleHealth;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Health Connect).
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.'**
+  String get healthSyncImportEmptyHealthConnect;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on a write-wired platform (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.'**
+  String get healthSyncWriteIntro;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
+  String get healthSyncImportIntro;
+
+  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.'**
+  String get healthSyncWriteForwardOnly;
+
+  /// Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918).
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
+  String get healthSyncWriteSymptoms;
+
+  /// Issue #1004 (tranche 5): import-only explanation (Android, #458).
+  ///
+  /// In en, this message translates to:
+  /// **'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.'**
+  String get healthSyncImportOnly;
+
+  /// Issue #1004 (tranche 5): bind deny reason when minor health sync is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.'**
+  String get healthSyncDenyMinorOff;
+
+  /// Issue #1004 (tranche 5): bind deny reason when no account is signed in to prove ownership.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in and sync once so this device can confirm you own this profile.'**
+  String get healthSyncDenyNotOwnerSignedOut;
+
+  /// Issue #1004 (tranche 5): bind deny reason for a non-owner.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.'**
+  String get healthSyncDenyNotOwner;
+
+  /// Issue #1004 (tranche 5): neutral stand-in when the bound profile id no longer resolves.
+  ///
+  /// In en, this message translates to:
+  /// **'this profile'**
+  String get healthSyncUnboundProfileName;
+
+  /// Issue #1004 (tranche 5): import blocked by the binding guard.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile can\'t import from {source} right now.'**
+  String healthSyncImportBlockedRefused(String source);
+
+  /// Issue #1004 (tranche 5): import pass failed at the platform layer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportBlockedFailed;
+
+  /// Issue #1004 (tranche 5): account-import apply failure; the write is all-or-nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the import. Nothing was written — please try again.'**
+  String get importApplyFailure;
+
+  /// Issue #1004 (tranche 5): stale import plan (#140 review, LLA-085).
+  ///
+  /// In en, this message translates to:
+  /// **'Your data changed while this was open. Please choose the file again to include the latest changes.'**
+  String get importStalePlan;
+
+  /// Issue #1004 (tranche 5): shared-profile import disclosure (#140 review, item 10).
+  ///
+  /// In en, this message translates to:
+  /// **'One of these profiles has another guardian — the rows you import will sync to their device too.'**
+  String get importSharedProfileGuardian;
+
+  /// Issue #1004 (tranche 5): Clue zip read failure; the raw exception is never rendered (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read that Clue export. Check the file and the password from your export email, then try again.'**
+  String get importClueReadFailure;
+
+  /// Issue #1004 (tranche 5): the picked ZIP is not a Clue export (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.'**
+  String get importClueNotClue;
+
+  /// Issue #1004 (tranche 5): Clue write failure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the Clue import. Nothing was written — please try again.'**
+  String get importClueApplyFailure;
+
+  /// Issue #1004 (tranche 5): default name offered when a Clue import creates a new profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Clue'**
+  String get importClueImportedProfileDefaultName;
+
+  /// Issue #1004 (tranche 5): Clue preview merge disclosure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.'**
+  String get importClueMergePolicy;
+
+  /// Issue #1004 (tranche 5): Clue preview summary line; both counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to import: {days}, {datapoints}.'**
+  String importCluePreviewSummary(String days, String datapoints);
+
+  /// Issue #1004 (tranche 5): account-import preview profile count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importPreviewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview day-entry count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day entry} other{{count} day entries}}'**
+  String importPreviewDayEntryCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview observation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 observation} other{{count} observations}}'**
+  String importPreviewObservationCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview date-range suffix.
+  ///
+  /// In en, this message translates to:
+  /// **' ({earliest} to {latest})'**
+  String importPreviewDateRange(String earliest, String latest);
+
+  /// Issue #1004 (tranche 5): account-import preview summary line; counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'{profiles}, {dayEntries}, {observations}{dateRange}'**
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  );
+
+  /// Issue #1004 (tranche 5): import plan profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 new profile} other{{count} new profiles}}'**
+  String importPlanSummaryNewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan profile-match count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 matched profile} other{{count} matched profiles}}'**
+  String importPlanSummaryMatchedProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan summary line.
+  ///
+  /// In en, this message translates to:
+  /// **'{created}, {matched} ({added} entries added, {merged} merged).'**
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  );
+
+  /// Issue #1004 (tranche 5): Clue preview day count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String importCluePreviewDayCount(int count);
+
+  /// Issue #1004 (tranche 5): Clue preview datapoint count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 datapoint} other{{count} datapoints}}'**
+  String importCluePreviewDatapointCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importResultProfileCreatedCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result discarded-file-note count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file note} other{{count} file notes}}'**
+  String importResultFileNoteCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result note-merge honesty suffix (#140 review, item 9); the note count arrives pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **', {notes} not applied (an existing note was kept)'**
+  String importResultNotesDiscardedSuffix(String notes);
+
+  /// Issue #1004 (tranche 5): account-import result summary line; counts arrive pre-pluralized where pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Import complete: {created} created, {matched} matched, {added} entries added, {merged} merged, {observationsAdded} observations added, {observationsSkipped} skipped{rejected}{notesDiscarded}.'**
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  );
+
+  /// Issue #1004 (tranche 5): profile-name validation error for a blank name.
+  ///
+  /// In en, this message translates to:
+  /// **'Name cannot be empty'**
+  String get profileDialogNameEmpty;
+
+  /// Issue #1004 (tranche 5): profile-name validation error past the server's limit.
+  ///
+  /// In en, this message translates to:
+  /// **'Name is too long ({maxLength} characters max)'**
+  String profileDialogNameTooLong(int maxLength);
+
+  /// Issue #1004 (tranche 5): birth-year validation error for a non-numeric value.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid year'**
+  String get profileDialogBirthYearInvalid;
+
+  /// Issue #1004 (tranche 5): birth-year validation error outside the server's CHECK bounds.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a year between {minYear} and {maxYear}'**
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear);
+
+  /// Issue #1004 (tranche 5): birth-year validation error naming the conflict with the earliest logged entry (#923).
+  ///
+  /// In en, this message translates to:
+  /// **'This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.'**
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear);
+
+  /// Issue #1004 (tranche 5): the transparency disclosure beside every guardian-note input (#801).
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read this note — including the person it is about.'**
+  String get careGuardianNoteDisclosure;
+
+  /// Issue #1004 (tranche 5): the same transparency rule, worded for the standing care-notes surface.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read these notes — including the person they are about.'**
+  String get careNotesDisclosure;
+
+  /// Issue #1004 (tranche 5): default label of the contextual help-card entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn more'**
+  String get helpCardLearnMore;
+
+  /// Issue #1004 (tranche 5): attachment size label in kilobytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{kilobytes} KB'**
+  String feedbackAttachmentSizeKb(int kilobytes);
+
+  /// Issue #1004 (tranche 5): the relative-day header word for today.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get relativeDayToday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for yesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get relativeDayYesterday;
+
+  /// Issue #1004 (tranche 5): the relative-day header word for tomorrow.
+  ///
+  /// In en, this message translates to:
+  /// **'Tomorrow'**
+  String get relativeDayTomorrow;
+
+  /// Issue #1004 (tranche 5): human label for the email identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get accountProviderLabelEmail;
+
+  /// Issue #1004 (tranche 5): human label for the Google identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Google'**
+  String get accountProviderLabelGoogle;
+
+  /// Issue #1004 (tranche 5): human label for the Apple identity provider.
+  ///
+  /// In en, this message translates to:
+  /// **'Apple'**
+  String get accountProviderLabelApple;
 }
 
 class _AppLocalizationsDelegate

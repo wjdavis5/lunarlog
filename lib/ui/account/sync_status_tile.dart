@@ -19,26 +19,11 @@ import 'package:lunarlog/ui/account/upload_consent_screen.dart';
 import 'package:lunarlog/ui/routes.dart';
 import 'package:provider/provider.dart';
 
-const String kSyncingCopy = 'Syncing…';
-const String kUploadPendingCopy = 'Upload pending — tap to review';
-const String kWebSyncOffCopy = 'Sync is off in this web build';
-const String kSignInAgainCopy = 'Sign in again to sync';
-const String kRejectedCopy = 'Some entries could not be uploaded';
-const String kAwaitingConfirmationCopy =
-    'Waiting for email confirmation — open the link on this device';
-
-/// A passwordless sign-in email is out and no session has arrived yet
-/// (#2 U4; KTD3): same tier as the confirmation copy.
-const String kAwaitingMagicLinkCopy =
-    'Sign-in email sent — open the link on this device or enter the code';
-
-/// Issue #182 AC8: shown by `lib/ui/logging/day_sheet.dart` right after a
-/// local save whenever [shouldConfirmOfflineSave] says so — the offline-first
-/// engineering guarantee made visible as a quiet trust signal, on the screen
-/// where the save happened, instead of only discoverable in Settings'
-/// Account section.
-const String kOfflineSaveConfirmationCopy = 'Saved on this device · will sync';
-
+// All sync-status copy lives in `lib/l10n/app_en.arb` (issue #1004,
+// tranche 5): the former `kSyncingCopy`/`kUploadPendingCopy`/… consts and
+// the English literals the copy functions used to return are now
+// `AppLocalizations` getters (`accountSyncStatus*`), with the `en` values
+// character-identical to what they replace.
 /// Whether a just-completed local save should tell the operator the row is
 /// still waiting to reach the server (issue #182 AC8; pairs with #198's
 /// autosave/confirmation work). True only when a sync engine exists, a
@@ -62,12 +47,16 @@ bool shouldConfirmOfflineSave({
 }
 
 /// "just now", "5 min ago", "3 h ago", "2 d ago".
-String formatRelative(DateTime then, DateTime now) {
+String formatRelative(AppLocalizations l10n, DateTime then, DateTime now) {
   final delta = now.toUtc().difference(then.toUtc());
-  if (delta < const Duration(minutes: 1)) return 'just now';
-  if (delta < const Duration(hours: 1)) return '${delta.inMinutes} min ago';
-  if (delta < const Duration(days: 1)) return '${delta.inHours} h ago';
-  return '${delta.inDays} d ago';
+  if (delta < const Duration(minutes: 1)) return l10n.accountSyncStatusJustNow;
+  if (delta < const Duration(hours: 1)) {
+    return l10n.accountSyncStatusMinutesAgo(delta.inMinutes);
+  }
+  if (delta < const Duration(days: 1)) {
+    return l10n.accountSyncStatusHoursAgo(delta.inHours);
+  }
+  return l10n.accountSyncStatusDaysAgo(delta.inDays);
 }
 
 /// The one line the tile and the glyph show. Precedence, most urgent
@@ -97,7 +86,8 @@ bool isAwaitingMagicLink({
   awaitingConfirmationEmail: awaitingMagicLinkEmail,
 );
 
-String syncStatusCopy({
+String syncStatusCopy(
+  AppLocalizations l10n, {
   required SyncSnapshot? snapshot,
   required AuthSessionState? authState,
   String? awaitingConfirmationEmail,
@@ -105,21 +95,22 @@ String syncStatusCopy({
   required DateTime now,
   bool webSyncOff = false,
 }) {
-  if (webSyncOff) return kWebSyncOffCopy;
+  if (webSyncOff) return l10n.accountSyncStatusWebSyncOff;
   if (isAwaitingConfirmation(
     authState: authState,
     awaitingConfirmationEmail: awaitingConfirmationEmail,
   )) {
-    return kAwaitingConfirmationCopy;
+    return l10n.accountSyncStatusAwaitingConfirmation;
   }
   if (isAwaitingMagicLink(
     authState: authState,
     awaitingMagicLinkEmail: awaitingMagicLinkEmail,
   )) {
-    return kAwaitingMagicLinkCopy;
+    return l10n.accountSyncStatusAwaitingMagicLink;
   }
-  if (snapshot == null) return 'Sync is not available in this build';
+  if (snapshot == null) return l10n.accountSyncStatusUnavailable;
   return _snapshotCopy(
+    l10n,
     snapshot: snapshot,
     authState: authState,
     signedIn: authState.hasUsableSession,
@@ -129,40 +120,52 @@ String syncStatusCopy({
 
 /// The copy once the web-off / awaiting-confirmation / awaiting-magic-link
 /// / no-snapshot tiers (handled by [syncStatusCopy]) are ruled out.
-String _snapshotCopy({
+String _snapshotCopy(
+  AppLocalizations l10n, {
   required SyncSnapshot snapshot,
   required AuthSessionState? authState,
   required bool signedIn,
   required DateTime now,
 }) {
-  if (snapshot.phase == SyncPhase.error) return _errorCopy(snapshot.lastError);
-  if (authState == AuthSessionState.expired) return kSignInAgainCopy;
-  final phaseCopy = _fixedPhaseCopy(snapshot);
+  if (snapshot.phase == SyncPhase.error) {
+    return _errorCopy(l10n, snapshot.lastError);
+  }
+  if (authState == AuthSessionState.expired) {
+    return l10n.accountSyncStatusSignInAgain;
+  }
+  final phaseCopy = _fixedPhaseCopy(l10n, snapshot);
   if (phaseCopy != null) return phaseCopy;
-  return _restingStateCopy(snapshot: snapshot, signedIn: signedIn, now: now);
+  return _restingStateCopy(
+    l10n,
+    snapshot: snapshot,
+    signedIn: signedIn,
+    now: now,
+  );
 }
 
 /// Copy for a sync-engine failure, keyed by [SyncSnapshot.lastError].
-String _errorCopy(SyncErrorKind lastError) => switch (lastError) {
-  SyncErrorKind.auth => kSignInAgainCopy,
-  SyncErrorKind.network => 'Could not reach the server — will retry',
-  SyncErrorKind.other || SyncErrorKind.none => 'Sync failed — will retry',
-};
+String _errorCopy(AppLocalizations l10n, SyncErrorKind lastError) =>
+    switch (lastError) {
+      SyncErrorKind.auth => l10n.accountSyncStatusSignInAgain,
+      SyncErrorKind.network => l10n.accountSyncStatusNetworkRetry,
+      SyncErrorKind.other ||
+      SyncErrorKind.none => l10n.accountSyncStatusFailedRetry,
+    };
 
 /// Copy fixed by [snapshot]'s phase, or `null` to fall through to
 /// [_restingStateCopy]'s checks (covers `paused`, `idle` and `error` —
 /// `error` is unreachable here, already handled by [_snapshotCopy]).
-String? _fixedPhaseCopy(SyncSnapshot snapshot) {
+String? _fixedPhaseCopy(AppLocalizations l10n, SyncSnapshot snapshot) {
   switch (snapshot.phase) {
     case SyncPhase.accountMismatch:
-      return 'Signed in as a different account';
+      return l10n.accountSyncStatusAccountMismatch;
     case SyncPhase.awaitingUploadConsent:
-      return kUploadPendingCopy;
+      return l10n.accountSyncStatusUploadPending;
     case SyncPhase.pushing:
-      return _pushingCopy(snapshot);
+      return _pushingCopy(l10n, snapshot);
     case SyncPhase.restoring:
     case SyncPhase.pulling:
-      return kSyncingCopy;
+      return l10n.accountSyncStatusSyncing;
     case SyncPhase.paused:
     case SyncPhase.idle:
     case SyncPhase.error:
@@ -177,15 +180,17 @@ String? _fixedPhaseCopy(SyncSnapshot snapshot) {
 /// batch before progress is worth showing. `pushedRows` is clamped to
 /// `totalDirtyRows` so a stale or racing snapshot never reads e.g.
 /// "Uploading 600 of 500".
-String _pushingCopy(SyncSnapshot snapshot) {
+String _pushingCopy(AppLocalizations l10n, SyncSnapshot snapshot) {
   if (snapshot.totalDirtyRows <= SyncBatchLimits.maxRowsPerTable) {
-    return kSyncingCopy;
+    return l10n.accountSyncStatusSyncing;
   }
   final pushedRows = snapshot.pushedRows > snapshot.totalDirtyRows
       ? snapshot.totalDirtyRows
       : snapshot.pushedRows;
-  return 'Uploading ${_thousands(pushedRows)} of '
-      '${_thousands(snapshot.totalDirtyRows)}';
+  return l10n.accountSyncStatusUploading(
+    _thousands(pushedRows),
+    _thousands(snapshot.totalDirtyRows),
+  );
 }
 
 /// Thousands-separated integer (`1200` -> `"1,200"`) — no `intl`
@@ -202,17 +207,18 @@ String _thousands(int n) {
 
 /// The resting-state tiers: rejected rows, signed-out, paused, then the
 /// last-synced copy.
-String _restingStateCopy({
+String _restingStateCopy(
+  AppLocalizations l10n, {
   required SyncSnapshot snapshot,
   required bool signedIn,
   required DateTime now,
 }) {
-  if (snapshot.rejectedCount > 0) return kRejectedCopy;
-  if (!signedIn) return 'Not signed in';
-  if (snapshot.phase == SyncPhase.paused) return 'Sync paused';
+  if (snapshot.rejectedCount > 0) return l10n.accountSyncStatusRejected;
+  if (!signedIn) return l10n.accountSyncStatusNotSignedIn;
+  if (snapshot.phase == SyncPhase.paused) return l10n.accountSyncStatusPaused;
   final last = snapshot.lastSyncAt;
-  if (last == null) return 'Not synced yet';
-  return 'Up to date · ${formatRelative(last, now)}';
+  if (last == null) return l10n.accountSyncStatusNotSyncedYet;
+  return l10n.accountSyncStatusUpToDate(formatRelative(l10n, last, now));
 }
 
 /// Whether the copy describes a running cycle (drives spinners and the
@@ -311,6 +317,7 @@ class _SyncStatusTileState extends State<SyncStatusTile> {
         builder: (context, linkSnapshot) {
           final snapshot = sync?.snapshot;
           final copy = syncStatusCopy(
+            AppLocalizations.of(context),
             snapshot: snapshot,
             authState: auth?.state,
             awaitingConfirmationEmail: awaitingSnapshot.data,
@@ -391,6 +398,7 @@ class SyncStatusGlyph extends StatelessWidget {
     if (sync == null) return const SizedBox.shrink();
     final auth = Provider.of<AuthController?>(context);
     final copy = syncStatusCopy(
+      AppLocalizations.of(context),
       snapshot: sync.snapshot,
       authState: auth?.state,
       now: (now ?? DateTime.now)(),

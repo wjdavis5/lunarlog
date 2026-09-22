@@ -501,7 +501,7 @@ void main() {
       // joins with an en dash (see _pmsSection's formatter).
       expect(
         find.text(
-          'Predicted PMS: September 1, 2026 – September 3, 2026 — '
+          'Estimated PMS: September 1, 2026 – September 3, 2026 — '
           'usually starts about 3 days before your period and lasts '
           'about 3 days.',
         ),
@@ -705,7 +705,7 @@ void main() {
       );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions'), findsOneWidget);
+      expect(find.text('Turn off estimates'), findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
@@ -792,7 +792,7 @@ void main() {
       );
       expect(find.text('This cycle is unusually long'), findsOneWidget);
       expect(find.text('Exclude this cycle'), findsOneWidget);
-      expect(find.text('Turn off predictions'), findsOneWidget);
+      expect(find.text('Turn off estimates'), findsOneWidget);
       // The rolled estimate, the late resolver, and the days-late count all
       // stay exactly as they were before #859.
       expect(
@@ -2572,6 +2572,99 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(milliseconds: 100));
       await db.close();
+    });
+  });
+
+  group('issue #850 (U7): third-person care-mode copy on a guardian device',
+      () {
+    testWidgets('the subject lens keeps the pre-#850 teen copy on a '
+        'not-enough-history profile', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+      );
+      expect(find.text('Your record is just getting started'), findsOneWidget);
+      expect(
+        find.textContaining('Every entry builds the picture of your cycle.'),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('an accepted guardian reads the not-enough card third-person '
+        "with the subject's name", (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+        ]),
+      );
+
+      expect(
+        find.text("Alice's record is just getting started"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("Every entry builds the picture of Alice's cycle."),
+        findsOneWidget,
+      );
+      expect(find.text('Your record is just getting started'), findsNothing);
+      expect(
+        find.textContaining('Every entry builds the picture of your cycle.'),
+        findsNothing,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the guardian lens renders the teen estimate label '
+        'third-person', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        irregularFraming: false,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+        ]),
+      );
+
+      expect(
+        find.textContaining("Alice's next period is estimated around:"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Your next period is estimated around:'),
+        findsNothing,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
     });
   });
 }

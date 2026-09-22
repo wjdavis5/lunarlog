@@ -11,12 +11,14 @@ import 'package:lunarlog/data/notifications/reminder_coordinator.dart';
 import 'package:lunarlog/domain/birth_control.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/notifications/reminder_config.dart';
 import 'package:lunarlog/domain/notifications/reminder_config_store.dart';
 import 'package:lunarlog/domain/notifications/reminder_payload.dart';
 import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
@@ -40,6 +42,35 @@ Profile _profile(String id) => Profile(
       createdAt: DateTime.utc(2026),
       updatedAt: DateTime.utc(2026),
     );
+
+/// A guardian row fixture for the #850 lens source (mirrors the production
+/// shape: the viewer's accepted membership, subject-stamped per #802).
+ProfileGuardian _row({
+  required String profileId,
+  required String userId,
+  bool isSubject = false,
+  GuardianRole role = GuardianRole.caregiver,
+}) =>
+    ProfileGuardian(
+      id: '$profileId-$userId',
+      profileId: profileId,
+      userId: userId,
+      role: role,
+      isSubject: isSubject,
+      createdAt: DateTime.utc(2026),
+      updatedAt: DateTime.utc(2026),
+    );
+
+/// The production lens source shape (`app_dependencies.dart`'s
+/// `_subjectProfileSource`): resolve the viewer's lens from the profile's
+/// guardian rows over [guardianLensFor].
+SubjectProfileSource _lensSource({
+  required String? viewerId,
+  required Map<String, List<ProfileGuardian>> rows,
+}) =>
+    (profileId) async =>
+        guardianLensFor(rows[profileId] ?? const [], viewerId) ==
+        GuardianLens.subject;
 
 ActivePrediction _late(LocalDate today) => ActivePrediction(
       today: today,
@@ -174,6 +205,216 @@ void main() {
     expect(lastPlan, isNotEmpty);
     expect(lastPlan.every((r) => r.kind == ReminderKind.late), isTrue,
         reason: 'the mode switch never touched the prediction or entries');
+  });
+
+  test('guardian lens: a guarded profile arms nothing while the viewer\'s '
+      'own subject profile still arms its mode preset (Issue #850, D-6)',
+      () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final today = LocalDate(2026, 8, 30);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      today: () => today,
+      // The viewer is the subject of their own profile and a primary
+      // guardian (not the subject) of the guarded one — #802's
+      // is_subject marker, exactly what the app wires from the guardian
+      // rows + signed-in user id.
+      isSubjectFor: _lensSource(
+        viewerId: 'u-mom',
+        rows: {
+          'subject': [
+            _row(profileId: 'subject', userId: 'u-mom', isSubject: true),
+          ],
+          'guarded': [
+            _row(
+              profileId: 'guarded',
+              userId: 'u-mom',
+              role: GuardianRole.primaryGuardian,
+            ),
+          ],
+        },
+      ),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([
+      _profile('subject').copyWith(mode: ProfileMode.standard),
+      _profile('guarded').copyWith(mode: ProfileMode.standard),
+    ]);
+    predictions['subject']!.add(_late(today));
+    predictions['guarded']!.add(_late(today));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan.any((r) => r.profileId == 'subject'), isTrue,
+        reason: 'the viewer is the subject — the standard mode preset arms');
+    expect(plan.any((r) => r.profileId == 'guarded'), isFalse,
+        reason: 'the viewer only guards this profile — no local reminder '
+            'for someone else\'s record');
+  });
+
+  test('a null lens source keeps the pre-#850 all-subject default '
+      '(Issue #850, D-6)', () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final today = LocalDate(2026, 8, 30);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      today: () => today,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('p1'), _profile('p2')]);
+    predictions['p1']!.add(_late(today));
+    predictions['p2']!.add(_late(today));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan.any((r) => r.profileId == 'p1'), isTrue);
+    expect(plan.any((r) => r.profileId == 'p2'), isTrue,
+        reason: 'with no source every active profile is treated as the '
+            'viewer\'s own, exactly as before #850');
+  });
+
+  test('the lens gate also drops a stored config for a guarded profile '
+      '(Issue #850, D-6)', () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final store = FakeSettingsStore();
+    final configService = ReminderConfigService(store);
+    addTearDown(store.close);
+    final today = LocalDate(2026, 8, 30);
+
+    // Both profiles have an explicit stored config (the log nudge); only
+    // the subject's may arm.
+    final logNudge = ReminderConfig.standard.copyWith(
+      log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 20 * 60),
+    );
+    await configService.save('subject', logNudge);
+    await configService.save('guarded', logNudge);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      localSettings: configService,
+      today: () => today,
+      isSubjectFor: _lensSource(
+        viewerId: 'u-mom',
+        rows: {
+          'subject': [
+            _row(profileId: 'subject', userId: 'u-mom', isSubject: true),
+          ],
+          'guarded': [
+            _row(
+              profileId: 'guarded',
+              userId: 'u-mom',
+              role: GuardianRole.primaryGuardian,
+            ),
+          ],
+        },
+      ),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('subject'), _profile('guarded')]);
+    predictions['subject']!.add(_upcoming(today, today.addDays(10)));
+    predictions['guarded']!.add(_upcoming(today, today.addDays(10)));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan.any((r) => r.profileId == 'subject'), isTrue,
+        reason: 'the stored config still applies to the subject profile');
+    expect(plan.any((r) => r.profileId == 'guarded'), isFalse,
+        reason: 'the guarded profile\'s stored config is dropped by the lens');
+  });
+
+  test('the legacy caregiver mode now plans like standard on a subject '
+      'profile (Issue #850, U2/D-6)', () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final p1 = StreamController<CyclePrediction>(sync: true);
+    final today = LocalDate(2026, 8, 30);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => id == 'p1' ? p1.stream : const Stream.empty(),
+      today: () => today,
+      // The viewer is the subject (or, failing open, treated as one): the
+      // retired caregiver wire value no longer suppresses anything.
+      isSubjectFor: (_) async => true,
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      await p1.close();
+    });
+
+    profiles.add([_profile('p1').copyWith(mode: ProfileMode.caregiver)]);
+    p1.add(_late(today));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan, isNotEmpty,
+        reason: 'caregiver is a retired wire value mapped to standard — it '
+            'arms the late window, unlike the pre-#850 behavior');
+    expect(plan.every((r) => r.profileId == 'p1'), isTrue);
+    expect(plan.every((r) => r.kind == ReminderKind.late), isTrue);
   });
 
   test('denied permission: no scheduling, reminders cancelled, hint state set',

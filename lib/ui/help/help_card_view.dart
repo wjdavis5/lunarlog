@@ -30,23 +30,27 @@ class HelpCardLink extends StatelessWidget {
   const HelpCardLink({
     super.key,
     required this.cardId,
-    this.label = 'Learn more',
+    this.label,
   });
 
   final String cardId;
-  final String label;
+
+  /// Null renders the arb-backed default (`helpCardLearnMore`, issue #1004
+  /// tranche 5 — the defaulted English literal this field used to carry).
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
     final card = HelpCards.byId(cardId);
     if (card == null) return const SizedBox.shrink();
+    final l10n = AppLocalizations.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: TextButton.icon(
         key: ValueKey('help-link-$cardId'),
         onPressed: () => showHelpCardSheet(context, card),
         icon: const Icon(Icons.help_outline, size: 18),
-        label: Text(label),
+        label: Text(label ?? l10n.helpCardLearnMore),
       ),
     );
   }

@@ -63,7 +63,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarLegendToday => 'Today';
 
   @override
-  String get calendarLegendPredicted => 'Predicted day';
+  String get calendarLegendPredicted => 'Estimated day';
 
   @override
   String get calendarLegendPms => 'PMS window';
@@ -90,7 +90,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get calendarKeepLogging =>
-      'Keep logging — predicted bands appear once a few cycles are recorded.';
+      'Keep logging — estimated bands appear once a few cycles are recorded.';
 
   @override
   String calendarCellDateLabel(String weekday, String month, int day) {
@@ -127,7 +127,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get calendarCellReadOnly => 'read-only';
 
   @override
-  String get calendarCellPredictedPeriod => 'predicted period day';
+  String get calendarCellPredictedPeriod => 'estimated period day';
 
   @override
   String calendarCellCycleDay(int day) {
@@ -136,17 +136,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String calendarCellCycleDayFirstCycle(int day) {
-    return 'cycle day $day of the first predicted cycle';
+    return 'cycle day $day of the first estimated cycle';
   }
 
   @override
-  String get calendarCellPmsWindow => 'predicted premenstrual window';
+  String get calendarCellPmsWindow => 'estimated premenstrual window';
 
   @override
-  String get calendarCellCrampsWindow => 'predicted cramps window';
+  String get calendarCellCrampsWindow => 'estimated cramps window';
 
   @override
-  String get calendarCellNoPrediction => 'no prediction for this date';
+  String get calendarCellNoPrediction => 'no estimate for this date';
 
   @override
   String get cyclePredictionLoadError => 'Could not load the cycle estimate.';
@@ -241,11 +241,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get futureExplainerNoEstimate =>
-      'No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.';
+      'No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.';
 
   @override
   String get futureExplainerNone =>
-      'No prediction for this date. Days can be logged once they arrive.';
+      'No estimate for this date. Days can be logged once they arrive.';
 
   @override
   String futureExplainerBand(int count) {
@@ -255,7 +255,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted period day. The date may shift by about $count $_temp0 either way as new periods are logged.';
+    return 'Estimated period day. The date may shift by about $count $_temp0 either way as new periods are logged.';
   }
 
   @override
@@ -266,20 +266,20 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted period day — cycle day $day of the first predicted cycle. The date may shift by about $count $_temp0 either way as new periods are logged.';
+    return 'Estimated period day — cycle day $day of the first estimated cycle. The date may shift by about $count $_temp0 either way as new periods are logged.';
   }
 
   @override
   String get futureExplainerPms =>
-      'Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.';
+      'Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.';
 
   @override
   String get futureExplainerCramps =>
-      'Inside the predicted cramps window — cramps commonly occur within two days of a period start.';
+      'Inside the estimated cramps window — cramps commonly occur within two days of a period start.';
 
   @override
   String futureExplainerNumeral(int day) {
-    return 'Cycle day $day of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.';
+    return 'Cycle day $day of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.';
   }
 
   @override
@@ -330,6 +330,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get daySheetNoteHint => 'Anything worth remembering about today?';
+
+  @override
+  String get daySheetNotePrivateToggle => 'Keep this note private';
+
+  @override
+  String get daySheetNotePrivateHint =>
+      'Private notes aren\'t shared with guardians.';
+
+  @override
+  String get daySheetNotePrivateSavedHint =>
+      'Privacy is chosen when the note is written, and can\'t be changed after it\'s saved.';
+
+  @override
+  String get daySheetNotePrivateHidden => 'Private note';
 
   @override
   String get daySheetDoneLabel => 'Done';
@@ -574,20 +588,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewLongCycleBody =>
-      'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.';
+      'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.';
 
   @override
   String get overviewLongCycleExclude => 'Exclude this cycle';
 
   @override
-  String get overviewLongCyclePredictionsOff => 'Turn off predictions';
+  String get overviewLongCyclePredictionsOff => 'Turn off estimates';
 
   @override
   String get overviewStaleHistoryTitle => 'Your history is out of date';
 
   @override
   String get overviewStaleHistoryBody =>
-      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.';
+      'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.';
 
   @override
   String get overviewStaleHistoryLog => 'Log a period';
@@ -764,11 +778,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHealthHeader => 'Health';
 
   @override
-  String get settingsHealthSyncTitle => 'Health app sync';
+  String settingsHealthSyncTitle(String source) {
+    return '$source sync';
+  }
 
   @override
-  String get settingsHealthSyncSubtitle =>
-      'Choose which profile\'s data may sync to this phone\'s Health app';
+  String settingsHealthSyncSubtitle(String source) {
+    return 'Choose which profile\'s data may sync to $source';
+  }
 
   @override
   String get settingsHealthSyncSymptomsAndroidLimitation =>
@@ -846,10 +863,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
-    return 'Placed $_temp0 using the time zone of this phone.';
+    return 'Dated $_temp0 using the time zone of this phone.';
   }
 
   @override
@@ -857,8 +874,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no recorded time zone.';
   }
@@ -868,8 +885,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count samples',
-      one: '1 sample',
+      other: '$count entries',
+      one: '1 entry',
     );
     return 'Skipped $_temp0 with no matching flow level.';
   }
@@ -931,13 +948,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncUnbindDialogWriteBody(String name) {
-    return 'This phone will stop writing data for $name to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.';
+  String healthSyncUnbindDialogWriteBody(String name, String source) {
+    return 'This phone will stop writing data for $name to $source and stop importing from it. Nothing already logged in lunarlog, or already written to $source, is deleted.';
   }
 
   @override
-  String healthSyncUnbindDialogImportBody(String name) {
-    return 'This phone will stop importing data for $name from its Health app. Nothing already logged is deleted.';
+  String healthSyncUnbindDialogImportBody(String name, String source) {
+    return 'This phone will stop importing data for $name from $source. Nothing already logged is deleted.';
   }
 
   @override
@@ -958,7 +975,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsPrivacyDialogBody =>
-      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
+      'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md';
 
   @override
   String get settingsClose => 'Close';
@@ -1073,7 +1090,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get firstRunValueBody =>
-      'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.';
+      'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.';
 
   @override
   String get firstRunGuardiansTitle => 'Profiles and guardians';
@@ -1236,6 +1253,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunInviteSignInAction => 'Sign in to invite';
 
   @override
+  String get pendingInviteBannerTitle => 'Sign in to accept your invite';
+
+  @override
+  String get pendingInviteBannerAction => 'Sign In';
+
+  @override
   String get firstRunInviteCoParent => 'Invite a guardian';
 
   @override
@@ -1315,7 +1338,7 @@ class AppLocalizationsEn extends AppLocalizations {
       other: 'days',
       one: 'day',
     );
-    return 'Predicted PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
+    return 'Estimated PMS: $range — usually starts about $days $_temp0 before your period and lasts about $length $_temp1.';
   }
 
   @override
@@ -1324,39 +1347,39 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get predictionsSuppressedTitle => 'Predictions are suppressed';
+  String get predictionsSuppressedTitle => 'Estimates paused';
 
   @override
   String predictionsSuppressedBody(String method) {
-    return 'Because $method typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.';
+    return 'Because $method typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.';
   }
 
   @override
   String predictionsSuppressedByModeBody(String mode) {
-    return 'Because this profile is set to $mode mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.';
+    return 'Because this profile is set to $mode mode, period estimates are paused — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.';
   }
 
   @override
-  String get predictionsDisabledTitle => 'Predictions turned off';
+  String get predictionsDisabledTitle => 'Estimates off';
 
   @override
   String get predictionsDisabledBody =>
-      'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
+      'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.';
 
   @override
   String get predictionsDisabledAction => 'Manage in Settings';
 
   @override
-  String get settingsPredictionsTitle => 'Show predictions';
+  String get settingsPredictionsTitle => 'Show estimates';
 
   @override
   String settingsPredictionsProfileTitle(String profileName) {
-    return 'Show predictions ($profileName)';
+    return 'Show estimates ($profileName)';
   }
 
   @override
   String get settingsPredictionsSubtitle =>
-      'Show cycle estimates, fertile window, and prediction reminders';
+      'Show cycle estimates, fertile window, and estimate reminders';
 
   @override
   String settingsPredictionsSuppressedByModeSubtitle(String mode) {
@@ -1373,7 +1396,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get overviewIrregularSuggestionBody =>
-      'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.';
+      'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.';
 
   @override
   String get overviewIrregularSuggestionSettings => 'Manage in Settings';
@@ -1402,7 +1425,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderKindPeriodDueSubtitle =>
-      'A heads-up before the predicted period starts';
+      'A heads-up before the estimated period starts';
 
   @override
   String get reminderKindPmsWatch => 'PMS watch';
@@ -1423,7 +1446,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reminderKindFertileWindowSoonSubtitle =>
-      'A heads-up before the predicted fertile window';
+      'A heads-up before the estimated fertile window';
 
   @override
   String get reminderKindCycleStats => 'Cycle statistic changes';
@@ -1439,14 +1462,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reminderKindLogNudgeSubtitle => 'A daily prompt to log the day';
 
   @override
-  String get reminderLeadDaysBeforeStart => 'Days before predicted start';
+  String get reminderLeadDaysBeforeStart => 'Days before estimated start';
 
   @override
-  String get reminderLeadDaysBeforePms => 'Days before predicted PMS window';
+  String get reminderLeadDaysBeforePms => 'Days before estimated PMS window';
 
   @override
   String get reminderLeadDaysBeforeFertileWindow =>
-      'Days before predicted fertile window';
+      'Days before estimated fertile window';
 
   @override
   String get reminderBirthControlTitle => 'Birth-control reminders';
@@ -1870,7 +1893,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileStatusPredictionsSuppressed => 'Period estimates paused';
 
   @override
-  String get profileStatusPredictionsOff => 'Period predictions off';
+  String get profileStatusPredictionsOff => 'Period estimates off';
 
   @override
   String get profileStatusNoRecentPeriod => 'No recent period logged';
@@ -2145,7 +2168,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pregnancyExitExclusionBody =>
-      'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.';
+      'Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.';
 
   @override
   String get pregnancyExitExclusionAccept => 'Exclude pregnancy';
@@ -2183,7 +2206,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get postpartumReturnBody =>
-      'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.';
+      'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.';
 
   @override
   String get postpartumReturnAction => 'Switch to Period Tracking';
@@ -2194,7 +2217,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get postpartumExitExclusionBody =>
-      'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.';
+      'Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.';
 
   @override
   String get postpartumExitExclusionAccept => 'Exclude postpartum interval';
@@ -2509,7 +2532,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get healthDeviationCardSubtitle =>
-      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.';
+      'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s own estimate.';
 
   @override
   String get healthDeviationDismiss => 'Dismiss';
@@ -3039,6 +3062,30 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sharingNotificationPreferencesMissedEntrySubtitle =>
       'Check in when no entry has been logged for a while';
+
+  @override
+  String get sharingNotificationPreferencesAheadOfTimeHeader => 'Ahead of time';
+
+  @override
+  String get sharingNotificationPreferencesPeriodSoon => 'Period reminder';
+
+  @override
+  String get sharingNotificationPreferencesPeriodSoonSubtitle =>
+      'A heads-up a few days before the next expected period';
+
+  @override
+  String get sharingNotificationPreferencesRestock => 'Restock reminder';
+
+  @override
+  String get sharingNotificationPreferencesRestockSubtitle =>
+      'Remind me to restock supplies before the next expected period';
+
+  @override
+  String get sharingNotificationPreferencesPmsSoon => 'PMS heads-up';
+
+  @override
+  String get sharingNotificationPreferencesPmsSoonSubtitle =>
+      'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)';
 
   @override
   String get sharingNotificationPreferencesOff => 'Off';
@@ -3978,6 +4025,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountSignInEmailLabel => 'Email';
 
   @override
+  String get accountSignInEmailRequired => 'Enter your email address.';
+
+  @override
+  String get accountSignInEmailInvalid =>
+      'That doesn\'t look like an email address.';
+
+  @override
   String get accountSignInPasswordLabel => 'Password';
 
   @override
@@ -4256,13 +4310,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String healthSyncBindWriteBody(String name) {
-    return 'Only $name\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindWriteBody(String name, String source) {
+    return 'Only $name\'s data will ever be written to $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override
-  String healthSyncBindImportBody(String name) {
-    return 'Only $name\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
+  String healthSyncBindImportBody(String name, String source) {
+    return 'Only $name\'s data will ever be imported from $source. This phone can sync one profile at a time — choosing a different profile later replaces this one.';
   }
 
   @override
@@ -4463,7 +4517,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String monthCalendarFertileWindowExplainer(String label) {
-    return '$label — the days around estimated ovulation, back-calculated from the predicted period date.';
+    return '$label — the days around estimated ovulation, back-calculated from the estimated period date.';
   }
 
   @override
@@ -4743,4 +4797,514 @@ class AppLocalizationsEn extends AppLocalizations {
   String symptomTrendsLogged(int occurrences, int cycles) {
     return 'Logged $occurrences times across $cycles cycles';
   }
+
+  @override
+  String get accountSyncStatusSyncing => 'Syncing…';
+
+  @override
+  String get accountSyncStatusUploadPending => 'Upload pending — tap to review';
+
+  @override
+  String get accountSyncStatusWebSyncOff => 'Sync is off in this web build';
+
+  @override
+  String get accountSyncStatusSignInAgain => 'Sign in again to sync';
+
+  @override
+  String get accountSyncStatusRejected => 'Some entries could not be uploaded';
+
+  @override
+  String get accountSyncStatusAwaitingConfirmation =>
+      'Waiting for email confirmation — open the link on this device';
+
+  @override
+  String get accountSyncStatusAwaitingMagicLink =>
+      'Sign-in email sent — open the link on this device or enter the code';
+
+  @override
+  String get accountSyncStatusOfflineSaved =>
+      'Saved on this device · will sync';
+
+  @override
+  String get accountSyncStatusJustNow => 'just now';
+
+  @override
+  String accountSyncStatusMinutesAgo(int minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String accountSyncStatusHoursAgo(int hours) {
+    return '$hours h ago';
+  }
+
+  @override
+  String accountSyncStatusDaysAgo(int days) {
+    return '$days d ago';
+  }
+
+  @override
+  String get accountSyncStatusUnavailable =>
+      'Sync is not available in this build';
+
+  @override
+  String get accountSyncStatusNetworkRetry =>
+      'Could not reach the server — will retry';
+
+  @override
+  String get accountSyncStatusFailedRetry => 'Sync failed — will retry';
+
+  @override
+  String get accountSyncStatusAccountMismatch =>
+      'Signed in as a different account';
+
+  @override
+  String accountSyncStatusUploading(String pushed, String total) {
+    return 'Uploading $pushed of $total';
+  }
+
+  @override
+  String get accountSyncStatusNotSignedIn => 'Not signed in';
+
+  @override
+  String get accountSyncStatusPaused => 'Sync paused';
+
+  @override
+  String get accountSyncStatusNotSyncedYet => 'Not synced yet';
+
+  @override
+  String accountSyncStatusUpToDate(String relative) {
+    return 'Up to date · $relative';
+  }
+
+  @override
+  String get accountExportFailure =>
+      'Could not export your data. Please try again.';
+
+  @override
+  String get accountGoogleButtonLabel => 'Sign in with Google';
+
+  @override
+  String get accountDeletionNetworkFailure =>
+      'Could not reach the server. Check your connection and try again. Your account was not deleted.';
+
+  @override
+  String get accountDeletionAppleCodeRequired =>
+      'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAppleCeremonyUnavailable =>
+      'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.';
+
+  @override
+  String get accountDeletionAttachmentCleanupFailed =>
+      'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAttachmentCleanupUnbounded =>
+      'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.';
+
+  @override
+  String get accountDeletionMfaRequired =>
+      'Nothing was deleted. Please confirm your two-factor code and try again.';
+
+  @override
+  String get accountDeletionAppleRevokeFailed =>
+      'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.';
+
+  @override
+  String get accountDeletionRevocationMarkerFailed =>
+      'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionDeleteUserFailed =>
+      'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionSessionExpired =>
+      'Your session has expired. Sign in again and retry - your account was not deleted.';
+
+  @override
+  String get accountDeletionTimeout =>
+      'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.';
+
+  @override
+  String get accountDeletionUnknown =>
+      'Something went wrong. Your account was not deleted. Please try again.';
+
+  @override
+  String get settingsExportRangePresetLast3Cycles => 'Last 3 cycles';
+
+  @override
+  String get settingsExportRangePresetLast6Cycles => 'Last 6 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Cycles => 'Last 12 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Months => 'Last 12 months';
+
+  @override
+  String get settingsExportRangePresetEverything => 'Everything';
+
+  @override
+  String get settingsExportRangePresetCustom => 'Custom range…';
+
+  @override
+  String get settingsCsvExportFailure =>
+      'Could not export your cycle data as CSV. Please try again.';
+
+  @override
+  String get settingsCsvExportSubtitleNoEntries =>
+      'Add at least one day entry to export CSV tables.';
+
+  @override
+  String settingsCsvExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s cycle data as spreadsheet-compatible CSV files.';
+  }
+
+  @override
+  String get settingsCsvExportSubtitleGeneric =>
+      'Export your cycles and daily log as spreadsheet-compatible CSV files.';
+
+  @override
+  String get settingsClinicalExportFailure =>
+      'Could not export your clinical summary. Please try again.';
+
+  @override
+  String get settingsClinicalExportSubtitleNoEntries =>
+      'Add at least one day entry to export a clinical summary.';
+
+  @override
+  String settingsClinicalExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary.';
+  }
+
+  @override
+  String get settingsClinicalExportSubtitleGeneric =>
+      'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.';
+
+  @override
+  String get settingsClinicalPdfSubtitleNoEntries =>
+      'Add at least one day entry to export a PDF clinical summary.';
+
+  @override
+  String settingsClinicalPdfSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary as a PDF.';
+  }
+
+  @override
+  String get settingsClinicalPdfSubtitleGeneric =>
+      'Share an on-device PDF summary of logged cycle data.';
+
+  @override
+  String settingsClinicalPdfRangeCustom(String start, String end) {
+    return '$start to $end';
+  }
+
+  @override
+  String get healthSyncSourceNameAppleHealth => 'the Health app';
+
+  @override
+  String get healthSyncSourceNameHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncSourceTitleAppleHealth => 'Health app';
+
+  @override
+  String get healthSyncSourceTitleHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncUnavailableAppleHealth =>
+      'The Health app isn\'t available on this device.';
+
+  @override
+  String get healthSyncUnavailableHealthConnect =>
+      'Health Connect isn\'t available on this device.';
+
+  @override
+  String get healthSyncImportEmptyAppleHealth =>
+      'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.';
+
+  @override
+  String get healthSyncImportEmptyHealthConnect =>
+      'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.';
+
+  @override
+  String get healthSyncWriteIntro =>
+      'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.';
+
+  @override
+  String get healthSyncImportIntro =>
+      'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.';
+
+  @override
+  String get healthSyncWriteForwardOnly =>
+      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.';
+
+  @override
+  String get healthSyncWriteSymptoms =>
+      'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.';
+
+  @override
+  String get healthSyncImportOnly =>
+      'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.';
+
+  @override
+  String get healthSyncDenyMinorOff =>
+      'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.';
+
+  @override
+  String get healthSyncDenyNotOwnerSignedOut =>
+      'Sign in and sync once so this device can confirm you own this profile.';
+
+  @override
+  String get healthSyncDenyNotOwner =>
+      'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.';
+
+  @override
+  String get healthSyncUnboundProfileName => 'this profile';
+
+  @override
+  String healthSyncImportBlockedRefused(String source) {
+    return 'This profile can\'t import from $source right now.';
+  }
+
+  @override
+  String get healthSyncImportBlockedFailed =>
+      'Couldn\'t finish the import. Please try again.';
+
+  @override
+  String get importApplyFailure =>
+      'Could not finish the import. Nothing was written — please try again.';
+
+  @override
+  String get importStalePlan =>
+      'Your data changed while this was open. Please choose the file again to include the latest changes.';
+
+  @override
+  String get importSharedProfileGuardian =>
+      'One of these profiles has another guardian — the rows you import will sync to their device too.';
+
+  @override
+  String get importClueReadFailure =>
+      'Could not read that Clue export. Check the file and the password from your export email, then try again.';
+
+  @override
+  String get importClueNotClue =>
+      'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.';
+
+  @override
+  String get importClueApplyFailure =>
+      'Could not finish the Clue import. Nothing was written — please try again.';
+
+  @override
+  String get importClueImportedProfileDefaultName => 'Imported from Clue';
+
+  @override
+  String get importClueMergePolicy =>
+      'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.';
+
+  @override
+  String importCluePreviewSummary(String days, String datapoints) {
+    return 'Ready to import: $days, $datapoints.';
+  }
+
+  @override
+  String importPreviewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDayEntryCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count day entries',
+      one: '1 day entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewObservationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count observations',
+      one: '1 observation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDateRange(String earliest, String latest) {
+    return ' ($earliest to $latest)';
+  }
+
+  @override
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  ) {
+    return '$profiles, $dayEntries, $observations$dateRange';
+  }
+
+  @override
+  String importPlanSummaryNewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new profiles',
+      one: '1 new profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummaryMatchedProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matched profiles',
+      one: '1 matched profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  ) {
+    return '$created, $matched ($added entries added, $merged merged).';
+  }
+
+  @override
+  String importCluePreviewDayCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importCluePreviewDatapointCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count datapoints',
+      one: '1 datapoint',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultProfileCreatedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultFileNoteCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count file notes',
+      one: '1 file note',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultNotesDiscardedSuffix(String notes) {
+    return ', $notes not applied (an existing note was kept)';
+  }
+
+  @override
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  ) {
+    return 'Import complete: $created created, $matched matched, $added entries added, $merged merged, $observationsAdded observations added, $observationsSkipped skipped$rejected$notesDiscarded.';
+  }
+
+  @override
+  String get profileDialogNameEmpty => 'Name cannot be empty';
+
+  @override
+  String profileDialogNameTooLong(int maxLength) {
+    return 'Name is too long ($maxLength characters max)';
+  }
+
+  @override
+  String get profileDialogBirthYearInvalid => 'Enter a valid year';
+
+  @override
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear) {
+    return 'Enter a year between $minYear and $maxYear';
+  }
+
+  @override
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear) {
+    return 'This profile has entries from $earliestEntryYear. Enter $earliestEntryYear or earlier.';
+  }
+
+  @override
+  String get careGuardianNoteDisclosure =>
+      'Anyone with access to this profile can read this note — including the person it is about.';
+
+  @override
+  String get careNotesDisclosure =>
+      'Anyone with access to this profile can read these notes — including the person they are about.';
+
+  @override
+  String get helpCardLearnMore => 'Learn more';
+
+  @override
+  String feedbackAttachmentSizeKb(int kilobytes) {
+    return '$kilobytes KB';
+  }
+
+  @override
+  String get relativeDayToday => 'Today';
+
+  @override
+  String get relativeDayYesterday => 'Yesterday';
+
+  @override
+  String get relativeDayTomorrow => 'Tomorrow';
+
+  @override
+  String get accountProviderLabelEmail => 'Email';
+
+  @override
+  String get accountProviderLabelGoogle => 'Google';
+
+  @override
+  String get accountProviderLabelApple => 'Apple';
 }

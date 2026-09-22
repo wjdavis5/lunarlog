@@ -45,6 +45,7 @@ import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
+import 'package:lunarlog/domain/logging/quick_log.dart' show undoQuickLog;
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
@@ -337,14 +338,21 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderActionExecutor? _actionExecutor;
 
   /// Issue #141: the home-screen widget's gated quick-log executor and
-  /// payload publisher, plus the subscription to the widget's launch URIs.
-  /// All three null unless the bundle carries a widget store (armed only
+  /// payload publisher, plus the subscription to the widget's launch URIs
+  /// (and, issue #1016, to the executor's materialized-write outcomes).
+  /// All null unless the bundle carries a widget store (armed only
   /// by production `main.dart` on a platform with a widget surface),
   /// mirroring how the coordinator above exists only where a scheduler
   /// was provided.
   WidgetQuickLogExecutor? _widgetQuickLogExecutor;
   WidgetStatePublisher? _widgetPublisher;
   StreamSubscription<Uri>? _widgetLaunchSub;
+
+  /// Issue #1016: the subscription to the executor's materialized-write
+  /// outcomes, carrying each widget quick-log back to [_onWidgetQuickLogOutcome]
+  /// for the snackbar + Undo + Today-jump acknowledgement. Null together
+  /// with the executor (no widget surface).
+  StreamSubscription<WidgetQuickLogOutcome>? _widgetOutcomeSub;
 
   /// The per-profile reminder configuration store (Issue #136) backing
   /// the coordinator; provided to the tree for the reminder settings
@@ -537,6 +545,14 @@ class _LunarLogAppState extends State<LunarLogApp>
       birthControlStateFor: (profileId) => _profileModes
           .watch(profileId)
           .map(birthControlStateFromProfileMode),
+      // Issue #850, D-6: the per-viewer lens source gates local presets —
+      // a profile the signed-in viewer only guards (not the subject of)
+      // plans no local reminder; server caregiver alerts cover it instead.
+      // Both seams are always present in the app shell; the source fails
+      // open to "subject" for a local-only operator or a not-yet-synced
+      // membership.
+      guardians: _profileGuardians,
+      currentUserId: () => _authController?.currentUserId,
     );
     _coordinator = coordinator;
     _scheduleReminderStart(coordinator);
@@ -615,7 +631,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     final gate = context.read<GateController?>();
     // The gated write path: same closures as the reminder action executor
     // above — latched while the gate is locked, executed on unlock.
-    _widgetQuickLogExecutor = buildWidgetQuickLogExecutor(
+    final executor = buildWidgetQuickLogExecutor(
       dayEntries: _dayEntries,
       profiles: _profiles,
       guardians: _profileGuardians,
@@ -624,6 +640,15 @@ class _LunarLogAppState extends State<LunarLogApp>
       addUnlockListener: gate?.addListener,
       removeUnlockListener: gate?.removeListener,
     );
+    _widgetQuickLogExecutor = executor;
+    // Issue #1016: acknowledge every materialized write the way the
+    // in-app Today card does — Today-tab jump for the logged profile,
+    // then the same snackbar with Undo.
+    _widgetOutcomeSub =
+        executor.outcomes.listen((outcome) => _onWidgetQuickLogOutcome(
+              gate,
+              outcome,
+            ));
     // The payload publisher: derives the discreet render state from the
     // app's own data-change signals and writes the (minimal, documented)
     // boundary payload.
@@ -653,6 +678,53 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _handleWidgetLaunch(Uri uri) {
     if (!mounted) return;
     _widgetQuickLogExecutor?.handle(uri);
+  }
+
+  /// Issue #1016: a widget quick-log write just materialized — right after
+  /// unlock for a latched intent, immediately for a tap on an unlocked app.
+  /// Do what the in-app Today card does ([OverviewPanel]'s logged
+  /// snackbar): land the operator on the logged profile's Today tab and
+  /// show the same `overviewLoggedSnackbar` with Undo, so the home-screen
+  /// pill is no longer the one write in the app that acknowledges itself
+  /// with nothing.
+  ///
+  /// The jump rides the launch-payload seam
+  /// ([GateController.setPendingLaunchProfileId]) instead of reaching into
+  /// the shell: `ProfileHomeGate` consumes the pending id exactly as it
+  /// consumes a notification tap — switching the active profile when it
+  /// differs from the one the write landed on — and `AppShell`'s
+  /// launch-token reset lands on Today (LLA-008 makes a same-profile write
+  /// jump too, the issue's repro). Null when no gate is mounted (test
+  /// harnesses): the snackbar still surfaces, there is just nowhere to
+  /// jump. Dropped intents emit no outcome at all, so they stay silent —
+  /// see the executor's `outcomes` doc for the one line of #1016's
+  /// expected behavior deliberately out of scope.
+  void _onWidgetQuickLogOutcome(
+    GateController? gate,
+    WidgetQuickLogOutcome outcome,
+  ) {
+    if (!mounted) return;
+    gate?.setPendingLaunchProfileId(outcome.profileId);
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+    final l10n = AppLocalizations.of(ctx);
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.overviewLoggedSnackbar,
+          key: const ValueKey('widget-quick-log-snackbar'),
+        ),
+        action: SnackBarAction(
+          label: l10n.overviewUndo,
+          onPressed: () => unawaited(undoQuickLog(
+            _dayEntries,
+            profileId: outcome.profileId,
+            previous: outcome.previousEntry,
+            date: outcome.date,
+          )),
+        ),
+      ),
+    );
   }
 
   /// Issue #373: the sharer's device is the only place a projection can be
@@ -789,19 +861,48 @@ class _LunarLogAppState extends State<LunarLogApp>
   bool get _showPendingInviteSignInBanner =>
       _pendingInviteCode != null && !_isSignedIn();
 
-  /// Wraps [child] with the persistent "Sign in to accept your invite"
-  /// banner (Issue #535 (b)) whenever [_showPendingInviteSignInBanner]
-  /// holds. Placed in `MaterialApp.builder` (see [build]) — above the
-  /// Navigator, alongside [WebGuardrails] — so it renders over whatever the
-  /// signed-out flow already shows, rather than only inside one screen.
+  /// Wraps [child] with the "Sign in to accept your invite" banner (Issue
+  /// #535 (b)) whenever [_showPendingInviteSignInBanner] holds. Placed in
+  /// `MaterialApp.builder` (see [build]) — above the Navigator, alongside
+  /// [WebGuardrails] — so it renders over whatever the signed-out flow
+  /// already shows, rather than only inside one screen.
+  ///
+  /// Issue #1022: the banner's own [SafeArea] consumes the status-bar inset
+  /// exactly once for the whole strip, so [child] (the Navigator, and every
+  /// screen inside it) is wrapped in [MediaQuery.removePadding] with the top
+  /// inset removed. Without this, each screen's own `AppBar`/`SafeArea`
+  /// padded for the status bar a second time, leaving a dead band between
+  /// the banner and the content. One removal here covers every screen,
+  /// current and future, rather than a per-screen fix.
   Widget _wrapWithPendingInviteBanner(Widget child) {
     if (!_showPendingInviteSignInBanner) return child;
     return Column(
       children: [
-        _PendingInviteSignInBanner(onSignIn: _goToSignInForPendingInvite),
-        Expanded(child: child),
+        _PendingInviteSignInBanner(
+          onSignIn: _goToSignInForPendingInvite,
+          onDismiss: _dismissPendingInviteBanner,
+        ),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: child,
+          ),
+        ),
       ],
     );
+  }
+
+  /// Issue #1022: the banner's quiet close. Clears the in-memory latch for
+  /// this session — the invite link is single-use and still in the
+  /// recipient's messages, so nothing is lost; the home gate stays on the
+  /// screen it was already showing, without the banner.
+  void _dismissPendingInviteBanner() {
+    setState(() {
+      _pendingInviteCode = null;
+      _profileIdOfPendingInvite = null;
+      _pendingInviteKind = null;
+    });
   }
 
   /// Issue #739: wraps [child] with the persistent [QaBuildBanner] on a
@@ -809,12 +910,23 @@ class _LunarLogAppState extends State<LunarLogApp>
   /// `MaterialApp.builder` placement — above the Navigator — as the web
   /// banner beside it, so the marker renders over whatever screen is
   /// showing.
+  ///
+  /// Issue #1022: like the invite banner it wraps, the QA marker's own
+  /// [SafeArea] consumes the status-bar inset once, so [child] sees it
+  /// removed — otherwise a pending invite below the QA marker would pad
+  /// for the status bar a second time.
   Widget _wrapWithQaBanner(Widget child) {
     if (!_showQaBanner) return child;
     return Column(
       children: [
         const QaBuildBanner(),
-        Expanded(child: child),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: child,
+          ),
+        ),
       ],
     );
   }
@@ -1142,9 +1254,12 @@ class _LunarLogAppState extends State<LunarLogApp>
     _actionExecutor?.dispose();
     _actionExecutor = null;
     // Issue #141: the widget pieces tear down with the same shape as the
-    // reminder executor above.
+    // reminder executor above. Issue #1016: the outcome subscription is
+    // cancelled before the executor's dispose closes the stream.
     unawaited(_widgetLaunchSub?.cancel());
     _widgetLaunchSub = null;
+    unawaited(_widgetOutcomeSub?.cancel());
+    _widgetOutcomeSub = null;
     _widgetQuickLogExecutor?.dispose();
     _widgetQuickLogExecutor = null;
     final widgetPublisherTeardown =
@@ -1222,9 +1337,11 @@ class _LunarLogAppState extends State<LunarLogApp>
             updateShouldNotify: (_, _) => false,
           ),
         // Upload-consent counts (R14): the only place `lib/ui` learns how
-        // many rows this device holds, tombstones included.
+        // many rows this device holds, tombstones included. Issue #551
+        // (part 3): the count comes through AppDependencies'
+        // LocalRowCountRepository, never a raw `widget.db.storage` tear-off.
         Provider<LocalRowCounter>.value(
-          value: widget.db.storage.countAllRows,
+          value: _deps.localRowCounts.countAllRows,
           updateShouldNotify: (_, _) => false,
         ),
         if (syncEngine != null)
@@ -1399,23 +1516,36 @@ class _LunarLogAppState extends State<LunarLogApp>
   }
 }
 
-/// Issue #535 (b): persistent, non-dismissible banner surfacing a latched
-/// invite code while the recipient is signed out — mirrors [WebDevBanner]'s
-/// shape (a colored [Material] strip above the app content) but stays
-/// mounted for as long as the invite is waiting rather than for the whole
-/// build, and clears itself the moment [_LunarLogAppState._onAuthChanged]
-/// consumes the code on sign-in.
+/// Issue #535 (b): persistent banner surfacing a latched invite code while
+/// the recipient is signed out — mirrors [WebDevBanner]'s shape (a colored
+/// [Material] strip above the app content) but stays mounted for as long as
+/// the invite is waiting rather than for the whole build, and clears itself
+/// the moment [_LunarLogAppState._onAuthChanged] consumes the code on
+/// sign-in. Issue #1022: a quiet close control also lets the recipient
+/// dismiss it for the session without signing in.
 class _PendingInviteSignInBanner extends StatelessWidget {
-  const _PendingInviteSignInBanner({required this.onSignIn});
+  const _PendingInviteSignInBanner({
+    required this.onSignIn,
+    required this.onDismiss,
+  });
 
   final VoidCallback onSignIn;
+
+  /// Issue #1022: clears the latched invite for this session only (the
+  /// in-memory code is never persisted, so a relaunch presents it again).
+  final VoidCallback onDismiss;
 
   @visibleForTesting
   static const Key bannerKey = Key('pending-invite-sign-in-banner');
 
+  /// Issue #1022: the quiet close's own key, for the dismissal test.
+  @visibleForTesting
+  static const Key dismissButtonKey = Key('pending-invite-banner-dismiss');
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Material(
       key: bannerKey,
       color: theme.colorScheme.primaryContainer,
@@ -1427,7 +1557,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Sign in to accept your invite',
+                  l10n.pendingInviteBannerTitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                   ),
@@ -1435,7 +1565,33 @@ class _PendingInviteSignInBanner extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onSignIn,
-                child: const Text('Sign In'),
+                child: Text(l10n.pendingInviteBannerAction),
+              ),
+              IconButton(
+                key: dismissButtonKey,
+                onPressed: onDismiss,
+                // The banner sits above the Navigator, so it has no Overlay
+                // for a `Tooltip`; a semantic label on the icon gets the
+                // same localized "Close" announced without one.
+                icon: Icon(
+                  Icons.close,
+                  semanticLabel:
+                      MaterialLocalizations.of(context).closeButtonTooltip,
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                key: dismissButtonKey,
+                onPressed: onDismiss,
+                // The banner sits above the Navigator, so it has no Overlay
+                // for a `Tooltip`; a semantic label on the icon gets the
+                // same localized "Close" announced without one.
+                icon: Icon(
+                  Icons.close,
+                  semanticLabel:
+                      MaterialLocalizations.of(context).closeButtonTooltip,
+                ),
+                visualDensity: VisualDensity.compact,
               ),
             ],
           ),
