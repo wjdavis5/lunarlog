@@ -2014,7 +2014,7 @@ class _DaySheetState extends State<DaySheet> {
           Icon(
             Icons.lock_outline,
             size: 18,
-            color: Theme.of(context).colorScheme.outline,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: LLSpace.space2),
           Text(l10n.daySheetNotePrivateHidden),

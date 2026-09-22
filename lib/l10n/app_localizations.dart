@@ -643,7 +643,7 @@ abstract class AppLocalizations {
   /// Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it.
   ///
   /// In en, this message translates to:
-  /// **'Private notes aren\'t shared with your guardians.'**
+  /// **'Private notes aren\'t shared with guardians.'**
   String get daySheetNotePrivateHint;
 
   /// Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared).
