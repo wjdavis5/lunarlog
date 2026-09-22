@@ -12,6 +12,10 @@
 /// keeps compiling unchanged.
 library;
 
+import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/prediction/prediction.dart';
+import 'package:lunarlog/ui/l10n/dates.dart' as dates;
+
 const String kEstimateDisclaimer = 'Estimates only — not medical advice.';
 
 /// Fertile-window/ovulation-specific disclaimer (issue #143, per #142's
@@ -57,3 +61,26 @@ const String kConceiveDisclaimer =
     'It differs from the fertile-window estimate on Insights, which is '
     'plain calendar arithmetic around an assumed ovulation day. This '
     'estimator has not been tested in a research study.';
+
+/// Issue #850 U5: the shared date-or-range rendering of an active estimate.
+/// Moved out of `overview_panel.dart`'s private `_estimateDateText` so the
+/// guardian logistics card renders the byte-identical string the subject
+/// lens does. `high` confidence keeps the single exact-date estimate (Issue
+/// #213); any other tier renders `estimatedRangeStart`–`estimatedRangeEnd`
+/// instead — except when the range is degenerate (a spread that rounds to
+/// zero days, e.g. a perfectly steady history that has not yet filled the
+/// six-cycle average window), which falls back to the plain date so
+/// "June 18, 2026 – June 18, 2026" never renders.
+String estimateDateText(ActivePrediction prediction, String locale) {
+  String format(LocalDate date) =>
+      dates.formatLocalDateMonthDayYear(date, locale: locale);
+  if (prediction.tier == CycleConfidence.high) {
+    return format(prediction.estimatedNextStart);
+  }
+  final rangeStart = prediction.estimatedRangeStart;
+  final rangeEnd = prediction.estimatedRangeEnd;
+  if (rangeStart == rangeEnd) {
+    return format(prediction.estimatedNextStart);
+  }
+  return '${format(rangeStart)} – ${format(rangeEnd)}';
+}

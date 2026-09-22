@@ -58,6 +58,7 @@ import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/perimenopause.dart' show isPerimenopauseMode;
 import 'package:lunarlog/domain/postpartum.dart'
@@ -70,9 +71,11 @@ import 'package:lunarlog/domain/prediction/cycle_history.dart';
 import 'package:lunarlog/domain/prediction/pms.dart' show PmsEstimate;
 import 'package:lunarlog/domain/prediction/prediction.dart';
 import 'package:lunarlog/domain/prediction/prediction_service.dart';
+import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -87,11 +90,13 @@ import 'package:lunarlog/ui/components/postpartum_card.dart';
 import 'package:lunarlog/ui/components/pregnancy_card.dart';
 import 'package:lunarlog/ui/components/perimenopause_card.dart';
 import 'package:lunarlog/ui/components/today_card.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/help/help_card_view.dart';
 import 'package:lunarlog/ui/l10n/dates.dart' as dates;
 import 'package:lunarlog/ui/l10n/tiers.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/overview/estimate_copy.dart';
+import 'package:lunarlog/ui/overview/guardian_overview_card.dart';
 import 'package:lunarlog/ui/overview/health_deviation_card.dart';
 import 'package:lunarlog/ui/overview/late_resolver.dart';
 import 'package:lunarlog/ui/overview/notification_permission_state.dart';
@@ -119,22 +124,8 @@ export 'package:lunarlog/ui/overview/estimate_copy.dart'
 /// for a single date, so that case falls back to the plain date instead.
 /// Issue #160: month names are locale-derived via `lib/ui/l10n/dates.dart`,
 /// replacing the old `kMonthNames` list this file used to re-import.
-String _estimateDateText(ActivePrediction prediction, String locale) {
-  String format(LocalDate date) => dates.formatLocalDateMonthDayYear(
-    date,
-    locale: locale,
-  );
-  if (prediction.tier == CycleConfidence.high) {
-    return format(prediction.estimatedNextStart);
-  }
-  final rangeStart = prediction.estimatedRangeStart;
-  final rangeEnd = prediction.estimatedRangeEnd;
-  if (rangeStart == rangeEnd) {
-    return format(prediction.estimatedNextStart);
-  }
-  return '${format(rangeStart)} – ${format(rangeEnd)}';
-}
-
+/// Issue #850 U5: the renderer now lives in [estimateDateText]
+/// (`estimate_copy.dart`) so the guardian card shares it verbatim.
 class OverviewPanel extends StatefulWidget {
   const OverviewPanel({
     super.key,
@@ -143,6 +134,7 @@ class OverviewPanel extends StatefulWidget {
     this.irregularFraming,
     this.trackingPreferences,
     this.isMinor = false,
+    this.profile,
     this.todayProvider = LocalDate.today,
     this.readOnly = false,
     this.timezoneProvider,
@@ -172,6 +164,12 @@ class OverviewPanel extends StatefulWidget {
   /// Whether the profile subject is a minor (Issue #259): gates the
   /// minor-visibility defaults in [DaySheet]. Presentation only.
   final bool isMinor;
+
+  /// Issue #850 U5: the profile itself, when the mounting screen has it —
+  /// supplies the guardian card's subject first name and the shared care
+  /// screen's title/identity. Null in local-only test trees and any caller
+  /// that never renders the guardian lens; the subject lens ignores it.
+  final Profile? profile;
 
   /// "Today" as the device-local civil date; injectable for tests.
   final LocalDate Function() todayProvider;
@@ -495,6 +493,43 @@ class _OverviewPanelState extends State<OverviewPanel>
       widget.readOnly ||
       acceptedGuardianFor(_guardians, _currentUserId)?.role.canLog == false;
 
+  /// Issue #850 U1/U5: which front page this viewer sees. Presentation only
+  /// (D-8) — it never changes [_effectiveReadOnly]; fail-open by
+  /// construction, so no synced membership resolves to [GuardianLens.subject].
+  GuardianLens get _lens => guardianLensFor(_guardians, _currentUserId);
+
+  /// Whether the guardian card's care/supplies actions have somewhere to go:
+  /// the profile and both repositories must be wired (local-only trees and
+  /// hand-pumped panels have no care repository, so no action renders rather
+  /// than a dead button).
+  bool get _canOpenCare =>
+      widget.profile != null &&
+      widget.guardiansRepository != null &&
+      context.read<CareContentRepository?>() != null;
+
+  /// Opens the shared care screen (care notes, visit prep, supplies), which
+  /// is both the "Care details" and "Supplies" destination today — the
+  /// supplies list is a section of that screen (#851).
+  Future<void> _openCareScreen() async {
+    final profile = widget.profile;
+    final repository = context.read<CareContentRepository?>();
+    final guardiansRepository = widget.guardiansRepository;
+    if (profile == null || repository == null || guardiansRepository == null) {
+      return;
+    }
+    await Navigator.of(context).push(
+      buildNamedRoute<void>(
+        name: kRouteCareNotesScreen,
+        builder: (_) => CareNotesScreen(
+          profile: profile,
+          repository: repository,
+          guardiansRepository: guardiansRepository,
+          readOnly: _effectiveReadOnly,
+        ),
+      ),
+    );
+  }
+
   /// The resolver's "log it" (R6): the ordinary day sheet on today's
   /// date — the same logging surface the calendar opens.
   Future<void> _logItToday() async {
@@ -615,7 +650,64 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
+  /// Issue #850 U5: picks the front page by lens. A guardian sees the
+  /// logistics card instead of the subject-only stack; the subject's view is
+  /// byte-for-byte the pre-#850 [_subjectBody] (D-2).
   Widget _overviewBody(
+    BuildContext context,
+    CyclePrediction prediction,
+    NotificationAvailability availability,
+  ) {
+    if (_lens == GuardianLens.guardian) {
+      return _guardianBody(context, prediction);
+    }
+    return _subjectBody(context, prediction, availability);
+  }
+
+  /// Issue #850 U5/D-2: the guardian lens's front page — one logistics card
+  /// and the shared estimate disclaimer. The subject-only cards (pregnancy,
+  /// postpartum, perimenopause, conceive, the irregular suggestion, the late
+  /// resolver, the health-deviation card, the notifications-off hint, and the
+  /// "About this estimate" expander) deliberately do not render here. Any
+  /// caller-injected [OverviewPanel.trailingChildren] still do, so an
+  /// archived read-only surface keeps its own history section.
+  Widget _guardianBody(BuildContext context, CyclePrediction prediction) {
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(LLSpace.space4),
+      children: [
+        GuardianOverviewCard(
+          profileId: widget.profileId,
+          subjectName: widget.profile?.displayName ?? '',
+          prediction: prediction,
+          today: widget.todayProvider(),
+          guardians: _guardians,
+          currentUserId: _currentUserId,
+          canAct: !_effectiveReadOnly,
+          onAddNote: () => unawaited(_logItToday()),
+          onOpenCare: _canOpenCare
+              ? () => unawaited(_openCareScreen())
+              : null,
+          onOpenSupplies: _canOpenCare
+              ? () => unawaited(_openCareScreen())
+              : null,
+        ),
+        ...widget.trailingChildren,
+        Padding(
+          padding: const EdgeInsets.only(top: LLSpace.space3),
+          child: Text(
+            kEstimateDisclaimer,
+            key: const ValueKey('overview-disclaimer'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _subjectBody(
     BuildContext context,
     CyclePrediction prediction,
     NotificationAvailability availability,
@@ -912,7 +1004,7 @@ class _OverviewPanelState extends State<OverviewPanel>
                 tier: prediction.tier,
               ),
               estimateText:
-                  '${copy.nextEstimateLabel} ${_estimateDateText(prediction, dates.calendarLocale(context))}',
+                  '${copy.nextEstimateLabel} ${estimateDateText(prediction, dates.calendarLocale(context))}',
               tier: prediction.tier,
               showConfidenceChip: copy.showsTierCaption,
               canLog: !_effectiveReadOnly,
