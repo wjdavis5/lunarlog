@@ -105,7 +105,7 @@ void main() {
       expect(copy.overdueStatusLabel.toLowerCase(), isNot(contains('late')));
     });
 
-    test('teen and caregiver overview copy differ from standard '
+    test('teen overview copy differs from standard '
         '(vocabulary actually varies by mode)', () {
       final standard = careModeCopyFor(ProfileMode.standard, irregularFraming: false);
       expect(
@@ -284,11 +284,11 @@ void main() {
       expect(reminderPresetFor(ProfileMode.irregular).late, isFalse);
     });
 
-    test('caregiver arms nothing out of the box — a guardian\'s device is '
-        'not nagged the way the profile owner\'s would be', () {
+    test('the retired caregiver wire value arms like standard (Issue #850) — '
+        'guardian reminder suppression is a lens concern now, not a mode', () {
       final preset = reminderPresetFor(ProfileMode.caregiver);
-      expect(preset.upcoming, isFalse);
-      expect(preset.late, isFalse);
+      expect(preset.upcoming, isTrue);
+      expect(preset.late, isTrue);
     });
   });
 
@@ -379,12 +379,14 @@ void main() {
       expect(composed.overdueActionLabel, isEmpty);
     });
 
-    test('choosableModes never offers the legacy irregular wire value', () {
+    test('choosableModes never offers the legacy irregular or caregiver wire '
+        'values', () {
       expect(ProfileMode.choosableModes,
           isNot(contains(ProfileMode.irregular)));
       expect(ProfileMode.choosableModes,
-          containsAll([ProfileMode.standard, ProfileMode.teen,
-              ProfileMode.caregiver]));
+          isNot(contains(ProfileMode.caregiver)));
+      expect(ProfileMode.choosableModes,
+          containsAll([ProfileMode.standard, ProfileMode.teen]));
     });
   });
 
@@ -458,9 +460,11 @@ void main() {
     });
 
     test('the flag never re-arms what a mode had off', () {
+      // Issue #850: caregiver now plans like standard, so the flag drops
+      // its late window; teen's own preset already had late off.
       final caregiver = reminderPresetFor(ProfileMode.caregiver,
           irregularFraming: true);
-      expect(caregiver.upcoming, isFalse);
+      expect(caregiver.upcoming, isTrue);
       expect(caregiver.late, isFalse);
       final teen = reminderPresetFor(ProfileMode.teen,
           irregularFraming: true);
