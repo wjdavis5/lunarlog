@@ -156,6 +156,7 @@ export type Database = {
           local_date: string
           logged_by_user_id: string | null
           note: string | null
+          note_private: boolean
           pms: boolean
           profile_id: string
           server_version: number
@@ -176,6 +177,7 @@ export type Database = {
           local_date: string
           logged_by_user_id?: string | null
           note?: string | null
+          note_private?: boolean
           pms?: boolean
           profile_id: string
           server_version?: number
@@ -196,6 +198,7 @@ export type Database = {
           local_date?: string
           logged_by_user_id?: string | null
           note?: string | null
+          note_private?: boolean
           pms?: boolean
           profile_id?: string
           server_version?: number
@@ -1477,6 +1480,10 @@ export type Database = {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: boolean
       }
+      is_profile_subject: {
+        Args: { p_profile_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_supported_timestamp: { Args: { p_ts: string }; Returns: boolean }
       is_valid_changed_fields: {
         Args: { p_fields: string[] }
@@ -1494,6 +1501,10 @@ export type Database = {
         Args: { p_now: string; p_zone: string }
         Returns: string
       }
+      mask_day_entry_note: {
+        Args: { p_row: Json; p_viewer: string }
+        Returns: Json
+      }
       merge_tag_arrays: { Args: { a: Json; b: Json }; Returns: Json }
       owns_feedback_ticket: {
         Args: { p_ticket_id: string; p_user_id: string }
@@ -1507,6 +1518,7 @@ export type Database = {
         Args: { p_birth_year: number; p_is_minor: boolean }
         Returns: boolean
       }
+      profile_has_subject: { Args: { p_profile_id: string }; Returns: boolean }
       reconcile_realtime_publication: { Args: never; Returns: undefined }
       record_day_entry_merge_discard: {
         Args: {

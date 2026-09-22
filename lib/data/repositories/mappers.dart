@@ -88,6 +88,7 @@ domain.DayEntry dayEntryToDomain(db.DayEntry row) => domain.DayEntry(
       flow: flowToDomain(row.flow),
       tags: row.tags,
       note: row.note,
+      notePrivate: row.notePrivate,
       pms: row.pms,
       updatedAt: row.updatedAt,
       deletedAt: row.deletedAt,
