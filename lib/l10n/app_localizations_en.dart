@@ -3981,6 +3981,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get accountSignInEmailLabel => 'Email';
 
   @override
+  String get accountSignInEmailRequired => 'Enter your email address.';
+
+  @override
+  String get accountSignInEmailInvalid =>
+      'That doesn\'t look like an email address.';
+
+  @override
   String get accountSignInPasswordLabel => 'Password';
 
   @override
