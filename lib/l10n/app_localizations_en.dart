@@ -4887,4 +4887,325 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get accountDeletionUnknown =>
       'Something went wrong. Your account was not deleted. Please try again.';
+
+  @override
+  String get settingsExportRangePresetLast3Cycles => 'Last 3 cycles';
+
+  @override
+  String get settingsExportRangePresetLast6Cycles => 'Last 6 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Cycles => 'Last 12 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Months => 'Last 12 months';
+
+  @override
+  String get settingsExportRangePresetEverything => 'Everything';
+
+  @override
+  String get settingsExportRangePresetCustom => 'Custom range…';
+
+  @override
+  String get settingsCsvExportFailure =>
+      'Could not export your cycle data as CSV. Please try again.';
+
+  @override
+  String get settingsCsvExportSubtitleNoEntries =>
+      'Add at least one day entry to export CSV tables.';
+
+  @override
+  String settingsCsvExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s cycle data as spreadsheet-compatible CSV files.';
+  }
+
+  @override
+  String get settingsCsvExportSubtitleGeneric =>
+      'Export your cycles and daily log as spreadsheet-compatible CSV files.';
+
+  @override
+  String get settingsClinicalExportFailure =>
+      'Could not export your clinical summary. Please try again.';
+
+  @override
+  String get settingsClinicalExportSubtitleNoEntries =>
+      'Add at least one day entry to export a clinical summary.';
+
+  @override
+  String settingsClinicalExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary.';
+  }
+
+  @override
+  String get settingsClinicalExportSubtitleGeneric =>
+      'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.';
+
+  @override
+  String get settingsClinicalPdfSubtitleNoEntries =>
+      'Add at least one day entry to export a PDF clinical summary.';
+
+  @override
+  String settingsClinicalPdfSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary as a PDF.';
+  }
+
+  @override
+  String get settingsClinicalPdfSubtitleGeneric =>
+      'Share an on-device PDF summary of logged cycle data.';
+
+  @override
+  String settingsClinicalPdfRangeCustom(String start, String end) {
+    return '$start to $end';
+  }
+
+  @override
+  String get healthSyncSourceNameAppleHealth => 'the Health app';
+
+  @override
+  String get healthSyncSourceNameHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncSourceTitleAppleHealth => 'Health app';
+
+  @override
+  String get healthSyncSourceTitleHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncUnavailableAppleHealth =>
+      'The Health app isn\'t available on this device.';
+
+  @override
+  String get healthSyncUnavailableHealthConnect =>
+      'Health Connect isn\'t available on this device.';
+
+  @override
+  String get healthSyncImportEmptyAppleHealth =>
+      'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.';
+
+  @override
+  String get healthSyncImportEmptyHealthConnect =>
+      'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.';
+
+  @override
+  String get healthSyncWriteIntro =>
+      'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.';
+
+  @override
+  String get healthSyncImportIntro =>
+      'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.';
+
+  @override
+  String get healthSyncWriteForwardOnly =>
+      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.';
+
+  @override
+  String get healthSyncWriteSymptoms =>
+      'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.';
+
+  @override
+  String get healthSyncImportOnly =>
+      'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.';
+
+  @override
+  String get healthSyncDenyMinorOff =>
+      'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.';
+
+  @override
+  String get healthSyncDenyNotOwnerSignedOut =>
+      'Sign in and sync once so this device can confirm you own this profile.';
+
+  @override
+  String get healthSyncDenyNotOwner =>
+      'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.';
+
+  @override
+  String get healthSyncUnboundProfileName => 'this profile';
+
+  @override
+  String healthSyncImportBlockedRefused(String source) {
+    return 'This profile can\'t import from $source right now.';
+  }
+
+  @override
+  String get healthSyncImportBlockedFailed =>
+      'Couldn\'t finish the import. Please try again.';
+
+  @override
+  String get importApplyFailure =>
+      'Could not finish the import. Nothing was written — please try again.';
+
+  @override
+  String get importStalePlan =>
+      'Your data changed while this was open. Please choose the file again to include the latest changes.';
+
+  @override
+  String get importSharedProfileGuardian =>
+      'One of these profiles has another guardian — the rows you import will sync to their device too.';
+
+  @override
+  String get importClueReadFailure =>
+      'Could not read that Clue export. Check the file and the password from your export email, then try again.';
+
+  @override
+  String get importClueNotClue =>
+      'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.';
+
+  @override
+  String get importClueApplyFailure =>
+      'Could not finish the Clue import. Nothing was written — please try again.';
+
+  @override
+  String get importClueImportedProfileDefaultName => 'Imported from Clue';
+
+  @override
+  String get importClueMergePolicy =>
+      'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.';
+
+  @override
+  String importCluePreviewSummary(String days, String datapoints) {
+    return 'Ready to import: $days, $datapoints.';
+  }
+
+  @override
+  String importPreviewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDayEntryCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count day entries',
+      one: '1 day entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewObservationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count observations',
+      one: '1 observation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDateRange(String earliest, String latest) {
+    return ' ($earliest to $latest)';
+  }
+
+  @override
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  ) {
+    return '$profiles, $dayEntries, $observations$dateRange';
+  }
+
+  @override
+  String importPlanSummaryNewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new profiles',
+      one: '1 new profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummaryMatchedProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matched profiles',
+      one: '1 matched profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  ) {
+    return '$created, $matched ($added entries added, $merged merged).';
+  }
+
+  @override
+  String importCluePreviewDayCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importCluePreviewDatapointCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count datapoints',
+      one: '1 datapoint',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultProfileCreatedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultFileNoteCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count file notes',
+      one: '1 file note',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultNotesDiscardedSuffix(String notes) {
+    return ', $notes not applied (an existing note was kept)';
+  }
+
+  @override
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  ) {
+    return 'Import complete: $created created, $matched matched, $added entries added, $merged merged, $observationsAdded observations added, $observationsSkipped skipped$rejected$notesDiscarded.';
+  }
 }

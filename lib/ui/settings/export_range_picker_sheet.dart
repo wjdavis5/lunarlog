@@ -16,20 +16,26 @@ import '../../observability/route_names.dart';
 
 /// Human label for [preset], shared between the picker's own radio list and
 /// any caller that wants matching copy (e.g. a post-export confirmation).
-String fhirExportRangePresetLabel(FhirExportRangePreset preset) {
+/// Issue #1004 (tranche 5): the labels are arb-backed
+/// (`settingsExportRangePreset*`), so the caller supplies the
+/// [AppLocalizations] the same way every other copy mapper does.
+String fhirExportRangePresetLabel(
+  AppLocalizations l10n,
+  FhirExportRangePreset preset,
+) {
   switch (preset) {
     case FhirExportRangePreset.last3Cycles:
-      return 'Last 3 cycles';
+      return l10n.settingsExportRangePresetLast3Cycles;
     case FhirExportRangePreset.last6Cycles:
-      return 'Last 6 cycles';
+      return l10n.settingsExportRangePresetLast6Cycles;
     case FhirExportRangePreset.last12Cycles:
-      return 'Last 12 cycles';
+      return l10n.settingsExportRangePresetLast12Cycles;
     case FhirExportRangePreset.last12Months:
-      return 'Last 12 months';
+      return l10n.settingsExportRangePresetLast12Months;
     case FhirExportRangePreset.everything:
-      return 'Everything';
+      return l10n.settingsExportRangePresetEverything;
     case FhirExportRangePreset.custom:
-      return 'Custom range…';
+      return l10n.settingsExportRangePresetCustom;
   }
 }
 
@@ -165,7 +171,9 @@ class _ExportRangePickerSheetState extends State<ExportRangePickerSheet> {
   Widget _presetTile(FhirExportRangePreset preset) =>
       RadioListTile<FhirExportRangePreset>(
         key: ValueKey('export-range-preset-${preset.name}'),
-        title: Text(fhirExportRangePresetLabel(preset)),
+        title: Text(
+          fhirExportRangePresetLabel(AppLocalizations.of(context), preset),
+        ),
         value: preset,
       );
 

@@ -7789,6 +7789,385 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Something went wrong. Your account was not deleted. Please try again.'**
   String get accountDeletionUnknown;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 3 cycles'**
+  String get settingsExportRangePresetLast3Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 6 cycles'**
+  String get settingsExportRangePresetLast6Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 cycles'**
+  String get settingsExportRangePresetLast12Cycles;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Last 12 months'**
+  String get settingsExportRangePresetLast12Months;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Everything'**
+  String get settingsExportRangePresetEverything;
+
+  /// Issue #1004 (tranche 5): export-range preset radio label.
+  ///
+  /// In en, this message translates to:
+  /// **'Custom range…'**
+  String get settingsExportRangePresetCustom;
+
+  /// Issue #1004 (tranche 5): CSV export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your cycle data as CSV. Please try again.'**
+  String get settingsCsvExportFailure;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export CSV tables.'**
+  String get settingsCsvExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s cycle data as spreadsheet-compatible CSV files.'**
+  String settingsCsvExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): CSV tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Export your cycles and daily log as spreadsheet-compatible CSV files.'**
+  String get settingsCsvExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): shared FHIR/PDF clinical-export failure copy, no exception text.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your clinical summary. Please try again.'**
+  String get settingsClinicalExportFailure;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a clinical summary.'**
+  String get settingsClinicalExportSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary.'**
+  String settingsClinicalExportSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): FHIR tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.'**
+  String get settingsClinicalExportSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with nothing logged yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Add at least one day entry to export a PDF clinical summary.'**
+  String get settingsClinicalPdfSubtitleNoEntries;
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle naming the one live profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Export {profileName}\'s clinical summary as a PDF.'**
+  String settingsClinicalPdfSubtitleOneProfile(String profileName);
+
+  /// Issue #1004 (tranche 5): PDF tile subtitle with several live profiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Share an on-device PDF summary of logged cycle data.'**
+  String get settingsClinicalPdfSubtitleGeneric;
+
+  /// Issue #1004 (tranche 5): custom export-range label naming its explicit start/end dates.
+  ///
+  /// In en, this message translates to:
+  /// **'{start} to {end}'**
+  String settingsClinicalPdfRangeCustom(String start, String end);
+
+  /// Issue #1004 (tranche 5): Apple Health store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'the Health app'**
+  String get healthSyncSourceNameAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name as used mid-sentence.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceNameHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health app'**
+  String get healthSyncSourceTitleAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect store name for titles and headings.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect'**
+  String get healthSyncSourceTitleHealthConnect;
+
+  /// Issue #1004 (tranche 5): Apple Health unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app isn\'t available on this device.'**
+  String get healthSyncUnavailableAppleHealth;
+
+  /// Issue #1004 (tranche 5): Health Connect unavailable copy.
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect isn\'t available on this device.'**
+  String get healthSyncUnavailableHealthConnect;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Apple Health; deliberately ambiguous about denial).
+  ///
+  /// In en, this message translates to:
+  /// **'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.'**
+  String get healthSyncImportEmptyAppleHealth;
+
+  /// Issue #1004 (tranche 5): neutral no-data import copy (Health Connect).
+  ///
+  /// In en, this message translates to:
+  /// **'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.'**
+  String get healthSyncImportEmptyHealthConnect;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on a write-wired platform (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.'**
+  String get healthSyncWriteIntro;
+
+  /// Issue #1004 (tranche 5): bind-screen intro on an import-only platform (Android).
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.'**
+  String get healthSyncImportIntro;
+
+  /// Issue #1004 (tranche 5): forward-only write explanation plus the read-direction disclosure (iOS).
+  ///
+  /// In en, this message translates to:
+  /// **'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.'**
+  String get healthSyncWriteForwardOnly;
+
+  /// Issue #1004 (tranche 5): symptom and mood write disclosure (iOS, #238/#918).
+  ///
+  /// In en, this message translates to:
+  /// **'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.'**
+  String get healthSyncWriteSymptoms;
+
+  /// Issue #1004 (tranche 5): import-only explanation (Android, #458).
+  ///
+  /// In en, this message translates to:
+  /// **'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.'**
+  String get healthSyncImportOnly;
+
+  /// Issue #1004 (tranche 5): bind deny reason when minor health sync is off.
+  ///
+  /// In en, this message translates to:
+  /// **'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.'**
+  String get healthSyncDenyMinorOff;
+
+  /// Issue #1004 (tranche 5): bind deny reason when no account is signed in to prove ownership.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in and sync once so this device can confirm you own this profile.'**
+  String get healthSyncDenyNotOwnerSignedOut;
+
+  /// Issue #1004 (tranche 5): bind deny reason for a non-owner.
+  ///
+  /// In en, this message translates to:
+  /// **'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.'**
+  String get healthSyncDenyNotOwner;
+
+  /// Issue #1004 (tranche 5): neutral stand-in when the bound profile id no longer resolves.
+  ///
+  /// In en, this message translates to:
+  /// **'this profile'**
+  String get healthSyncUnboundProfileName;
+
+  /// Issue #1004 (tranche 5): import blocked by the binding guard.
+  ///
+  /// In en, this message translates to:
+  /// **'This profile can\'t import from {source} right now.'**
+  String healthSyncImportBlockedRefused(String source);
+
+  /// Issue #1004 (tranche 5): import pass failed at the platform layer.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t finish the import. Please try again.'**
+  String get healthSyncImportBlockedFailed;
+
+  /// Issue #1004 (tranche 5): account-import apply failure; the write is all-or-nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the import. Nothing was written — please try again.'**
+  String get importApplyFailure;
+
+  /// Issue #1004 (tranche 5): stale import plan (#140 review, LLA-085).
+  ///
+  /// In en, this message translates to:
+  /// **'Your data changed while this was open. Please choose the file again to include the latest changes.'**
+  String get importStalePlan;
+
+  /// Issue #1004 (tranche 5): shared-profile import disclosure (#140 review, item 10).
+  ///
+  /// In en, this message translates to:
+  /// **'One of these profiles has another guardian — the rows you import will sync to their device too.'**
+  String get importSharedProfileGuardian;
+
+  /// Issue #1004 (tranche 5): Clue zip read failure; the raw exception is never rendered (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read that Clue export. Check the file and the password from your export email, then try again.'**
+  String get importClueReadFailure;
+
+  /// Issue #1004 (tranche 5): the picked ZIP is not a Clue export (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.'**
+  String get importClueNotClue;
+
+  /// Issue #1004 (tranche 5): Clue write failure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not finish the Clue import. Nothing was written — please try again.'**
+  String get importClueApplyFailure;
+
+  /// Issue #1004 (tranche 5): default name offered when a Clue import creates a new profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported from Clue'**
+  String get importClueImportedProfileDefaultName;
+
+  /// Issue #1004 (tranche 5): Clue preview merge disclosure (#452).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.'**
+  String get importClueMergePolicy;
+
+  /// Issue #1004 (tranche 5): Clue preview summary line; both counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to import: {days}, {datapoints}.'**
+  String importCluePreviewSummary(String days, String datapoints);
+
+  /// Issue #1004 (tranche 5): account-import preview profile count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importPreviewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview day-entry count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day entry} other{{count} day entries}}'**
+  String importPreviewDayEntryCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview observation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 observation} other{{count} observations}}'**
+  String importPreviewObservationCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import preview date-range suffix.
+  ///
+  /// In en, this message translates to:
+  /// **' ({earliest} to {latest})'**
+  String importPreviewDateRange(String earliest, String latest);
+
+  /// Issue #1004 (tranche 5): account-import preview summary line; counts arrive pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'{profiles}, {dayEntries}, {observations}{dateRange}'**
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  );
+
+  /// Issue #1004 (tranche 5): import plan profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 new profile} other{{count} new profiles}}'**
+  String importPlanSummaryNewProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan profile-match count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 matched profile} other{{count} matched profiles}}'**
+  String importPlanSummaryMatchedProfileCount(int count);
+
+  /// Issue #1004 (tranche 5): import plan summary line.
+  ///
+  /// In en, this message translates to:
+  /// **'{created}, {matched} ({added} entries added, {merged} merged).'**
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  );
+
+  /// Issue #1004 (tranche 5): Clue preview day count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 day} other{{count} days}}'**
+  String importCluePreviewDayCount(int count);
+
+  /// Issue #1004 (tranche 5): Clue preview datapoint count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 datapoint} other{{count} datapoints}}'**
+  String importCluePreviewDatapointCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result profile-creation count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 profile} other{{count} profiles}}'**
+  String importResultProfileCreatedCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result discarded-file-note count.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 file note} other{{count} file notes}}'**
+  String importResultFileNoteCount(int count);
+
+  /// Issue #1004 (tranche 5): account-import result note-merge honesty suffix (#140 review, item 9); the note count arrives pre-pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **', {notes} not applied (an existing note was kept)'**
+  String importResultNotesDiscardedSuffix(String notes);
+
+  /// Issue #1004 (tranche 5): account-import result summary line; counts arrive pre-pluralized where pluralized.
+  ///
+  /// In en, this message translates to:
+  /// **'Import complete: {created} created, {matched} matched, {added} entries added, {merged} merged, {observationsAdded} observations added, {observationsSkipped} skipped{rejected}{notesDiscarded}.'**
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  );
 }
 
 class _AppLocalizationsDelegate

@@ -32,6 +32,7 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/settings/import_screen.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
@@ -448,7 +449,7 @@ void main() {
           of: key('import-pick-error'),
           matching: find.byType(Text),
         )).data,
-        kImportApplyFailureCopy,
+        AppLocalizationsEn().importApplyFailure,
       );
     });
 
@@ -575,7 +576,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(key('import-preview-shared-guardian'), findsOneWidget);
-      expect(find.text(kImportSharedProfileGuardianSentence), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importSharedProfileGuardian),
+             findsOneWidget);
     });
 
     testWidgets('no shared-guardian info means no disclosure sentence',
@@ -630,7 +632,7 @@ void main() {
           of: key('import-preview-error'),
           matching: find.byType(Text),
         )).data,
-        kImportApplyFailureCopy,
+        AppLocalizationsEn().importApplyFailure,
       );
       expect(key('import-result-summary'), findsNothing);
     });
@@ -666,7 +668,7 @@ void main() {
           of: key('import-pick-error'),
           matching: find.byType(Text),
         )).data,
-        kImportStalePlanCopy,
+        AppLocalizationsEn().importStalePlan,
       );
     });
   });
@@ -832,7 +834,8 @@ void main() {
       expect(key('clue-preview-summary'), findsOneWidget);
       expect(key('clue-preview-summary-lines'), findsOneWidget);
       expect(key('clue-new-profile-name'), findsOneWidget);
-      expect(find.text(kClueImportMergePolicySentence), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importClueMergePolicy),
+             findsOneWidget);
 
       await tester.ensureVisible(key('clue-preview-confirm'));
       await tester.tap(key('clue-preview-confirm'));
@@ -923,7 +926,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(key('clue-password-error'), findsOneWidget);
-      expect(find.text(kClueImportNotClueCopy), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importClueNotClue), findsOneWidget);
       expect(runner.calls, 0);
       // Still on the password step — no partial import.
       expect(key('clue-password-field'), findsOneWidget);
@@ -946,7 +949,7 @@ void main() {
       await tester.tap(key('clue-password-continue'));
       await tester.pumpAndSettle();
 
-      expect(find.text(kClueImportReadFailureCopy), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importClueReadFailure), findsOneWidget);
       expect(runner.calls, 0);
       expect(key('clue-password-field'), findsOneWidget);
     });
@@ -966,7 +969,7 @@ void main() {
       await tester.tap(key('clue-password-continue'));
       await tester.pumpAndSettle();
 
-      expect(find.text(kClueImportReadFailureCopy), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importClueReadFailure), findsOneWidget);
       expect(runner.calls, 0);
     });
 
@@ -995,7 +998,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(key('clue-preview-error'), findsOneWidget);
-      expect(find.text(kClueImportApplyFailureCopy), findsOneWidget);
+      expect(find.text(AppLocalizationsEn().importClueApplyFailure), findsOneWidget);
       expect(key('clue-result-summary'), findsNothing);
       expect(runner.calls, 1);
     });
