@@ -21,6 +21,13 @@
 /// Anchoring directives at line start also keeps a doc comment that merely
 /// *mentions* a forbidden path from tripping the guard.
 ///
+/// Issue #551 (part 3) adds a second, reference-based guard beside the
+/// directive one: `lib/app.dart` (a composition root that legitimately
+/// imports `lib/data`) and every `lib/ui` file must not reach the raw local
+/// store directly — no `LunarLogStorage` type name, no `.db.storage`
+/// accessor. That detector strips comments first (see [_withoutComments]),
+/// so it can be stricter about raw text without flagging prose.
+///
 /// The scan cases assert a non-zero scanned-file count so a wrong path
 /// cannot make them vacuously pass, and `detects the forms a layering
 /// violation can take` gives the detector its own falsification coverage.
@@ -117,6 +124,85 @@ List<File> _bareLibDartFiles() => Directory('lib')
     .whereType<File>()
     .where((f) => f.path.endsWith('.dart'))
     .toList();
+
+/// The raw local-store references issue #551 (part 3) forbids in
+/// `lib/app.dart` and `lib/ui`: the `LunarLogStorage` type name and the
+/// `.db.storage` accessor. Deliberately narrow — Supabase's
+/// `client.storage.from(...)` and a repository's own private `_storage`
+/// field are not bypasses; the guard targets reaching the *local drift
+/// store* outside the composition root.
+final _rawStorageReference = RegExp(r'\bLunarLogStorage\b|\bdb\.storage\b');
+
+/// [contents] with Dart line/block comments removed, so the doc comments
+/// that *describe* the eliminated bypass (and the historical notes beside
+/// them) do not trip [referencesRawStorage]. String literals are copied
+/// verbatim so a `//` inside a URL is not mistaken for a comment.
+String _withoutComments(String contents) {
+  final out = StringBuffer();
+  var i = 0;
+  final n = contents.length;
+  while (i < n) {
+    final c = contents[i];
+    if (c == "'" || c == '"') {
+      final raw = i > 0 && contents[i - 1] == 'r';
+      final quote = c;
+      out.write(c);
+      i++;
+      final triple =
+          i + 1 < n && contents[i] == quote && contents[i + 1] == quote;
+      if (triple) {
+        out.write(quote);
+        out.write(quote);
+        i += 2;
+      }
+      while (i < n) {
+        if (!raw && contents[i] == r'\') {
+          out.write(contents[i]);
+          if (i + 1 < n) out.write(contents[i + 1]);
+          i += 2;
+          continue;
+        }
+        if (triple) {
+          if (contents[i] == quote &&
+              i + 2 < n &&
+              contents[i + 1] == quote &&
+              contents[i + 2] == quote) {
+            out.write(quote);
+            out.write(quote);
+            out.write(quote);
+            i += 3;
+            break;
+          }
+        } else if (contents[i] == quote) {
+          out.write(quote);
+          i++;
+          break;
+        }
+        out.write(contents[i]);
+        i++;
+      }
+      continue;
+    }
+    if (c == '/' && i + 1 < n && contents[i + 1] == '/') {
+      final eol = contents.indexOf('\n', i);
+      i = eol == -1 ? n : eol; // keep the newline for line numbering sanity
+      continue;
+    }
+    if (c == '/' && i + 1 < n && contents[i + 1] == '*') {
+      final end = contents.indexOf('*/', i + 2);
+      i = end == -1 ? n : end + 2;
+      continue;
+    }
+    out.write(c);
+    i++;
+  }
+  return out.toString();
+}
+
+/// Whether [contents] of [filePath] reaches the raw local drift store
+/// directly (issue #551 part 3), ignoring comments.
+bool referencesRawStorage(String contents, String filePath) =>
+    _rawStorageReference.hasMatch(_withoutComments(contents));
 
 void _expectNoOffendersAmong(
   List<File> files,
@@ -333,6 +419,76 @@ void main() {
           isFalse,
           reason: 'a sibling directory that merely starts with "composition" '
               'is fine');
+    });
+
+    // Issue #551 (part 3): the storage bypass itself. `lib/app.dart` is a
+    // composition root that legitimately imports `lib/data` to assemble the
+    // provider tree, so the `lib/ui -/-> lib/data` scan above cannot apply
+    // to it — this reference guard is what keeps its own storage access
+    // routed through `AppDependencies` rather than `widget.db.storage`.
+    test('lib/app.dart reaches the local store only through repositories',
+        () {
+      final app = _bareLibDartFiles()
+          .where((f) => f.path.replaceAll(r'\', '/') == 'lib/app.dart')
+          .toList();
+      expect(app, hasLength(1), reason: 'lib/app.dart not found');
+      _expectNoOffendersAmong(app, referencesRawStorage,
+          'lib/app.dart must not reference LunarLogStorage or .db.storage');
+    });
+
+    test('no lib/ui file reaches the local store directly', () {
+      _expectNoOffenders('lib/ui', referencesRawStorage,
+          'lib/ui must not reference LunarLogStorage or .db.storage',
+          excludeGenerated: true);
+    });
+
+    // Gives the two guards above their own teeth, exactly as the
+    // directive-based detector has: the bypass is flagged in each form it
+    // can take, while the comments that *describe* the eliminated bypass
+    // and unrelated domain reads are not.
+    test('detects the forms a raw-storage bypass can take', () {
+      expect(
+          referencesRawStorage(
+              'value: widget.db.storage.countAllRows,', 'lib/app.dart'),
+          isTrue,
+          reason: 'a `.db.storage` tear-off is the bypass');
+      expect(
+          referencesRawStorage('db.storage.watchProfileMode(id)', 'lib/app.dart'),
+          isTrue,
+          reason: 'a bare `db.storage` access is the bypass');
+      expect(
+          referencesRawStorage(
+              'final LunarLogStorage storage;', 'lib/ui/probe.dart'),
+          isTrue,
+          reason: 'the raw storage type name is the bypass');
+      expect(
+          referencesRawStorage(
+              "/// was `widget.db.storage.watchProfileMode` before #551",
+              'lib/app.dart'),
+          isFalse,
+          reason: 'a doc comment describing the old bypass is not code');
+      expect(
+          referencesRawStorage(
+              '// LunarLogStorage has left the tree', 'lib/app.dart'),
+          isFalse,
+          reason: 'a line comment is not code');
+      expect(
+          referencesRawStorage('/* LunarLogStorage */', 'lib/app.dart'),
+          isFalse,
+          reason: 'a block comment is not code');
+      expect(
+          referencesRawStorage(
+              "final url = 'https://example.com/a'; "
+                  'final c = db.storage.countAllRows;',
+              'lib/app.dart'),
+          isTrue,
+          reason: "a URL's `//` inside a string must not swallow the rest "
+              'of the line');
+      expect(
+          referencesRawStorage(
+              'context.read<ProfileModesRepository>()', 'lib/ui/probe.dart'),
+          isFalse,
+          reason: 'a domain repository read is not a raw-storage reference');
     });
   });
 }
