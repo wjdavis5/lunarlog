@@ -199,7 +199,7 @@ abstract class AppLocalizations {
   /// Legend entry for a predicted (hatched) day band.
   ///
   /// In en, this message translates to:
-  /// **'Predicted day'**
+  /// **'Estimated day'**
   String get calendarLegendPredicted;
 
   /// Legend entry for the predicted premenstrual badge.
@@ -247,7 +247,7 @@ abstract class AppLocalizations {
   /// Strip shown on quiet months while no estimate is active.
   ///
   /// In en, this message translates to:
-  /// **'Keep logging — predicted bands appear once a few cycles are recorded.'**
+  /// **'Keep logging — estimated bands appear once a few cycles are recorded.'**
   String get calendarKeepLogging;
 
   /// The date half of a calendar day cell's screen-reader label, e.g. 'Wednesday, September 9'.
@@ -313,7 +313,7 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike.
   ///
   /// In en, this message translates to:
-  /// **'predicted period day'**
+  /// **'estimated period day'**
   String get calendarCellPredictedPeriod;
 
   /// Screen-reader fragment for a predicted bleed day's cycle-day numeral.
@@ -325,25 +325,25 @@ abstract class AppLocalizations {
   /// Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'cycle day {day} of the first predicted cycle'**
+  /// **'cycle day {day} of the first estimated cycle'**
   String calendarCellCycleDayFirstCycle(int day);
 
   /// Screen-reader fragment for a day carrying the PMS badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted premenstrual window'**
+  /// **'estimated premenstrual window'**
   String get calendarCellPmsWindow;
 
   /// Screen-reader fragment for a day carrying the cramps badge.
   ///
   /// In en, this message translates to:
-  /// **'predicted cramps window'**
+  /// **'estimated cramps window'**
   String get calendarCellCrampsWindow;
 
   /// Screen-reader fragment for a future day whose forecast cell carries no marker.
   ///
   /// In en, this message translates to:
-  /// **'no prediction for this date'**
+  /// **'no estimate for this date'**
   String get calendarCellNoPrediction;
 
   /// InlineError message (announced as a screen-reader live region) when the calendar's prediction stream errors. Issue #602.
@@ -505,43 +505,43 @@ abstract class AppLocalizations {
   /// Future-day explainer body when no estimate exists at all.
   ///
   /// In en, this message translates to:
-  /// **'No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.'**
+  /// **'No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.'**
   String get futureExplainerNoEstimate;
 
   /// Future-day explainer body when nothing is predicted for the date.
   ///
   /// In en, this message translates to:
-  /// **'No prediction for this date. Days can be logged once they arrive.'**
+  /// **'No estimate for this date. Days can be logged once they arrive.'**
   String get futureExplainerNone;
 
   /// Future-day explainer body for a predicted bleed day with no cycle-day numeral.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBand(int count);
 
   /// Future-day explainer body for a predicted bleed day inside the first predicted cycle.
   ///
   /// In en, this message translates to:
-  /// **'Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
+  /// **'Estimated period day — cycle day {day} of the first estimated cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.'**
   String futureExplainerBandWithCycleDay(int day, int count);
 
   /// Future-day explainer body for a day in the predicted PMS window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
+  /// **'Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.'**
   String get futureExplainerPms;
 
   /// Future-day explainer body for a day in the predicted cramps window.
   ///
   /// In en, this message translates to:
-  /// **'Inside the predicted cramps window — cramps commonly occur within two days of a period start.'**
+  /// **'Inside the estimated cramps window — cramps commonly occur within two days of a period start.'**
   String get futureExplainerCramps;
 
   /// Future-day explainer body for a counted future cycle day that is not a predicted bleed day.
   ///
   /// In en, this message translates to:
-  /// **'Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.'**
+  /// **'Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.'**
   String futureExplainerNumeral(int day);
 
   /// Future-day explainer confidence line, e.g. 'Estimate confidence: high.'.
@@ -1085,7 +1085,7 @@ abstract class AppLocalizations {
   /// Body of the overview's unusually-long-cycle prompt.
   ///
   /// In en, this message translates to:
-  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.'**
+  /// **'It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.'**
   String get overviewLongCycleBody;
 
   /// Action excluding the open cycle from future averages.
@@ -1097,7 +1097,7 @@ abstract class AppLocalizations {
   /// Action navigating to Settings to manage or turn off predictions (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Turn off predictions'**
+  /// **'Turn off estimates'**
   String get overviewLongCyclePredictionsOff;
 
   /// Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything.
@@ -1109,7 +1109,7 @@ abstract class AppLocalizations {
   /// Issue #859: calm, non-alarming body of the stale-history overview card.
   ///
   /// In en, this message translates to:
-  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.'**
+  /// **'It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.'**
   String get overviewStaleHistoryBody;
 
   /// Issue #859: primary action on the stale-history card, logging a period start for today.
@@ -1344,17 +1344,17 @@ abstract class AppLocalizations {
   /// **'Health'**
   String get settingsHealthHeader;
 
-  /// Settings tile opening per-profile Health app sync.
+  /// Settings tile opening per-profile health sync.
   ///
   /// In en, this message translates to:
-  /// **'Health app sync'**
-  String get settingsHealthSyncTitle;
+  /// **'{source} sync'**
+  String settingsHealthSyncTitle(String source);
 
   /// Subtitle of the health-sync tile.
   ///
   /// In en, this message translates to:
-  /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
-  String get settingsHealthSyncSubtitle;
+  /// **'Choose which profile\'s data may sync to {source}'**
+  String settingsHealthSyncSubtitle(String source);
 
   /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
   ///
@@ -1362,7 +1362,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
@@ -1416,22 +1416,22 @@ abstract class AppLocalizations {
   /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
   String healthSyncImportKeptManual(int count);
 
-  /// Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.
+  /// Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.
   ///
   /// In en, this message translates to:
-  /// **'Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.'**
+  /// **'Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.'**
   String healthSyncImportPlacedDeviceZone(int count);
 
-  /// Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).
+  /// Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.'**
   String healthSyncImportSkippedNoZone(int count);
 
-  /// Health import summary: samples whose flow value has no lunarlog equivalent.
+  /// Health import summary: entries whose flow value has no lunarlog equivalent.
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
 
   /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
@@ -1479,14 +1479,14 @@ abstract class AppLocalizations {
   /// Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.'**
-  String healthSyncUnbindDialogWriteBody(String name);
+  /// **'This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.'**
+  String healthSyncUnbindDialogWriteBody(String name, String source);
 
   /// Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.'**
-  String healthSyncUnbindDialogImportBody(String name);
+  /// **'This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.'**
+  String healthSyncUnbindDialogImportBody(String name, String source);
 
   /// Confirm action of the health-sync unbind dialog (Issue #893).
   ///
@@ -1521,7 +1521,7 @@ abstract class AppLocalizations {
   /// Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary.
   ///
   /// In en, this message translates to:
-  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
+  /// **'lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device\'s own operating system encryption and shown only behind your device\'s passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md'**
   String get settingsPrivacyDialogBody;
 
   /// Close action of the settings dialogs.
@@ -1731,7 +1731,7 @@ abstract class AppLocalizations {
   /// Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions).
   ///
   /// In en, this message translates to:
-  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.'**
+  /// **'Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.'**
   String get firstRunValueBody;
 
   /// Title of the second onboarding card (what a profile and a guardian are).
@@ -2145,7 +2145,7 @@ abstract class AppLocalizations {
   /// Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.
   ///
   /// In en, this message translates to:
-  /// **'Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
+  /// **'Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.'**
   String overviewPmsBandLabel(String range, int days, int length);
 
   /// Overview line naming the predicted PMS band's confidence tier when it differs from the period estimate's own tier (Issue #874). The subject ('PMS estimate:') distinguishes it from the period estimate's tier caption above; the line is omitted entirely when the two tiers are equal, which is the common case.
@@ -2157,31 +2157,31 @@ abstract class AppLocalizations {
   /// Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Predictions are suppressed'**
+  /// **'Estimates paused'**
   String get predictionsSuppressedTitle;
 
   /// Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).
   ///
   /// In en, this message translates to:
-  /// **'Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.'**
+  /// **'Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.'**
   String predictionsSuppressedBody(String method);
 
   /// Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.
   ///
   /// In en, this message translates to:
-  /// **'Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.'**
+  /// **'Because this profile is set to {mode} mode, period estimates are paused — the ordinary cycle averages this app estimates from don\'t apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.'**
   String predictionsSuppressedByModeBody(String mode);
 
   /// Title of the card displayed when predictions are disabled for the profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions turned off'**
+  /// **'Estimates off'**
   String get predictionsDisabledTitle;
 
   /// Body of the card explaining that predictions are disabled while tracking remains active (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
+  /// **'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.'**
   String get predictionsDisabledBody;
 
   /// Button on predictions-disabled card opening Settings (issue #225).
@@ -2193,19 +2193,19 @@ abstract class AppLocalizations {
   /// Title of the prediction toggle in Settings when only one profile exists (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions'**
+  /// **'Show estimates'**
   String get settingsPredictionsTitle;
 
   /// Title of the prediction toggle in Settings for a specific profile (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show predictions ({profileName})'**
+  /// **'Show estimates ({profileName})'**
   String settingsPredictionsProfileTitle(String profileName);
 
   /// Subtitle describing the predictions toggle in Settings (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Show cycle estimates, fertile window, and prediction reminders'**
+  /// **'Show cycle estimates, fertile window, and estimate reminders'**
   String get settingsPredictionsSubtitle;
 
   /// Subtitle of the settings predictions toggle when the profile's life-stage mode suppresses predictions ({mode}: Pregnancy, Postpartum, or Perimenopause); the toggle is disabled and the mode name comes from LifecycleMode.label, the same source the suppressed-prediction card uses (Issue #877).
@@ -2229,7 +2229,7 @@ abstract class AppLocalizations {
   /// Body of the dismissible suggestion banner for irregular cycles (issue #225).
   ///
   /// In en, this message translates to:
-  /// **'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
+  /// **'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.'**
   String get overviewIrregularSuggestionBody;
 
   /// Action on the irregular suggestion banner opening Settings (issue #225).
@@ -2283,7 +2283,7 @@ abstract class AppLocalizations {
   /// The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted period starts'**
+  /// **'A heads-up before the estimated period starts'**
   String get reminderKindPeriodDueSubtitle;
 
   /// The PMS-watch reminder's settings row title (Issue #178 localization of the existing copy).
@@ -2319,7 +2319,7 @@ abstract class AppLocalizations {
   /// The fertile-window-soon reminder's settings row subtitle (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'A heads-up before the predicted fertile window'**
+  /// **'A heads-up before the estimated fertile window'**
   String get reminderKindFertileWindowSoonSubtitle;
 
   /// The cycle-statistic-change reminder's settings row title (Issue #178; Clue catalogue item 5).
@@ -2349,19 +2349,19 @@ abstract class AppLocalizations {
   /// Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted start'**
+  /// **'Days before estimated start'**
   String get reminderLeadDaysBeforeStart;
 
   /// Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted PMS window'**
+  /// **'Days before estimated PMS window'**
   String get reminderLeadDaysBeforePms;
 
   /// Lead-days row title for the fertile-window-soon reminder (Issue #178).
   ///
   /// In en, this message translates to:
-  /// **'Days before predicted fertile window'**
+  /// **'Days before estimated fertile window'**
   String get reminderLeadDaysBeforeFertileWindow;
 
   /// The birth-control reminders explainer row title, shown when the profile has no method-cadence reminder to configure (Issue #183).
@@ -3021,7 +3021,7 @@ abstract class AppLocalizations {
   /// Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state).
   ///
   /// In en, this message translates to:
-  /// **'Period predictions off'**
+  /// **'Period estimates off'**
   String get profileStatusPredictionsOff;
 
   /// Issue #982: the one-line cycle status on a ProfileCard row for a stale-history profile (ActivePrediction.staleHistory, issue #859) — a neutral line replacing the rolled 'Cycle day N' count the same way the overview's stale card replaces it.
@@ -3477,7 +3477,7 @@ abstract class AppLocalizations {
   /// Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
+  /// **'Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.'**
   String get pregnancyExitExclusionBody;
 
   /// Accept action of the pregnancy-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #192).
@@ -3537,7 +3537,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455).
   ///
   /// In en, this message translates to:
-  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.'**
+  /// **'You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.'**
   String get postpartumReturnBody;
 
   /// Action of the postpartum cycles-have-returned offer; switches the profile's life-stage mode to tracking and then offers the interval exclusion (Issue #455).
@@ -3555,7 +3555,7 @@ abstract class AppLocalizations {
   /// Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it.
   ///
   /// In en, this message translates to:
-  /// **'Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
+  /// **'Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.'**
   String get postpartumExitExclusionBody;
 
   /// Accept action of the postpartum-exit exclusion dialog: writes the cycle_overrides exclusion rows (Issue #455).
@@ -3975,7 +3975,7 @@ abstract class AppLocalizations {
   /// Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged.
   ///
   /// In en, this message translates to:
-  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s prediction.'**
+  /// **'These are Apple\'s own estimates from your Health data — separate from lunarlog\'s own estimate.'**
   String get healthDeviationCardSubtitle;
 
   /// Issue #799: tooltip on the deviation card's dismiss button.
@@ -6358,6 +6358,18 @@ abstract class AppLocalizations {
   /// **'Email'**
   String get accountSignInEmailLabel;
 
+  /// Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your email address.'**
+  String get accountSignInEmailRequired;
+
+  /// Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address.
+  ///
+  /// In en, this message translates to:
+  /// **'That doesn\'t look like an email address.'**
+  String get accountSignInEmailInvalid;
+
   /// Issue #1004 (tranche 2): sign-in screen password field label.
   ///
   /// In en, this message translates to:
@@ -6782,17 +6794,17 @@ abstract class AppLocalizations {
   /// **'Sync {name} to this phone?'**
   String healthSyncBindTitle(String name);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.
+  /// health-sync bind confirmation body for a write direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindWriteBody(String name);
+  /// **'Only {name}\'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name, String source);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.
+  /// health-sync bind confirmation body for an import-only direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindImportBody(String name);
+  /// **'Only {name}\'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name, String source);
 
   /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
   ///
@@ -7121,7 +7133,7 @@ abstract class AppLocalizations {
   /// Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.
   ///
   /// In en, this message translates to:
-  /// **'{label} — the days around estimated ovulation, back-calculated from the predicted period date.'**
+  /// **'{label} — the days around estimated ovulation, back-calculated from the estimated period date.'**
   String monthCalendarFertileWindowExplainer(String label);
 
   /// Issue #1004 (tranche 4b): tooltip on the day sheet merge notice's dismiss button.

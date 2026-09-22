@@ -45,6 +45,7 @@ import 'package:lunarlog/app_lifecycle.dart' show GateController;
 import 'package:lunarlog/config.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/util/email_address.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/google_sign_in_button.dart';
@@ -230,14 +231,40 @@ class _SignInScreenState extends State<SignInScreen> {
     if (!widget.embedded) Navigator.of(context).maybePop();
   }
 
-  Future<void> _signIn() => _run(() async {
-        final auth = context.read<AuthController>();
-        await auth.signInWithPassword(
-          email: _email.text.trim(),
-          password: _password.text,
-        );
-        _signedIn();
-      });
+  /// #1030: rejects an empty or obviously malformed email locally, before
+  /// any handler hands it to the auth service. On failure it focuses the
+  /// field and shows the local copy under the same `auth-error` line a
+  /// server failure uses; the caller then returns without calling `_run`.
+  bool _emailLooksValid(AppLocalizations l10n) {
+    final email = _email.text.trim();
+    final String? error;
+    if (email.isEmpty) {
+      error = l10n.accountSignInEmailRequired;
+    } else if (!looksLikeEmail(email)) {
+      error = l10n.accountSignInEmailInvalid;
+    } else {
+      error = null;
+    }
+    if (error == null) return true;
+    setState(() {
+      _error = error;
+      _info = null;
+    });
+    _emailFocus.requestFocus();
+    return false;
+  }
+
+  Future<void> _signIn() async {
+    if (!_emailLooksValid(AppLocalizations.of(context))) return;
+    await _run(() async {
+      final auth = context.read<AuthController>();
+      await auth.signInWithPassword(
+        email: _email.text.trim(),
+        password: _password.text,
+      );
+      _signedIn();
+    });
+  }
 
   Future<void> _createAccount() async {
     final l10n = AppLocalizations.of(context);
@@ -267,6 +294,7 @@ class _SignInScreenState extends State<SignInScreen> {
 
   Future<void> _forgotPassword() async {
     final l10n = AppLocalizations.of(context);
+    if (!_emailLooksValid(l10n)) return;
     await _run(() async {
       final auth = context.read<AuthController>();
       await auth.sendPasswordReset(_email.text.trim());
@@ -336,6 +364,7 @@ class _SignInScreenState extends State<SignInScreen> {
   /// code field is the same-device alternative to that link.
   Future<void> _sendMagicLink() async {
     final l10n = AppLocalizations.of(context);
+    if (!_emailLooksValid(l10n)) return;
     await _run(() async {
       final auth = context.read<AuthController>();
       final settings = context.read<SettingsStore>();

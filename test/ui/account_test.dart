@@ -700,6 +700,95 @@ void main() {
     );
   });
 
+  group('email is validated before any auth request (issue #1030)', () {
+    testWidgets('sign-in with an empty email shows the local error, focuses '
+        'the field, and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signInCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
+
+    testWidgets('sign-in with a malformed email shows the shape error and '
+        'never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'not-an-email');
+      await tester.enterText(key('auth-password'), 'correct horse battery');
+      await tester.tap(key('auth-sign-in'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signInCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        "That doesn't look like an email address.",
+      );
+    });
+
+    testWidgets('forgot password with an empty email shows the local error '
+        'and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-forgot-password'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passwordResetCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
+
+    testWidgets('forgot password with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'who@b.c');
+      await tester.tap(key('auth-forgot-password'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.passwordResetCalls, ['who@b.c']);
+      expect(key('auth-error'), findsNothing);
+    });
+
+    testWidgets('magic link with an empty email shows the local error and '
+        'never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(key('auth-code'), findsNothing);
+    });
+
+    testWidgets('magic link with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.enterText(key('auth-email'), 'a@b.c');
+      await tester.tap(key('auth-magic-link'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.magicLinkCalls.single,
+          (email: 'a@b.c', createAccount: false));
+      expect(key('auth-error'), findsNothing);
+    });
+  });
+
   group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
     testWidgets('AE1: showPasskeys false and the null default (empty '
         'config) render no passkey button; true renders it', (tester) async {
