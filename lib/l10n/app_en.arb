@@ -456,7 +456,7 @@
   "@daySheetNotePrivateToggle": {
     "description": "Issue #849 (re-scoped): the subject-only toggle that marks the day note private. Rendered only while the note is being written (the stored note is empty), and disabled once a non-empty note has been saved."
   },
-  "daySheetNotePrivateHint": "Private notes aren't shared with your guardians.",
+  "daySheetNotePrivateHint": "Private notes aren't shared with guardians.",
   "@daySheetNotePrivateHint": {
     "description": "Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it."
   },

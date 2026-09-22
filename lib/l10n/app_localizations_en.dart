@@ -336,7 +336,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get daySheetNotePrivateHint =>
-      'Private notes aren\'t shared with your guardians.';
+      'Private notes aren\'t shared with guardians.';
 
   @override
   String get daySheetNotePrivateSavedHint =>

@@ -59,6 +59,7 @@ import 'package:lunarlog/data/repositories/drift_health_export_ledger.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_state_repository.dart';
 import 'package:lunarlog/data/repositories/drift_health_sync_tombstone_source.dart';
 import 'package:lunarlog/data/repositories/drift_imported_data_purge_repository.dart';
+import 'package:lunarlog/data/repositories/drift_local_row_count_repository.dart';
 import 'package:lunarlog/data/repositories/drift_onboarding_cycle_answers_recorder.dart';
 import 'package:lunarlog/data/repositories/drift_profile_modes_repository.dart';
 import 'package:lunarlog/data/repositories/drift_profiles_repository.dart';
@@ -100,6 +101,7 @@ import 'package:lunarlog/domain/repositories/account_export_snapshot_repository.
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 import 'package:lunarlog/domain/repositories/care_content_repository.dart';
 import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
+import 'package:lunarlog/domain/repositories/local_row_count_repository.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
@@ -143,6 +145,7 @@ class AppDependencies {
     required this.guardianNotes,
     required this.tagRegistry,
     required this.settings,
+    required this.localRowCounts,
     required this.profileModes,
     required this.profileGuardians,
     required this.activityFeed,
@@ -193,6 +196,13 @@ class AppDependencies {
   final TagRegistryRepository tagRegistry;
 
   final SettingsStore settings;
+
+  /// Issue #551 (part 3): the upload-consent row-count seam. `lib/app.dart`
+  /// provides `localRowCounts.countAllRows` as the tree's
+  /// `Provider<LocalRowCounter>` instead of tearing the count off
+  /// `LunarLogStorage` directly.
+  final LocalRowCountRepository localRowCounts;
+
   final ProfileModesRepository profileModes;
   final ProfileGuardiansRepository profileGuardians;
   final ActivityFeedRepository activityFeed;
@@ -375,6 +385,7 @@ AppDependencies buildAppDependencies({
     guardianNotes: guardianNotes,
     tagRegistry: tagRegistry,
     settings: settings,
+    localRowCounts: DriftLocalRowCountRepository(storage),
     profileModes: profileModes,
     profileGuardians: profileGuardians,
     activityFeed: DriftActivityFeedRepository(storage),
