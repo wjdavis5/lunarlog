@@ -328,6 +328,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final guardiansRepository = context.read<ProfileGuardiansRepository?>();
     final activityRepository = context.read<ActivityFeedRepository?>();
     final careContentRepository = context.read<CareContentRepository?>();
@@ -429,29 +430,29 @@ class _AppShellState extends State<AppShell> {
             key: const ValueKey('app-shell-nav-bar'),
             selectedIndex: _tab.index,
             onDestinationSelected: (index) => _selectTab(AppTab.values[index]),
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                key: ValueKey('app-shell-tab-today'),
-                icon: Icon(Icons.today_outlined),
-                selectedIcon: Icon(Icons.today),
-                label: 'Today',
+                key: const ValueKey('app-shell-tab-today'),
+                icon: const Icon(Icons.today_outlined),
+                selectedIcon: const Icon(Icons.today),
+                label: l10n.appShellTabToday,
               ),
               NavigationDestination(
-                key: ValueKey('app-shell-tab-calendar'),
-                icon: Icon(Icons.calendar_month_outlined),
-                selectedIcon: Icon(Icons.calendar_month),
-                label: 'Calendar',
+                key: const ValueKey('app-shell-tab-calendar'),
+                icon: const Icon(Icons.calendar_month_outlined),
+                selectedIcon: const Icon(Icons.calendar_month),
+                label: l10n.appShellTabCalendar,
               ),
               NavigationDestination(
-                key: ValueKey('app-shell-tab-insights'),
-                icon: Icon(Icons.insights_outlined),
-                selectedIcon: Icon(Icons.insights),
-                label: 'Insights',
+                key: const ValueKey('app-shell-tab-insights'),
+                icon: const Icon(Icons.insights_outlined),
+                selectedIcon: const Icon(Icons.insights),
+                label: l10n.appShellTabInsights,
               ),
               NavigationDestination(
-                key: ValueKey('app-shell-tab-more'),
-                icon: Icon(Icons.more_horiz),
-                label: 'More',
+                key: const ValueKey('app-shell-tab-more'),
+                icon: const Icon(Icons.more_horiz),
+                label: l10n.appShellTabMore,
               ),
             ],
           ),
@@ -774,7 +775,8 @@ class _SharedMark extends StatelessWidget {
         ];
         if (accepted.length < 2) return const SizedBox.shrink();
         return Tooltip(
-          message: 'Shared · ${accepted.length} guardians',
+          message: AppLocalizations.of(context)
+              .profileDetailSharedGuardians(accepted.length),
           child: const Padding(
             padding: EdgeInsets.only(left: LLSpace.space1),
             child: Icon(
@@ -862,6 +864,7 @@ class _SyncFailureBanner extends StatelessWidget {
 
   /// The banner itself, or an empty box when there is nothing to show.
   Widget _banner(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final sync = Provider.of<SyncStatusController?>(context);
     if (sync == null) return const SizedBox.shrink();
     final snapshot = sync.snapshot;
@@ -880,7 +883,7 @@ class _SyncFailureBanner extends StatelessWidget {
               // Navigate to More tab (Settings) where the sign-in tile is.
               AppShellScope.maybeOf(context)?.select(AppTab.more);
             },
-            child: const Text('Go to Settings'),
+            child: Text(l10n.appShellSyncBannerGoToSettings),
           ),
         ],
       );
@@ -902,7 +905,7 @@ class _SyncFailureBanner extends StatelessWidget {
           TextButton(
             key: const ValueKey('sync-failure-banner-action'),
             onPressed: sync.requestSync,
-            child: const Text('Retry'),
+            child: Text(l10n.commonRetry),
           ),
         ],
       );
