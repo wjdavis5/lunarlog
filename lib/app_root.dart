@@ -81,6 +81,7 @@ SyncEngine defaultSyncEngineBuilder({
 }) =>
     SupabaseSyncEngine(
       storage: db.storage,
+      syncMetadata: db.storage.syncMetadata,
       transport: transport,
       auth: authService,
       gate: gate,

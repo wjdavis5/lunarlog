@@ -56,7 +56,7 @@ class SyncPushItem {
 class SupabaseSyncApply {
   SupabaseSyncApply(this._storage);
 
-  final LunarLogStorage _storage;
+  final SyncApplyStore _storage;
 
   /// Rows the server rejected: id → (`local_rev` at rejection, owning
   /// profile id — `null` for a profile row itself, and the row's own

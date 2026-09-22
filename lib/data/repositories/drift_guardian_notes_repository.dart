@@ -62,7 +62,7 @@ String _encodeCrockford(List<int> bytes, int length) {
 class DriftGuardianNotesRepository implements GuardianNotesRepository {
   DriftGuardianNotesRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final GuardianNoteStore _storage;
 
   @override
   Future<List<domain.GuardianNote>> listForProfile(String profileId) async => [

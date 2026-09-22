@@ -23,6 +23,7 @@ import '../../domain/models/day_entry.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/prediction/cycle_history.dart' show CycleExclusionList;
 import '../../domain/repositories/day_entries_repository.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../../observability/route_names.dart';
 import 'cycle_comparison_view.dart';
 
@@ -37,6 +38,7 @@ class CycleComparisonScreen extends StatefulWidget {
     this.todayProvider = LocalDate.today,
     this.dayEntriesRepository,
     this.exclusions,
+    this.lens = GuardianLens.subject,
   });
 
   final String profileId;
@@ -53,11 +55,17 @@ class CycleComparisonScreen extends StatefulWidget {
   /// Injectable for tests; falls back to `context.read<CycleExclusionList?>()`.
   final CycleExclusionList? exclusions;
 
+  /// Which lens the reader is viewing the profile through (issue #850, U8):
+  /// forwarded to [CycleComparisonView]'s empty-state body. Defaults to the
+  /// subject lens, so pre-#850 callers are unchanged.
+  final GuardianLens lens;
+
   static MaterialPageRoute<void> route({
     required String profileId,
     required LocalDate cycleAStart,
     required LocalDate cycleBStart,
     LocalDate Function() todayProvider = LocalDate.today,
+    GuardianLens lens = GuardianLens.subject,
   }) =>
       MaterialPageRoute<void>(
         settings: const RouteSettings(name: kRouteCycleComparisonScreen),
@@ -66,6 +74,7 @@ class CycleComparisonScreen extends StatefulWidget {
           cycleAStart: cycleAStart,
           cycleBStart: cycleBStart,
           todayProvider: todayProvider,
+          lens: lens,
         ),
       );
 
@@ -129,7 +138,7 @@ class _CycleComparisonScreenState extends State<CycleComparisonScreen> {
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).cycleComparisonScreenTitle),
       ),
-      body: SafeArea(child: CycleComparisonView(data: data)),
+      body: SafeArea(child: CycleComparisonView(data: data, lens: widget.lens)),
     );
   }
 }

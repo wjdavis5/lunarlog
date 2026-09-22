@@ -13,7 +13,7 @@ import 'mappers.dart';
 class DriftCareContentRepository implements CareContentRepository {
   DriftCareContentRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final CareContentStore _storage;
 
   @override
   Future<List<domain.CareNote>> listCareNotes(String profileId) async => [
