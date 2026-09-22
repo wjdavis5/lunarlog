@@ -16,6 +16,11 @@ mixin SupabaseAuthSessionState {
   /// The browser's launch URL on web (epic #831 slice 2); null on native.
   Uri? get _webInitialUri;
 
+  /// Rewrites the browser URL after a web auth callback is handled (epic
+  /// #831 slice 4). Only ever invoked when [_webInitialUri] is non-null, so
+  /// a native build never touches it.
+  WebUrlCleaner get _cleanWebUrl;
+
   StreamController<AuthSessionState> get _states;
   StreamController<AuthFailure> get _linkFailures;
 
@@ -98,6 +103,7 @@ mixin SupabaseAuthSessionState {
         _lastHandledLink = key;
         // Never call getSessionFromUrl: gotrue would throw an AuthException
         // whose message *is* the error_description.
+        _cleanHandledWebUrl(uri);
         _surfaceLinkFailure(const AuthFailure.expiredLink());
       case AuthLinkCallback(:final recovery):
         // Latched before the exchange so the stream replay of the launch
@@ -105,6 +111,19 @@ mixin SupabaseAuthSessionState {
         _lastHandledLink = key;
         await _exchangeAuthLink(uri, recovery: recovery, key: key);
     }
+  }
+
+  /// Removes the spent `code` (or a provider `error` the link carried) from
+  /// the browser address bar once [uri] has been handled (epic #831 slice
+  /// 4), so a reload cannot replay the exchange — the PKCE verifier is
+  /// already spent — and surface a bogus expired-link failure. A no-op on
+  /// native, where [_webInitialUri] is null and there is no browser URL to
+  /// rewrite.
+  void _cleanHandledWebUrl(Uri uri) {
+    if (_webInitialUri == null) return;
+    final cleaned = cleanAuthUrl(uri);
+    if (identical(cleaned, uri)) return;
+    _cleanWebUrl(cleaned);
   }
 
   Future<void> _exchangeAuthLink(
@@ -120,6 +139,10 @@ mixin SupabaseAuthSessionState {
       if (recovery || _isRecoveryType(response.redirectType)) {
         _latchRecovery();
       }
+      // Only on success: a network failure above leaves the link retryable
+      // (and un-latched), so its code must stay in the URL for a reload or
+      // stream replay to retry it (epic #831 slice 4).
+      _cleanHandledWebUrl(uri);
     } catch (error) {
       _handleAuthLinkExchangeError(error, key);
     }
