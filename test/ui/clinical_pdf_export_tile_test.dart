@@ -18,6 +18,7 @@ import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/settings/clinical_pdf_export_tile.dart';
 import 'package:provider/provider.dart';
 
@@ -269,7 +270,8 @@ void main() {
     await tester.tap(key('export-range-confirm'));
     await tester.pumpAndSettle();
     expect(key('clinical-pdf-export-error'), findsOneWidget);
-    expect(find.text(kClinicalPdfExportFailureCopy), findsOneWidget);
+    expect(find.text(AppLocalizationsEn().settingsClinicalExportFailure),
+        findsOneWidget);
   });
 
   testWidgets(

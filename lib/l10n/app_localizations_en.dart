@@ -4767,4 +4767,514 @@ class AppLocalizationsEn extends AppLocalizations {
   String symptomTrendsLogged(int occurrences, int cycles) {
     return 'Logged $occurrences times across $cycles cycles';
   }
+
+  @override
+  String get accountSyncStatusSyncing => 'Syncing…';
+
+  @override
+  String get accountSyncStatusUploadPending => 'Upload pending — tap to review';
+
+  @override
+  String get accountSyncStatusWebSyncOff => 'Sync is off in this web build';
+
+  @override
+  String get accountSyncStatusSignInAgain => 'Sign in again to sync';
+
+  @override
+  String get accountSyncStatusRejected => 'Some entries could not be uploaded';
+
+  @override
+  String get accountSyncStatusAwaitingConfirmation =>
+      'Waiting for email confirmation — open the link on this device';
+
+  @override
+  String get accountSyncStatusAwaitingMagicLink =>
+      'Sign-in email sent — open the link on this device or enter the code';
+
+  @override
+  String get accountSyncStatusOfflineSaved =>
+      'Saved on this device · will sync';
+
+  @override
+  String get accountSyncStatusJustNow => 'just now';
+
+  @override
+  String accountSyncStatusMinutesAgo(int minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String accountSyncStatusHoursAgo(int hours) {
+    return '$hours h ago';
+  }
+
+  @override
+  String accountSyncStatusDaysAgo(int days) {
+    return '$days d ago';
+  }
+
+  @override
+  String get accountSyncStatusUnavailable =>
+      'Sync is not available in this build';
+
+  @override
+  String get accountSyncStatusNetworkRetry =>
+      'Could not reach the server — will retry';
+
+  @override
+  String get accountSyncStatusFailedRetry => 'Sync failed — will retry';
+
+  @override
+  String get accountSyncStatusAccountMismatch =>
+      'Signed in as a different account';
+
+  @override
+  String accountSyncStatusUploading(String pushed, String total) {
+    return 'Uploading $pushed of $total';
+  }
+
+  @override
+  String get accountSyncStatusNotSignedIn => 'Not signed in';
+
+  @override
+  String get accountSyncStatusPaused => 'Sync paused';
+
+  @override
+  String get accountSyncStatusNotSyncedYet => 'Not synced yet';
+
+  @override
+  String accountSyncStatusUpToDate(String relative) {
+    return 'Up to date · $relative';
+  }
+
+  @override
+  String get accountExportFailure =>
+      'Could not export your data. Please try again.';
+
+  @override
+  String get accountGoogleButtonLabel => 'Sign in with Google';
+
+  @override
+  String get accountDeletionNetworkFailure =>
+      'Could not reach the server. Check your connection and try again. Your account was not deleted.';
+
+  @override
+  String get accountDeletionAppleCodeRequired =>
+      'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAppleCeremonyUnavailable =>
+      'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.';
+
+  @override
+  String get accountDeletionAttachmentCleanupFailed =>
+      'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAttachmentCleanupUnbounded =>
+      'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.';
+
+  @override
+  String get accountDeletionMfaRequired =>
+      'Nothing was deleted. Please confirm your two-factor code and try again.';
+
+  @override
+  String get accountDeletionAppleRevokeFailed =>
+      'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.';
+
+  @override
+  String get accountDeletionRevocationMarkerFailed =>
+      'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionDeleteUserFailed =>
+      'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionSessionExpired =>
+      'Your session has expired. Sign in again and retry - your account was not deleted.';
+
+  @override
+  String get accountDeletionTimeout =>
+      'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.';
+
+  @override
+  String get accountDeletionUnknown =>
+      'Something went wrong. Your account was not deleted. Please try again.';
+
+  @override
+  String get settingsExportRangePresetLast3Cycles => 'Last 3 cycles';
+
+  @override
+  String get settingsExportRangePresetLast6Cycles => 'Last 6 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Cycles => 'Last 12 cycles';
+
+  @override
+  String get settingsExportRangePresetLast12Months => 'Last 12 months';
+
+  @override
+  String get settingsExportRangePresetEverything => 'Everything';
+
+  @override
+  String get settingsExportRangePresetCustom => 'Custom range…';
+
+  @override
+  String get settingsCsvExportFailure =>
+      'Could not export your cycle data as CSV. Please try again.';
+
+  @override
+  String get settingsCsvExportSubtitleNoEntries =>
+      'Add at least one day entry to export CSV tables.';
+
+  @override
+  String settingsCsvExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s cycle data as spreadsheet-compatible CSV files.';
+  }
+
+  @override
+  String get settingsCsvExportSubtitleGeneric =>
+      'Export your cycles and daily log as spreadsheet-compatible CSV files.';
+
+  @override
+  String get settingsClinicalExportFailure =>
+      'Could not export your clinical summary. Please try again.';
+
+  @override
+  String get settingsClinicalExportSubtitleNoEntries =>
+      'Add at least one day entry to export a clinical summary.';
+
+  @override
+  String settingsClinicalExportSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary.';
+  }
+
+  @override
+  String get settingsClinicalExportSubtitleGeneric =>
+      'Share an IPS-shaped FHIR R4 document with your cycle data, coded and self-reported.';
+
+  @override
+  String get settingsClinicalPdfSubtitleNoEntries =>
+      'Add at least one day entry to export a PDF clinical summary.';
+
+  @override
+  String settingsClinicalPdfSubtitleOneProfile(String profileName) {
+    return 'Export $profileName\'s clinical summary as a PDF.';
+  }
+
+  @override
+  String get settingsClinicalPdfSubtitleGeneric =>
+      'Share an on-device PDF summary of logged cycle data.';
+
+  @override
+  String settingsClinicalPdfRangeCustom(String start, String end) {
+    return '$start to $end';
+  }
+
+  @override
+  String get healthSyncSourceNameAppleHealth => 'the Health app';
+
+  @override
+  String get healthSyncSourceNameHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncSourceTitleAppleHealth => 'Health app';
+
+  @override
+  String get healthSyncSourceTitleHealthConnect => 'Health Connect';
+
+  @override
+  String get healthSyncUnavailableAppleHealth =>
+      'The Health app isn\'t available on this device.';
+
+  @override
+  String get healthSyncUnavailableHealthConnect =>
+      'Health Connect isn\'t available on this device.';
+
+  @override
+  String get healthSyncImportEmptyAppleHealth =>
+      'The Health app returned no menstrual-flow data. The Health app doesn\'t tell apps whether read access is allowed, so this can mean nothing was tracked, or that access is off.';
+
+  @override
+  String get healthSyncImportEmptyHealthConnect =>
+      'Health Connect returned no menstrual-flow data. This can mean nothing was tracked, or that read access is off.';
+
+  @override
+  String get healthSyncWriteIntro =>
+      'Choose the one profile whose data this phone may ever write to its Health app. Every other profile stays out of this phone\'s Health app entirely.';
+
+  @override
+  String get healthSyncImportIntro =>
+      'Choose the one profile this phone may import health data into. Every other profile stays out of Health Connect entirely.';
+
+  @override
+  String get healthSyncWriteForwardOnly =>
+      'Only days logged after sync is turned on are written — nothing already in the app is sent on its own. Separately, you can choose to import menstrual flow from the Health app; nothing is read unless you start that import yourself.';
+
+  @override
+  String get healthSyncWriteSymptoms =>
+      'Symptoms you tag — cramps, headache, bloating, and mood — are written to the Health app as symptom entries. Mood tags are written as \'Mood Changes\' without saying which mood.';
+
+  @override
+  String get healthSyncImportOnly =>
+      'Only menstrual flow and spotting written by other apps appear here, and only when you start an import yourself — nothing is read or written automatically.';
+
+  @override
+  String get healthSyncDenyMinorOff =>
+      'Minor profiles sync on the same terms as any other profile. This build has minor health sync turned off.';
+
+  @override
+  String get healthSyncDenyNotOwnerSignedOut =>
+      'Sign in and sync once so this device can confirm you own this profile.';
+
+  @override
+  String get healthSyncDenyNotOwner =>
+      'You are not this profile\'s owner — only its accepted primary guardian can bind health sync.';
+
+  @override
+  String get healthSyncUnboundProfileName => 'this profile';
+
+  @override
+  String healthSyncImportBlockedRefused(String source) {
+    return 'This profile can\'t import from $source right now.';
+  }
+
+  @override
+  String get healthSyncImportBlockedFailed =>
+      'Couldn\'t finish the import. Please try again.';
+
+  @override
+  String get importApplyFailure =>
+      'Could not finish the import. Nothing was written — please try again.';
+
+  @override
+  String get importStalePlan =>
+      'Your data changed while this was open. Please choose the file again to include the latest changes.';
+
+  @override
+  String get importSharedProfileGuardian =>
+      'One of these profiles has another guardian — the rows you import will sync to their device too.';
+
+  @override
+  String get importClueReadFailure =>
+      'Could not read that Clue export. Check the file and the password from your export email, then try again.';
+
+  @override
+  String get importClueNotClue =>
+      'That ZIP is not a Clue export. Choose the .zip file Clue emailed you.';
+
+  @override
+  String get importClueApplyFailure =>
+      'Could not finish the Clue import. Nothing was written — please try again.';
+
+  @override
+  String get importClueImportedProfileDefaultName => 'Imported from Clue';
+
+  @override
+  String get importClueMergePolicy =>
+      'Nothing already on this device is deleted. Day entries and observations are added to the profile you choose.';
+
+  @override
+  String importCluePreviewSummary(String days, String datapoints) {
+    return 'Ready to import: $days, $datapoints.';
+  }
+
+  @override
+  String importPreviewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDayEntryCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count day entries',
+      one: '1 day entry',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewObservationCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count observations',
+      one: '1 observation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPreviewDateRange(String earliest, String latest) {
+    return ' ($earliest to $latest)';
+  }
+
+  @override
+  String importPreviewSummary(
+    String profiles,
+    String dayEntries,
+    String observations,
+    String dateRange,
+  ) {
+    return '$profiles, $dayEntries, $observations$dateRange';
+  }
+
+  @override
+  String importPlanSummaryNewProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count new profiles',
+      one: '1 new profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummaryMatchedProfileCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matched profiles',
+      one: '1 matched profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importPlanSummary(
+    String created,
+    String matched,
+    int added,
+    int merged,
+  ) {
+    return '$created, $matched ($added entries added, $merged merged).';
+  }
+
+  @override
+  String importCluePreviewDayCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importCluePreviewDatapointCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count datapoints',
+      one: '1 datapoint',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultProfileCreatedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count profiles',
+      one: '1 profile',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultFileNoteCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count file notes',
+      one: '1 file note',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String importResultNotesDiscardedSuffix(String notes) {
+    return ', $notes not applied (an existing note was kept)';
+  }
+
+  @override
+  String importResultSummary(
+    String created,
+    int matched,
+    int added,
+    int merged,
+    int observationsAdded,
+    int observationsSkipped,
+    String rejected,
+    String notesDiscarded,
+  ) {
+    return 'Import complete: $created created, $matched matched, $added entries added, $merged merged, $observationsAdded observations added, $observationsSkipped skipped$rejected$notesDiscarded.';
+  }
+
+  @override
+  String get profileDialogNameEmpty => 'Name cannot be empty';
+
+  @override
+  String profileDialogNameTooLong(int maxLength) {
+    return 'Name is too long ($maxLength characters max)';
+  }
+
+  @override
+  String get profileDialogBirthYearInvalid => 'Enter a valid year';
+
+  @override
+  String profileDialogBirthYearOutOfRange(int minYear, int maxYear) {
+    return 'Enter a year between $minYear and $maxYear';
+  }
+
+  @override
+  String profileDialogBirthYearBeforeEntries(int earliestEntryYear) {
+    return 'This profile has entries from $earliestEntryYear. Enter $earliestEntryYear or earlier.';
+  }
+
+  @override
+  String get careGuardianNoteDisclosure =>
+      'Anyone with access to this profile can read this note — including the person it is about.';
+
+  @override
+  String get careNotesDisclosure =>
+      'Anyone with access to this profile can read these notes — including the person they are about.';
+
+  @override
+  String get helpCardLearnMore => 'Learn more';
+
+  @override
+  String feedbackAttachmentSizeKb(int kilobytes) {
+    return '$kilobytes KB';
+  }
+
+  @override
+  String get relativeDayToday => 'Today';
+
+  @override
+  String get relativeDayYesterday => 'Yesterday';
+
+  @override
+  String get relativeDayTomorrow => 'Tomorrow';
+
+  @override
+  String get accountProviderLabelEmail => 'Email';
+
+  @override
+  String get accountProviderLabelGoogle => 'Google';
+
+  @override
+  String get accountProviderLabelApple => 'Apple';
 }

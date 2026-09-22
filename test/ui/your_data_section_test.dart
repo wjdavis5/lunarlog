@@ -31,6 +31,7 @@ import 'package:lunarlog/domain/repositories/profile_modes_repository.dart'
 import 'package:lunarlog/domain/profiles/profile_erasure_service.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/export_account_collaborator.dart';
 import 'package:lunarlog/ui/components/destructive_button.dart';
@@ -499,7 +500,7 @@ void main() {
       expect(key('your-data-export-error'), findsOneWidget);
       expect(
         tester.widget<InlineError>(key('your-data-export-error')).message,
-        kAccountExportFailureCopy,
+        AppLocalizationsEn().accountExportFailure,
       );
     });
   });
