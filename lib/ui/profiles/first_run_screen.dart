@@ -948,7 +948,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 decoration: InputDecoration(labelText: l10n.firstRunNameLabel),
                 maxLength: kMaxDisplayNameLength,
                 maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                validator: validateProfileName,
+                validator: (value) => validateProfileName(l10n, value),
                 // #165: the name form's only text field — "done" is its
                 // submit (the Continue action), and `name` is the honest
                 // autofill hint.

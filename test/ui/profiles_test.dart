@@ -28,6 +28,7 @@ import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/sync/sync_engine.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/logging/month_calendar.dart';
@@ -563,10 +564,10 @@ void main() {
 
     test('validateProfileName rejects a trimmed name over 80 characters '
         'and accepts exactly 80', () {
-      expect(validateProfileName('a' * 81), isNotNull);
-      expect(validateProfileName('  ${'a' * 81}  '), isNotNull);
-      expect(validateProfileName('a' * 80), isNull);
-      expect(validateProfileName('  ${'a' * 80}  '), isNull,
+      expect(validateProfileName(AppLocalizationsEn(), 'a' * 81), isNotNull);
+      expect(validateProfileName(AppLocalizationsEn(), '  ${'a' * 81}  '), isNotNull);
+      expect(validateProfileName(AppLocalizationsEn(), 'a' * 80), isNull);
+      expect(validateProfileName(AppLocalizationsEn(), '  ${'a' * 80}  '), isNull,
           reason: 'surrounding whitespace is not counted');
     });
 

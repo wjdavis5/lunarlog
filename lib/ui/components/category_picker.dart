@@ -51,17 +51,23 @@ class CategoryPicker extends StatefulWidget {
     required this.onToggle,
     this.recentCodes = const [],
     this.enabled = true,
-    this.searchHint = 'Search',
-    this.searchSemanticsLabel = 'Search tags',
-    this.clearSearchTooltip = 'Clear search',
-    this.recentLabel = 'Recent',
+    required this.searchHint,
+    required this.searchSemanticsLabel,
+    required this.clearSearchTooltip,
+    required this.recentLabel,
     this.trailingBuilder,
     this.customTags = const [],
-    this.customLabel = 'Custom tags',
-    this.customManageTooltip = 'Manage custom tags',
-    this.noneCustomNote = 'None yet — add one',
+    required this.customLabel,
+    required this.customManageTooltip,
+    required this.noneCustomNote,
     this.onManageCustomTags,
   });
+
+  /// Every copy parameter above is required (issue #1004, tranche 5): the
+  /// English defaults this picker used to carry duplicated screen copy
+  /// outside the arb, so the caller now supplies localized strings
+  /// explicitly — exactly what its one production caller (the day sheet)
+  /// already did.
 
   /// Curated categories, in the order they render — the day sheet passes
   /// its own `_categoriesInOrder` (Issue #259's resolved, mode-and-
