@@ -581,7 +581,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   Widget build(BuildContext context) {
     return AsyncSnapshotView<CyclePrediction>(
       snapshot: _predictionSnapshot,
-      errorMessage: 'Could not load your cycle analysis.',
+      errorMessage: AppLocalizations.of(context).analysisLoadError,
       onRetry: _retryPredictions,
       builder: (context, prediction) => ListView(
         padding: const EdgeInsets.all(LLSpace.space4),
@@ -599,10 +599,11 @@ class _AnalysisTabState extends State<AnalysisTab>
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
     final episodes = _episodes;
     final report = _report;
+    final l10n = AppLocalizations.of(context);
 
     return [
       Text(
-        'Analysis',
+        l10n.analysisTitle,
         key: const ValueKey('analysis-heading'),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
@@ -724,7 +725,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'BBT by cycle day',
+              AppLocalizations.of(context).analysisBbtChartTitle,
               key: const ValueKey('analysis-bbt-chart-title'),
               style: theme.textTheme.titleMedium,
             ),
@@ -747,7 +748,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Cycle statistics',
+              l10n.analysisStatsTitle,
               key: const ValueKey('analysis-stats-title'),
               style: theme.textTheme.titleMedium,
             ),
@@ -786,21 +787,21 @@ class _AnalysisTabState extends State<AnalysisTab>
         context,
         theme,
         'analysis-mean-cycle-length',
-        'Average cycle length',
+        l10n.analysisMeanCycleLength,
         formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
         context,
         theme,
         'analysis-mean-period-length',
-        'Average period length',
+        l10n.analysisMeanPeriodLength,
         formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
         context,
         theme,
         'analysis-variability',
-        'Variability',
+        l10n.analysisVariability,
         _variabilityText(l10n, prediction, copy),
       ),
     ];
@@ -811,7 +812,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     ActivePrediction prediction,
     CareModeCopy copy,
   ) {
-    final spread = '±${prediction.spreadDays.round()} days';
+    final spread = l10n.analysisSpreadDays(prediction.spreadDays.round());
     if (!copy.showsTierCaption) return spread;
     return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
@@ -978,9 +979,9 @@ class _AnalysisTabState extends State<AnalysisTab>
             ),
             // Issue #139: same three-cycle explainer as OverviewPanel.
             // Issue #816: the label names the unit the threshold counts.
-            const HelpCardLink(
+            HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three completed cycles?',
+              label: AppLocalizations.of(context).overviewWhyThreeCompletedCycles,
             ),
           ],
         ),
