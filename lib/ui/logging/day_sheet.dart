@@ -1732,12 +1732,8 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
   void _handleSheetPopped() {
     // Issue #1071: a note still held back from its first persist is shared
     // on the way out (with whatever the toggle says) — arm it here so the
-    // flush below carries it. Recomposed into the pending state first, so
-    // it works whether the last autosave left the sheet clean or pending.
-    if (!_discardUnsaved && _noteHeldForPrivacy) {
-      _flushDeferredNote = true;
-      _markDirty();
-    }
+    // flush below carries it.
+    _armHeldNoteFlushOnPop();
     // Dirty or Failed both carry unsaved content (mirrors the old
     // `_dirty`, which failure also set) — PopScope's own `canPop` above
     // means Failed only reaches here once `_discardUnsaved` is already
@@ -1767,6 +1763,18 @@ class _DaySheetState extends State<DaySheet> with WidgetsBindingObserver {
     if (cycleStartSnackBar != null) {
       ScaffoldMessenger.of(context).showSnackBar(cycleStartSnackBar);
     }
+  }
+
+  /// Issue #1071: the held-note half of [_handleSheetPopped], split out so
+  /// that method's own cyclomatic complexity stays under the CRAP ceiling
+  /// (#1071 review). Recomposes the full note into the pending state first,
+  /// so it works whether the last autosave left the sheet clean or pending,
+  /// and marks the flush override so the note is persisted rather than held
+  /// again.
+  void _armHeldNoteFlushOnPop() {
+    if (_discardUnsaved || !_noteHeldForPrivacy) return;
+    _flushDeferredNote = true;
+    _markDirty();
   }
 
   /// Issue #887: the paths where the sheet's leaving state is not what
