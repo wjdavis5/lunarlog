@@ -309,6 +309,11 @@ JsonRow encodeDayEntry(DayEntry row) {
     'flow': row.flow.toDb(),
     'tags': List<String>.of(row.tags),
     'note': row.note,
+    // Issue #849: the per-note private flag, synced like pms. Always
+    // emitted; the server's UPDATE path applies a `v_row ? 'note_private'`
+    // containment guard, so an old client (or a device that has not pulled
+    // yet) preserves the stored flag.
+    'note_private': row.notePrivate,
     // Issue #220 / #637 LLA-039: the first-class PMS marker rides the
     // payload like any other day-level field, emitted ONLY once this
     // device has confirmed it against a real server value at least once
@@ -695,6 +700,12 @@ RemoteDayEntryRow decodeDayEntry(JsonRow json) {
     flow: r.flow('flow'),
     tags: r.tags('tags'),
     note: r.stringOrNull('note'),
+    // Issue #849: absent key (an old peer, a pre-#849 server row) decodes
+    // to `false` rather than failing the pull — the flag is optional
+    // day-level metadata, not an identity field. On a guardian's device the
+    // server masks `note` to null while this stays true.
+    notePrivate:
+        json['note_private'] == null ? false : r.boolean('note_private'),
     // Issue #220: absent key (an old peer, a pre-#220 server row) decodes
     // to `false` rather than failing the pull — the marker is optional
     // day-level content, not an identity field.

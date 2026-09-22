@@ -42,6 +42,7 @@ DayEntry bulkEntry({
       flow: flow,
       tags: const [],
       note: note,
+      notePrivate: false,
       pms: false,
       updatedAt: updatedAt ?? DateTime.utc(2026, 9, 1, 8),
       dirty: false,
