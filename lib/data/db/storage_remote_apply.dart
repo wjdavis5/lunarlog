@@ -145,7 +145,11 @@ class _PageLookup {
 }
 
 /// Remote-apply members mixed into [LunarLogStorage].
-mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocalWrites {
+mixin LunarLogStorageRemoteApply
+    on
+        LunarLogStorageQueries,
+        LunarLogStorageLocalWrites,
+        LunarLogStorageSyncMetadata {
   // ---------------------------------------------------- sync: remote applies
 
   /// Applies a server copy of a profile keyed by id (KTD5 per-id rule:

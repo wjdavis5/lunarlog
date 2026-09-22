@@ -393,6 +393,20 @@ abstract interface class SyncDirtyStore {
   });
 }
 
+/// The sync cursor singleton plus the dirty-row scans and local
+/// maintenance — the narrow combined surface [SyncCursorStorage]
+/// implements and [SupabaseSyncEngine] can consume without the apply half
+/// (issue #551 part 1 step 2).
+abstract interface class SyncMetadataStore
+    implements SyncCursorStore, SyncDirtyStore {}
+
+/// The two synced-table counts the upload-consent surface reads (Part 3's
+/// `LocalRowCountRepository` seam; issue #551 part 1 step 2 pulled the last
+/// concrete-storage reference out of `lib/data/repositories`).
+abstract interface class LocalRowCountStore {
+  Future<LocalRowCounts> countAllRows();
+}
+
 /// Remote apply, push-result apply, and rejected-row retry.
 abstract interface class SyncApplyStore {
   Future<void> applyRemotePage({
@@ -483,6 +497,6 @@ abstract interface class ClueImportStore
 /// The surface [SupabaseSyncEngine] calls, including the database handle it
 /// watches for writes.
 abstract interface class SyncEngineStore
-    implements SyncCursorStore, SyncDirtyStore, SyncApplyStore {
+    implements SyncMetadataStore, SyncApplyStore {
   LunarLogDatabase get db;
 }

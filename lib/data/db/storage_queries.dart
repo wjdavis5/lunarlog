@@ -461,157 +461,7 @@ mixin LunarLogStorageQueries {
     return query.watchSingleOrNull().map((row) => row?.value);
   }
 
-  // ------------------------------------------------------- sync: dirty rows
-
-  /// Profiles with unpushed local changes, tombstones included, ordered by
-  /// id (ULIDs, so this is also insertion order). [afterId] resumes a
-  /// keyset scan after that id (exclusive); [limit] bounds the page so a
-  /// caller can stream a large dirty set batch by batch instead of
-  /// materialising it all at once.
-  Future<List<Profile>> readDirtyProfiles({int? limit, String? afterId}) {
-    final query = db.select(db.profiles)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Day entries with unpushed local changes, tombstones included, ordered
-  /// by id. Same keyset-paging contract as [readDirtyProfiles].
-  ///
-  /// The dirty predicate is `t.dirty.equalsExp(const Constant(true))`
-  /// (review follow-up, issue #197), not the more usual `t.dirty.equals` —
-  /// `equals` binds its argument as a `?` placeholder, and sqlite cannot
-  /// prove a bound parameter satisfies `ix_day_entries_dirty`'s partial
-  /// index condition (`WHERE dirty = 1`) at plan time, so that predicate
-  /// fell back to a full table scan despite the index existing. `Constant`
-  /// writes the value as a SQL literal (`dirty = 1`) instead, which the
-  /// partial index does match — see the `EXPLAIN QUERY PLAN` coverage in
-  /// `test/data/storage_sync_test.dart`.
-  Future<List<DayEntry>> readDirtyDayEntries({int? limit, String? afterId}) {
-    final query = db.select(db.dayEntries)
-      ..where((t) =>
-          t.dirty.equalsExp(const Constant(true)) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Observations with unpushed local changes, tombstones included, ordered
-  /// by id (Issue #240). Same keyset-paging contract as [readDirtyProfiles].
-  Future<List<Observation>> readDirtyObservations({int? limit, String? afterId}) {
-    final query = db.select(db.observations)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Profile mode rows with unpushed local changes, ordered by profile id
-  /// (Issue #188; there is no tombstone on this table). Same keyset-paging
-  /// contract as [readDirtyProfiles].
-  Future<List<ProfileModeData>> readDirtyProfileModes(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.profileModes)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.profileId.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.profileId)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Cycle overrides with unpushed local changes, tombstones included,
-  /// ordered by id (Issue #188). Same keyset-paging contract as
-  /// [readDirtyProfiles].
-  Future<List<CycleOverrideData>> readDirtyCycleOverrides(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.cycleOverrides)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Care notes with unpushed local changes, tombstones included, ordered
-  /// by id (Issue #128). Same keyset-paging contract as [readDirtyProfiles].
-  Future<List<CareNoteData>> readDirtyCareNotes(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.careNotes)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Visit-prep items with unpushed local changes, tombstones included,
-  /// ordered by id (Issue #128). Same keyset-paging contract as
-  /// [readDirtyProfiles].
-  Future<List<VisitPrepItemData>> readDirtyVisitPrepItems(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.visitPrepItems)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Guardian notes with unpushed local changes, tombstones included,
-  /// ordered by id (Issue #801). Same keyset-paging contract as
-  /// [readDirtyProfiles].
-  Future<List<GuardianNoteData>> readDirtyGuardianNotes(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.guardianNotes)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
-  /// Merge events with unpushed local changes, ordered by id (Issue #130;
-  /// no tombstone on this table). Same keyset-paging contract as
-  /// [readDirtyProfiles].
-  Future<List<DayEntryMergeEventData>> readDirtyDayEntryMergeEvents(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.dayEntryMergeEvents)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
+  // ------------------------------------------------- sync: merge disclosures
 
   /// The recorded merge disclosures for (profile, date), ordered by id
   /// (Issue #130) — the day sheet's notice read. Filtered to the same
@@ -713,21 +563,6 @@ mixin LunarLogStorageQueries {
       (db.select(db.dayEntryHistory)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
-  /// Registry entries with unpushed local changes, ordered by id (Issue
-  /// #257). Same keyset-paging contract as [readDirtyProfiles].
-  Future<List<ProfileTagRegistryEntry>> readDirtyProfileTagRegistry(
-      {int? limit, String? afterId}) {
-    final query = db.select(db.profileTagRegistry)
-      ..where((t) =>
-          t.dirty.equals(true) &
-          (afterId == null
-              ? const Constant(true)
-              : t.id.isBiggerThanValue(afterId)))
-      ..orderBy([(t) => OrderingTerm(expression: t.id)]);
-    if (limit != null) query.limit(limit);
-    return query.get();
-  }
-
   /// The profile's LIVE registry entries (tombstoned rows excluded),
   /// retired entries included — retirement is a picker concern, not a read
   /// filter (a retired tag still resolves stored codes to display names).
@@ -783,70 +618,12 @@ mixin LunarLogStorageQueries {
         .getSingleOrNull();
   }
 
-  /// Number of rows, live and tombstoned, in every synced table that still
-  /// need pushing.
-  Future<int> dirtyCount() async {
-    final p = await _count(db.profiles, db.profiles.id,
-        db.profiles.dirty.equals(true));
-    final d = await _count(db.dayEntries, db.dayEntries.id,
-        db.dayEntries.dirty.equals(true));
-    final o = await _count(db.observations, db.observations.id,
-        db.observations.dirty.equals(true));
-    final pm = await _count(db.profileModes, db.profileModes.profileId,
-        db.profileModes.dirty.equals(true));
-    final co = await _count(db.cycleOverrides, db.cycleOverrides.id,
-        db.cycleOverrides.dirty.equals(true));
-    final cn = await _count(
-        db.careNotes, db.careNotes.id, db.careNotes.dirty.equals(true));
-    final vp = await _count(db.visitPrepItems, db.visitPrepItems.id,
-        db.visitPrepItems.dirty.equals(true));
-    final me = await _count(db.dayEntryMergeEvents, db.dayEntryMergeEvents.id,
-        db.dayEntryMergeEvents.dirty.equals(true));
-    final tr = await _count(db.profileTagRegistry, db.profileTagRegistry.id,
-        db.profileTagRegistry.dirty.equals(true));
-    final gn = await _count(
-        db.guardianNotes, db.guardianNotes.id, db.guardianNotes.dirty.equals(true));
-    return p + d + o + pm + co + cn + vp + me + tr + gn;
-  }
-
   /// Row counts, live and tombstoned, of the two synced tables the upload-
   /// consent screen shows (R14, AS4) — observations and the two Issue #188
   /// tables are deliberately not extra fields here (no UI surface for them
-  /// yet; see [isEmpty], which does account for them so a device holding
-  /// only those rows is never silently treated as empty).
-  Future<LocalRowCounts> countAllRows() async {
-    final [p, d] = await Future.wait([
-      _count(db.profiles, db.profiles.id),
-      _count(db.dayEntries, db.dayEntries.id),
-    ]);
-    return (profiles: p, dayEntries: d);
-  }
-
-  /// True only when every synced table holds no row of any kind — a
-  /// tombstone-only database is not empty (it has deletions to push).
-  Future<bool> isEmpty() async {
-    final counts = await countAllRows();
-    if (counts.profiles != 0 || counts.dayEntries != 0) return false;
-    if (await _count(db.observations, db.observations.id) != 0) return false;
-    if (await _count(db.profileModes, db.profileModes.profileId) != 0) {
-      return false;
-    }
-    if (await _count(db.cycleOverrides, db.cycleOverrides.id) != 0) {
-      return false;
-    }
-    if (await _count(db.careNotes, db.careNotes.id) != 0) return false;
-    if (await _count(db.visitPrepItems, db.visitPrepItems.id) != 0) return false;
-    return await _count(db.guardianNotes, db.guardianNotes.id) == 0;
-  }
-
-  // --------------------------------------------------------- sync: state row
-
-  /// The `sync_state` singleton, or [kDefaultSyncState] when never written.
-  Future<SyncStateRow> readSyncState() async {
-    final row = await (db.select(db.syncState)..where((t) => t.id.equals(1)))
-        .getSingleOrNull();
-    return row ?? kDefaultSyncState;
-  }
+  /// yet; see `SyncCursorStorage.isEmpty`, which does account for them so a
+  /// device holding only those rows is never silently treated as empty).
+  Future<LocalRowCounts> countAllRows() => _countAllRowCounts(db);
 
   /// The device-local `health_sync_state` anchor for [platform], or null
   /// when never written (Issue #186 — never synced to the server).
@@ -879,17 +656,6 @@ mixin LunarLogStorageQueries {
           const SyncStateCompanion(id: Value(1)),
           mode: InsertMode.insertOrIgnore,
         );
-  }
-
-  Future<int> _count<T extends Table, D>(
-    TableInfo<T, D> table,
-    Expression<Object> column, [
-    Expression<bool>? where,
-  ]) async {
-    final count = column.count();
-    final query = db.selectOnly(table)..addColumns([count]);
-    if (where != null) query.where(where);
-    return (await query.getSingle()).read(count) ?? 0;
   }
 
   /// The shared builder behind [getProfiles] and [watchProfiles]: ordered by
