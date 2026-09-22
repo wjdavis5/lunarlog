@@ -2004,6 +2004,18 @@ abstract class AppLocalizations {
   /// **'Sign in to invite'**
   String get firstRunInviteSignInAction;
 
+  /// Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to accept your invite'**
+  String get pendingInviteBannerTitle;
+
+  /// Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up).
+  ///
+  /// In en, this message translates to:
+  /// **'Sign In'**
+  String get pendingInviteBannerAction;
+
   /// Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent.
   ///
   /// In en, this message translates to:

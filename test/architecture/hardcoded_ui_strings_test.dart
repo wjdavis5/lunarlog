@@ -1,4 +1,5 @@
-/// #460 guard: `lib/ui/` may not gain **new** hardcoded UI copy.
+/// #460 guard: `lib/ui/` (and, since the #1046 follow-up, the app-shell
+/// copy in `lib/app.dart`) may not gain **new** hardcoded UI copy.
 ///
 /// Issue #160 landed the localization scaffolding (delegates, ARB,
 /// `AppLocalizations`) on the assumption that shipping English-only was
@@ -140,13 +141,19 @@ void main() {
     );
   });
 
-  test('lib/ui carries no hardcoded UI strings beyond the allowlist', () {
-    final files = Directory('lib/ui')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.dart'))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+  test('lib/ carries no hardcoded UI strings beyond the allowlist', () {
+    // Issue #1046 follow-up: `lib/app.dart` holds app-shell UI copy (the
+    // pending-invite banner) just outside `lib/ui/`, so the #460 guard
+    // scans it too. The scanner takes source text, not a path, so adding
+    // the file to this list is the clean extension -- nothing in the
+    // scanner changes.
+    final files = [
+      ...Directory('lib/ui')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart')),
+      File('lib/app.dart'),
+    ]..sort((a, b) => a.path.compareTo(b.path));
     expect(
       files,
       isNotEmpty,

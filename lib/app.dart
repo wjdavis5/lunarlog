@@ -1468,6 +1468,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Material(
       key: bannerKey,
       color: theme.colorScheme.primaryContainer,
@@ -1479,7 +1480,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Sign in to accept your invite',
+                  l10n.pendingInviteBannerTitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onPrimaryContainer,
                   ),
@@ -1487,7 +1488,7 @@ class _PendingInviteSignInBanner extends StatelessWidget {
               ),
               TextButton(
                 onPressed: onSignIn,
-                child: const Text('Sign In'),
+                child: Text(l10n.pendingInviteBannerAction),
               ),
               IconButton(
                 key: dismissButtonKey,
