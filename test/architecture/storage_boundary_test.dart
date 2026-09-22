@@ -17,11 +17,20 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Literal directories/files that are allowed to name the concrete class:
 /// the storage implementation itself (`lib/data/db/`) and the composition
-/// root that constructs it (`lib/composition/`).
+/// root that constructs it (`lib/composition/`, plus the bare
+/// composition-root widgets the layering guard already treats as such). None
+/// of the bare widgets name it today; they are listed so the guard cannot
+/// produce a false positive if one legitimately needs to.
 const List<String> _allowedPrefixes = <String>[
   'lib/data/db/',
   'lib/composition/',
 ];
+
+const Set<String> _allowedFiles = <String>{
+  'lib/app.dart',
+  'lib/app_root.dart',
+  'lib/main.dart',
+};
 
 final RegExp _identifier = RegExp(r'\bLunarLogStorage\b');
 
@@ -61,7 +70,10 @@ String stripComments(String source) {
 /// and [filePath] is not one of the allowed implementation/root files.
 bool namesConcreteStorage(String contents, String filePath) {
   final posix = filePath.replaceAll(r'\', '/');
-  if (_allowedPrefixes.any(posix.startsWith)) return false;
+  if (_allowedPrefixes.any(posix.startsWith) ||
+      _allowedFiles.contains(posix)) {
+    return false;
+  }
   return _identifier.hasMatch(stripComments(contents));
 }
 
