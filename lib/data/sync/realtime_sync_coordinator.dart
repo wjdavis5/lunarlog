@@ -52,7 +52,7 @@ class RealtimeSyncCoordinator with WidgetsBindingObserver {
 
   final SupabaseClient client;
   final SyncEngine syncEngine;
-  final LunarLogStorage storage;
+  final ProfileStore storage;
 
   /// The account seam (issue #77; KTD3). Optional: a coordinator constructed
   /// without one behaves exactly as before — channels are subscribed once

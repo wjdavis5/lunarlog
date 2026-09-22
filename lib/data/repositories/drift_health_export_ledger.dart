@@ -13,7 +13,7 @@ import 'package:lunarlog/domain/health/health_export_ledger.dart';
 class DriftHealthExportLedger implements HealthExportLedger {
   DriftHealthExportLedger(this.storage);
 
-  final LunarLogStorage storage;
+  final HealthDeviceStore storage;
 
   @override
   Future<List<HealthExportLedgerEntry>> readForProfile(String profileId) async {

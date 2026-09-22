@@ -23,7 +23,7 @@ import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
 class DriftActivityFeedRepository implements ActivityFeedRepository {
   const DriftActivityFeedRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final ActivityFeedStore _storage;
 
   /// Emits a snapshot whenever any source changes. The first emission
   /// arrives once all four sources have reported (each `watch*`/`watchSetting`

@@ -218,7 +218,7 @@ class _SyncAborted implements Exception {
 class _PushCursor {
   _PushCursor(this._storage, this.batchSize);
 
-  final LunarLogStorage _storage;
+  final SyncDirtyStore _storage;
   final int batchSize;
 
   String? _profileCursor;
@@ -346,7 +346,7 @@ class _PushCursor {
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   SupabaseSyncEngine({
-    required LunarLogStorage storage,
+    required SyncEngineStore storage,
     required SyncTransport transport,
     required AuthService auth,
     required Listenable gate,
@@ -391,7 +391,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
   }
 
-  final LunarLogStorage _storage;
+  final SyncEngineStore _storage;
   final SyncTransport _transport;
   final AuthService _auth;
   final Listenable _gate;

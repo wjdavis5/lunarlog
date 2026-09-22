@@ -63,7 +63,7 @@ class DriftProfileModesRepository implements ProfileModesRepository {
   DriftProfileModesRepository(this._storage, {LocalDate Function()? todayProvider})
       : _today = todayProvider ?? LocalDate.today;
 
-  final LunarLogStorage _storage;
+  final CycleStore _storage;
   final LocalDate Function() _today;
 
   @override

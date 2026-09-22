@@ -43,7 +43,7 @@ import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
 class DriftAccountImporter implements AccountImporter {
   const DriftAccountImporter(this._storage);
 
-  final LunarLogStorage _storage;
+  final AccountImportStore _storage;
 
   /// Wraps the entire plan in ONE Drift transaction: an error on profile N
   /// rolls back profiles 1..N-1, entries, and observations atomically.
@@ -432,7 +432,7 @@ class DriftAccountImportCoordinator
   final ProfilesRepository profilesRepository;
   final DayEntriesRepository dayEntriesRepository;
   final ObservationsRepository observationsRepository;
-  final LunarLogStorage storage;
+  final AccountImportStore storage;
 
   /// Issue #140 review, LLA-084: feeds `planImport`'s
   /// `existingCycleOverridesByProfileId` for a *matched* profile, so a
