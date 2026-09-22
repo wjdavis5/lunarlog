@@ -98,7 +98,7 @@ String stripInterpolations(String value) {
 /// one ASCII letter. Literals with no letters — pure symbols,
 /// punctuation, digits, whitespace, such as `'…'`, `'·'`, `'-'`, `''`,
 /// `'$count'`, or `'${date.day}'` — are not localized copy in any
-/// language and are excluded, keeping the allowlist honest (issue
+/// language and are excluded, keeping the guard honest (issue
 /// #460's false-positive escape valve).
 bool isHardcodedUiCopy(String value) =>
     RegExp('[A-Za-z]').hasMatch(stripInterpolations(value).trim());
@@ -202,13 +202,12 @@ int _skipInterpolation(String s, int i) {
 /// string-literal argument to a `Text(` or `Tooltip(` call, filtered by
 /// [isHardcodedUiCopy]. Line numbers are 1-based.
 ///
-/// [namedArgs] (issue #1004, tranche 1) additionally records a
-/// string-literal value for any identifier in the set written as a named
-/// argument or map entry (`labelText: '...'`, `title: '...'`), which the
-/// default `Text(`/`Tooltip(` scan does not see. It defaults to empty so
-/// the global backlog scan is unchanged; a directory that has burned all
-/// of its positional literals (starting with `lib/ui/sharing/`) opts in to
-/// the stricter check.
+/// [namedArgs] (issue #1004) additionally records a string-literal value
+/// for any identifier in the set written as a named argument or map entry
+/// (`labelText: '...'`, `title: '...'`), which the default
+/// `Text(`/`Tooltip(` scan does not see. It defaults to empty so the
+/// scanner's own positional-only tests are unaffected; the `lib/ui/` guard
+/// always passes its strict set so named-argument copy cannot hide.
 List<HardcodedUiString> scanHardcodedUiStrings(
   String source, {
   Set<String> namedArgs = const {},
