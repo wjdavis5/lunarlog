@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import '../../domain/export/csv_export.dart';
 import '../../domain/export/csv_export_writer.dart';
+import '../../domain/export/export_redaction.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/prediction/cycle_history.dart';
 import '../../domain/repositories/day_entries_repository.dart';
@@ -22,6 +23,7 @@ import '../../domain/repositories/settings_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../components/inline_error.dart';
 import 'entry_existence_watch_mixin.dart';
+import 'export_access.dart';
 
 /// Injectable seam for CSV delivery: tests pass a fake recording the call.
 typedef CsvExportCollaborator = Future<void> Function({
@@ -169,17 +171,30 @@ class _CsvExportTileState extends State<CsvExportTile>
 
   Future<void> _export(BuildContext context, Profile profile) async {
     if (_exporting) return;
+    // Read everything off `context` before the first `await` (the same
+    // `use_build_context_synchronously` discipline the FHIR/PDF tiles use).
     final csvWriter = context.read<CsvExportWriter?>();
+    final entriesRepo = context.read<DayEntriesRepository>();
+    final observationsRepo = context.read<ObservationsRepository>();
+    final settingsStore = context.read<SettingsStore?>();
+    final l10n = AppLocalizations.of(context);
+
+    // Issue #115 G4: resolve the operator's lens and the minor-profile gate
+    // before any export work. A refusal surfaces the honest "not available"
+    // copy and never touches the writer.
+    final access = await resolveExportAccess(context, profile);
+    if (!mounted) return;
+    if (!access.allowed) {
+      setState(() => _error = l10n.exportMinorGuardianUnavailable);
+      return;
+    }
+
     setState(() {
       _exporting = true;
       _error = null;
     });
 
     try {
-      final entriesRepo = context.read<DayEntriesRepository>();
-      final observationsRepo = context.read<ObservationsRepository>();
-      final settingsStore = context.read<SettingsStore?>();
-
       final dayEntries = await entriesRepo.listForProfile(profile.id);
       final observations = await observationsRepo.listForProfile(profile.id);
 
@@ -189,12 +204,14 @@ class _CsvExportTileState extends State<CsvExportTile>
       final omittedCycleStarts = parseOmittedCycles(rawOmissions);
 
       final exportedAt = DateTime.now().toUtc();
+      // Issue #115 G4: a guardian-lens export emits no private note text.
+      final redactedEntries = redactForLens(dayEntries, access.lens);
       final cyclesCsv = buildCyclesCsv(
-        entries: dayEntries,
+        entries: redactedEntries,
         omittedCycleStarts: omittedCycleStarts,
       );
       final dailyLogCsv = buildDailyLogCsv(
-        entries: dayEntries,
+        entries: redactedEntries,
         observations: observations,
         // Issue #612, LLA-093: normalize bbt/weight to the profile's own
         // display-unit preference, the same numbers the app's own UI would
