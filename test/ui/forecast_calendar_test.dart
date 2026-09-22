@@ -590,7 +590,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('cycle day 1 of the first predicted cycle'),
+        find.textContaining('cycle day 1 of the first estimated cycle'),
         findsOneWidget,
       );
       await tester.tapAt(const Offset(10, 10));
@@ -775,7 +775,7 @@ void main() {
       expect(
         find.bySemanticsLabel(
           RegExp(
-            'Friday, September 4, predicted period day, cycle day 1.*'
+            'Friday, September 4, estimated period day, cycle day 1.*'
             'future date, not yet loggable',
           ),
         ),
@@ -970,8 +970,8 @@ void main() {
           ),
           l10n: l10n,
         ),
-        'Friday, September 4, predicted period day, cycle day 1, '
-        'predicted cramps window, future date, not yet loggable',
+        'Friday, September 4, estimated period day, cycle day 1, '
+        'estimated cramps window, future date, not yet loggable',
       );
       expect(
         dayCellSemanticLabel(
@@ -991,7 +991,7 @@ void main() {
           ),
           l10n: l10n,
         ),
-        'Sunday, September 20, cycle day 17 of the first predicted cycle, '
+        'Sunday, September 20, cycle day 17 of the first estimated cycle, '
         'future date, not yet loggable',
       );
       expect(

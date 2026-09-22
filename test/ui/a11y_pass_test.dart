@@ -456,7 +456,7 @@ void main() {
       expect(
         find.bySemanticsLabel(
           RegExp(
-            'Friday, September 4, predicted period day, cycle day 1, '
+            'Friday, September 4, estimated period day, cycle day 1, '
             '.*future date, not yet loggable',
           ),
         ),
