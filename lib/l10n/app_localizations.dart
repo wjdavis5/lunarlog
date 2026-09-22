@@ -7237,6 +7237,106 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Imported'**
   String get caregiverAttributionImportedGeneric;
+
+  /// Issue #850 U5: small label at the top of the guardian logistics card, distinguishing the guardian's default view from the subject's own Today screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Guardian view'**
+  String get guardianOverviewLabel;
+
+  /// Issue #850 U5: fallback name for the profile a guardian card describes when no display name is available, so the copy stays third-person ("This profile's next period …") rather than slipping into "your".
+  ///
+  /// In en, this message translates to:
+  /// **'This profile'**
+  String get guardianOverviewThisProfile;
+
+  /// Issue #850 U5: the guardian card's headline estimate, third-person per docs/product/voice-and-copy.md rule 2. date is the localized date or range; confidence is the existing tier vocabulary (tierLabel).
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s next period is estimated around {date} — {confidence}.'**
+  String guardianOverviewNextPeriod(
+    String name,
+    String date,
+    String confidence,
+  );
+
+  /// Issue #850 U5: guardian-card state when the profile has too few completed cycles for a next-period estimate.
+  ///
+  /// In en, this message translates to:
+  /// **'There isn\'t enough history to estimate {name}\'s next period yet.'**
+  String guardianOverviewNoEstimate(String name);
+
+  /// Issue #850 U5: guardian-card state when the profile's predictions are suppressed (a continuous birth-control method or a life-stage mode) or disabled per profile.
+  ///
+  /// In en, this message translates to:
+  /// **'Period predictions are off for this profile.'**
+  String get guardianOverviewPredictionsOff;
+
+  /// Issue #850 U5: guardian-card predicted PMS band, third-person. range is the localized start–end span; rendered only when the active estimate carries a PMS estimate.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s PMS window is likely {range}.'**
+  String guardianOverviewPmsWindow(String name, String range);
+
+  /// Issue #850 U5: bounded latest-entry line on the guardian card. days is the whole-day age of the entry's civil date; name is resolved through the existing activity-actor ladder (the reader reads as "You" when they logged it).
+  ///
+  /// In en, this message translates to:
+  /// **'Last logged {days, plural, =1{1 day ago} other{{days} days ago}} by {name}.'**
+  String guardianOverviewLastLogged(int days, String name);
+
+  /// Issue #850 U5: guardian-card state when the profile has no live day entries.
+  ///
+  /// In en, this message translates to:
+  /// **'No days logged yet.'**
+  String get guardianOverviewNeverLogged;
+
+  /// Issue #850 U5: guardian-card tag count for the latest entry — a number, never a tag code or label (D-3, counts not content).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 tag logged} other{{count} tags logged}}'**
+  String guardianOverviewTagCount(int count);
+
+  /// Issue #850 U5: guardian-card boolean that the latest entry has a note — never the note text (D-3).
+  ///
+  /// In en, this message translates to:
+  /// **'A note is attached.'**
+  String get guardianOverviewNotePresent;
+
+  /// Issue #850 U5: guardian-card fallback when the latest entry carries neither tags nor a note.
+  ///
+  /// In en, this message translates to:
+  /// **'No tags or note recorded for that day.'**
+  String get guardianOverviewNoDetails;
+
+  /// Issue #850 U5: guardian-card unstocked-supplies count read from the shipped supplies list (#851).
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 supply item is unstocked} other{{count} supply items are unstocked}}'**
+  String guardianOverviewSuppliesUnstocked(int count);
+
+  /// Issue #850 U5: guardian-card state when the supplies list has no unstocked items.
+  ///
+  /// In en, this message translates to:
+  /// **'All supplies are stocked.'**
+  String get guardianOverviewSuppliesStocked;
+
+  /// Issue #850 U5: guardian-card action opening today's day sheet, which carries the existing guardian-note section (#801).
+  ///
+  /// In en, this message translates to:
+  /// **'Add a note'**
+  String get guardianOverviewActionNote;
+
+  /// Issue #850 U5: guardian-card action opening the shared care screen (CareNotesScreen).
+  ///
+  /// In en, this message translates to:
+  /// **'Care details'**
+  String get guardianOverviewActionCare;
+
+  /// Issue #850 U5: guardian-card action opening the supplies list, a section of the care screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Supplies'**
+  String get guardianOverviewActionSupplies;
 }
 
 class _AppLocalizationsDelegate
