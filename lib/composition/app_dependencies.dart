@@ -21,6 +21,7 @@ import 'package:lunarlog/data/db/storage.dart';
 import 'package:lunarlog/data/diagnostics/device_diagnostics_collector.dart';
 import 'package:lunarlog/data/export/account_export_writer.dart';
 import 'package:lunarlog/data/export/csv_export_writer.dart';
+import 'package:lunarlog/data/consent/supabase_consent_service.dart';
 import 'package:lunarlog/data/export/clinical_pdf_writer.dart';
 import 'package:lunarlog/data/export/fhir_bundle_writer.dart';
 import 'package:lunarlog/data/export/supabase_account_export_remote_source.dart';
@@ -75,6 +76,7 @@ import 'package:lunarlog/data/sync/realtime_sync_coordinator.dart';
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/feedback/device_diagnostics_collector.dart';
 import 'package:lunarlog/domain/feedback/feedback_service.dart';
@@ -171,6 +173,7 @@ class AppDependencies {
     this.profileErasureService,
     this.notificationPreferencesService,
     this.accountExportRemoteSource,
+    this.consentService,
     this.reminderWindowUpsert,
     this.scheduler,
     this.widgetDataStore,
@@ -247,6 +250,11 @@ class AppDependencies {
   final NotificationPreferencesService? notificationPreferencesService;
   final AccountExportRemoteSource? accountExportRemoteSource;
 
+  /// Issue #845: the account-level minimum-age consent-record seam. Null on
+  /// the unconfigured-build posture, same gate as
+  /// [accountExportRemoteSource].
+  final ConsentService? consentService;
+
   /// Publishes a profile's prediction window to the server (Issue #5). Null
   /// without a push-capable Supabase client.
   final ReminderWindowRemote? reminderWindowUpsert;
@@ -287,6 +295,7 @@ AppDependencies buildAppDependencies({
   ProfileErasureService? profileErasureService,
   NotificationPreferencesService? notificationPreferencesService,
   AccountExportRemoteSource? accountExportRemoteSource,
+  ConsentService? consentService,
   ReminderWindowRemote? reminderWindowUpsert,
   ReminderScheduler? scheduler,
   WidgetDataStore? widgetDataStore,
@@ -480,6 +489,11 @@ AppDependencies buildAppDependencies({
       () => SupabaseNotificationPreferencesService(client: client!),
     ),
     accountExportRemoteSource: builtAccountExportRemoteSource,
+    consentService: _resolve(
+      consentService,
+      cloudEnabled,
+      () => SupabaseConsentService(client: client!),
+    ),
     reminderWindowUpsert: _resolve(
       reminderWindowUpsert,
       cloudEnabled && pushEnabled,

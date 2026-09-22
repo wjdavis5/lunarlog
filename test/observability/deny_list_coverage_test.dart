@@ -241,6 +241,19 @@ const Map<String, String> _waivedKeys = {
       'closed-set role RPC parameter, not free text',
   'p_platform': 'closed-set device-OS RPC parameter, not content',
 
+  // Issue #845 (minimum-age consent record): a closed-set consent-path
+  // discriminator and two non-content version labels, waived for the same
+  // reason as p_role/p_platform above.
+  'p_consent_via':
+      'closed-set consent-path RPC parameter '
+          '(self_13_plus|parent_invite), not content (issue #845)',
+  'p_app_version':
+      'app build-version RPC parameter (e.g. 1.0.0+1), not content '
+          '(issue #845)',
+  'p_policy_version':
+      'minimum-age policy revision-label RPC parameter, not content '
+          '(issue #845)',
+
   // Generic near-closed-vocabulary labels — see the class doc above for
   // why these specifically stay off the deny list.
   'category': 'near-closed-vocabulary observation label, not open free '
