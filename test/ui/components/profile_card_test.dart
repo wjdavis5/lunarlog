@@ -362,7 +362,7 @@ void main() {
       expect(
         profileCycleStatus(
             prediction: const PredictionsDisabled(), l10n: l10n),
-        'Period predictions off',
+        'Period estimates off',
         reason: 'the operator actually turned predictions off in settings',
       );
     });
