@@ -94,6 +94,7 @@ import '../../domain/models/profile_mode.dart';
 import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../account/auth_controller.dart';
 import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
@@ -140,6 +141,7 @@ class AnalysisTab extends StatefulWidget {
     this.insightsCalculator,
     this.settingsStore,
     this.bbtUnit = BbtUnit.celsius,
+    this.subjectName,
   });
 
   final String profileId;
@@ -183,6 +185,12 @@ class AnalysisTab extends StatefulWidget {
   /// Test seam (issue #841): the pure insights derivation this tab caches.
   /// Null selects [CycleInsightsCalculator.compute] in production.
   final CycleInsightsComputer? insightsCalculator;
+
+  /// Issue #850 (U7): the subject's display name, for the third-person
+  /// care-mode copy a guardian reads ("Maya's record is just getting
+  /// started"). Null falls back to the gender-neutral "their"; ignored when
+  /// the viewer is the subject.
+  final String? subjectName;
 
   /// Source of this tab's device-local recap baseline (issue #852). Null
   /// falls back to `context.read<SettingsStore?>()`; when neither is
@@ -265,6 +273,11 @@ class _AnalysisTabState extends State<AnalysisTab>
           stored: widget.irregularFraming,
           tier: prediction is ActivePrediction ? prediction.tier : null,
         ),
+        // Issue #850 (U7): a guardian looking at this profile reads the
+        // not-enough-history card third-person; the subject reads it as
+        // before.
+        lens: guardianLensFor(_guardians, _currentUserId),
+        subjectName: widget.subjectName,
       );
 
   @override

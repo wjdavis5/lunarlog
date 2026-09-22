@@ -35,10 +35,23 @@
 /// caption and the fertile window (and defaults ON for a teen until
 /// `CycleConfidence.high`, [irregularFramingInEffect]), but it no longer
 /// decides whether the teen sees the error-styled late resolver.
+///
+/// Issue #850 (U7): the copy path is *lens-aware*. The reader of a screen may
+/// be the profile's subject (the person whose cycle is logged) or a guardian
+/// looking at someone else's profile, and
+/// [`voice-and-copy.md`](docs/product/voice-and-copy.md) rule 2 requires the
+/// subject to be "you" only on her own device — on a guardian's device the
+/// subject is named (when the caller supplies the name) or referred to with
+/// the gender-neutral "their". Every second-person string the registry used
+/// to hardcode ("Your record…", "Every entry builds the picture of your
+/// cycle.", "Your next period is estimated around:") is built per lens in
+/// [careModeCopyFor]; the lens defaults to [GuardianLens.subject], so every
+/// pre-#850 caller and its tests read exactly the old subject-voiced copy.
 library;
 
 import 'models/profile_mode.dart';
 import 'prediction/prediction.dart' show CycleConfidence;
+import 'sharing/guardian_lens.dart';
 import 'tags.dart';
 
 /// Builds the not-enough-history body from the live tally (issue #816):
@@ -75,22 +88,77 @@ String completedCycleProgress(int complete, int needed) {
   return '$complete of $needed completed cycles — $nextStep.';
 }
 
-String _standardNotEnoughBody(int complete, int needed) =>
-    completedCycleProgress(complete, needed);
+/// Issue #850 (U7): how a copy variant addresses the profile's subject. On
+/// the subject's own device the reader *is* the subject, so the copy says
+/// "your"; on a guardian's device the reader is someone else
+/// ([voice-and-copy rule 2](docs/product/voice-and-copy.md)) so the subject
+/// is named — when the caller supplies the name — or referred to with the
+/// gender-neutral "their". Holding both a sentence-initial and a
+/// mid-sentence form keeps the substitution grammatical ("the picture of
+/// their cycle" vs. "Their record is just getting started") without every
+/// builder carrying its own capitalization branch.
+class _SubjectRef {
+  const _SubjectRef(this.capital, this.lower);
 
-String _teenNotEnoughBody(int complete, int needed) =>
-    'Every entry builds the picture of your cycle. '
-    '${completedCycleProgress(complete, needed)}';
+  /// Sentence/field-initial possessive: "Your", "Their", "Maya's".
+  final String capital;
 
-String _irregularNotEnoughBody(int complete, int needed) =>
-    '${completedCycleProgress(complete, needed)} Your estimates may stay '
-    'ranges rather than dates.';
+  /// Mid-sentence possessive: "your", "their", "Maya's".
+  final String lower;
+
+  static _SubjectRef resolve(GuardianLens lens, String? subjectName) {
+    if (lens == GuardianLens.subject) {
+      return const _SubjectRef('Your', 'your');
+    }
+    final name = subjectName?.trim() ?? '';
+    if (name.isEmpty) return const _SubjectRef('Their', 'their');
+    return _SubjectRef("$name's", "$name's");
+  }
+}
+
+/// The insufficient-history heading (Issue #131), in [mode]'s voice and
+/// addressed to [ref]'s reader. Only `teen` voices the reader ("Your record
+/// is just getting started"); every other mode already reads third-person.
+String _notEnoughTitle(ProfileMode mode, _SubjectRef ref) => switch (mode) {
+      ProfileMode.teen => '${ref.capital} record is just getting started',
+      _ => 'Not enough history yet',
+    };
+
+/// The insufficient-history body in [mode]'s voice, addressed to [ref]'s
+/// reader (Issue #816's shared progress sentence, wrapped by the mode's own
+/// sentence where it has one).
+String _notEnoughBody(
+  ProfileMode mode,
+  _SubjectRef ref,
+  int complete,
+  int needed,
+) {
+  final progress = completedCycleProgress(complete, needed);
+  return switch (mode) {
+    ProfileMode.teen =>
+      'Every entry builds the picture of ${ref.lower} cycle. $progress',
+    ProfileMode.irregular => '$progress ${ref.capital} estimates may stay '
+        'ranges rather than dates.',
+    _ => progress,
+  };
+}
+
+/// The un-composed next-period estimate label (Issue #131), addressed to
+/// [ref]'s reader. Only `teen` varies in voice; `irregular` and standard
+/// already read third-person.
+String _nextEstimateLabel(ProfileMode mode, _SubjectRef ref) => switch (mode) {
+      ProfileMode.teen => '${ref.capital} next period is estimated around:',
+      ProfileMode.irregular => 'Next period may start around:',
+      _ => 'Next period estimate:',
+    };
 
 /// Issue #853: the range-style estimate label for a composed
 /// (mode + irregular) profile — same hedging as the legacy `irregular`
-/// mode's label, in the base mode's own register.
-String _composedNextEstimateLabel(ProfileMode mode) => switch (mode) {
-      ProfileMode.teen => 'Your next period may start around:',
+/// mode's label, in the base mode's own register (Issue #850: addressed to
+/// [ref]'s reader).
+String _composedNextEstimateLabel(ProfileMode mode, _SubjectRef ref) =>
+    switch (mode) {
+      ProfileMode.teen => '${ref.capital} next period may start around:',
       _ => 'Next period may start around:',
     };
 
@@ -128,11 +196,12 @@ String _composedOverdueActionLabel(ProfileMode mode) => switch (mode) {
 
 /// Issue #853: the estimate-range sentence appended to a composed mode's
 /// not-enough-history body (the legacy `irregular` mode's own sentence,
-/// teen-voiced for teen).
-String _composedNotEnoughSuffix(ProfileMode mode) => switch (mode) {
-      ProfileMode.teen =>
-        ' Your estimates may stay ranges rather than dates for a while.',
-      _ => ' Your estimates may stay ranges rather than dates.',
+/// teen-voiced for teen; Issue #850: addressed to [ref]'s reader).
+String _composedNotEnoughSuffix(ProfileMode mode, _SubjectRef ref) =>
+    switch (mode) {
+      ProfileMode.teen => ' ${ref.capital} estimates may stay ranges rather '
+          'than dates for a while.',
+      _ => ' ${ref.capital} estimates may stay ranges rather than dates.',
     };
 
 /// Per-mode vocabulary and logging defaults.
@@ -271,10 +340,39 @@ const Map<TagCategory, String> _standardCategoryLabels = {
   TagCategory.tests: 'Tests',
 };
 
-const CareModeCopy _standard = CareModeCopy(
-  notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: _standardNotEnoughBody,
-  nextEstimateLabel: 'Next period estimate:',
+/// The lens-independent half of one mode's copy (Issue #850): every field
+/// whose value reads the same to every viewer — the quiet overdue line and
+/// its action, the three estimate flags, the fertile-window vocabulary, and
+/// the category order and headings. [careModeCopyFor] builds the
+/// lens-dependent fields (title, not-enough body, estimate label) around
+/// this structure from a [_SubjectRef], so a second-person string can never
+/// be baked into a structural constant again. Field semantics are documented
+/// once on [CareModeCopy], the assembled public type.
+class _ModeCopy {
+  const _ModeCopy({
+    required this.overdueStatusLabel,
+    this.overdueActionLabel = '',
+    required this.silencesLateBanner,
+    required this.showsTierCaption,
+    required this.showsFertileWindow,
+    required this.fertileWindowLabel,
+    required this.fertileWindowLegend,
+    required this.categoriesInOrder,
+    required this.categoryLabels,
+  });
+
+  final String overdueStatusLabel;
+  final String overdueActionLabel;
+  final bool silencesLateBanner;
+  final bool showsTierCaption;
+  final bool showsFertileWindow;
+  final String fertileWindowLabel;
+  final String fertileWindowLegend;
+  final List<TagCategory> categoriesInOrder;
+  final Map<TagCategory, String> categoryLabels;
+}
+
+const _ModeCopy _standard = _ModeCopy(
   overdueStatusLabel: '',
   silencesLateBanner: false,
   showsTierCaption: true,
@@ -285,10 +383,7 @@ const CareModeCopy _standard = CareModeCopy(
   categoryLabels: _standardCategoryLabels,
 );
 
-const CareModeCopy _teen = CareModeCopy(
-  notEnoughTitle: 'Your record is just getting started',
-  notEnoughBody: _teenNotEnoughBody,
-  nextEstimateLabel: 'Your next period is estimated around:',
+const _ModeCopy _teen = _ModeCopy(
   overdueStatusLabel: _teenOverdueStatusLabel,
   overdueActionLabel: _teenOverdueActionLabel,
   // Issue #998: teen mode avoids "late" framing at every tier — a teen's
@@ -383,10 +478,7 @@ const CareModeCopy _teen = CareModeCopy(
   },
 );
 
-const CareModeCopy _irregular = CareModeCopy(
-  notEnoughTitle: 'Not enough history yet',
-  notEnoughBody: _irregularNotEnoughBody,
-  nextEstimateLabel: 'Next period may start around:',
+const _ModeCopy _irregular = _ModeCopy(
   overdueStatusLabel:
       'No new period logged yet — with irregular cycles, '
       'variation like this is common and expected.',
@@ -410,11 +502,10 @@ const CareModeCopy _irregular = CareModeCopy(
   categoryLabels: _standardCategoryLabels,
 );
 
-/// The copy for [mode] alone (the legacy single-axis lookup): a switch
-/// expression naming every mode (no `_` wildcard), so adding a
-/// [ProfileMode] without copy is a compile error, not a silently-wrong
-/// screen.
-CareModeCopy _baseCopyFor(ProfileMode mode) => switch (mode) {
+/// The structural (lens-independent) copy for [mode] alone: a switch
+/// expression naming every mode (no `_` wildcard), so adding a [ProfileMode]
+/// without copy is a compile error, not a silently-wrong screen.
+_ModeCopy _baseStructureFor(ProfileMode mode) => switch (mode) {
       ProfileMode.standard => _standard,
       ProfileMode.teen => _teen,
       // Issue #850: the legacy `caregiver` wire value folds into standard —
@@ -423,6 +514,53 @@ CareModeCopy _baseCopyFor(ProfileMode mode) => switch (mode) {
       ProfileMode.caregiver => _standard,
       ProfileMode.irregular => _irregular,
     };
+
+/// Issue #852/#853's un-composed copy — [mode]'s voice, addressed to [ref]'s
+/// reader, with [structure]'s flags/vocabulary untouched.
+CareModeCopy _plainCopy(
+  ProfileMode mode,
+  _ModeCopy structure,
+  _SubjectRef ref,
+) =>
+    CareModeCopy(
+      notEnoughTitle: _notEnoughTitle(mode, ref),
+      notEnoughBody: (complete, needed) =>
+          _notEnoughBody(mode, ref, complete, needed),
+      nextEstimateLabel: _nextEstimateLabel(mode, ref),
+      overdueStatusLabel: structure.overdueStatusLabel,
+      overdueActionLabel: structure.overdueActionLabel,
+      silencesLateBanner: structure.silencesLateBanner,
+      showsTierCaption: structure.showsTierCaption,
+      showsFertileWindow: structure.showsFertileWindow,
+      fertileWindowLabel: structure.fertileWindowLabel,
+      fertileWindowLegend: structure.fertileWindowLegend,
+      categoriesInOrder: structure.categoriesInOrder,
+      categoryLabels: structure.categoryLabels,
+    );
+
+/// Issue #853's composed copy — the irregular framing overlaid, still
+/// addressed to [ref]'s reader.
+CareModeCopy _composedCopy(
+  ProfileMode mode,
+  _ModeCopy structure,
+  _SubjectRef ref,
+) =>
+    CareModeCopy(
+      notEnoughTitle: _notEnoughTitle(mode, ref),
+      notEnoughBody: (complete, needed) =>
+          '${_notEnoughBody(mode, ref, complete, needed)}'
+          '${_composedNotEnoughSuffix(mode, ref)}',
+      nextEstimateLabel: _composedNextEstimateLabel(mode, ref),
+      overdueStatusLabel: _composedOverdueStatusLabel(mode),
+      overdueActionLabel: _composedOverdueActionLabel(mode),
+      silencesLateBanner: true,
+      showsTierCaption: false,
+      showsFertileWindow: false,
+      fertileWindowLabel: structure.fertileWindowLabel,
+      fertileWindowLegend: structure.fertileWindowLegend,
+      categoriesInOrder: structure.categoriesInOrder,
+      categoryLabels: structure.categoryLabels,
+    );
 
 /// Issue #853: the copy for the composed axis — [mode]'s own voice with the
 /// irregular framing overlaid when [irregularFraming] is in effect. The
@@ -444,30 +582,27 @@ CareModeCopy _baseCopyFor(ProfileMode mode) => switch (mode) {
 /// (callers that render only the mode axis — the day sheet's category
 /// headings — may pass the stored default `false`, since no field they
 /// read varies with the flag).
+///
+/// Issue #850 (U7): [lens] selects who the copy addresses. It defaults to
+/// [GuardianLens.subject], so every pre-#850 caller reads exactly the
+/// subject-voiced copy it always did. Under [GuardianLens.guardian] the
+/// subject is never "you": the enumerated second-person strings read
+/// "[subjectName]'s …" when a name is supplied and the gender-neutral
+/// "their …" otherwise. [subjectName] is ignored under the subject lens.
 CareModeCopy careModeCopyFor(
   ProfileMode mode, {
   required bool irregularFraming,
+  GuardianLens lens = GuardianLens.subject,
+  String? subjectName,
 }) {
-  final base = _baseCopyFor(mode);
+  final ref = _SubjectRef.resolve(lens, subjectName);
+  final structure = _baseStructureFor(mode);
   // The legacy wire value is already its own full copy; composing on top
   // would double-apply.
-  if (!irregularFraming || mode == ProfileMode.irregular) return base;
-  return CareModeCopy(
-    notEnoughTitle: base.notEnoughTitle,
-    notEnoughBody: (complete, needed) =>
-        '${base.notEnoughBody(complete, needed)}'
-        '${_composedNotEnoughSuffix(mode)}',
-    nextEstimateLabel: _composedNextEstimateLabel(mode),
-    overdueStatusLabel: _composedOverdueStatusLabel(mode),
-    overdueActionLabel: _composedOverdueActionLabel(mode),
-    silencesLateBanner: true,
-    showsTierCaption: false,
-    showsFertileWindow: false,
-    fertileWindowLabel: base.fertileWindowLabel,
-    fertileWindowLegend: base.fertileWindowLegend,
-    categoriesInOrder: base.categoriesInOrder,
-    categoryLabels: base.categoryLabels,
-  );
+  if (!irregularFraming || mode == ProfileMode.irregular) {
+    return _plainCopy(mode, structure, ref);
+  }
+  return _composedCopy(mode, structure, ref);
 }
 
 /// Issue #853: resolves the *effective* irregular framing for a profile.
