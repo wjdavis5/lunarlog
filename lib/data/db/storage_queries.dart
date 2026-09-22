@@ -108,6 +108,28 @@ mixin LunarLogStorageQueries {
     return query.watchSingleOrNull().map((row) => row != null);
   }
 
+  /// Issue #850 U5: the live day entry with the greatest civil date for
+  /// [profileId], or null when every row is a tombstone (or none exists) —
+  /// the guardian logistics card's bounded "last logged" read. One indexed
+  /// row, never the profile's full history: `ix_day_entries_profile_date`
+  /// answers the `where profile_id = ? order by local_date desc limit 1`
+  /// shape, matching [hasAnyEntries]'s bounded posture. Per-profile
+  /// isolation (R3) is structural, as everywhere in this mixin.
+  Future<DayEntry?> getLatestDayEntry(String profileId) async {
+    final rows = await (db.select(db.dayEntries)
+          ..where((t) =>
+              t.profileId.equals(profileId) & t.deletedAt.isNull())
+          ..orderBy([
+            (t) => OrderingTerm(
+                  expression: t.localDate,
+                  mode: OrderingMode.desc,
+                ),
+          ])
+          ..limit(1))
+        .get();
+    return rows.isEmpty ? null : rows.first;
+  }
+
   /// The live day entry for (profileId, localDate), or null when that date
   /// holds no entry — including when its only row is a tombstone, which
   /// [getDayEntries] excludes for UI reads too. Scoped to the one

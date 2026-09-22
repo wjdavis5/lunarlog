@@ -7,6 +7,23 @@ import '../models/day_entry.dart';
 import '../models/local_date.dart';
 import '../models/observation.dart';
 
+/// Issue #850 U5: the bounded "latest entry" capability the guardian
+/// logistics card needs — a single most-recent live entry, never the
+/// profile's full history.
+///
+/// Deliberately a separate interface from [DayEntriesRepository] rather
+/// than an added method on it: an abstract member there would force every
+/// one of the repository's ~40 test doubles to grow a stub, for a read only
+/// this card performs. [DriftDayEntriesRepository] implements both, and the
+/// card resolves it with an `is` check, so a tree whose entries repository
+/// cannot answer it (a hand-rolled fake) simply renders the "nothing logged
+/// yet" state instead of a second full-history subscription.
+abstract interface class LatestDayEntryReader {
+  /// The live day entry with the greatest civil date for [profileId], or
+  /// null when the profile has no live entries. Tombstones are excluded.
+  Future<DayEntry?> latestEntryFor(String profileId);
+}
+
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the
