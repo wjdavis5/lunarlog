@@ -1314,6 +1314,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// concluding the app is broken.
   Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     // Issue #853: resolved with a null tier — a teen with no history yet
     // keeps the variance-expecting framing (the quiet title/body), exactly
     // the case the issue's "13-year-old" scenario describes.
@@ -1343,9 +1344,9 @@ class _OverviewPanelState extends State<OverviewPanel>
             // Issue #139: the "not enough history yet" state links to the
             // bundled card explaining the three-cycle requirement. Issue
             // #816: the label names the unit the threshold actually counts.
-            const HelpCardLink(
+            HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three completed cycles?',
+              label: l10n.overviewWhyThreeCompletedCycles,
             ),
           ],
         ),
