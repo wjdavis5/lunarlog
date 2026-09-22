@@ -1329,9 +1329,11 @@ class _LunarLogAppState extends State<LunarLogApp>
             updateShouldNotify: (_, _) => false,
           ),
         // Upload-consent counts (R14): the only place `lib/ui` learns how
-        // many rows this device holds, tombstones included.
+        // many rows this device holds, tombstones included. Issue #551
+        // (part 3): the count comes through AppDependencies'
+        // LocalRowCountRepository, never a raw `widget.db.storage` tear-off.
         Provider<LocalRowCounter>.value(
-          value: widget.db.storage.countAllRows,
+          value: _deps.localRowCounts.countAllRows,
           updateShouldNotify: (_, _) => false,
         ),
         if (syncEngine != null)
