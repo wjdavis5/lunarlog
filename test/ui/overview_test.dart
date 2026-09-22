@@ -42,6 +42,7 @@ import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
+import 'package:lunarlog/ui/care/care_notes_screen.dart';
 import 'package:lunarlog/ui/components/empty_state.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
@@ -69,16 +70,20 @@ RemoteProfileGuardianRow guardianRow(
   String userId,
   String role, {
   String status = 'accepted',
+  bool isSubject = false,
+  String? displayName,
 }) => RemoteProfileGuardianRow(
   id: id,
   profileId: profileId,
   userId: userId,
   role: role,
   status: status,
+  displayName: displayName,
   invitedBy: null,
   createdAt: DateTime.utc(2026, 1, 1),
   updatedAt: DateTime.utc(2026, 1, 1),
   serverVersion: 1,
+  isSubject: isSubject,
 );
 
 const String kDisclaimer = 'Estimates only — not medical advice.';
@@ -2175,65 +2180,291 @@ void main() {
     });
   });
 
-  group('issue #316 review item 3: viewer-role gate on the Today card '
-      'quick-log action', () {
-    testWidgets('an accepted viewer guardian hides the quick-log action '
-        'entirely (the same live guardian watch TodayLogFab and '
-        'MonthCalendar already use)', (tester) async {
+  group('issue #850 U5: per-viewer guardian lens front page', () {
+    /// Signs in as [userId], seeds a single accepted guardian row for it,
+    /// and pumps the overview. [isSubject] picks the lens (a subject
+    /// membership keeps the subject front page); every non-subject row is a
+    /// guardian lens regardless of role.
+    Future<Harness> pumpForViewer(
+      WidgetTester tester,
+      String userId, {
+      required String role,
+      bool isSubject = false,
+      String? displayName,
+      Future<void> Function(
+        DriftDayEntriesRepository entries,
+        String profileId,
+      )?
+      seed,
+    }) async {
       final auth = FakeAuthService()
-        ..emit(AuthSessionState.signedIn, user: const AuthUser(id: 'user-doc'));
+        ..emit(AuthSessionState.signedIn, user: AuthUser(id: userId));
       final authController = AuthController(authService: auth);
-      final h = await pumpOverview(
+      addTearDown(() async {
+        authController.dispose();
+        await auth.dispose();
+      });
+      return pumpOverview(
         tester,
         authController: authController,
         withStorage: true,
-        seed: (entries, profileId) =>
-            seedEpisodes(entries, profileId, kActiveStarts),
+        seed:
+            seed ??
+            (entries, profileId) =>
+                seedEpisodes(entries, profileId, kActiveStarts),
         seedGuardians: (storage, profileId) => storage.applyRemoteRows([
-          guardianRow(profileId, 'g-doc', 'user-doc', 'viewer'),
+          guardianRow(
+            profileId,
+            'g-$userId',
+            userId,
+            role,
+            isSubject: isSubject,
+            displayName: displayName,
+          ),
         ]),
       );
+    }
 
-      expect(
-        find.byKey(const ValueKey('today-card')),
-        findsOneWidget,
-        reason:
-            'the wheel/estimate stay visible -- only the write '
-            'action is gated',
+    testWidgets('a subject membership keeps the subject Today card and '
+        'never renders the guardian card', (tester) async {
+      final h = await pumpForViewer(
+        tester,
+        'user-teen',
+        role: 'caregiver',
+        isSubject: true,
       );
-      expect(find.byKey(const ValueKey('today-card-log-action')), findsNothing);
 
-      authController.dispose();
-      await auth.dispose();
+      expect(find.byKey(const ValueKey('today-card')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('guardian-overview-card')),
+        findsNothing,
+        reason: 'the subject keeps the pre-#850 own-voice screen',
+      );
+      expect(
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+      );
       await disposeOverview(tester, h);
     });
 
-    testWidgets('an accepted co-parent guardian keeps the quick-log action '
-        'visible', (tester) async {
-      final auth = FakeAuthService()
-        ..emit(
-          AuthSessionState.signedIn,
-          user: const AuthUser(id: 'user-parent'),
-        );
-      final authController = AuthController(authService: auth);
-      final h = await pumpOverview(
+    testWidgets('a non-subject membership renders the guardian logistics '
+        'card instead of the subject stack', (tester) async {
+      final h = await pumpForViewer(tester, 'user-parent', role: 'co_parent');
+
+      expect(
+        find.byKey(const ValueKey('guardian-overview-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('today-card')),
+        findsNothing,
+        reason: 'the subject-only card stack does not render under the lens',
+      );
+      expect(find.byKey(const ValueKey('overview-active')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('overview-disclaimer')),
+        findsOneWidget,
+        reason: 'the card carries an estimate, so the shared disclaimer stays',
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('counts, not content: tag labels and note text never appear '
+        'on the guardian card; counts do', (tester) async {
+      final h = await pumpForViewer(
         tester,
-        authController: authController,
-        withStorage: true,
-        seed: (entries, profileId) =>
-            seedEpisodes(entries, profileId, kActiveStarts),
-        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
-          guardianRow(profileId, 'g-parent', 'user-parent', 'co_parent'),
-        ]),
+        'user-parent',
+        role: 'co_parent',
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday.addDays(-3),
+              tz: 'America/Chicago',
+              flow: FlowLevel.light,
+              tags: const ['cramps'],
+              note: 'private note text',
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
       );
 
       expect(
-        find.byKey(const ValueKey('today-card-log-action')),
+        find.byKey(const ValueKey('guardian-overview-card')),
         findsOneWidget,
       );
+      expect(
+        find.text('Cramps'),
+        findsNothing,
+        reason: 'the tag label must never reach the guardian card (D-3)',
+      );
+      expect(
+        find.text('private note text'),
+        findsNothing,
+        reason: 'the note body must never reach the guardian card (D-3)',
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-tag-count')),
+        findsOneWidget,
+      );
+      expect(find.text('1 tag logged'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('guardian-overview-note-present')),
+        findsOneWidget,
+      );
+      expect(find.text('A note is attached.'), findsOneWidget);
+      // The bounded latest-entry read drives the relative age and author.
+      expect(
+        find.text('Last logged 3 days ago by a guardian.'),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, h);
+    });
 
-      authController.dispose();
-      await auth.dispose();
+    for (final role in ['caregiver', 'co_parent', 'primary_guardian']) {
+      testWidgets('a $role sees the guardian card and its three quick '
+          'actions', (tester) async {
+        final h = await pumpForViewer(tester, 'user-log', role: role);
+
+        expect(
+          find.byKey(const ValueKey('guardian-overview-card')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('guardian-overview-action-note')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('guardian-overview-action-care')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('guardian-overview-action-supplies')),
+          findsOneWidget,
+        );
+        await disposeOverview(tester, h);
+      });
+    }
+
+    testWidgets('a viewer sees the guardian card with every action hidden',
+        (tester) async {
+      final h = await pumpForViewer(tester, 'user-doc', role: 'viewer');
+
+      expect(
+        find.byKey(const ValueKey('guardian-overview-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-action-note')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-action-care')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-action-supplies')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('with no entries the guardian card says nothing is logged '
+        'yet and shows no estimate', (tester) async {
+      final h = await pumpForViewer(
+        tester,
+        'user-parent',
+        role: 'co_parent',
+        seed: (entries, profileId) async {},
+      );
+
+      expect(
+        find.byKey(const ValueKey('guardian-overview-card')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('No days logged yet.'),
+        findsOneWidget,
+        reason: 'the bounded read returns null for an empty profile',
+      );
+      expect(
+        find.text("There isn't enough history to estimate Alice's next "
+            'period yet.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-tag-count')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('a tagless, noteless latest entry shows the no-details line '
+        'instead of counts', (tester) async {
+      final h = await pumpForViewer(
+        tester,
+        'user-parent',
+        role: 'co_parent',
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday.addDays(-1),
+              tz: 'America/Chicago',
+              flow: FlowLevel.none,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      expect(
+        find.text('No tags or note recorded for that day.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-tag-count')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-note-present')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the guardian card counts unstocked supplies from the '
+        'shipped list', (tester) async {
+      final h = await pumpForViewer(tester, 'user-parent', role: 'co_parent');
+
+      expect(find.text('All supplies are stocked.'), findsOneWidget);
+
+      await h.db.storage.addVisitPrepItem(
+        profileId: h.profile.id,
+        body: 'Pads',
+        kind: 'supply',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 supply item is unstocked'), findsOneWidget);
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the Care details action opens the shared care screen',
+        (tester) async {
+      final h = await pumpForViewer(tester, 'user-parent', role: 'co_parent');
+
+      await tester.tap(
+        find.byKey(const ValueKey('guardian-overview-action-care')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CareNotesScreen), findsOneWidget);
       await disposeOverview(tester, h);
     });
   });

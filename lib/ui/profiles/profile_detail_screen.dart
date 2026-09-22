@@ -239,6 +239,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   Widget _overviewContent(ProfileGuardiansRepository? guardiansRepository) {
     return OverviewPanel(
       profileId: widget.profile.id,
+      profile: widget.profile,
       mode: widget.profile.mode,
       irregularFraming: widget.profile.irregularFraming,
       trackingPreferences: widget.profile.trackingPreferences,

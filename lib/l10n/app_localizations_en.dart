@@ -4753,4 +4753,88 @@ class AppLocalizationsEn extends AppLocalizations {
   String symptomTrendsLogged(int occurrences, int cycles) {
     return 'Logged $occurrences times across $cycles cycles';
   }
+
+  @override
+  String get guardianOverviewLabel => 'Guardian view';
+
+  @override
+  String get guardianOverviewThisProfile => 'This profile';
+
+  @override
+  String guardianOverviewNextPeriod(
+    String name,
+    String date,
+    String confidence,
+  ) {
+    return '$name\'s next period is estimated around $date — $confidence.';
+  }
+
+  @override
+  String guardianOverviewNoEstimate(String name) {
+    return 'There isn\'t enough history to estimate $name\'s next period yet.';
+  }
+
+  @override
+  String get guardianOverviewPredictionsOff =>
+      'Period predictions are off for this profile.';
+
+  @override
+  String guardianOverviewPmsWindow(String name, String range) {
+    return '$name\'s PMS window is likely $range.';
+  }
+
+  @override
+  String guardianOverviewLastLogged(int days, String name) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days days ago',
+      one: '1 day ago',
+    );
+    return 'Last logged $_temp0 by $name.';
+  }
+
+  @override
+  String get guardianOverviewNeverLogged => 'No days logged yet.';
+
+  @override
+  String guardianOverviewTagCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tags logged',
+      one: '1 tag logged',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get guardianOverviewNotePresent => 'A note is attached.';
+
+  @override
+  String get guardianOverviewNoDetails =>
+      'No tags or note recorded for that day.';
+
+  @override
+  String guardianOverviewSuppliesUnstocked(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count supply items are unstocked',
+      one: '1 supply item is unstocked',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get guardianOverviewSuppliesStocked => 'All supplies are stocked.';
+
+  @override
+  String get guardianOverviewActionNote => 'Add a note';
+
+  @override
+  String get guardianOverviewActionCare => 'Care details';
+
+  @override
+  String get guardianOverviewActionSupplies => 'Supplies';
 }

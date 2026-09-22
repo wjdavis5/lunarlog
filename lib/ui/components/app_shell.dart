@@ -265,6 +265,7 @@ class _AppShellState extends State<AppShell> {
           tab,
           OverviewPanel(
             profileId: widget.profile.id,
+            profile: widget.profile,
             mode: widget.profile.mode,
             irregularFraming: widget.profile.irregularFraming,
             trackingPreferences: widget.profile.trackingPreferences,
