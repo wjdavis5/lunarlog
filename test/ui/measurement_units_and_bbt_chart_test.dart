@@ -499,8 +499,10 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const Scaffold(
             body: BbtChart(data: BbtChartData(series: [], maxCycleDay: 0)),
           ),
         ),

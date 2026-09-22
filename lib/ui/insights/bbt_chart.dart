@@ -15,6 +15,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../../domain/insights/bbt_chart.dart';
 import '../../domain/models/measurement_unit.dart';
@@ -45,12 +46,12 @@ class BbtChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     if (data.isEmpty) {
-      return const EmptyState(
-        key: ValueKey('bbt-chart-empty'),
-        title: 'No BBT logged yet',
-        body: 'Log a basal body temperature reading in the day sheet to '
-            'see your curve here, plotted against cycle day.',
+      return EmptyState(
+        key: const ValueKey('bbt-chart-empty'),
+        title: l10n.bbtChartEmptyTitle,
+        body: l10n.bbtChartEmptyBody,
         crossAxisAlignment: CrossAxisAlignment.start,
       );
     }
@@ -77,7 +78,7 @@ class BbtChart extends StatelessWidget {
         ),
         const SizedBox(height: LLSpace.space1),
         Text(
-          _captionFor(recent.length, minCelsius, maxCelsius),
+          _captionFor(l10n, recent.length, minCelsius, maxCelsius),
           key: const ValueKey('bbt-chart-caption'),
           style: theme.textTheme.bodySmall,
         ),
@@ -85,7 +86,12 @@ class BbtChart extends StatelessWidget {
     );
   }
 
-  String _captionFor(int cycleCount, double minCelsius, double maxCelsius) {
+  String _captionFor(
+    AppLocalizations l10n,
+    int cycleCount,
+    double minCelsius,
+    double maxCelsius,
+  ) {
     final minDisplay = convertTemperature(
       minCelsius,
       from: BbtUnit.celsius,
@@ -97,9 +103,9 @@ class BbtChart extends StatelessWidget {
       to: displayUnit,
     );
     final unit = displayUnit == BbtUnit.celsius ? '°C' : '°F';
-    final cycleWord = cycleCount == 1 ? 'cycle' : 'cycles';
-    return '$cycleCount $cycleWord shown · '
+    final range =
         '${minDisplay.toStringAsFixed(1)}$unit–${maxDisplay.toStringAsFixed(1)}$unit';
+    return l10n.bbtChartCaption(cycleCount, range);
   }
 }
 
