@@ -34,6 +34,7 @@ import 'package:lunarlog/domain/widget/widget_data_store.dart'
 import 'package:lunarlog/domain/account/account_deletion_service.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/birth_control.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/domain/export/account_export_remote_source.dart';
 import 'package:lunarlog/domain/export/account_export_writer.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
@@ -143,6 +144,7 @@ class LunarLogApp extends StatefulWidget {
     ProfileErasureService? profileErasureService,
     NotificationPreferencesService? notificationPreferencesService,
     AccountExportRemoteSource? accountExportRemoteSource,
+    ConsentService? consentService,
     ReminderWindowRemote? reminderWindowUpsert,
     ReminderScheduler? scheduler,
     WidgetDataStore? widgetDataStore,
@@ -173,6 +175,7 @@ class LunarLogApp extends StatefulWidget {
           profileErasureService: profileErasureService,
           notificationPreferencesService: notificationPreferencesService,
           accountExportRemoteSource: accountExportRemoteSource,
+          consentService: consentService,
           reminderWindowUpsert: reminderWindowUpsert,
           scheduler: scheduler,
           widgetDataStore: widgetDataStore,
@@ -1287,6 +1290,8 @@ class _LunarLogAppState extends State<LunarLogApp>
         if (_deps.accountExportRemoteSource != null)
           Provider<AccountExportRemoteSource>.value(
               value: _deps.accountExportRemoteSource!),
+        if (_deps.consentService != null)
+          Provider<ConsentService>.value(value: _deps.consentService!),
         Provider<ProfilesRepository>.value(value: _profiles),
         Provider<DayEntriesRepository>.value(value: _dayEntries),
         Provider<ObservationsRepository>.value(value: _observations),
