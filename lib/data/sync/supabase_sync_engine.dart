@@ -659,6 +659,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   @visibleForTesting
   Future<bool> hasPushableDirtyForTest() => _hasPushableDirty();
 
+  /// Issue #551: the push paging order, exposed so the guard test can pin
+  /// it as a literal and cross-check it against the storage layer's
+  /// pushable tables. [_pushTables] remains the single source of truth.
+  @visibleForTesting
+  List<SyncTable> pushTableOrderForTest() =>
+      [for (final table in _pushTables) table.table];
+
   Future<bool> _hasPushable<T>({
     required Future<List<T>> Function({int? limit, String? afterId}) readPage,
     required String Function(T) id,
