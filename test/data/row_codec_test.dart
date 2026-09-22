@@ -441,12 +441,24 @@ void main() {
 
     test('every choosable care mode round-trips through the codec '
         '(Issue #131/#853)', () {
-      for (final mode in ['teen', 'caregiver', 'standard']) {
+      for (final mode in ['teen', 'standard']) {
         final decoded = decodeProfile(encodeProfile(makeProfile(mode: mode)));
         expect(decoded.mode, mode, reason: 'mode $mode must round-trip');
         expect(decoded.irregularFraming, isNull,
             reason: 'mode $mode carries no framing key');
       }
+    });
+
+    test('Issue #850: the legacy caregiver wire value is still written, but '
+        'decode folds it to standard', () {
+      // An old row round-trips out unchanged (toDb still emits `caregiver`),
+      // while the read boundary maps it to the neutral default — the #853
+      // irregular-fold discipline extended to the retired mode.
+      expect(encodeProfile(makeProfile(mode: 'caregiver'))['mode'], 'caregiver');
+      final decoded = decodeProfile(makeProfileJson(mode: 'caregiver'));
+      expect(decoded.mode, 'standard');
+      expect(decoded.irregularFraming, isNull,
+          reason: 'caregiver is not an irregular fold');
     });
 
     test('Issue #853: the legacy irregular mode folds to standard + flag '
