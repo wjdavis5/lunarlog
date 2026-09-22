@@ -25,10 +25,6 @@ import '../../domain/repositories/profile_modes_repository.dart'
 /// and there is no reason to add the dependency just for this one string).
 const String kAppVersionForExport = '1.0.0+1';
 
-/// One line, no email/token/exception text (Issue #17 U6; R10).
-const String kAccountExportFailureCopy =
-    'Could not export your data. Please try again.';
-
 /// Injectable seam for the export step (Issue #17 U5/U6): the default
 /// builds the real platform writer; tests substitute a fake that just
 /// records the call (or throws) without touching `path_provider`/

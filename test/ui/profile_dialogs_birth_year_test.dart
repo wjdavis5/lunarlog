@@ -11,6 +11,7 @@ import 'package:lunarlog/domain/models/lifecycle_mode.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
 import 'package:provider/provider.dart';
 
@@ -78,12 +79,12 @@ const _birthYear = ValueKey('edit-birth-year-field');
 void main() {
   group('validateBirthYearForProfile', () {
     test('no earliest entry year adds no extra rule', () {
-      expect(validateBirthYearForProfile('2050'), isNull);
-      expect(validateBirthYearForProfile('not a year'), isNotNull);
+      expect(validateBirthYearForProfile(AppLocalizationsEn(), '2050'), isNull);
+      expect(validateBirthYearForProfile(AppLocalizationsEn(), 'not a year'), isNotNull);
     });
 
     test('a year later than the earliest entry is refused, naming it', () {
-      final message = validateBirthYearForProfile(
+      final message = validateBirthYearForProfile(AppLocalizationsEn(), 
         '2025',
         earliestEntryYear: 2024,
       );
@@ -92,11 +93,11 @@ void main() {
     });
 
     test('a year equal to or earlier than the earliest entry passes', () {
-      expect(validateBirthYearForProfile('2024', earliestEntryYear: 2024),
+      expect(validateBirthYearForProfile(AppLocalizationsEn(), '2024', earliestEntryYear: 2024),
           isNull);
-      expect(validateBirthYearForProfile('2015', earliestEntryYear: 2024),
+      expect(validateBirthYearForProfile(AppLocalizationsEn(), '2015', earliestEntryYear: 2024),
           isNull);
-      expect(validateBirthYearForProfile('', earliestEntryYear: 2024), isNull);
+      expect(validateBirthYearForProfile(AppLocalizationsEn(), '', earliestEntryYear: 2024), isNull);
     });
   });
 

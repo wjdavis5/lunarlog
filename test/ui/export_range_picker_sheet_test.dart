@@ -8,6 +8,7 @@ import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/settings/export_range_picker_sheet.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
@@ -62,7 +63,8 @@ void main() {
 
       for (final preset in kFhirExportRangePresetOrder) {
         expect(key('export-range-preset-${preset.name}'), findsOneWidget);
-        expect(find.text(fhirExportRangePresetLabel(preset)), findsOneWidget);
+        expect(find.text(fhirExportRangePresetLabel(AppLocalizationsEn(), preset)),
+              findsOneWidget);
       }
       // The presets read/write through the ancestor `RadioGroup`, not their
       // own `groupValue` (removed with the pre-3.32 `RadioListTile` API).
