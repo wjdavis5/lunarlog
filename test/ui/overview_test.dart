@@ -2400,6 +2400,59 @@ void main() {
       );
       await disposeOverview(tester, h);
     });
+
+    testWidgets('a tagless, noteless latest entry shows the no-details line '
+        'instead of counts', (tester) async {
+      final h = await pumpForViewer(
+        tester,
+        'user-parent',
+        role: 'co_parent',
+        seed: (entries, profileId) async {
+          await seedEpisodes(entries, profileId, kActiveStarts);
+          await entries.save(
+            DayEntry(
+              id: '',
+              profileId: profileId,
+              localDate: kToday.addDays(-1),
+              tz: 'America/Chicago',
+              flow: FlowLevel.none,
+              updatedAt: DateTime.utc(2026, 1, 1),
+            ),
+          );
+        },
+      );
+
+      expect(
+        find.text('No tags or note recorded for that day.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-tag-count')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('guardian-overview-note-present')),
+        findsNothing,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the guardian card counts unstocked supplies from the '
+        'shipped list', (tester) async {
+      final h = await pumpForViewer(tester, 'user-parent', role: 'co_parent');
+
+      expect(find.text('All supplies are stocked.'), findsOneWidget);
+
+      await h.db.storage.addVisitPrepItem(
+        profileId: h.profile.id,
+        body: 'Pads',
+        kind: 'supply',
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 supply item is unstocked'), findsOneWidget);
+      await disposeOverview(tester, h);
+    });
   });
 
   group('issue #316 review item 5: undo + disclosure on the quick-log '
