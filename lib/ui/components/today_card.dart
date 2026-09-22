@@ -228,9 +228,7 @@ class _TodayCardState extends State<TodayCard> {
   /// visible "Period started today" copy never names a flow level itself.
   Widget _logTodayButton(AppLocalizations l10n) {
     return Tooltip(
-      message:
-          'Logs a ${kQuickLogFlowLevel.name}-flow period start for '
-          'today',
+      message: l10n.todayCardLogsFlowTooltip(kQuickLogFlowLevel.name),
       child: FilledButton.icon(
         key: const ValueKey('today-card-log-action'),
         onPressed: _busy ? null : _handleTap,

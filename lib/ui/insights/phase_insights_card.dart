@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 import '../../domain/content/cycle_literacy_library.dart';
 import '../../domain/models/local_date.dart';
@@ -22,6 +23,7 @@ class PhaseInsightsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final colorScheme = theme.colorScheme;
     final info = deriveSubphase(prediction: prediction, today: today);
     final primaryArticle =
@@ -79,7 +81,7 @@ class PhaseInsightsCard extends StatelessWidget {
 
             // What to Track Guidance
             Text(
-              'Helpful to track:',
+              l10n.phaseInsightsHelpfulToTrack,
               style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: colorScheme.onSurfaceVariant,
@@ -130,7 +132,9 @@ class PhaseInsightsCard extends StatelessWidget {
               OutlinedButton.icon(
                 key: const ValueKey('phase-article-button'),
                 icon: const Icon(Icons.menu_book_outlined, size: 16),
-                label: Text('Read: ${primaryArticle.title}'),
+                label: Text(
+                  l10n.phaseInsightsReadArticle(primaryArticle.title),
+                ),
                 onPressed: () =>
                     CycleLiteracyArticleSheet.show(context, primaryArticle),
               ),
@@ -139,7 +143,7 @@ class PhaseInsightsCard extends StatelessWidget {
 
             // Provenance footnote
             Text(
-              'Source: ${info.source} · Rev: ${info.reviewDate}',
+              l10n.phaseInsightsSource(info.source, info.reviewDate),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
