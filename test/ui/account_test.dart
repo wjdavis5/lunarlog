@@ -787,6 +787,51 @@ void main() {
           (email: 'a@b.c', createAccount: false));
       expect(key('auth-error'), findsNothing);
     });
+
+    testWidgets('create-account with an empty or malformed email shows the '
+        'local error and never calls the service', (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      expect(key('auth-create-account'), findsOneWidget);
+      // A password long enough to pass, so only the email guard can stop it.
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signUpCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        'Enter your email address.',
+      );
+      expect(
+        tester.widget<TextField>(key('auth-email')).focusNode!.hasFocus,
+        isTrue,
+      );
+
+      await tester.enterText(key('auth-email'), 'not-an-email');
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+      expect(s.auth.signUpCalls, isEmpty);
+      expect(
+        tester.widget<InlineError>(key('auth-error')).message,
+        "That doesn't look like an email address.",
+      );
+    });
+
+    testWidgets('create-account with a valid email calls the service once',
+        (tester) async {
+      final s = await pumpStandalone(tester);
+      await tester.tap(key('auth-mode-toggle'));
+      await tester.pumpAndSettle();
+      await tester.enterText(key('auth-email'), 'new@b.c');
+      await tester.enterText(key('auth-password'), 'twelve chars!');
+      await tester.tap(key('auth-create-account'));
+      await tester.pumpAndSettle();
+
+      expect(s.auth.signUpCalls.single.email, 'new@b.c');
+      expect(key('auth-error'), findsNothing);
+    });
   });
 
   group('passkey sign-in (#30 U4; AE1, AE2, AE3)', () {
