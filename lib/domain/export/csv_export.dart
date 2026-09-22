@@ -10,6 +10,7 @@ import '../models/measurement_unit.dart';
 import '../models/observation.dart';
 import '../models/observation_category.dart';
 import '../prediction/prediction.dart' show kMinCycleDays, kMaxCycleDays;
+import 'fhir_export_range.dart';
 
 /// Field-content prefixes (Issue #563; OWASP CSV/formula injection) that a
 /// spreadsheet application (Excel, Google Sheets, LibreOffice) treats as
@@ -87,9 +88,19 @@ String formatCsvTable(List<List<String>> rows) {
 /// - `is_irregular` is true if cycle length is outside the [kMinCycleDays]..[kMaxCycleDays] range.
 /// - The newest (open) cycle has no next episode, so `end_date` and `cycle_length_days` are empty,
 ///   and `is_irregular` is false.
+///
+/// [range] (Issue #115 G3) narrows the export to cycles whose *start* falls
+/// inside the chosen window — the CSV counterpart of
+/// `FhirExportRange.filterEntries`. Episodes are still derived from the
+/// full [entries] history, so an included row's `end_date`/
+/// `cycle_length_days` reference the real next cycle even when that next
+/// start lies outside the window; pre-filtering the entries instead would
+/// truncate an in-progress episode at the boundary and invent a shorter
+/// cycle. `null` means "everything" — the pre-#115 whole-history default.
 String buildCyclesCsv({
   required Iterable<DayEntry> entries,
   Set<LocalDate> omittedCycleStarts = const {},
+  FhirExportRange? range,
 }) {
   final header = [
     'cycle_number',
@@ -105,9 +116,14 @@ String buildCyclesCsv({
   final episodes = deriveEpisodes(bleedDates);
   final rows = <List<String>>[header];
 
+  // Renumbered over the rows actually emitted, so a ranged file counts
+  // 1..N contiguously rather than carrying gaps from excluded episodes.
+  var rowNumber = 0;
   for (var i = 0; i < episodes.length; i++) {
     final episode = episodes[i];
-    final cycleNumber = (i + 1).toString();
+    if (range != null && !range.includes(episode.start)) continue;
+    rowNumber++;
+    final cycleNumber = rowNumber.toString();
     final startDate = episode.start.iso;
     final periodLengthDays = episode.lengthDays.toString();
     final isLast = i == episodes.length - 1;
@@ -292,11 +308,16 @@ List<String> _buildDailyLogRow(
 /// [_formatMeasurement]'s doc comment for the unrecognised-unit case.
 /// Default to the metric preferences (celsius/kg), matching every other
 /// per-profile-preference default in this codebase.
+///
+/// [range] (Issue #115 G3) narrows the export to dates inside the chosen
+/// window — the same window [buildCyclesCsv] receives, so the two files
+/// trim to the same boundary. `null` means "everything" (whole history).
 String buildDailyLogCsv({
   required Iterable<DayEntry> entries,
   Iterable<Observation> observations = const [],
   BbtUnit bbtUnit = BbtUnit.celsius,
   WeightUnit weightUnit = WeightUnit.kg,
+  FhirExportRange? range,
 }) {
   final header = [
     'date',
@@ -320,13 +341,14 @@ String buildDailyLogCsv({
   final rows = <List<String>>[
     header,
     for (final date in allDates)
-      _buildDailyLogRow(
-        date,
-        entriesByDate[date],
-        observationsByDate[date] ?? const [],
-        bbtUnit,
-        weightUnit,
-      ),
+      if (range == null || range.includes(date))
+        _buildDailyLogRow(
+          date,
+          entriesByDate[date],
+          observationsByDate[date] ?? const [],
+          bbtUnit,
+          weightUnit,
+        ),
   ];
 
   return formatCsvTable(rows);
