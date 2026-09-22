@@ -1361,20 +1361,53 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteDayEntryRow remote, {
     required bool onlyExisting,
     _PageLookup? cache,
-  }) async {
-    final local = await _lookupCached(
-      cache,
-      (c) => c.dayEntries,
-      remote.id,
-      _dayEntryOrNull,
+  }) {
+    return _applyRemoteRow<RemoteDayEntryRow, DayEntry>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+        cache,
+        (c) => c.dayEntries,
+        remote.id,
+        _dayEntryOrNull,
+      ),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      // Referential integrity is checked up front so the failure is a typed,
+      // retryable one rather than a raw constraint exception from sqlite.
+      checkParent: (r) => _ensureDayEntryProfileExists(r, cache: cache),
+      // Day entries are the one synced table whose sync flags are NOT the
+      // shared constants: the same-date resolver can legitimately absorb a
+      // local loser's tags, and that merged row must be pushed (dirty =
+      // true, local_rev bumped). So both callbacks ignore the helper's
+      // flags and write the resolver's outcome in [_writeResolvedDayEntry],
+      // the one place that decision is made.
+      insert: (r, _, _) => _writeResolvedDayEntry(
+        r,
+        local: null,
+        onlyExisting: onlyExisting,
+        cache: cache,
+      ),
+      update: (r, local, _, _) => _writeResolvedDayEntry(
+        r,
+        local: local,
+        onlyExisting: onlyExisting,
+        cache: cache,
+      ),
     );
-    if (_shouldSkipDayEntryApply(
-        local: local, onlyExisting: onlyExisting, remote: remote)) {
-      return false;
-    }
-    // Referential integrity is checked up front so the failure is a typed,
-    // retryable one rather than a raw constraint exception from sqlite.
-    await _ensureDayEntryProfileExists(remote, cache: cache);
+  }
+
+  /// The write half of [_applyDayEntry]: runs the same-date resolver, then
+  /// inserts or updates the row with the resolver's `updated_at`/
+  /// `deleted_at`/`tags`/`dirty` outcome. Split out so [_applyDayEntry]
+  /// itself carries no branches (the helper already made the
+  /// read/bail/LWW/referential decisions).
+  Future<void> _writeResolvedDayEntry(
+    RemoteDayEntryRow remote, {
+    required DayEntry? local,
+    required bool onlyExisting,
+    _PageLookup? cache,
+  }) async {
     await _recordResolvedOverwriteIfAny(
       remote,
       local: local,
@@ -1428,7 +1461,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             ),
           );
       cache?.storeDayEntry(written);
-      return true;
+      return;
     }
     final written =
         await (db.update(
@@ -1464,7 +1497,6 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ),
         );
     cache?.storeDayEntry(written.first);
-    return true;
   }
 
   /// Issue #124 (AC4): a push resolution (`applyResolved`) overwriting a
@@ -1496,24 +1528,6 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         loserEntryId: remote.id,
       );
     }
-  }
-
-  /// Whether [_applyDayEntry] should no-op without writing anything:
-  /// [onlyExisting] with no local row held, or the per-id rule (KTD5) says
-  /// the local copy is not beaten by [remote] and stays as-is.
-  bool _shouldSkipDayEntryApply({
-    required DayEntry? local,
-    required bool onlyExisting,
-    required RemoteDayEntryRow remote,
-  }) {
-    if (local == null && onlyExisting) return true;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return true;
-    }
-    return false;
   }
 
   /// Throws [RetryableSyncApplyError] when [remote]'s profile is not held
