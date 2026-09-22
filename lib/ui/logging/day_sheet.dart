@@ -75,6 +75,7 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/conceive.dart' show conceiveCategoryOrder;
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show describeUnmappedRaw;
@@ -571,8 +572,16 @@ class _DaySheetState extends State<DaySheet> {
   /// (composition never touches categories), so the composed axis is
   /// deliberately not plumbed into this widget — `irregularFraming: false`
   /// selects exactly the same category fields the flag-on copy would.
-  CareModeCopy get _copy =>
-      careModeCopyFor(widget.mode, irregularFraming: false);
+  ///
+  /// Issue #850 (U7): the lens is passed for parity with the other registry
+  /// consumers; no field read here varies by lens (headings are
+  /// second-person-free), so this is a no-op today that keeps a future copy
+  /// addition honest.
+  CareModeCopy get _copy => careModeCopyFor(
+        widget.mode,
+        irregularFraming: false,
+        lens: guardianLensFor(widget.guardians, widget.currentUserId),
+      );
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated

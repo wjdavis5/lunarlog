@@ -139,6 +139,7 @@ class OverviewPanel extends StatefulWidget {
     this.readOnly = false,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.subjectName,
     this.trailingChildren = const [],
   });
 
@@ -190,6 +191,13 @@ class OverviewPanel extends StatefulWidget {
   /// check (same shape as [MonthCalendar.guardiansRepository]); null in
   /// local-only use.
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Issue #850 (U7): the subject's display name, for the third-person
+  /// care-mode copy a guardian reads on this profile ("Maya's next period…").
+  /// Null (a local-only tree, or a caller that has no profile in hand) falls
+  /// back to the gender-neutral "their". Ignored when the viewer is the
+  /// subject.
+  final String? subjectName;
 
   /// Issue #314 review item 3: extra widgets appended below this panel's
   /// own content, inside the same [ListView] -- one scroll region rather
@@ -276,6 +284,10 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// the box. Null tier (no active estimate — not-enough-history,
   /// suppressed, disabled) keeps a teen's framing ON: the early, no-
   /// history months are exactly when the alarm framing would be wrong.
+  /// Issue #850 (U7): the copy is also lens-aware — on a guardian's device
+  /// the reader is not the subject, so the same mode's second-person strings
+  /// render third-person ([GuardianLens] resolved from the live guardian
+  /// rows exactly as [_effectiveReadOnly] resolves the role).
   CareModeCopy _copyFor(CyclePrediction prediction) => careModeCopyFor(
         widget.mode,
         irregularFraming: irregularFramingInEffect(
@@ -283,6 +295,8 @@ class _OverviewPanelState extends State<OverviewPanel>
           stored: widget.irregularFraming,
           tier: prediction is ActivePrediction ? prediction.tier : null,
         ),
+        lens: guardianLensFor(_guardians, _currentUserId),
+        subjectName: widget.subjectName,
       );
 
   @override

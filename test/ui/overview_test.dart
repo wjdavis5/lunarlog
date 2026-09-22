@@ -2805,6 +2805,99 @@ void main() {
       await db.close();
     });
   });
+
+  group('issue #850 (U7): third-person care-mode copy on a guardian device',
+      () {
+    testWidgets('the subject lens keeps the pre-#850 teen copy on a '
+        'not-enough-history profile', (tester) async {
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+      );
+      expect(find.text('Your record is just getting started'), findsOneWidget);
+      expect(
+        find.textContaining('Every entry builds the picture of your cycle.'),
+        findsOneWidget,
+      );
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('an accepted guardian reads the not-enough card third-person '
+        "with the subject's name", (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kNotEnoughStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+        ]),
+      );
+
+      expect(
+        find.text("Alice's record is just getting started"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining("Every entry builds the picture of Alice's cycle."),
+        findsOneWidget,
+      );
+      expect(find.text('Your record is just getting started'), findsNothing);
+      expect(
+        find.textContaining('Every entry builds the picture of your cycle.'),
+        findsNothing,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
+    });
+
+    testWidgets('the guardian lens renders the teen estimate label '
+        'third-person', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final authController = AuthController(authService: auth);
+      final h = await pumpOverview(
+        tester,
+        mode: ProfileMode.teen,
+        irregularFraming: false,
+        authController: authController,
+        withStorage: true,
+        seed: (entries, profileId) =>
+            seedEpisodes(entries, profileId, kActiveStarts),
+        seedGuardians: (storage, profileId) => storage.applyRemoteRows([
+          guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+        ]),
+      );
+
+      expect(
+        find.textContaining("Alice's next period is estimated around:"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Your next period is estimated around:'),
+        findsNothing,
+      );
+
+      authController.dispose();
+      await auth.dispose();
+      await disposeOverview(tester, h);
+    });
+  });
 }
 
 /// A [CyclePredictionService] that ignores the watched profile and emits a
