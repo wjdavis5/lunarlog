@@ -441,7 +441,10 @@ class ReminderCoordinator with WidgetsBindingObserver {
             subjectProfileIds,
           ),
       },
-      configs: configs,
+      // Issue #850, D-6: a stored per-profile config left on the device for
+      // a guarded profile must not re-arm what the lens silenced — the
+      // subject gate is on the preset *and* the explicit config.
+      configs: _subjectsOnly(configs, subjectProfileIds),
       lateSnoozes: lateSnoozes,
       statisticChangeSignals: statisticSignals,
       // Issue #183: the birth-control row watcher's last-observed
@@ -514,6 +517,22 @@ class ReminderCoordinator with WidgetsBindingObserver {
         },
       ),
     );
+  }
+
+  /// Drops every entry for a profile the signed-in viewer is not the subject
+  /// of (Issue #850, D-6), so device-local state left behind for a guarded
+  /// profile — a stored config row, a birth-control state — cannot re-arm a
+  /// reminder the lens silenced. Null [subjectProfileIds] is the pre-#850
+  /// all-subject default, so the map passes through untouched.
+  Map<String, T> _subjectsOnly<T>(
+    Map<String, T> entries,
+    Set<String>? subjectProfileIds,
+  ) {
+    if (subjectProfileIds == null) return entries;
+    return {
+      for (final entry in entries.entries)
+        if (subjectProfileIds.contains(entry.key)) entry.key: entry.value,
+    };
   }
 
   /// The `cycleStatisticChange` detection pass (Issue #178): compares each

@@ -311,6 +311,73 @@ void main() {
             'viewer\'s own, exactly as before #850');
   });
 
+  test('the lens gate also drops a stored config for a guarded profile '
+      '(Issue #850, D-6)', () async {
+    final scheduler = FakeReminderScheduler();
+    final permissionState =
+        NotificationPermissionState(NotificationAvailability.available);
+    final profiles = StreamController<List<Profile>>(sync: true);
+    final predictions = <String, StreamController<CyclePrediction>>{};
+    final store = FakeSettingsStore();
+    final configService = ReminderConfigService(store);
+    addTearDown(store.close);
+    final today = LocalDate(2026, 8, 30);
+
+    // Both profiles have an explicit stored config (the log nudge); only
+    // the subject's may arm.
+    final logNudge = ReminderConfig.standard.copyWith(
+      log: ReminderTypeConfig(enabled: true, timeOfDayMinutes: 20 * 60),
+    );
+    await configService.save('subject', logNudge);
+    await configService.save('guarded', logNudge);
+
+    final coordinator = ReminderCoordinator(
+      scheduler: scheduler,
+      permissionState: permissionState,
+      activeProfiles: profiles.stream,
+      predictionFor: (id) => predictions
+          .putIfAbsent(id, () => StreamController<CyclePrediction>(sync: true))
+          .stream,
+      localSettings: configService,
+      today: () => today,
+      isSubjectFor: _lensSource(
+        viewerId: 'u-mom',
+        rows: {
+          'subject': [
+            _row(profileId: 'subject', userId: 'u-mom', isSubject: true),
+          ],
+          'guarded': [
+            _row(
+              profileId: 'guarded',
+              userId: 'u-mom',
+              role: GuardianRole.primaryGuardian,
+            ),
+          ],
+        },
+      ),
+      replanDebounce: Duration.zero,
+    );
+    await coordinator.start();
+    addTearDown(() async {
+      await coordinator.dispose();
+      await profiles.close();
+      for (final c in predictions.values) {
+        await c.close();
+      }
+    });
+
+    profiles.add([_profile('subject'), _profile('guarded')]);
+    predictions['subject']!.add(_upcoming(today, today.addDays(10)));
+    predictions['guarded']!.add(_upcoming(today, today.addDays(10)));
+    await pumpEventQueue();
+
+    final plan = scheduler.rescheduleCalls.last;
+    expect(plan.any((r) => r.profileId == 'subject'), isTrue,
+        reason: 'the stored config still applies to the subject profile');
+    expect(plan.any((r) => r.profileId == 'guarded'), isFalse,
+        reason: 'the guarded profile\'s stored config is dropped by the lens');
+  });
+
   test('the legacy caregiver mode now plans like standard on a subject '
       'profile (Issue #850, U2/D-6)', () async {
     final scheduler = FakeReminderScheduler();
