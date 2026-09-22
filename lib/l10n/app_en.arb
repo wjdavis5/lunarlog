@@ -1027,7 +1027,7 @@
   },
   "healthSyncPermissionGranted": "{source} access: granted",
   "@healthSyncPermissionGranted": {
-    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.",
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is the sentence-initial store name ('Health app' or 'Health Connect'), since this string opens with it (Issue #1053).",
     "placeholders": {
       "source": {
         "type": "String"

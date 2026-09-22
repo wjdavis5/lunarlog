@@ -58,7 +58,10 @@ String _sourceName(HealthImportPlatform platform) => switch (platform) {
       HealthImportPlatform.healthConnect => 'Health Connect',
     };
 
-/// The human name of [platform]'s health store for titles and headings.
+/// The human name of [platform]'s health store for titles, headings, and
+/// any other sentence-initial position — including the OS-permission status
+/// line (Issue #1053), which must not start with [_sourceName]'s lowercase
+/// "the".
 String _sourceTitle(HealthImportPlatform platform) => switch (platform) {
       HealthImportPlatform.appleHealth => 'Health app',
       HealthImportPlatform.healthConnect => 'Health Connect',
@@ -278,14 +281,17 @@ class _HealthSyncScreenState extends State<HealthSyncScreen> {
   }
 
   /// Issue #959: the status line copy. The source name is the store this
-  /// platform actually uses. Note there is deliberately no read dimension:
-  /// HealthKit's read authorization is opaque, so the line never claims to
-  /// know (or denies) read access — it reports the write/access state only.
+  /// platform actually uses, in its sentence-initial form ([_sourceTitle]) —
+  /// every status string opens with it, so the mid-sentence [_sourceName]
+  /// would leave iOS reading "the Health app access: …" (Issue #1053). Note
+  /// there is deliberately no read dimension: HealthKit's read authorization
+  /// is opaque, so the line never claims to know (or denies) read access —
+  /// it reports the write/access state only.
   String _permissionStatusText(
     AppLocalizations l10n,
     HealthPermissionStatus status,
   ) {
-    final source = _sourceName(_importPlatform);
+    final source = _sourceTitle(_importPlatform);
     return switch (status) {
       HealthPermissionStatus.granted =>
         l10n.healthSyncPermissionGranted(source),
