@@ -1,35 +1,29 @@
 /// Unit tests for [DriftGuardianNotesRepository] (Issue #801): the thin
-/// drift-row → domain mapping over [LunarLogStorage], exercised against an
-/// in-memory database. Storage semantics themselves are proven in
-/// `storage_guardian_notes_test.dart`; this file only pins the seam
-/// (including `findOwnNoteForDate`, the client-side half of the
-/// author-ownership rule).
+/// drift-row → domain mapping over [FakeGuardianNoteStore], plus
+/// `findOwnNoteForDate`, the client-side half of the author-ownership rule.
+///
+/// Issue #551 problem 1 follow-up: this used to open a real drift database
+/// solely to feed the repository. It now drives a hand-written
+/// [FakeGuardianNoteStore] with no database at all; the storage SQL itself
+/// is proven in `storage_guardian_notes_test.dart`.
 library;
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
-import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lunarlog/data/db/db.dart';
-import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
+import 'package:lunarlog/data/repositories/drift_guardian_notes_repository.dart';
+
+import '../../support/fakes/fake_guardian_note_store.dart';
 
 void main() {
-  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-
-  late LunarLogDatabase db;
+  late FakeGuardianNoteStore store;
   late DriftGuardianNotesRepository repository;
 
   final date = LocalDate(2026, 9, 12);
 
-  setUp(() async {
-    db = LunarLogDatabase(NativeDatabase.memory());
-    addTearDown(() => db.close());
-    repository = DriftGuardianNotesRepository(db.storage);
-    await db.storage.upsertProfile(
-        id: 'p1',
-        displayName: 'Riley',
-        isMinor: true,
-        updatedAt: DateTime.utc(2026, 9, 1, 8));
+  setUp(() {
+    store = FakeGuardianNoteStore();
+    addTearDown(store.close);
+    repository = DriftGuardianNotesRepository(store);
   });
 
   test('save/list round-trips a dated note as a domain model', () async {
