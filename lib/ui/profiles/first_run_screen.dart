@@ -76,6 +76,7 @@ import 'package:lunarlog/ui/account/sync_status_tile.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/components/responsive_body.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
+import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
 import 'package:lunarlog/ui/profiles/birth_control_choices.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
 import 'package:lunarlog/ui/profiles/profile_dialogs.dart';
@@ -1100,37 +1101,44 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   );
 
   /// The minimum-age acknowledgement (Issue #269), extracted verbatim so
-  /// [_nameFormScreen] stays inside the CRAP gate.
-  Widget _ageAckSection(AppLocalizations l10n) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      CheckboxListTile(
-        key: const ValueKey('first-run-age-ack-checkbox'),
-        value: _ageAcknowledged,
-        onChanged: (value) => setState(() {
-          _ageAcknowledged = value ?? false;
-          if (_ageAcknowledged) _ageAckError = false;
-        }),
-        controlAffinity: ListTileControlAffinity.leading,
-        contentPadding: EdgeInsets.zero,
-        title: Text(l10n.firstRunAgeAcknowledgementLabel),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(left: 12, bottom: 4),
-        child: Text(
-          _ageAckError
-              ? l10n.firstRunAgeAcknowledgementRequired
-              : l10n.firstRunAgeAcknowledgementHint,
-          key: const ValueKey('first-run-age-ack-hint'),
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: _ageAckError
-                ? Theme.of(context).colorScheme.error
-                : Theme.of(context).colorScheme.onSurfaceVariant,
+  /// [_nameFormScreen] stays inside the CRAP gate. Issue #957 routes the copy
+  /// through [minimumAgeAcknowledgementCopy]'s `self13Plus` branch: a cold
+  /// sign-up keeps the 13-or-older statement; the parent-invite wording is
+  /// the accept-sheet branch (see `accept_invite_sheet.dart`).
+  Widget _ageAckSection(AppLocalizations l10n) {
+    final copy = minimumAgeAcknowledgementCopy(
+      l10n,
+      MinimumAgeAcknowledgementContext.self13Plus,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CheckboxListTile(
+          key: const ValueKey('first-run-age-ack-checkbox'),
+          value: _ageAcknowledged,
+          onChanged: (value) => setState(() {
+            _ageAcknowledged = value ?? false;
+            if (_ageAcknowledged) _ageAckError = false;
+          }),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          title: Text(copy.label),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 12, bottom: 4),
+          child: Text(
+            _ageAckError ? l10n.firstRunAgeAcknowledgementRequired : copy.hint,
+            key: const ValueKey('first-run-age-ack-hint'),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: _ageAckError
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   /// The care-mode picker (#131) plus — issue #804 — the one-line note
   /// that Teen was a *suggestion* when it was preselected for a minor's

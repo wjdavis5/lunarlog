@@ -4,9 +4,13 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/domain/consent/consent_service.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/breadcrumbs.dart';
+import 'package:lunarlog/ui/account/export_account_collaborator.dart'
+    show kAppVersionForExport;
 import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
+import 'package:lunarlog/ui/l10n/minimum_age_acknowledgement_copy.dart';
 import 'package:lunarlog/ui/l10n/sharing_failure_copy.dart';
 
 import '../../domain/sharing/sharing_service.dart';
@@ -26,6 +30,8 @@ class AcceptInviteSheet extends StatefulWidget {
     this.initialProfileId,
     this.onAccepted,
     this.breadcrumbLog,
+    this.acknowledgementContext,
+    this.consentService,
   });
 
   final String rawToken;
@@ -33,6 +39,21 @@ class AcceptInviteSheet extends StatefulWidget {
   final String? initialProfileId;
   final void Function(AcceptedInviteResult result)? onAccepted;
   final BreadcrumbLog? breadcrumbLog;
+
+  /// Issue #957: the minimum-age acknowledgement context to render, or null
+  /// to derive it from the preview. Left null in production, where a ready
+  /// subject preview (`preview.isSubject`) selects the parent-invite wording;
+  /// a widget test injects either context here to render both wordings
+  /// without a live preview (the injection seam).
+  final MinimumAgeAcknowledgementContext? acknowledgementContext;
+
+  /// Issue #957: the #845 consent-record seam. When a subject invitation is
+  /// accepted (the server's [AcceptedInviteResult.isSubject]), the acceptance
+  /// records `consent_via = parent_invite` — the parent's invitation is the
+  /// parental-consent record. Null in an unconfigured build and in tests that
+  /// do not exercise the write; the write is best-effort either way (the
+  /// parent's invitation remains the record even if this call fails).
+  final ConsentService? consentService;
 
   @override
   State<AcceptInviteSheet> createState() => _AcceptInviteSheetState();
@@ -93,6 +114,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
         rawToken: widget.rawToken,
         displayName: _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
       );
+      await _recordParentInviteConsent(res);
       if (mounted) {
         widget.onAccepted?.call(res);
         Navigator.of(context).pop(res);
@@ -113,6 +135,27 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
           _error = AppLocalizations.of(context).sharingUnexpectedError;
         });
       }
+    }
+  }
+
+  /// Issue #957: accepting a subject invitation is the parental-consent
+  /// record, so it writes `consent_via = parent_invite` through the #845
+  /// seam. An ordinary guardian acceptance (a co-parent/caregiver invite)
+  /// never writes this. Best-effort and never throws: the accepted
+  /// membership is already the durable record even if the sync call fails,
+  /// and the write is skipped entirely when no consent seam exists
+  /// (an unconfigured build).
+  Future<void> _recordParentInviteConsent(AcceptedInviteResult res) async {
+    final consent = widget.consentService;
+    if (!res.isSubject || consent == null) return;
+    try {
+      await consent.recordMinimumAgeAcknowledgement(
+        consentVia: kConsentViaParentInvite,
+        appVersion: kAppVersionForExport,
+        policyVersion: kMinimumAgePolicyVersion,
+      );
+    } catch (_) {
+      // Best-effort: the parent's invitation remains the consent record.
     }
   }
 
@@ -193,6 +236,51 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
         _PreviewState.ready => null,
       };
 
+  /// Issue #957: the minimum-age acknowledgement to render, or null when
+  /// none applies. A subject invitation (the "her own profile" preset) shows
+  /// the parent-invite wording instead of the flat 13-or-older statement: the
+  /// parent's invitation is the parental-consent record, so the operator
+  /// acknowledges the invitation rather than an age she may not have. An
+  /// ordinary guardian invite (an adult co-parent/caregiver) and every
+  /// non-ready preview render nothing here. [widget.acknowledgementContext]
+  /// is the injection seam a test uses to force either outcome.
+  MinimumAgeAcknowledgementCopy? _acknowledgementCopy(AppLocalizations l10n) {
+    final context = widget.acknowledgementContext ??
+        ((_previewState == _PreviewState.ready &&
+                (_preview?.isSubject ?? false))
+            ? MinimumAgeAcknowledgementContext.parentInvite
+            : null);
+    if (context == null) return null;
+    return minimumAgeAcknowledgementCopy(l10n, context);
+  }
+
+  Widget _acknowledgementSection(MinimumAgeAcknowledgementCopy copy) {
+    final theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('accept-invite-subject-acknowledgement'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(copy.label, style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 4),
+          Text(
+            copy.hint,
+            key: const ValueKey('accept-invite-subject-acknowledgement-hint'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Issue #642, LLA-012: the title row's [Text] is wrapped in [Expanded]
   /// (was a bare [Row] child) so a long localization or 200% text scaling
   /// wraps to a second line instead of overflowing horizontally past the
@@ -249,6 +337,7 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final previewStatus = _buildPreviewStatus(context, theme.textTheme);
+    final acknowledgement = _acknowledgementCopy(l10n);
 
     return SafeArea(
       // Issue #642, LLA-012: bounded via `ConstrainedBox` +
@@ -280,6 +369,10 @@ class _AcceptInviteSheetState extends State<AcceptInviteSheet> {
                   const SizedBox(height: 8),
                 ],
                 _buildIntro(context, theme.textTheme),
+                if (acknowledgement != null) ...[
+                  const SizedBox(height: 12),
+                  _acknowledgementSection(acknowledgement),
+                ],
                 const SizedBox(height: 16),
                 TextField(
                   controller: _nameController,

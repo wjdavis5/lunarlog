@@ -1153,6 +1153,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Please acknowledge the minimum-age policy to continue.';
 
   @override
+  String get firstRunAgeAcknowledgementParentInviteLabel =>
+      'My parent or guardian created this profile and invited me to use it';
+
+  @override
+  String get firstRunAgeAcknowledgementParentInviteHint =>
+      'Your parent or guardian set up this profile and sent you this invitation. That invitation is their permission for you to use lunarlog and log here yourself.';
+
+  @override
   String get firstRunCareModeLabel => 'Care mode';
 
   @override

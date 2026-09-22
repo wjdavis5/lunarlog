@@ -1041,6 +1041,9 @@ class _LunarLogAppState extends State<LunarLogApp>
           rawToken: code,
           sharingService: sharing,
           initialProfileId: profileId,
+          // Issue #957: a subject acceptance records parent_invite through the
+          // #845 consent seam; null on an unconfigured build (no write).
+          consentService: _deps.consentService,
         ),
       ).whenComplete(() => _inviteSheetOpen = false),
     );

@@ -1472,6 +1472,14 @@
   "@firstRunAgeAcknowledgementRequired": {
     "description": "Validation error shown when the minimum-age acknowledgement is not checked."
   },
+  "firstRunAgeAcknowledgementParentInviteLabel": "My parent or guardian created this profile and invited me to use it",
+  "@firstRunAgeAcknowledgementParentInviteLabel": {
+    "description": "Issue #957: the acknowledgement shown to an under-13 operator who arrived through a parent's or guardian's \"her own profile\" invitation, instead of the flat 13+ label. The parent's invitation is the parental-consent record."
+  },
+  "firstRunAgeAcknowledgementParentInviteHint": "Your parent or guardian set up this profile and sent you this invitation. That invitation is their permission for you to use lunarlog and log here yourself.",
+  "@firstRunAgeAcknowledgementParentInviteHint": {
+    "description": "Issue #957: one-line hint under the parent-invite acknowledgement."
+  },
   "firstRunCareModeLabel": "Care mode",
   "@firstRunCareModeLabel": {
     "description": "Label above the care-mode dropdown in the first-run form (kept)."
