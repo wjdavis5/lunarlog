@@ -1,0 +1,64 @@
+-- ===========================================================================
+-- 20260921120000_caregiver_mode_backfill.sql
+-- Issue #850 U3: retire the `caregiver` care MODE -- per-viewer posture is
+-- now the guardian *lens* (a membership-identity fact), not a chosen mode.
+--
+-- Issue #850 gives each profile two front pages: the subject keeps today's
+-- own-voice screen, every other viewer gets a guardian logistics card,
+-- decided from `profile_guardians.is_subject` + the viewer's role
+-- (`lib/domain/sharing/guardian_lens.dart`). `ProfileMode.caregiver` is
+-- therefore no longer a mode anybody chooses -- it folds into `standard`
+-- exactly the way #853 retired `irregular` into `standard` +
+-- `irregular_framing` (20260920110000_profile_irregular_framing.sql).
+--
+-- Change: a single idempotent data pass. Every stored `mode = 'caregiver'`
+-- row becomes `mode = 'standard'`.
+--
+--   `profiles_mode_check` is deliberately UNCHANGED -- it still accepts
+--   'caregiver' (and 'irregular'). An old client that has not updated is
+--   still allowed to push its stored `mode='caregiver'`; sync_push stores
+--   the caller's value as-is (server maps nothing), the client read
+--   boundary folds it (`row_codec.dart`'s decodeProfile ->
+--   ProfileMode.fromDb('caregiver') -> standard, U2), and the next
+--   new-client write of that row converges it. This migration is the
+--   server's own convergence of rows already at rest -- no structural
+--   change, so no CHECK edit, no sync_push re-emission, and no
+--   DO-block allowlist re-derivation: `mode` is already an ordinary member
+--   of the derived `c_profile_keys`, and no synced column changed.
+--
+--   `updated_at` is deliberately NOT bumped (the #853 precedent, and the
+--   plan's D-5). The `profiles_set_server_version` trigger already stamps a
+--   fresh `server_version` from `sync_sync_version_seq` on every UPDATE, so
+--   a pulling client sees the converged row; on the client the remote copy
+--   wins a same-`updated_at` tie (`conflict_rules.dart`'s `remoteWinsById`
+--   compares `>=`), so the new `mode` applies without a synthetic timestamp
+--   change. Bumping `updated_at` would buy nothing and could let this data
+--   pass beat a concurrent co-guardian edit on a row it merely normalizes --
+--   the same reason the local v28 Drift step (`db.dart`
+--   `_upgradeToV28`) deliberately does NOT mark converted rows dirty.
+--
+--   Idempotent by construction: `where mode = 'caregiver'` matches nothing
+--   once the pass has run, so an interrupted or replayed migration (or a
+--   later environment) is a no-op. A row an old client re-stores as
+--   'caregiver' after this runs is harmless -- it self-heals on the next
+--   new-client write, and this migration re-converges it on any later run.
+--
+--   No RLS, policy, or grant change: the fold is a plain UPDATE of an
+--   ordinary, already-writable presentation column. No
+--   delete_account_data()/export_account_data() edit: `mode` dies with its
+--   profile row, and export_account_data() deliberately never projected the
+--   care-mode presentation columns (the #240 precedent).
+--
+-- Filename ordering (AGENTS.md Migration Flow step 7): 20260921120000 sorts
+-- after 20260921110000, the newest migration expected to be on main when
+-- this lands; the U3 push must sort after both in-flight #850 migrations.
+-- Coverage: supabase/tests/caregiver_mode_backfill_test.sql.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- One-time data pass: `caregiver` -> `standard`.
+-- ---------------------------------------------------------------------------
+
+update public.profiles
+   set mode = 'standard'
+ where mode = 'caregiver';
