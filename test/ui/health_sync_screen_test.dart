@@ -1135,9 +1135,9 @@ void main() {
       final binding = HealthSyncBinding(FakeSettingsStore());
 
       for (final (wire, expected) in [
-        ('granted', 'the Health app access: granted'),
-        ('notAsked', 'the Health app access: not yet asked'),
-        ('denied', 'the Health app access: denied — open Settings to change'),
+        ('granted', 'Health app access: granted'),
+        ('notAsked', 'Health app access: not yet asked'),
+        ('denied', 'Health app access: denied — open Settings to change'),
       ]) {
         permissionResult = wire;
         // Tear the previous tree down so the screen's State is recreated
@@ -1155,6 +1155,42 @@ void main() {
           wire == 'denied' ? findsOneWidget : findsNothing,
         );
       }
+    });
+
+    testWidgets('the permission line is sentence-initial on both platforms — '
+        'iOS never reads a lowercase "the" (Issue #1053)', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+
+      // iOS: Apple Health's mid-sentence form is 'the Health app', but the
+      // status line opens with the store name, so it must use the
+      // sentence-initial title form 'Health app'.
+      permissionResult = 'notAsked';
+      await pumpScreen(
+        tester,
+        binding: binding,
+        permissionProbe: buildPermissionProbe(),
+      );
+      expect(find.text('Health app access: not yet asked'), findsOneWidget);
+      final line = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('health-sync-permission-status')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(line.data, startsWith('Health app'));
+      expect(line.data, isNot(startsWith('the ')));
+
+      // Android: Health Connect is the same name in both positions, and the
+      // line still reads as expected (writeEnabled: false selects it when no
+      // importer is wired).
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpScreen(
+        tester,
+        binding: binding,
+        permissionProbe: buildPermissionProbe(),
+        writeEnabled: false,
+      );
+      expect(find.text('Health Connect access: not yet asked'), findsOneWidget);
     });
 
     testWidgets('read status is never rendered as denied on iOS — a granted '
@@ -1220,7 +1256,7 @@ void main() {
         permissionProbe: buildPermissionProbe(),
       );
 
-      expect(find.text('the Health app access: granted'), findsOneWidget);
+      expect(find.text('Health app access: granted'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('health-sync-open-settings')),
         findsNothing,
@@ -1233,7 +1269,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('the Health app access: denied — open Settings to change'),
+        find.text('Health app access: denied — open Settings to change'),
         findsOneWidget,
       );
       expect(

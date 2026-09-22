@@ -1386,7 +1386,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is the sentence-initial store name ('Health app' or 'Health Connect'), since this string opens with it (Issue #1053).
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
