@@ -258,7 +258,9 @@ select is(
     'notification_preferences', 0, 'push_devices', 0,
     'notification_outbox', 0, 'profile_reminder_windows', 0,
     'missed_entry_alert_state', 0, 'feedback_tickets', 0, 'import_jobs', 0,
-    'ownership_transfers', 0, 'prediction_connections', 0
+    'ownership_transfers', 0, 'prediction_connections', 0,
+    -- Issue #845: the account-level minimum-age consent row.
+    'account_consents', 0
   ),
   'calling delete_account_data twice reports zero counts the second time'
 );

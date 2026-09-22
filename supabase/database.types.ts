@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      account_consents: {
+        Row: {
+          acknowledged_at: string
+          app_version: string
+          consent_via: string
+          policy_version: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged_at: string
+          app_version: string
+          consent_via: string
+          policy_version: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          app_version?: string
+          consent_via?: string
+          policy_version?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       account_deletion_progress: {
         Row: {
           apple_identity_id: string | null
@@ -1500,6 +1527,14 @@ export type Database = {
           p_entry_id: string
           p_field: string
           p_profile_id: string
+        }
+        Returns: undefined
+      }
+      record_minimum_age_acknowledgement: {
+        Args: {
+          p_app_version: string
+          p_consent_via: string
+          p_policy_version: string
         }
         Returns: undefined
       }
