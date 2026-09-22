@@ -241,6 +241,17 @@ final List<CoverageExclusion> excludedLibFilePaths = [
         'Wraps drift\'s WasmDatabase/IndexedDB wiring, which cannot run '
         'under flutter test regardless.',
   ),
+  const CoverageExclusion(
+    'lib/data/auth/web_url_cleaner_web.dart',
+    'The web branch of lib/data/auth/web_url_cleaner.dart\'s conditional '
+        'import (epic #831 slice 4) -- flutter test\'s native/VM target '
+        'never resolves dart.library.js_interop, so this file never loads '
+        '(same reasoning as web_db.dart above). One call to '
+        'window.history.replaceState via package:web; the pure URL '
+        'cleaning it is handed lives in web_url_cleaner.dart and is fully '
+        'covered there, and test/architecture/web_url_cleanup_test.dart '
+        'pins that this file uses replaceState, never pushState.',
+  ),
   // #215 device-checklist pairing: this file's entry under
   // "Gate-exclusion pairing (issue #215)" in docs/ops/supabase-go-live.md.
   const CoverageExclusion(
