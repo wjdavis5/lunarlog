@@ -64,6 +64,11 @@ abstract interface class DayEntryStore {
     required String localDate,
   });
   Future<DayEntry?> getDayEntryById(String id);
+  /// #850 U5's bounded latest-entry read (`ORDER BY local_date DESC LIMIT 1`).
+  /// Landed on the concrete class via #1080 in parallel with these roles
+  /// (#1082); declared here so `DriftDayEntriesRepository` compiles against
+  /// its role rather than the concrete `LunarLogStorage`.
+  Future<DayEntry?> getLatestDayEntry(String profileId);
   Future<DayEntry?> findDayEntryBySource({
     required String profileId,
     required String source,
