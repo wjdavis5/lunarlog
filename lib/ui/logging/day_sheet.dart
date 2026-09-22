@@ -75,6 +75,7 @@ import 'package:lunarlog/ui/l10n/guardian_role_copy.dart';
 import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:lunarlog/domain/calendar_preferences.dart';
 import 'package:lunarlog/domain/care_modes.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/conceive.dart' show conceiveCategoryOrder;
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show describeUnmappedRaw;
@@ -102,12 +103,13 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/domain/repositories/tag_registry_repository.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/tags.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
+    show shouldConfirmOfflineSave;
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -142,7 +144,11 @@ const Duration kDaySheetSavedIndicatorDuration = Duration(seconds: 2);
 /// Calendar → "Date format" setting; it defaults to the system order, which
 /// since issue #884 follows [locale]'s own day/month ordering (month-first
 /// for `en_US`, day-first for `en_GB`).
+/// Issue #1004 (tranche 5): the relative words come from the arb
+/// (`relativeDayToday`/`Yesterday`/`Tomorrow`) — the helper's English
+/// fallbacks are gone.
 String daySheetDateLabel(
+  AppLocalizations l10n,
   LocalDate date,
   LocalDate today, {
   String locale = dates.kFallbackLocale,
@@ -152,6 +158,9 @@ String daySheetDateLabel(
       date,
       today,
       locale: locale,
+      todayLabel: l10n.relativeDayToday,
+      yesterdayLabel: l10n.relativeDayYesterday,
+      tomorrowLabel: l10n.relativeDayTomorrow,
       preference: preference,
     );
 
@@ -493,6 +502,19 @@ class _DaySheetState extends State<DaySheet> {
   /// not a child row).
   bool _pms = false;
 
+  /// Issue #849 (re-scoped): the per-note private flag, tracked straight
+  /// off the loaded entry (like flow and tags — it rides
+  /// `DayEntry.notePrivate` itself). Only the subject's lens renders the
+  /// toggle; the server masks a private note's text to null on every other
+  /// device, so [_existingPrivateNoteHidden] is what a guardian sees.
+  bool _notePrivate = false;
+
+  /// Issue #849: privacy is chosen when the note is written, so the toggle
+  /// locks itself once a non-empty note has been saved (and stays locked for
+  /// a loaded row that already has text). Cleared only by [_notePrivate]
+  /// being true with an empty note (the flag can't be cleared at all).
+  bool _notePrivacyLocked = false;
+
   /// Review fix (blocking): `true` once [_loadExistingSpotting] finds the
   /// day already had spotting on load — kept `true` even after the user
   /// unchecks the toggle, so [_resolveEffectiveFlow] can tell "spotting
@@ -571,8 +593,16 @@ class _DaySheetState extends State<DaySheet> {
   /// (composition never touches categories), so the composed axis is
   /// deliberately not plumbed into this widget — `irregularFraming: false`
   /// selects exactly the same category fields the flag-on copy would.
-  CareModeCopy get _copy =>
-      careModeCopyFor(widget.mode, irregularFraming: false);
+  ///
+  /// Issue #850 (U7): the lens is passed for parity with the other registry
+  /// consumers; no field read here varies by lens (headings are
+  /// second-person-free), so this is a no-op today that keeps a future copy
+  /// addition honest.
+  CareModeCopy get _copy => careModeCopyFor(
+        widget.mode,
+        irregularFraming: false,
+        lens: guardianLensFor(widget.guardians, widget.currentUserId),
+      );
 
   /// The categories this sheet surfaces, resolved per Issue #259 (AC2):
   /// the profile's curated set and order first, then the uncurated
@@ -679,6 +709,7 @@ class _DaySheetState extends State<DaySheet> {
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
     _pms = existing?.pms ?? false;
+    _initPrivateNoteState(existing);
     _unrecognisedTags = [
       for (final code in existing?.tags ?? const <String>[])
         if (!isValidTagCode(code)) code,
@@ -714,6 +745,16 @@ class _DaySheetState extends State<DaySheet> {
     // Issue #887: the bleed history the cycle-start guard evaluates
     // against (see [_otherBleedDates]).
     unawaited(_loadBleedHistory());
+  }
+
+  /// Issue #849: seeds [_notePrivate] and [_notePrivacyLocked] from the
+  /// loaded entry. Split out of [initState] so that method's branch count
+  /// stays under the CRAP gate; [existing] is [widget.existing], and the
+  /// lock is set when the loaded note already has text (privacy can't be
+  /// chosen retroactively).
+  void _initPrivateNoteState(DayEntry? existing) {
+    _notePrivate = existing?.notePrivate ?? false;
+    _notePrivacyLocked = existing?.note?.trim().isNotEmpty ?? false;
   }
 
   /// Issue #887: loads the profile's bleed dates (excluding this sheet's
@@ -956,6 +997,11 @@ class _DaySheetState extends State<DaySheet> {
       ),
       tags: _tags.toList(),
       note: note.isEmpty ? null : note,
+      // Issue #849: the private flag rides the entry itself. A guardian's
+      // lens never shows the toggle, so it stays wherever it loaded (true
+      // for a masked private note); the server preserves the stored note
+      // when the caller isn't the subject.
+      notePrivate: _notePrivate,
       // Issue #220: the first-class PMS marker rides the entry itself.
       pms: _pms,
       updatedAt: DateTime.now().toUtc(),
@@ -1089,6 +1135,11 @@ class _DaySheetState extends State<DaySheet> {
           setState(() => _saveState = const DaySheetIdle());
         }
       });
+      // Issue #849: the first write that persists text locks the privacy
+      // toggle — a saved (shared) note can never be made private.
+      if (!_notePrivacyLocked && _noteController.text.trim().isNotEmpty) {
+        setState(() => _notePrivacyLocked = true);
+      }
     }
   }
 
@@ -1390,6 +1441,7 @@ class _DaySheetState extends State<DaySheet> {
           child: Text(
             l10n.daySheetDeleteBody(
               daySheetDateLabel(
+                l10n,
                 widget.date,
                 widget.today,
                 locale: dates.calendarLocale(context),
@@ -1618,9 +1670,9 @@ class _DaySheetState extends State<DaySheet> {
     if (flushPending) unawaited(_performAutosave());
     if (messenger != null) {
       messenger.showSnackBar(
-        const SnackBar(
-          key: ValueKey('offline-save-confirmation'),
-          content: Text(kOfflineSaveConfirmationCopy),
+        SnackBar(
+          key: const ValueKey('offline-save-confirmation'),
+          content: Text(AppLocalizations.of(context).accountSyncStatusOfflineSaved),
         ),
       );
     }
@@ -1891,7 +1943,14 @@ class _DaySheetState extends State<DaySheet> {
   /// reaches it without first wading through BBT/weight — the issue's stated
   /// minimum. The field grows with its content ([minLines]/[maxLines]) and
   /// carries a hint in the voice guide's register.
+  ///
+  /// Issue #849 (re-scoped): the subject's lens also gains a private-note
+  /// toggle, and a guardian looking at a private note sees a placeholder
+  /// instead of the (never-delivered) text.
   Widget _noteField(AppLocalizations l10n) {
+    if (_lensForViewer == GuardianLens.guardian && _existingPrivateNoteHidden) {
+      return _hiddenNoteField(l10n);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1923,12 +1982,93 @@ class _DaySheetState extends State<DaySheet> {
         Padding(
           padding: const EdgeInsets.only(top: LLSpace.space1),
           child: Text(
-            kCareNotesDisclosure,
+            AppLocalizations.of(context).careNotesDisclosure,
             key: const ValueKey('day-note-disclosure'),
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
+        if (_showPrivacyToggle) _notePrivacyToggle(l10n),
       ],
+    );
+  }
+
+  /// Issue #849: the subject's lens for this sheet — the only viewer who may
+  /// mark a note private, or read one in full (fail-open to the subject for
+  /// a local-only operator, exactly like every other lens read).
+  GuardianLens get _lensForViewer =>
+      guardianLensFor(widget.guardians, widget.currentUserId);
+
+  /// Issue #849: the loaded row's note is private but its text is not
+  /// present locally — the server masked it for this (guardian) viewer.
+  bool get _existingPrivateNoteHidden =>
+      (widget.existing?.notePrivate ?? false) &&
+      (widget.existing?.note ?? '').trim().isEmpty;
+
+  /// Issue #849: the toggle is shown while the note is being written, or
+  /// when it is already private (so the locked state stays visible). Once a
+  /// non-empty note is saved it can no longer be made private.
+  bool get _showPrivacyToggle =>
+      _lensForViewer == GuardianLens.subject &&
+      (!_notePrivacyLocked || _notePrivate);
+
+  /// Issue #849: the toggle locks once the flag is stored (it can never be
+  /// cleared) or a non-empty note has been saved (privacy can't be chosen
+  /// retroactively). A freshly checked, unsaved new note is deliberately
+  /// NOT locked, so the subject can change her mind before the first save.
+  bool get _privacyToggleLocked =>
+      _notePrivacyLocked || (widget.existing?.notePrivate ?? false);
+
+  /// Issue #849: the read-only body's note text — the private placeholder
+  /// for a masked private note, "No note" when empty, the text otherwise.
+  String _readOnlyNoteText(AppLocalizations l10n) {
+    if (_existingPrivateNoteHidden) return l10n.daySheetNotePrivateHidden;
+    final note = widget.existing?.note;
+    if (note == null || note.isEmpty) return l10n.daySheetNoNote;
+    return note;
+  }
+
+  /// Issue #849: the guardian-facing placeholder for a private note whose
+  /// text was deliberately never delivered to this device.
+  Widget _hiddenNoteField(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.only(top: LLSpace.space3),
+      child: Row(
+        key: const ValueKey('private-note-placeholder'),
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 18,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: LLSpace.space2),
+          Text(l10n.daySheetNotePrivateHidden),
+        ],
+      ),
+    );
+  }
+
+  /// Issue #849: the subject-only "Keep this note private" toggle. Disabled
+  /// once the note has saved text — the server enforces the same
+  /// once-shared-never-private rule.
+  Widget _notePrivacyToggle(AppLocalizations l10n) {
+    return Padding(
+      padding: const EdgeInsets.only(top: LLSpace.space1),
+      child: CheckboxListTile(
+        key: const ValueKey('note-private-toggle'),
+        value: _notePrivate,
+        onChanged: (!_privacyToggleLocked && !_busy)
+            ? (value) => setState(() => _notePrivate = value ?? false)
+            : null,
+        title: Text(l10n.daySheetNotePrivateToggle),
+        subtitle: Text(
+          _privacyToggleLocked
+              ? l10n.daySheetNotePrivateSavedHint
+              : l10n.daySheetNotePrivateHint,
+        ),
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+      ),
     );
   }
 
@@ -2366,6 +2506,7 @@ class _DaySheetState extends State<DaySheet> {
             child: Text(
               key: const ValueKey('day-sheet-date-title'),
               daySheetDateLabel(
+                AppLocalizations.of(context),
                 date,
                 widget.today,
                 locale: dates.calendarLocale(context),
@@ -2990,11 +3131,7 @@ class _DaySheetState extends State<DaySheet> {
                   AppLocalizations.of(context).daySheetNoteLabel,
                   style: theme.textTheme.labelMedium,
                 ),
-                Text(
-                  (existing.note == null || existing.note!.isEmpty)
-                      ? AppLocalizations.of(context).daySheetNoNote
-                      : existing.note!,
-                ),
+                Text(_readOnlyNoteText(AppLocalizations.of(context))),
                 // Issue #869: the viewer reads guardian notes too.
                 ..._guardianNotesSlot(),
               ],

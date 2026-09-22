@@ -21,6 +21,7 @@ import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/models/profile_relationship.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/domain/logging/tracking_preferences.dart';
 import 'package:lunarlog/domain/models/measurement_unit.dart';
@@ -886,8 +887,8 @@ void main() {
       );
     });
 
-    testWidgets('a device-zone import is reported as placed alongside the '
-        'unplaceable skips, never labelled skipped itself (Issue #902, '
+    testWidgets('a device-zone import is reported as dated alongside the '
+        'unplaceable skips, never labelled skipped itself (Issue #902, #1001, '
         'reshaped by #1017)', (tester) async {
       final importer = _FakeImporter(const HealthImportSummary(
         samplesRead: 4,
@@ -903,17 +904,17 @@ void main() {
 
       expect(
         find.textContaining(
-          'Placed 2 samples using the time zone of this phone.',
+          'Dated 2 entries using the time zone of this phone.',
         ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Skipped 1 sample with no recorded time zone.'),
+        find.textContaining('Skipped 1 entry with no recorded time zone.'),
         findsOneWidget,
       );
-      // The two inferred placements are reported as placed, never folded
+      // The two inferred placements are reported as dated, never folded
       // into the skip count.
-      expect(find.textContaining('Skipped 2 samples'), findsNothing);
+      expect(find.textContaining('Skipped 2 entries'), findsNothing);
     });
 
     testWidgets('a confirmed unbind clears the previous import summary from '
@@ -958,7 +959,7 @@ void main() {
 
       expect(
         find.text(
-          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+          healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth),
         ),
         findsOneWidget,
       );
@@ -980,7 +981,7 @@ void main() {
 
       expect(
         find.text(
-          healthImportEmptyCopy(HealthImportPlatform.appleHealth),
+          healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth),
         ),
         findsOneWidget,
       );
@@ -998,7 +999,77 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining("This profile can't import from Apple Health"),
+        find.textContaining("This profile can't import from the Health app"),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a platform unavailable outcome renders platform-specific copy',
+        (tester) async {
+      final iosImporter = _FakeImporter(const HealthImportSummary(
+        blocked: HealthPlatformUnavailable(),
+      ), platform: HealthImportPlatform.appleHealth);
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: iosImporter);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("The Health app isn't available on this device."),
+        findsOneWidget,
+      );
+
+      final androidImporter = _FakeImporter(const HealthImportSummary(
+        blocked: HealthPlatformUnavailable(),
+      ), platform: HealthImportPlatform.healthConnect);
+      final androidBinding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(
+        tester,
+        binding: androidBinding,
+        importer: androidImporter,
+        writeEnabled: false,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Health Connect isn't available on this device."),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a platform failed outcome renders generic retry copy',
+        (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        blocked: HealthPlatformFailed('disk error'),
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Couldn't finish the import. Please try again."),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a platform allowed with empty summary renders neutral copy',
+        (tester) async {
+      final importer = _FakeImporter(const HealthImportSummary(
+        blocked: HealthPlatformAllowed(),
+      ));
+      final binding = await boundBinding(FakeSettingsStore());
+      await pumpScreen(tester, binding: binding, importer: importer);
+
+      await tester.tap(find.byKey(const ValueKey('health-sync-import-tile')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(healthImportEmptyCopy(AppLocalizationsEn(), HealthImportPlatform.appleHealth)),
         findsOneWidget,
       );
     });
@@ -1064,9 +1135,9 @@ void main() {
       final binding = HealthSyncBinding(FakeSettingsStore());
 
       for (final (wire, expected) in [
-        ('granted', 'Apple Health access: granted'),
-        ('notAsked', 'Apple Health access: not yet asked'),
-        ('denied', 'Apple Health access: denied — open Settings to change'),
+        ('granted', 'the Health app access: granted'),
+        ('notAsked', 'the Health app access: not yet asked'),
+        ('denied', 'the Health app access: denied — open Settings to change'),
       ]) {
         permissionResult = wire;
         // Tear the previous tree down so the screen's State is recreated
@@ -1149,7 +1220,7 @@ void main() {
         permissionProbe: buildPermissionProbe(),
       );
 
-      expect(find.text('Apple Health access: granted'), findsOneWidget);
+      expect(find.text('the Health app access: granted'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('health-sync-open-settings')),
         findsNothing,
@@ -1162,7 +1233,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Apple Health access: denied — open Settings to change'),
+        find.text('the Health app access: denied — open Settings to change'),
         findsOneWidget,
       );
       expect(
@@ -1184,6 +1255,145 @@ void main() {
         find.byKey(const ValueKey('health-sync-open-settings')),
         findsNothing,
       );
+    });
+  });
+
+  group('Issue #1001 platform-specific health store copy', () {
+    testWidgets(
+        'iOS renders Health app sync in app bar and the Health app in import tile',
+        (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      final importer = _FakeImporter(
+        const HealthImportSummary(),
+        platform: HealthImportPlatform.appleHealth,
+      );
+      await pumpScreen(
+        tester,
+        binding: binding,
+        importer: importer,
+        writeEnabled: true,
+      );
+
+      expect(find.text('Health app sync'), findsOneWidget);
+      expect(find.text('Import from the Health app'), findsOneWidget);
+      expect(
+        find.text(
+          "Choose the one profile whose data this phone may ever write to its "
+          "Health app. Every other profile stays out of this phone's Health app "
+          'entirely.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'Android renders Health Connect sync in app bar, intro, and import tile',
+        (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+      final importer = _FakeImporter(
+        const HealthImportSummary(),
+        platform: HealthImportPlatform.healthConnect,
+      );
+      await pumpScreen(
+        tester,
+        binding: binding,
+        importer: importer,
+        writeEnabled: false,
+      );
+
+      expect(find.text('Health Connect sync'), findsOneWidget);
+      expect(find.text('Import from Health Connect'), findsOneWidget);
+      expect(
+        find.text(
+          'Choose the one profile this phone may import health data into. Every '
+          'other profile stays out of Health Connect entirely.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('bind dialog references platform health store', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      // iOS bind dialog
+      await pumpScreen(tester, binding: binding, writeEnabled: true);
+      await tester.tap(find.byKey(const ValueKey('health-sync-profile-eligible')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          "Only Alice's data will ever be written to the Health app. This phone "
+          'can sync one profile at a time — choosing a different profile later '
+          'replaces this one.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Android bind dialog
+      await pumpScreen(tester, binding: binding, writeEnabled: false);
+      await tester.tap(find.byKey(const ValueKey('health-sync-profile-eligible')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          "Only Alice's data will ever be imported from Health Connect. This "
+          'phone can sync one profile at a time — choosing a different profile '
+          'later replaces this one.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('unbind dialog references platform health store', (tester) async {
+      final binding = HealthSyncBinding(FakeSettingsStore());
+      await binding.bind(
+        profile: profiles.firstWhere((p) => p.id == 'eligible'),
+        signedInUserId: 'u1',
+        ownerUserId: 'u1',
+        minorBindingAllowed: false,
+      );
+
+      // iOS unbind dialog
+      await pumpScreen(tester, binding: binding, writeEnabled: true);
+      await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'This phone will stop writing data for Alice to the Health app and '
+          'stop importing from it. Nothing already logged in lunarlog, or '
+          'already written to the Health app, is deleted.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      // Android unbind dialog
+      await pumpScreen(tester, binding: binding, writeEnabled: false);
+      await tester.tap(find.byKey(const ValueKey('health-sync-unbind-tile')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'This phone will stop importing data for Alice from Health Connect. '
+          'Nothing already logged is deleted.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
     });
   });
 }

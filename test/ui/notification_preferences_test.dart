@@ -154,6 +154,45 @@ void main() {
   });
 
   testWidgets(
+      'the ahead-of-time group renders three independent off-by-default toggles '
+      'and a toggle persists (Issue #851)', (tester) async {
+    final service = FakeNotificationPreferencesService();
+
+    await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: NotificationPreferencesScreen(
+        profile: _profile(),
+        preferencesService: service,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await _scrollTo(tester, find.byKey(const ValueKey('alert-period-soon-toggle')));
+    expect(find.text('Ahead of time'), findsOneWidget);
+
+    SwitchListTile tileOf(String key) =>
+        tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
+
+    for (final key in [
+      'alert-period-soon-toggle',
+      'alert-restock-toggle',
+      'alert-pms-soon-toggle',
+    ]) {
+      expect(tileOf(key).value, isFalse, reason: '$key should be off by default');
+      expect(tileOf(key).onChanged, isNotNull,
+          reason: '$key is independent of the entry-alert master switch');
+    }
+
+    await tester.tap(find.byKey(const ValueKey('alert-period-soon-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(tileOf('alert-period-soon-toggle').value, isTrue);
+    expect(service.stored['profile-1']?.aheadOfTimeAlerts.periodSoon, isTrue);
+    expect(service.stored['profile-1']?.aheadOfTimeAlerts.restock, isFalse);
+  });
+
+  testWidgets(
       'toggling "notify on log" on enables the two dependent switches; '
       'toggling it off disables and visually clears them', (tester) async {
     final service = FakeNotificationPreferencesService();

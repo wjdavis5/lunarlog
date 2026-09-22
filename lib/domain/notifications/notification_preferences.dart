@@ -111,6 +111,76 @@ class QuietHours {
   String toString() => 'QuietHours($startMinutes-$endMinutes)';
 }
 
+/// The three per-guardian ahead-of-time alert opt-ins (Issue #851), grouped
+/// so [CaregiverAlertPreferences] carries them as one field rather than
+/// three: each is its own `notification_preferences.alert_on_*` boolean,
+/// off by default like every other caregiver alert (R4).
+///
+/// [periodSoon] fires a few days before the next expected period;
+/// [restock] adds the supplies nudge on the same window; [pmsSoon] is the
+/// PMS-window heads-up, which the server only ever fires for a profile with
+/// at least three logged PMS intervals.
+class AheadOfTimeAlerts {
+  const AheadOfTimeAlerts({
+    this.periodSoon = false,
+    this.restock = false,
+    this.pmsSoon = false,
+  });
+
+  /// Every opt-in off - the value [CaregiverAlertPreferences.off] holds.
+  static const AheadOfTimeAlerts off = AheadOfTimeAlerts();
+
+  final bool periodSoon;
+  final bool restock;
+  final bool pmsSoon;
+
+  AheadOfTimeAlerts copyWith({
+    bool? periodSoon,
+    bool? restock,
+    bool? pmsSoon,
+  }) =>
+      AheadOfTimeAlerts(
+        periodSoon: periodSoon ?? this.periodSoon,
+        restock: restock ?? this.restock,
+        pmsSoon: pmsSoon ?? this.pmsSoon,
+      );
+
+  /// The three stored columns, as a shape the Supabase service can spread.
+  ({bool periodSoon, bool restock, bool pmsSoon}) toDb() => (
+        periodSoon: periodSoon,
+        restock: restock,
+        pmsSoon: pmsSoon,
+      );
+
+  /// Maps the three stored columns back; an absent/null value (a pre-#851
+  /// row) reads as false, the off default.
+  static AheadOfTimeAlerts fromDb({
+    bool? periodSoon,
+    bool? restock,
+    bool? pmsSoon,
+  }) =>
+      AheadOfTimeAlerts(
+        periodSoon: periodSoon ?? false,
+        restock: restock ?? false,
+        pmsSoon: pmsSoon ?? false,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is AheadOfTimeAlerts &&
+      other.periodSoon == periodSoon &&
+      other.restock == restock &&
+      other.pmsSoon == pmsSoon;
+
+  @override
+  int get hashCode => Object.hash(periodSoon, restock, pmsSoon);
+
+  @override
+  String toString() =>
+      'AheadOfTimeAlerts(periodSoon: $periodSoon, restock: $restock, '
+      'pmsSoon: $pmsSoon)';
+}
+
 /// One guardian's full alert configuration for one profile (R3). The
 /// all-off default ([off]) is what a missing `notification_preferences` row
 /// means (R4) - nothing is enqueued for a guardian who never configured
@@ -125,6 +195,7 @@ class CaregiverAlertPreferences {
     this.highSeverityCadence = AlertCadence.immediate,
     this.digestTimeMinutes,
     this.missedEntryThreshold = MissedEntryThreshold.off,
+    this.aheadOfTimeAlerts = AheadOfTimeAlerts.off,
     this.quietHours,
     this.timeZone,
   });
@@ -153,6 +224,10 @@ class CaregiverAlertPreferences {
   final int? digestTimeMinutes;
 
   final MissedEntryThreshold missedEntryThreshold;
+
+  /// The ahead-of-time alert opt-ins (Issue #851), grouped as one value.
+  final AheadOfTimeAlerts aheadOfTimeAlerts;
+
   final QuietHours? quietHours;
 
   /// IANA zone name (e.g. `America/New_York`); null means quiet hours never
@@ -162,7 +237,7 @@ class CaregiverAlertPreferences {
   /// Structural identity for [==]/[hashCode]: records compare by value, so
   /// equality stays one branch however many fields this class gains.
   (bool, bool, bool, AlertCadence, AlertCadence, AlertCadence, int?,
-          MissedEntryThreshold, QuietHours?, String?)
+          MissedEntryThreshold, AheadOfTimeAlerts, QuietHours?, String?)
       get _identity => (
             alertOnLog,
             alertOnCycleStartOnly,
@@ -172,6 +247,7 @@ class CaregiverAlertPreferences {
             highSeverityCadence,
             digestTimeMinutes,
             missedEntryThreshold,
+            aheadOfTimeAlerts,
             quietHours,
             timeZone,
           );
@@ -191,6 +267,7 @@ class CaregiverAlertPreferences {
     int? digestTimeMinutes,
     bool clearDigestTime = false,
     MissedEntryThreshold? missedEntryThreshold,
+    AheadOfTimeAlerts? aheadOfTimeAlerts,
     QuietHours? quietHours,
     bool clearQuietHours = false,
     String? timeZone,
@@ -207,6 +284,7 @@ class CaregiverAlertPreferences {
         digestTimeMinutes:
             _pick(this.digestTimeMinutes, digestTimeMinutes, clearDigestTime),
         missedEntryThreshold: missedEntryThreshold ?? this.missedEntryThreshold,
+        aheadOfTimeAlerts: aheadOfTimeAlerts ?? this.aheadOfTimeAlerts,
         quietHours: _pick(this.quietHours, quietHours, clearQuietHours),
         timeZone: _pick(this.timeZone, timeZone, clearTimeZone),
       );
@@ -225,6 +303,7 @@ class CaregiverAlertPreferences {
       'logCadence: $logCadence, cycleStartCadence: $cycleStartCadence, '
       'highSeverityCadence: $highSeverityCadence, '
       'digestTime: $digestTimeMinutes, '
-      'missedEntry: $missedEntryThreshold, quietHours: $quietHours, '
+      'missedEntry: $missedEntryThreshold, '
+      'aheadOfTime: $aheadOfTimeAlerts, quietHours: $quietHours, '
       'timeZone: $timeZone)';
 }

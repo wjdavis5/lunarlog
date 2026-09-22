@@ -360,7 +360,7 @@ class ProfileCard extends StatelessWidget {
     final theme = Theme.of(context);
     final service = predictionService;
     final subtitleText = subtitle;
-    final trailingRow = _trailingRow();
+    final trailingRow = _trailingRow(context);
     return ListTile(
       leading: ProfileAvatar(
         profileId: profile.id,
@@ -376,7 +376,7 @@ class ProfileCard extends StatelessWidget {
 
   /// The #126 badge assembly (mirroring `ProfileSharingTile`) plus the
   /// caller's own trailing control, or null when nothing renders.
-  Widget? _trailingRow() {
+  Widget? _trailingRow(BuildContext context) {
     final showBadge = sharingService != null &&
         SharingProfileInfo.canShowPendingBadge(info.myRole);
     final showIndicator = info.isCoManaged;
@@ -385,7 +385,7 @@ class ProfileCard extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (showIndicator) _sharedIndicator(),
+        if (showIndicator) _sharedIndicator(context),
         if (showBadge) ...[
           const SizedBox(width: 8),
           PendingInviteBadge(
@@ -403,8 +403,9 @@ class ProfileCard extends StatelessWidget {
     );
   }
 
-  Widget _sharedIndicator() => Tooltip(
-        message: 'Shared · ${info.acceptedCount} guardians',
+  Widget _sharedIndicator(BuildContext context) => Tooltip(
+        message: AppLocalizations.of(context)
+            .profileDetailSharedGuardians(info.acceptedCount),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

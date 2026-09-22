@@ -73,6 +73,7 @@ import 'package:lunarlog/domain/prediction/prediction_service.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profile_modes_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
+import 'package:lunarlog/domain/sharing/guardian_lens.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -147,6 +148,7 @@ class OverviewPanel extends StatefulWidget {
     this.readOnly = false,
     this.timezoneProvider,
     this.guardiansRepository,
+    this.subjectName,
     this.trailingChildren = const [],
   });
 
@@ -192,6 +194,13 @@ class OverviewPanel extends StatefulWidget {
   /// check (same shape as [MonthCalendar.guardiansRepository]); null in
   /// local-only use.
   final ProfileGuardiansRepository? guardiansRepository;
+
+  /// Issue #850 (U7): the subject's display name, for the third-person
+  /// care-mode copy a guardian reads on this profile ("Maya's next period…").
+  /// Null (a local-only tree, or a caller that has no profile in hand) falls
+  /// back to the gender-neutral "their". Ignored when the viewer is the
+  /// subject.
+  final String? subjectName;
 
   /// Issue #314 review item 3: extra widgets appended below this panel's
   /// own content, inside the same [ListView] -- one scroll region rather
@@ -278,6 +287,10 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// the box. Null tier (no active estimate — not-enough-history,
   /// suppressed, disabled) keeps a teen's framing ON: the early, no-
   /// history months are exactly when the alarm framing would be wrong.
+  /// Issue #850 (U7): the copy is also lens-aware — on a guardian's device
+  /// the reader is not the subject, so the same mode's second-person strings
+  /// render third-person ([GuardianLens] resolved from the live guardian
+  /// rows exactly as [_effectiveReadOnly] resolves the role).
   CareModeCopy _copyFor(CyclePrediction prediction) => careModeCopyFor(
         widget.mode,
         irregularFraming: irregularFramingInEffect(
@@ -285,6 +298,8 @@ class _OverviewPanelState extends State<OverviewPanel>
           stored: widget.irregularFraming,
           tier: prediction is ActivePrediction ? prediction.tier : null,
         ),
+        lens: guardianLensFor(_guardians, _currentUserId),
+        subjectName: widget.subjectName,
       );
 
   @override
@@ -584,18 +599,19 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
-  /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
-  /// [DayEntry] (flow/tags/note preserved) if today already had one, or a
-  /// tombstone if the quick-log tap is what created it. Goes through
-  /// [DayEntriesRepository] either way -- never a bespoke undo path -- so
-  /// sync dirty-marking applies exactly as it would to any other edit.
+  /// Restores exactly what [_logPeriodStartedToday] overwrote, through the
+  /// shared [undoQuickLog] helper: the prior [DayEntry] (flow/tags/note
+  /// preserved) if today already had one, or a tombstone if the quick-log
+  /// tap is what created it. Issue #1016 lifted this body into the shared
+  /// helper so the widget quick-log's own snackbar Undo (surfaced by the
+  /// app shell) has identical semantics — never a bespoke undo path.
   Future<void> _undoLogToday(DayEntry? previous, LocalDate today) async {
-    final repository = context.read<DayEntriesRepository>();
-    if (previous == null) {
-      await repository.delete(widget.profileId, today);
-    } else {
-      await repository.save(previous);
-    }
+    await undoQuickLog(
+      context.read<DayEntriesRepository>(),
+      profileId: widget.profileId,
+      previous: previous,
+      date: today,
+    );
   }
 
   @override
@@ -1299,6 +1315,7 @@ class _OverviewPanelState extends State<OverviewPanel>
   /// concluding the app is broken.
   Widget _notEnoughCard(BuildContext context, NotEnoughHistory prediction) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     // Issue #853: resolved with a null tier — a teen with no history yet
     // keeps the variance-expecting framing (the quiet title/body), exactly
     // the case the issue's "13-year-old" scenario describes.
@@ -1328,9 +1345,9 @@ class _OverviewPanelState extends State<OverviewPanel>
             // Issue #139: the "not enough history yet" state links to the
             // bundled card explaining the three-cycle requirement. Issue
             // #816: the label names the unit the threshold actually counts.
-            const HelpCardLink(
+            HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three completed cycles?',
+              label: l10n.overviewWhyThreeCompletedCycles,
             ),
           ],
         ),

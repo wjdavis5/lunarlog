@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/auth/auth_service.dart';
@@ -8,6 +9,7 @@ import 'package:lunarlog/domain/feedback/feedback_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/profile.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/observability/route_names.dart';
@@ -523,4 +525,73 @@ void main() {
       expect(find.text('Account'), findsNothing);
     });
   });
+
+  group('Health sync platform copy (Issue #1001)', () {
+    Future<void> pumpWithHealthSync(
+      WidgetTester tester, {
+      required TargetPlatform platform,
+    }) async {
+      debugDefaultTargetPlatformOverride = platform;
+      final profiles = [_profile('p1')];
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: MultiProvider(
+            providers: [
+              Provider<SettingsStore>.value(value: FakeSettingsStore()),
+              Provider<ProfilesRepository>.value(
+                value: _FakeProfilesRepository(profiles),
+              ),
+              Provider<ProfileGuardiansRepository?>.value(
+                value: _FakeProfileGuardiansRepository(),
+              ),
+              Provider<DayEntriesRepository>.value(
+                value: _FakeDayEntriesRepository(),
+              ),
+            ],
+            child: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('iOS renders Health app sync title and Health app subtitle',
+        (tester) async {
+      try {
+        useTallSettingsViewport(tester);
+        await pumpWithHealthSync(tester, platform: TargetPlatform.iOS);
+        expect(find.byKey(const ValueKey('health-sync-tile')), findsOneWidget);
+        expect(find.text('Health app sync'), findsOneWidget);
+        expect(
+          find.text("Choose which profile's data may sync to the Health app"),
+          findsOneWidget,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('Android renders Health Connect sync title and subtitle',
+        (tester) async {
+      try {
+        useTallSettingsViewport(tester);
+        await pumpWithHealthSync(tester, platform: TargetPlatform.android);
+        expect(find.byKey(const ValueKey('health-sync-tile')), findsOneWidget);
+        expect(find.text('Health Connect sync'), findsOneWidget);
+        expect(
+          find.text("Choose which profile's data may sync to Health Connect"),
+          findsOneWidget,
+        );
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  });
+}
+
+class _FakeProfileGuardiansRepository implements ProfileGuardiansRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

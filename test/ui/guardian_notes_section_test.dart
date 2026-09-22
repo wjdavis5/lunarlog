@@ -18,6 +18,7 @@ import 'package:lunarlog/domain/models/local_date.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/guardian_notes_repository.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/care/guardian_notes_section.dart';
 
 class _FakeGuardianNotesRepository implements GuardianNotesRepository {
@@ -136,7 +137,8 @@ void main() {
     await tester.pumpWidget(wrap(repo));
     await tester.pumpAndSettle();
 
-    expect(find.text(kGuardianNotesDisclosure), findsOneWidget);
+    expect(find.text(AppLocalizationsEn().careGuardianNoteDisclosure),
+          findsOneWidget);
     expect(find.byKey(const ValueKey('guardian-note-field')), findsOneWidget);
     expect(find.byKey(const ValueKey('guardian-note-save')), findsOneWidget);
   });
@@ -149,7 +151,8 @@ void main() {
     await tester.pumpWidget(wrap(repo, canWrite: false));
     await tester.pumpAndSettle();
 
-    expect(find.text(kGuardianNotesDisclosure), findsOneWidget);
+    expect(find.text(AppLocalizationsEn().careGuardianNoteDisclosure),
+          findsOneWidget);
     expect(find.text('Mom wrote this.'), findsOneWidget);
     expect(find.byKey(const ValueKey('guardian-note-field')), findsNothing);
     expect(find.byKey(const ValueKey('guardian-note-save')), findsNothing);

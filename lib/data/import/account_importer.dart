@@ -175,6 +175,7 @@ class DriftAccountImporter implements AccountImporter {
       flow: flowFromDomain(plan.flow),
       tags: plan.tags,
       note: plan.note,
+      notePrivate: plan.notePrivate,
       pms: plan.pms,
       source: plan.source,
       sourceId: plan.sourceId,

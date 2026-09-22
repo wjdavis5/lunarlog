@@ -49,25 +49,30 @@ typedef FhirExportCollaborator = Future<void> Function({
   required DateTime exportedAt,
 });
 
-/// One line, no health content, no exception text (mirrors
-/// `kAccountExportFailureCopy`'s R10 discipline).
-const String kClinicalExportFailureCopy =
-    'Could not export your clinical summary. Please try again.';
+/// Failure copy is arb-backed (`settingsClinicalExportFailure`, shared
+/// with the PDF tile — both flows render the same one-liner) and resolved
+/// through [AppLocalizations] at render time (issue #1004, tranche 5).
 
 /// [liveProfiles] excludes archived profiles (see [_liveProfiles]). With
 /// exactly one, its name goes straight into the subtitle (#157 review fix,
 /// "Export Riley's clinical summary") once there is something to export;
 /// with none or several, the copy stays generic — several because the
-/// tile doesn't yet know which one the chooser will pick.
-String _subtitleFor({required bool hasEntries, required List<Profile> liveProfiles}) {
+/// tile doesn't yet know which one the chooser will pick. Arb-backed
+/// (`settingsClinicalExportSubtitle*`) since issue #1004, tranche 5.
+String _subtitleFor(
+  AppLocalizations l10n, {
+  required bool hasEntries,
+  required List<Profile> liveProfiles,
+}) {
   if (!hasEntries) {
-    return 'Add at least one day entry to export a clinical summary.';
+    return l10n.settingsClinicalExportSubtitleNoEntries;
   }
   if (liveProfiles.length == 1) {
-    return "Export ${liveProfiles.single.displayName}'s clinical summary.";
+    return l10n.settingsClinicalExportSubtitleOneProfile(
+      liveProfiles.single.displayName,
+    );
   }
-  return 'Share an IPS-shaped FHIR R4 document with your cycle data, coded '
-      'and self-reported.';
+  return l10n.settingsClinicalExportSubtitleGeneric;
 }
 
 /// Live (non-archived) profiles, in the order [profiles] already carries
@@ -94,7 +99,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
   StreamSubscription<List<Profile>>? _profilesSub;
   List<Profile>? _profiles;
   bool _exporting = false;
-  String? _error;
+
+  /// Issue #1004 (tranche 5): failure state only — the copy resolves
+  /// through `AppLocalizations` at render time.
+  bool _exportFailed = false;
 
   @override
   void initState() {
@@ -141,7 +149,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     final liveProfiles = _liveProfiles(profiles);
     if (liveProfiles.isEmpty) return const SizedBox.shrink();
     final canExport = !_exporting && hasAnyEntries;
-    final error = _error;
+    final error = _exportFailed;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -152,7 +160,11 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
             AppLocalizations.of(context).settingsClinicalExportFhirTitle,
           ),
           subtitle: Text(
-            _subtitleFor(hasEntries: hasAnyEntries, liveProfiles: liveProfiles),
+            _subtitleFor(
+              AppLocalizations.of(context),
+              hasEntries: hasAnyEntries,
+              liveProfiles: liveProfiles,
+            ),
           ),
           enabled: canExport,
           trailing: _exporting
@@ -164,12 +176,12 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
               : null,
           onTap: canExport ? () => _handleTap(context, liveProfiles) : null,
         ),
-        if (error != null)
+        if (error)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: InlineError(
               key: const ValueKey('clinical-export-fhir-error'),
-              message: error,
+              message: AppLocalizations.of(context).settingsClinicalExportFailure,
             ),
           ),
       ],
@@ -262,7 +274,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
 
     setState(() {
       _exporting = true;
-      _error = null;
+      _exportFailed = false;
     });
     try {
       final observations = await observationsRepo.listForProfile(profile.id);
@@ -288,7 +300,7 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     } catch (error) {
       debugPrint(
           'lunarlog clinical-export: export failed (${error.runtimeType})');
-      if (mounted) setState(() => _error = kClinicalExportFailureCopy);
+      if (mounted) setState(() => _exportFailed = true);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }

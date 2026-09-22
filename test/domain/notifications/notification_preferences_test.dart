@@ -79,6 +79,52 @@ void main() {
     });
   });
 
+  group('AheadOfTimeAlerts (Issue #851)', () {
+    test('every opt-in is off by default', () {
+      expect(AheadOfTimeAlerts.off.periodSoon, isFalse);
+      expect(AheadOfTimeAlerts.off.restock, isFalse);
+      expect(AheadOfTimeAlerts.off.pmsSoon, isFalse);
+      expect(const AheadOfTimeAlerts(), AheadOfTimeAlerts.off);
+    });
+
+    test('copyWith round-trips each field independently', () {
+      const base = AheadOfTimeAlerts();
+      expect(base.copyWith(periodSoon: true).periodSoon, isTrue);
+      expect(base.copyWith(restock: true).restock, isTrue);
+      expect(base.copyWith(pmsSoon: true).pmsSoon, isTrue);
+      expect(base.copyWith(), base);
+    });
+
+    test('equality distinguishes each field', () {
+      const base = AheadOfTimeAlerts(periodSoon: true, restock: true, pmsSoon: true);
+      expect(base, const AheadOfTimeAlerts(periodSoon: true, restock: true, pmsSoon: true));
+      expect(base, isNot(base.copyWith(periodSoon: false)));
+      expect(base, isNot(base.copyWith(restock: false)));
+      expect(base, isNot(base.copyWith(pmsSoon: false)));
+    });
+
+    test('the codec round-trips and defaults an absent value to false', () {
+      const on = AheadOfTimeAlerts(periodSoon: true, restock: false, pmsSoon: true);
+      final db = on.toDb();
+      expect(db.periodSoon, isTrue);
+      expect(db.restock, isFalse);
+      expect(db.pmsSoon, isTrue);
+      expect(
+        AheadOfTimeAlerts.fromDb(
+          periodSoon: db.periodSoon,
+          restock: db.restock,
+          pmsSoon: db.pmsSoon,
+        ),
+        on,
+      );
+      expect(AheadOfTimeAlerts.fromDb(), AheadOfTimeAlerts.off);
+      expect(
+        AheadOfTimeAlerts.fromDb(periodSoon: null, restock: null, pmsSoon: null),
+        AheadOfTimeAlerts.off,
+      );
+    });
+  });
+
   group('CaregiverAlertPreferences', () {
     const base = CaregiverAlertPreferences(
       alertOnLog: true,
@@ -89,6 +135,8 @@ void main() {
       highSeverityCadence: AlertCadence.off,
       digestTimeMinutes: 9 * 60,
       missedEntryThreshold: MissedEntryThreshold.twoDays,
+      aheadOfTimeAlerts:
+          AheadOfTimeAlerts(periodSoon: true, restock: true, pmsSoon: true),
       quietHours: QuietHours(startMinutes: 1320, endMinutes: 420),
       timeZone: 'America/New_York',
     );
@@ -122,6 +170,10 @@ void main() {
             .quietHours,
         const QuietHours(startMinutes: 0, endMinutes: 60),
       );
+      expect(
+        base.copyWith(aheadOfTimeAlerts: AheadOfTimeAlerts.off).aheadOfTimeAlerts,
+        AheadOfTimeAlerts.off,
+      );
       expect(base.copyWith(clearQuietHours: true).quietHours, isNull);
       expect(base.copyWith(timeZone: 'UTC').timeZone, 'UTC');
       expect(base.copyWith(clearTimeZone: true).timeZone, isNull);
@@ -144,6 +196,10 @@ void main() {
       );
       expect(base, isNot(base.copyWith(clearQuietHours: true)));
       expect(base, isNot(base.copyWith(clearTimeZone: true)));
+      expect(
+        base,
+        isNot(base.copyWith(aheadOfTimeAlerts: AheadOfTimeAlerts.off)),
+      );
     });
 
     test('the all-off default has every alert off and threshold off', () {
@@ -153,6 +209,11 @@ void main() {
       expect(CaregiverAlertPreferences.off.missedEntryThreshold,
           MissedEntryThreshold.off);
       expect(CaregiverAlertPreferences.off.quietHours, isNull);
+    });
+
+    test('the ahead-of-time opt-ins are off by default (Issue #851)', () {
+      expect(CaregiverAlertPreferences.off.aheadOfTimeAlerts,
+          AheadOfTimeAlerts.off);
     });
 
     test('the all-off default keeps every cadence immediate and no digest time (Issue #125)', () {

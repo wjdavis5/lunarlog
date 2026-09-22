@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/tags.dart';
+import 'package:lunarlog/l10n/app_localizations_en.dart';
 import 'package:lunarlog/ui/components/category_picker.dart';
 import 'package:lunarlog/ui/components/tag_icons.dart';
 
@@ -35,6 +36,18 @@ Widget _harness({
           onToggle: onToggle,
           recentCodes: recentCodes,
           enabled: enabled,
+          // Issue #1004 (tranche 5): the copy parameters are required now —
+          // the harness passes the en arb values the day sheet renders.
+          searchHint: AppLocalizationsEn().daySheetTagSearchHint,
+          searchSemanticsLabel:
+              AppLocalizationsEn().daySheetTagSearchSemanticsLabel,
+          clearSearchTooltip:
+              AppLocalizationsEn().daySheetTagSearchClearTooltip,
+          recentLabel: AppLocalizationsEn().daySheetTagRecentLabel,
+          customLabel: AppLocalizationsEn().daySheetCustomTagsLabel,
+          customManageTooltip:
+              AppLocalizationsEn().daySheetCustomTagsManageTooltip,
+          noneCustomNote: AppLocalizationsEn().daySheetCustomTagsNone,
           trailingBuilder: trailingBuilder,
         ),
       ),

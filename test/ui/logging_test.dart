@@ -56,7 +56,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
+    show shouldConfirmOfflineSave;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -3395,6 +3395,38 @@ void main() {
       await disposeLogging(tester, h);
     });
 
+    testWidgets('issue #850 (U7): a logging guardian in teen mode still gets '
+        'the teen category vocabulary — the lens is threaded through the '
+        'calendar and day sheet without changing the mode copy', (tester) async {
+      final auth = FakeAuthService()
+        ..emit(
+          AuthSessionState.signedIn,
+          user: const AuthUser(id: 'user-aunt'),
+        );
+      final h = await pumpLogging(
+        tester,
+        mode: ProfileMode.teen,
+        authService: auth,
+        withStorage: true,
+        seed: (db, profileId) async {
+          await db.storage.applyRemoteRows([
+            guardianRow(profileId, 'g-aunt', 'user-aunt', 'caregiver'),
+          ]);
+        },
+      );
+
+      // MonthCalendar resolves the lens alongside the mode; the day cell it
+      // renders is the one the sheet opens from.
+      await tester.tap(find.byKey(const ValueKey('day-cell-2026-08-30')));
+      await tester.pumpAndSettle();
+
+      // DaySheet resolves the same lens; the teen vocabulary is intact.
+      expect(find.text('How your body feels'), findsOneWidget);
+      expect(find.text('Body'), findsNothing);
+
+      await disposeLogging(tester, h);
+    });
+
     testWidgets('a saved entry reads verbatim after switching the profile '
         'to teen mode — switching touches no entry (prospective only)', (
       tester,
@@ -3774,7 +3806,7 @@ void main() {
           find.byKey(const ValueKey('offline-save-confirmation')),
           findsOneWidget,
         );
-        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+        expect(find.text(AppLocalizationsEn().accountSyncStatusOfflineSaved), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
@@ -3807,7 +3839,7 @@ void main() {
 
         await logAutosaveAndDismiss(tester);
 
-        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+        expect(find.text(AppLocalizationsEn().accountSyncStatusOfflineSaved), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
@@ -3976,11 +4008,11 @@ void main() {
   group('day sheet ergonomics (issue #198)', () {
     test('daySheetDateLabel renders Today/Yesterday/absolute (B-14)', () {
       final today = LocalDate(2026, 8, 30);
-      expect(daySheetDateLabel(today, today), 'Today · Sun Aug 30');
-      expect(daySheetDateLabel(today.addDays(-1), today), 'Yesterday');
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today), 'Thu Mar 5 2026');
+      expect(daySheetDateLabel(AppLocalizationsEn(), today, today), 'Today · Sun Aug 30');
+      expect(daySheetDateLabel(AppLocalizationsEn(), today.addDays(-1), today), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today), 'Thu Mar 5 2026');
       expect(
-        daySheetDateLabel(LocalDate(2024, 12, 31), today),
+        daySheetDateLabel(AppLocalizationsEn(), LocalDate(2024, 12, 31), today),
         'Tue Dec 31 2024',
       );
     });
@@ -3991,18 +4023,18 @@ void main() {
       // US DST spring-forward: 2026-03-08 to 2026-03-09
       final march8 = LocalDate(2026, 3, 8);
       final march9 = LocalDate(2026, 3, 9);
-      expect(daySheetDateLabel(march8, march8), 'Today · Sun Mar 8');
-      expect(daySheetDateLabel(march9, march8), 'Tomorrow');
-      expect(daySheetDateLabel(march8, march9), 'Yesterday');
-      expect(daySheetDateLabel(march9, march9), 'Today · Mon Mar 9');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march8, march8), 'Today · Sun Mar 8');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march9, march8), 'Tomorrow');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march8, march9), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), march9, march9), 'Today · Mon Mar 9');
 
       // US DST fall-back: 2026-11-01 to 2026-11-02
       final nov1 = LocalDate(2026, 11, 1);
       final nov2 = LocalDate(2026, 11, 2);
-      expect(daySheetDateLabel(nov1, nov1), 'Today · Sun Nov 1');
-      expect(daySheetDateLabel(nov2, nov1), 'Tomorrow');
-      expect(daySheetDateLabel(nov1, nov2), 'Yesterday');
-      expect(daySheetDateLabel(nov2, nov2), 'Today · Mon Nov 2');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov1, nov1), 'Today · Sun Nov 1');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov2, nov1), 'Tomorrow');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov1, nov2), 'Yesterday');
+      expect(daySheetDateLabel(AppLocalizationsEn(), nov2, nov2), 'Today · Mon Nov 2');
     });
 
     test(
@@ -4010,20 +4042,20 @@ void main() {
         '(the sheet resolves it from SettingsKeys.dateFormat)', () {
       final today = LocalDate(2026, 8, 30);
       expect(
-        daySheetDateLabel(today, today,
+        daySheetDateLabel(AppLocalizationsEn(), today, today,
             preference: DateFormatPreference.monthDay),
         'Today · Sun Aug 30',
       );
       expect(
-        daySheetDateLabel(LocalDate(2026, 3, 5), today,
+        daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today,
             preference: DateFormatPreference.monthDay),
         'Thu Mar 5 2026',
       );
       // The default is the system order — locale-resolved since issue #884
       // (month-first for the generic `en` fallback).
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today),
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today),
           'Thu Mar 5 2026');
-      expect(daySheetDateLabel(LocalDate(2026, 3, 5), today,
+      expect(daySheetDateLabel(AppLocalizationsEn(), LocalDate(2026, 3, 5), today,
           locale: 'en_GB'), 'Thu 5 Mar 2026');
     });
 

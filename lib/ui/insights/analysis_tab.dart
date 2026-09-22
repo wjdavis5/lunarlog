@@ -94,6 +94,7 @@ import '../../domain/models/profile_mode.dart';
 import '../../domain/prediction/fertile_window.dart';
 import '../../domain/prediction/prediction.dart';
 import '../../domain/prediction/prediction_service.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../account/auth_controller.dart';
 import '../components/async_snapshot_view.dart';
 import '../components/empty_state.dart';
@@ -140,6 +141,7 @@ class AnalysisTab extends StatefulWidget {
     this.insightsCalculator,
     this.settingsStore,
     this.bbtUnit = BbtUnit.celsius,
+    this.subjectName,
   });
 
   final String profileId;
@@ -183,6 +185,12 @@ class AnalysisTab extends StatefulWidget {
   /// Test seam (issue #841): the pure insights derivation this tab caches.
   /// Null selects [CycleInsightsCalculator.compute] in production.
   final CycleInsightsComputer? insightsCalculator;
+
+  /// Issue #850 (U7): the subject's display name, for the third-person
+  /// care-mode copy a guardian reads ("Maya's record is just getting
+  /// started"). Null falls back to the gender-neutral "their"; ignored when
+  /// the viewer is the subject.
+  final String? subjectName;
 
   /// Source of this tab's device-local recap baseline (issue #852). Null
   /// falls back to `context.read<SettingsStore?>()`; when neither is
@@ -265,6 +273,11 @@ class _AnalysisTabState extends State<AnalysisTab>
           stored: widget.irregularFraming,
           tier: prediction is ActivePrediction ? prediction.tier : null,
         ),
+        // Issue #850 (U7): a guardian looking at this profile reads the
+        // not-enough-history card third-person; the subject reads it as
+        // before.
+        lens: guardianLensFor(_guardians, _currentUserId),
+        subjectName: widget.subjectName,
       );
 
   @override
@@ -581,7 +594,7 @@ class _AnalysisTabState extends State<AnalysisTab>
   Widget build(BuildContext context) {
     return AsyncSnapshotView<CyclePrediction>(
       snapshot: _predictionSnapshot,
-      errorMessage: 'Could not load your cycle analysis.',
+      errorMessage: AppLocalizations.of(context).analysisLoadError,
       onRetry: _retryPredictions,
       builder: (context, prediction) => ListView(
         padding: const EdgeInsets.all(LLSpace.space4),
@@ -599,10 +612,11 @@ class _AnalysisTabState extends State<AnalysisTab>
   List<Widget> _sections(BuildContext context, CyclePrediction prediction) {
     final episodes = _episodes;
     final report = _report;
+    final l10n = AppLocalizations.of(context);
 
     return [
       Text(
-        'Analysis',
+        l10n.analysisTitle,
         key: const ValueKey('analysis-heading'),
         style: Theme.of(context).textTheme.headlineSmall,
       ),
@@ -724,7 +738,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'BBT by cycle day',
+              AppLocalizations.of(context).analysisBbtChartTitle,
               key: const ValueKey('analysis-bbt-chart-title'),
               style: theme.textTheme.titleMedium,
             ),
@@ -747,7 +761,7 @@ class _AnalysisTabState extends State<AnalysisTab>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Cycle statistics',
+              l10n.analysisStatsTitle,
               key: const ValueKey('analysis-stats-title'),
               style: theme.textTheme.titleMedium,
             ),
@@ -786,21 +800,21 @@ class _AnalysisTabState extends State<AnalysisTab>
         context,
         theme,
         'analysis-mean-cycle-length',
-        'Average cycle length',
+        l10n.analysisMeanCycleLength,
         formatDays(l10n, prediction.meanCycleLengthDays),
       ),
       _statRow(
         context,
         theme,
         'analysis-mean-period-length',
-        'Average period length',
+        l10n.analysisMeanPeriodLength,
         formatDays(l10n, prediction.meanPeriodLengthDays),
       ),
       _statRow(
         context,
         theme,
         'analysis-variability',
-        'Variability',
+        l10n.analysisVariability,
         _variabilityText(l10n, prediction, copy),
       ),
     ];
@@ -811,7 +825,7 @@ class _AnalysisTabState extends State<AnalysisTab>
     ActivePrediction prediction,
     CareModeCopy copy,
   ) {
-    final spread = '±${prediction.spreadDays.round()} days';
+    final spread = l10n.analysisSpreadDays(prediction.spreadDays.round());
     if (!copy.showsTierCaption) return spread;
     return '${tierLabel(l10n, prediction.tier)} ($spread)';
   }
@@ -978,9 +992,9 @@ class _AnalysisTabState extends State<AnalysisTab>
             ),
             // Issue #139: same three-cycle explainer as OverviewPanel.
             // Issue #816: the label names the unit the threshold counts.
-            const HelpCardLink(
+            HelpCardLink(
               cardId: 'why-no-estimate-yet',
-              label: 'Why three completed cycles?',
+              label: AppLocalizations.of(context).overviewWhyThreeCompletedCycles,
             ),
           ],
         ),
