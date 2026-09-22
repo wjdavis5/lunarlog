@@ -1887,54 +1887,102 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     return true;
   }
 
-  /// Issue #551: the shared skeleton behind every per-id-LWW remote apply
-  /// ([_applyCareNote], [_applyVisitPrepItem], and — not yet migrated,
-  /// kept mechanical and reviewable — [_applyCycleOverride] and friends):
-  /// read the local row, bail if [onlyExisting] and there is none, defer
-  /// to [remoteWinsById] against [localUpdatedAt]/[remoteUpdatedAt],
-  /// require the referenced profile to exist locally (else a
-  /// [RetryableSyncApplyError] naming [entityLabel] and [remoteId]), then
-  /// [insert] or [update]. Each caller still owns its own tombstone/payload
-  /// shaping (e.g. redacting a tombstone's body) inside those callbacks —
-  /// this only centralises the guard/bail/retryable clauses that were
-  /// hand-written identically at every one of these call sites.
-  Future<bool> _applyKeyedRow<TRemote, TLocal extends DataClass>({
-    required TRemote remote,
+  /// Issue #551 part 2: the one remote-apply skeleton every per-id-LWW
+  /// apply site funnels through. It reads the local row, bails on
+  /// [onlyExisting] with no local copy, defers to [remoteWinsById] against
+  /// [localUpdatedAt]/[remoteUpdatedAt] (or [forceRemoteWins] when the row
+  /// must win unconditionally, e.g. a revoked profile's re-delivery — see
+  /// [_applyProfile]), runs the caller's [checkParent] referential guard (a
+  /// typed [RetryableSyncApplyError], never a raw FK exception), optionally
+  /// vetoes the write via [canApply], then inserts or updates with the
+  /// shared sync flags [dirty]/[localRev] — the single definition of
+  /// `dirty = false`/`local_rev = 0` for a remote delivery (issue #102's
+  /// "re-pushed forever" class: a table whose remote apply forgot to clear
+  /// `dirty` would push its server copy back on every cycle).
+  ///
+  /// Each caller still owns its table-specific payload shaping (tombstone
+  /// redaction, attribution coalescing, the companion fields) inside
+  /// [insert]/[update]; this centralises the guard/bail/retryable/flag
+  /// clauses that were hand-written identically at every site.
+  Future<bool> _applyRemoteRow<TRow, TLocal extends DataClass>({
+    required TRow remote,
     required Future<TLocal?> Function() readLocal,
     required bool onlyExisting,
-    required DateTime Function(TRemote) remoteUpdatedAt,
+    required DateTime Function(TRow) remoteUpdatedAt,
     required DateTime Function(TLocal) localUpdatedAt,
-    required String Function(TRemote) parentProfileId,
-    required String entityLabel,
-    required String remoteId,
-    required Future<void> Function(TRemote remote) insert,
-    required Future<void> Function(TRemote remote, TLocal local) update,
-    _PageLookup? cache,
+    required Future<void> Function(
+            TRow remote, Value<bool> dirty, Value<int> localRev)
+        insert,
+    required Future<void> Function(
+            TRow remote, TLocal local, Value<bool> dirty, Value<int> localRev)
+        update,
+    Future<void> Function(TRow remote)? checkParent,
+    bool Function(TLocal local)? forceRemoteWins,
+    Future<bool> Function(TRow remote)? canApply,
   }) async {
     final local = await readLocal();
     if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: localUpdatedAt(local),
-            remoteUpdatedAt: remoteUpdatedAt(remote))) {
+    if (!_remoteApplyWins<TLocal>(
+      local: local,
+      localUpdatedAt: localUpdatedAt,
+      remoteUpdatedAt: remoteUpdatedAt(remote),
+      forceRemoteWins: forceRemoteWins,
+    )) {
       return false;
     }
+    if (checkParent != null) await checkParent(remote);
+    if (canApply != null && !await canApply(remote)) return false;
+    if (local == null) {
+      await insert(remote, _remoteDirty, _remoteLocalRev);
+    } else {
+      await update(remote, local, _remoteDirty, _remoteLocalRev);
+    }
+    return true;
+  }
+
+  /// [_applyRemoteRow]'s per-id LWW decision: an absent local copy loses;
+  /// a copy [forceRemoteWins] marks (see [_applyProfile]) bypasses the rule
+  /// entirely; otherwise the ordinary rule applies (remote wins ties).
+  static bool _remoteApplyWins<TLocal>({
+    required TLocal? local,
+    required DateTime Function(TLocal) localUpdatedAt,
+    required DateTime remoteUpdatedAt,
+    bool Function(TLocal)? forceRemoteWins,
+  }) {
+    if (local == null) return true;
+    if (forceRemoteWins?.call(local) ?? false) return true;
+    return remoteWinsById(
+      localUpdatedAt: localUpdatedAt(local),
+      remoteUpdatedAt: remoteUpdatedAt,
+    );
+  }
+
+  /// The clean sync flags every remote apply writes (issue #551 part 2): a
+  /// row delivered by the server is in sync by definition, so it is never
+  /// dirty and starts at revision zero. Defined once so no apply site can
+  /// omit or mistype them — the #102 bug class.
+  static const Value<bool> _remoteDirty = Value(false);
+  static const Value<int> _remoteLocalRev = Value(0);
+
+  /// [_applyRemoteRow]'s shared referential guard for the profile-scoped
+  /// tables: throws [RetryableSyncApplyError] naming [entityLabel]/
+  /// [remoteId] when the row's profile is not held locally yet.
+  Future<void> _ensureProfileHeldLocally(
+    String profileId, {
+    required String entityLabel,
+    required String remoteId,
+    _PageLookup? cache,
+  }) async {
     if (await _lookupCached(
           cache,
           (c) => c.profiles,
-          parentProfileId(remote),
+          profileId,
           _profileOrNull,
         ) ==
         null) {
       throw RetryableSyncApplyError(
           '$entityLabel $remoteId references a profile not held locally');
     }
-    if (local == null) {
-      await insert(remote);
-      return true;
-    }
-    await update(remote, local);
-    return true;
   }
 
   /// Issue #128: applies a server copy of a care note keyed by id — the
@@ -1949,20 +1997,25 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    return _applyKeyedRow<RemoteCareNoteRow, CareNoteData>(
+    return _applyRemoteRow<RemoteCareNoteRow, CareNoteData>(
       remote: remote,
       readLocal: () =>
           _lookupCached(cache, (c) => c.careNotes, remote.id, _careNoteOrNull),
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
-      parentProfileId: (r) => r.profileId,
-      entityLabel: 'care note',
-      remoteId: remote.id,
-      insert: (r) => _insertCareNote(r, tombstone, updatedAt, deletedAt, cache),
-      update: (r, local) =>
-          _updateCareNote(r, local, tombstone, updatedAt, deletedAt, cache),
-      cache: cache,
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'care note',
+        remoteId: r.id,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) =>
+          _insertCareNote(r, tombstone, updatedAt, deletedAt, dirty, localRev,
+              cache),
+      update: (r, local, dirty, _) =>
+          _updateCareNote(r, local, tombstone, updatedAt, deletedAt, dirty,
+              cache),
     );
   }
 
@@ -1973,6 +2026,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
     _PageLookup? cache,
   ) async {
     final written = await db
@@ -1984,8 +2039,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             body: tombstone ? '' : remote.body,
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
+            dirty: dirty,
+            localRev: localRev,
             loggedByUserId: Value(remote.loggedByUserId),
             lastModifiedByUserId: Value(remote.lastModifiedByUserId),
           ),
@@ -2003,6 +2058,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
     _PageLookup? cache,
   ) async {
     final written =
@@ -2013,7 +2069,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             body: Value(tombstone ? '' : remote.body),
             updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
+            dirty: dirty,
             loggedByUserId: Value(
               remote.loggedByUserId ?? local.loggedByUserId,
             ),
@@ -2090,7 +2146,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    return _applyKeyedRow<RemoteVisitPrepItemRow, VisitPrepItemData>(
+    return _applyRemoteRow<RemoteVisitPrepItemRow, VisitPrepItemData>(
       remote: remote,
       readLocal: () => _lookupCached(
         cache,
@@ -2101,25 +2157,30 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
-      parentProfileId: (r) => r.profileId,
-      entityLabel: 'visit prep item',
-      remoteId: remote.id,
-      insert: (r) => _insertVisitPrepItem(
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'visit prep item',
+        remoteId: r.id,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) => _insertVisitPrepItem(
         r,
         _visitPrepItemPayload(r, tombstone),
         updatedAt,
         deletedAt,
+        dirty,
+        localRev,
         cache,
       ),
-      update: (r, local) => _updateVisitPrepItem(
+      update: (r, local, dirty, _) => _updateVisitPrepItem(
         r,
         local,
         _visitPrepItemPayload(r, tombstone),
         updatedAt,
         deletedAt,
+        dirty,
         cache,
       ),
-      cache: cache,
     );
   }
 
@@ -2136,6 +2197,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     }) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
     _PageLookup? cache,
   ) async {
     final written = await db
@@ -2151,8 +2214,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             checkedAt: Value(payload.checkedAt),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
+            dirty: dirty,
+            localRev: localRev,
             loggedByUserId: Value(remote.loggedByUserId),
             lastModifiedByUserId: Value(remote.lastModifiedByUserId),
           ),
@@ -2175,6 +2238,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     }) payload,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
     _PageLookup? cache,
   ) async {
     final written =
@@ -2189,7 +2253,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             checkedAt: Value(payload.checkedAt),
             updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
+            dirty: dirty,
             loggedByUserId: Value(
               remote.loggedByUserId ?? local.loggedByUserId,
             ),
@@ -2214,21 +2278,23 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    return _applyKeyedRow<RemoteGuardianNoteRow, GuardianNoteData>(
+    return _applyRemoteRow<RemoteGuardianNoteRow, GuardianNoteData>(
       remote: remote,
       readLocal: () => _lookupCached(
           cache, (c) => c.guardianNotes, remote.id, _guardianNoteOrNull),
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
-      parentProfileId: (r) => r.profileId,
-      entityLabel: 'guardian note',
-      remoteId: remote.id,
-      insert: (r) =>
-          _insertGuardianNote(r, tombstone, updatedAt, deletedAt, cache),
-      update: (r, local) =>
-          _updateGuardianNote(r, local, tombstone, updatedAt, deletedAt, cache),
-      cache: cache,
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'guardian note',
+        remoteId: r.id,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) => _insertGuardianNote(
+          r, tombstone, updatedAt, deletedAt, dirty, localRev, cache),
+      update: (r, local, dirty, _) => _updateGuardianNote(
+          r, local, tombstone, updatedAt, deletedAt, dirty, cache),
     );
   }
 
@@ -2239,6 +2305,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
     _PageLookup? cache,
   ) async {
     final written = await db.into(db.guardianNotes).insertReturning(
@@ -2250,8 +2318,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             body: tombstone ? '' : remote.body,
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
+            dirty: dirty,
+            localRev: localRev,
             loggedByUserId: Value(remote.loggedByUserId),
             lastModifiedByUserId: Value(remote.lastModifiedByUserId),
           ),
@@ -2269,6 +2337,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
     _PageLookup? cache,
   ) async {
     final written = await (db.update(db.guardianNotes)
@@ -2280,7 +2349,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
         body: Value(tombstone ? '' : remote.body),
         updatedAt: Value(updatedAt),
         deletedAt: Value(deletedAt),
-        dirty: const Value(false),
+        dirty: dirty,
         loggedByUserId: Value(remote.loggedByUserId ?? local.loggedByUserId),
         lastModifiedByUserId: Value(
             remote.lastModifiedByUserId ?? local.lastModifiedByUserId),
@@ -2723,7 +2792,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
   }
 
   /// Issue #257: per-id LWW apply for a `profile_tag_registry` row, the
-  /// care_notes shape via [_applyKeyedRow]. A tombstone's payload arrives
+  /// care_notes shape via [_applyRemoteRow]. A tombstone's payload arrives
   /// already cleared server-side (the structural CHECK), so the local
   /// write stores what it was handed; `code` survives either way.
   Future<bool> _applyTagRegistryEntry(
@@ -2734,7 +2803,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
-    return _applyKeyedRow<RemoteProfileTagRegistryRow,
+    return _applyRemoteRow<RemoteProfileTagRegistryRow,
         ProfileTagRegistryEntry>(
       remote: remote,
       readLocal: () => _lookupCached(
@@ -2742,14 +2811,16 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
       onlyExisting: onlyExisting,
       remoteUpdatedAt: (r) => r.updatedAt,
       localUpdatedAt: (l) => l.updatedAt,
-      parentProfileId: (r) => r.profileId,
-      entityLabel: 'profile tag registry entry',
-      remoteId: remote.id,
-      insert: (r) =>
-          _insertTagRegistryEntry(r, tombstone, updatedAt, deletedAt, cache),
-      update: (r, local) => _updateTagRegistryEntry(
-          r, local, tombstone, updatedAt, deletedAt, cache),
-      cache: cache,
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'profile tag registry entry',
+        remoteId: r.id,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) => _insertTagRegistryEntry(
+          r, tombstone, updatedAt, deletedAt, dirty, localRev, cache),
+      update: (r, local, dirty, _) => _updateTagRegistryEntry(
+          r, local, tombstone, updatedAt, deletedAt, dirty, cache),
     );
   }
 
@@ -2758,6 +2829,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
     _PageLookup? cache,
   ) async {
     final written = await db
@@ -2777,8 +2850,8 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             createdAt: remote.createdAt.toUtc(),
             updatedAt: updatedAt,
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
-            localRev: const Value(0),
+            dirty: dirty,
+            localRev: localRev,
           ),
         );
     cache?.profileTagRegistry[written.id] = written;
@@ -2790,6 +2863,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     bool tombstone,
     DateTime updatedAt,
     DateTime? deletedAt,
+    Value<bool> dirty,
     _PageLookup? cache,
   ) async {
     final written =
@@ -2806,7 +2880,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             createdBy: Value(remote.createdBy ?? local.createdBy),
             updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
+            dirty: dirty,
           ),
         );
     cache?.profileTagRegistry[written.first.id] = written.first;
