@@ -29,6 +29,7 @@ import '../../domain/export/export_redaction.dart';
 import '../../domain/export/fhir_bundle.dart';
 import '../../domain/export/fhir_bundle_writer.dart';
 import '../../domain/export/fhir_export_range.dart';
+import '../../domain/models/day_entry.dart';
 import '../../domain/models/local_date.dart';
 import '../../domain/models/profile.dart';
 import '../../domain/prediction/cycle_history.dart' show CycleExclusionList;
@@ -36,6 +37,7 @@ import '../../domain/prediction/prediction.dart';
 import '../../domain/repositories/day_entries_repository.dart';
 import '../../domain/repositories/observations_repository.dart';
 import '../../domain/repositories/profiles_repository.dart';
+import '../../domain/sharing/guardian_lens.dart';
 import '../../l10n/app_localizations.dart';
 import '../account/export_account_collaborator.dart' show kAppVersionForExport;
 import '../components/inline_error.dart';
@@ -240,38 +242,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     // Read before the first `await` below (`use_build_context_synchronously`).
     final fhirWriter = context.read<FhirBundleWriter>();
     final exclusions = context.read<CycleExclusionList?>();
-    final entriesRepo = context.read<DayEntriesRepository>();
     final observationsRepo = context.read<ObservationsRepository>();
-    final l10n = AppLocalizations.of(context);
 
-    // Issue #115 G4: resolve the operator's lens and the minor-profile gate
-    // before the range picker and the build. A refusal surfaces the honest
-    // "not available" copy and never calls the collaborator.
-    final access = await resolveExportAccessOrRefuse(
-      context,
-      profile,
-      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
-    );
-    if (access == null) return;
-
-    // Issue #459 review: the range picker is asked *before* `_exporting`
-    // flips true, not inside the same try/finally as the actual export
-    // work below. `_exporting` drives the tile's indeterminate
-    // `CircularProgressIndicator` (see `build`); that indicator, once
-    // animating, never settles on its own (`pumpAndSettle` has nothing to
-    // wait out), so keeping it running for as long as the picker sheet
-    // sits open waiting on the operator would hang `pumpAndSettle`-driven
-    // tests indefinitely — and would show a spinner over a modal the
-    // operator hasn't dismissed yet, which reads as the export already
-    // running when nothing has started.
-    final dayEntries = await entriesRepo.listForProfile(profile.id);
-    if (!context.mounted) return;
-    final range = await showExportRangePickerSheet(
-      context,
-      entries: dayEntries,
-      today: LocalDate.today(),
-    );
-    if (range == null || !context.mounted) return;
+    final inputs = await _resolveExportInputs(context, profile);
+    if (inputs == null) return;
 
     setState(() {
       _exporting = true;
@@ -280,9 +254,10 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     try {
       final observations = await observationsRepo.listForProfile(profile.id);
       final exportedAt = DateTime.now().toUtc();
-      final omittedCycleStarts = await _omittedCycleStartsFor(exclusions, profile.id);
+      final omittedCycleStarts =
+          await _omittedCycleStartsFor(exclusions, profile.id);
       final prediction = computePredictionFromEntries(
-        entries: dayEntries,
+        entries: inputs.entries,
         today: LocalDate.today(),
         omittedCycleStarts: omittedCycleStarts,
       );
@@ -291,8 +266,11 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
         // Issue #115 G4: a guardian-lens export carries no private note text
         // (FHIR never reads DayEntry.note anyway; the shared step keeps the
         // rule uniform across formats).
-        dayEntries: redactForLens(range.filterEntries(dayEntries), access.lens),
-        observations: range.filterObservations(observations),
+        dayEntries: redactForLens(
+          inputs.range.filterEntries(inputs.entries),
+          inputs.lens,
+        ),
+        observations: inputs.range.filterObservations(observations),
         prediction: prediction is ActivePrediction ? prediction : null,
         exportedAt: exportedAt,
         appVersion: kAppVersionForExport,
@@ -308,6 +286,34 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  /// Resolves the operator's export access and the profile's chosen range
+  /// before `_exporting` flips and the build begins (Issue #115 G4, and the
+  /// Issue #459 review's range-picker-before-spinner rule).
+  ///
+  /// Returns null when the minor-profile guard refuses (after surfacing the
+  /// honest "not available" copy), the operator cancels the picker, or the
+  /// widget unmounts while a sheet is open.
+  Future<({List<DayEntry> entries, FhirExportRange range, GuardianLens lens})?>
+      _resolveExportInputs(BuildContext context, Profile profile) async {
+    final entriesRepo = context.read<DayEntriesRepository>();
+    final l10n = AppLocalizations.of(context);
+    final access = await resolveExportAccessOrRefuse(
+      context,
+      profile,
+      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+    );
+    if (access == null) return null;
+    final dayEntries = await entriesRepo.listForProfile(profile.id);
+    if (!context.mounted) return null;
+    final range = await showExportRangePickerSheet(
+      context,
+      entries: dayEntries,
+      today: LocalDate.today(),
+    );
+    if (range == null || !context.mounted) return null;
+    return (entries: dayEntries, range: range, lens: access.lens);
   }
 
   /// Issue #648 review / LLA-067: the same cycle-start exclusion set the
