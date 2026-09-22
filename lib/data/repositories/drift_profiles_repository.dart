@@ -15,7 +15,7 @@ import 'mappers.dart';
 class DriftProfilesRepository implements ProfilesRepository {
   DriftProfilesRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final ProfileStore _storage;
 
   DateTime _now() => DateTime.now().toUtc();
 

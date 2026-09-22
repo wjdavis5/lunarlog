@@ -20,7 +20,7 @@ class DriftObservationsRepository
     implements ObservationsRepository, SpottingObservationsRangeRepository {
   DriftObservationsRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final ObservationsRepositoryStore _storage;
 
   /// Issue #247: alongside every persisted observation, synthesises a
   /// `category: 'spotting'` row (never written back) for any live day

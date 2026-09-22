@@ -322,7 +322,8 @@ class _PushCursor {
 
 class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   SupabaseSyncEngine({
-    required LunarLogStorage storage,
+    required SyncEngineStore storage,
+    SyncMetadataStore? syncMetadata,
     required SyncTransport transport,
     required AuthService auth,
     required Listenable gate,
@@ -339,6 +340,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SupabaseSyncApply? apply,
     bool Function()? realtimeSubscribed,
   })  : _storage = storage,
+        _syncMetadata = syncMetadata ?? storage,
         _transport = transport,
         _auth = auth,
         _gate = gate,
@@ -367,7 +369,13 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
   }
 
-  final LunarLogStorage _storage;
+  final SyncEngineStore _storage;
+
+  /// The narrow sync cursor + dirty-scan role (issue #551 part 1 step 2).
+  /// Defaults to [storage], which implements it, so existing tests construct
+  /// the engine exactly as before; production passes the extracted
+  /// `SyncCursorStorage` directly.
+  final SyncMetadataStore _syncMetadata;
   final SyncTransport _transport;
   final AuthService _auth;
   final Listenable _gate;
@@ -528,9 +536,9 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
     final uid = _confirmedUid();
     if (uid == null) return;
-    final state = await _storage.readSyncState();
+    final state = await _syncMetadata.readSyncState();
     if (state.boundUserId != null) return;
-    await _storage.markAllDirty();
+    await _syncMetadata.markAllDirty();
     await _bind(state, uid);
     requestSync();
   }
@@ -617,7 +625,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     }
     // A rejected row counts as dirty here: erring toward syncing can only
     // cost a redundant cycle, never a lost write.
-    return await _storage.dirtyCount() == 0;
+    return await _syncMetadata.dirtyCount() == 0;
   }
 
   // ---------------------------------------------------------------- triggers
@@ -693,47 +701,47 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// `_startingCursors`: a lookup stays flat as tables are added.
   late final List<Future<bool> Function()> _pushableDirtyReaders = [
     () => _hasPushable(
-          readPage: _storage.readDirtyProfiles,
+          readPage: _syncMetadata.readDirtyProfiles,
           id: (p) => p.id,
           localRev: (p) => p.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyDayEntries,
+          readPage: _syncMetadata.readDirtyDayEntries,
           id: (e) => e.id,
           localRev: (e) => e.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyObservations,
+          readPage: _syncMetadata.readDirtyObservations,
           id: (o) => o.id,
           localRev: (o) => o.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyProfileModes,
+          readPage: _syncMetadata.readDirtyProfileModes,
           id: (m) => m.profileId,
           localRev: (m) => m.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyCycleOverrides,
+          readPage: _syncMetadata.readDirtyCycleOverrides,
           id: (o) => o.id,
           localRev: (o) => o.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyCareNotes,
+          readPage: _syncMetadata.readDirtyCareNotes,
           id: (n) => n.id,
           localRev: (n) => n.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyVisitPrepItems,
+          readPage: _syncMetadata.readDirtyVisitPrepItems,
           id: (i) => i.id,
           localRev: (i) => i.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyDayEntryMergeEvents,
+          readPage: _syncMetadata.readDirtyDayEntryMergeEvents,
           id: (e) => e.id,
           localRev: (e) => e.localRev,
         ),
     () => _hasPushable(
-          readPage: _storage.readDirtyProfileTagRegistry,
+          readPage: _syncMetadata.readDirtyProfileTagRegistry,
           id: (e) => e.id,
           localRev: (e) => e.localRev,
         ),
@@ -759,7 +767,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   late final List<_PushTable> _pushTables = [
     _pushTable(
       table: SyncTable.profiles,
-      readPage: _storage.readDirtyProfiles,
+      readPage: _syncMetadata.readDirtyProfiles,
       idOf: (p) => p.id,
       localRev: (p) => p.localRev,
       encode: encodeProfile,
@@ -767,7 +775,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.dayEntries,
-      readPage: _storage.readDirtyDayEntries,
+      readPage: _syncMetadata.readDirtyDayEntries,
       idOf: (e) => e.id,
       localRev: (e) => e.localRev,
       encode: encodeDayEntry,
@@ -775,7 +783,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.observations,
-      readPage: _storage.readDirtyObservations,
+      readPage: _syncMetadata.readDirtyObservations,
       idOf: (o) => o.id,
       localRev: (o) => o.localRev,
       encode: encodeObservation,
@@ -783,7 +791,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.profileModes,
-      readPage: _storage.readDirtyProfileModes,
+      readPage: _syncMetadata.readDirtyProfileModes,
       idOf: (m) => m.profileId,
       localRev: (m) => m.localRev,
       encode: encodeProfileMode,
@@ -791,7 +799,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.cycleOverrides,
-      readPage: _storage.readDirtyCycleOverrides,
+      readPage: _syncMetadata.readDirtyCycleOverrides,
       idOf: (o) => o.id,
       localRev: (o) => o.localRev,
       encode: encodeCycleOverride,
@@ -799,7 +807,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.careNotes,
-      readPage: _storage.readDirtyCareNotes,
+      readPage: _syncMetadata.readDirtyCareNotes,
       idOf: (n) => n.id,
       localRev: (n) => n.localRev,
       encode: encodeCareNote,
@@ -807,7 +815,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.visitPrepItems,
-      readPage: _storage.readDirtyVisitPrepItems,
+      readPage: _syncMetadata.readDirtyVisitPrepItems,
       idOf: (i) => i.id,
       localRev: (i) => i.localRev,
       encode: encodeVisitPrepItem,
@@ -815,7 +823,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.guardianNotes,
-      readPage: _storage.readDirtyGuardianNotes,
+      readPage: _syncMetadata.readDirtyGuardianNotes,
       idOf: (n) => n.id,
       localRev: (n) => n.localRev,
       encode: encodeGuardianNote,
@@ -823,7 +831,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.dayEntryMergeEvents,
-      readPage: _storage.readDirtyDayEntryMergeEvents,
+      readPage: _syncMetadata.readDirtyDayEntryMergeEvents,
       idOf: (e) => e.id,
       localRev: (e) => e.localRev,
       encode: encodeDayEntryMergeEvent,
@@ -831,7 +839,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     ),
     _pushTable(
       table: SyncTable.profileTagRegistry,
-      readPage: _storage.readDirtyProfileTagRegistry,
+      readPage: _syncMetadata.readDirtyProfileTagRegistry,
       idOf: (e) => e.id,
       localRev: (e) => e.localRev,
       encode: encodeProfileTagRegistryEntry,
@@ -883,7 +891,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       if (!await _passesGateAndAuthChecks()) return false;
 
       final uid = _confirmedUid();
-      var state = await _storage.readSyncState();
+      var state = await _syncMetadata.readSyncState();
       _restoreOffset(state);
       if (uid == null) {
         _emit(_snapshot.copyWith(
@@ -907,7 +915,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
       await _push(uid);
       final pullRetry = await _pullIncremental(uid);
-      state = await _storage.readSyncState();
+      state = await _syncMetadata.readSyncState();
       final reconcileRetry = await _reconcileIfDue(
         uid: uid,
         reconcileDueBeforePush: reconcileDue.due,
@@ -924,7 +932,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
       _restoring = false;
       _emit(_snapshot.copyWith(
         phase: SyncPhase.idle,
-        dirtyCount: await _storage.dirtyCount(),
+        dirtyCount: await _syncMetadata.dirtyCount(),
         rejectedCount: _apply.rejectedCount,
         lastSyncAt: finishedAt,
         lastError: SyncErrorKind.none,
@@ -977,7 +985,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     String uid,
   ) async {
     if (state.boundUserId == null) {
-      if (await _storage.isEmpty()) {
+      if (await _syncMetadata.isEmpty()) {
         // The session may have vanished during the awaits above (a device
         // reset signs out while the fresh database opens): never bind an
         // empty database to an account that is no longer confirmed.
@@ -1062,7 +1070,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
           (s) => s.copyWith(lastFullPullAt: Value(_clock().toUtc())));
       // Issue #203: periodic maintenance (bounded tombstone sweep + VACUUM)
       // runs after a clean full reconciliation, not unconditionally on every launch.
-      await _storage.sweepTombstones();
+      await _syncMetadata.sweepTombstones();
       await _storage.db.vacuum();
     } else {
       _consecutiveReconcileRetries++;
@@ -1086,7 +1094,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// instead of answering `null` — reports "changed" so the caller runs
   /// the full re-pull.
   Future<bool> _serverUnchangedSinceCursors() async {
-    final state = await _storage.readSyncState();
+    final state = await _syncMetadata.readSyncState();
     for (final table in _pullTableOrder) {
       final max = await _probeMaxVersion(table);
       if (max == null || max > _startingCursor(table, state)) return false;
@@ -1170,7 +1178,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
 
   Future<int> _safeDirtyCount() async {
     try {
-      return await _storage.dirtyCount();
+      return await _syncMetadata.dirtyCount();
     } catch (e, s) {
       // Issue #547: recorded, not silenced — the stale in-memory count is
       // still a reasonable fallback, but a persistently failing count
@@ -1185,7 +1193,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   Future<SyncStateRow> _bind(SyncStateRow state, String uid) async {
     final deviceId = state.deviceId.isEmpty ? _ulid.next() : state.deviceId;
     final bound = state.copyWith(boundUserId: Value(uid), deviceId: deviceId);
-    await _storage.writeSyncState(bound);
+    await _syncMetadata.writeSyncState(bound);
     return bound;
   }
 
@@ -1195,7 +1203,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     final ms = state.serverClockOffsetMs;
     if (ms != null) {
       final restored = Duration(milliseconds: ms);
-      _storage.setClockOffset(restored);
+      _syncMetadata.setClockOffset(restored);
       // Issue #566: seed the EMA from the last persisted value rather than
       // starting fresh — otherwise every app restart would re-learn the
       // offset from a single, unsmoothed sample.
@@ -1222,8 +1230,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   }
 
   Future<void> _updateState(SyncStateRow Function(SyncStateRow) change) async {
-    final current = await _storage.readSyncState();
-    await _storage.writeSyncState(change(current));
+    final current = await _syncMetadata.readSyncState();
+    await _syncMetadata.writeSyncState(change(current));
   }
 
   // ------------------------------------------------------------------- push
@@ -1250,7 +1258,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// ([_reconcileIfDue]'s old `resolvedSeen` parameter), dropped because
   /// [_pushBatch] already applies every resolved row correctly on its own.
   Future<void> _push(String uid) async {
-    final totalDirty = await _storage.dirtyCount();
+    final totalDirty = await _syncMetadata.dirtyCount();
     _emit(_snapshot.copyWith(pushedRows: 0, totalDirtyRows: totalDirty));
     if (totalDirty == 0) return;
 
@@ -1362,7 +1370,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     // local writes) and is persisted to sync_state for this committed batch.
     final sample = result.serverNow.toUtc().difference(sentAt.toUtc());
     final offset = _smoothOffset(sample);
-    _storage.setClockOffset(offset);
+    _syncMetadata.setClockOffset(offset);
     // Issue #641 LLA-042: once we have learned the server clock (from this
     // push's serverNow), rebase any dirty row that is still future-stamped
     // (the reason at least one row in this batch was rejected) so it becomes
@@ -1370,7 +1378,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     // up. Only runs when this batch saw a rejection — the common case for a
     // fast client clock — and matches only rows the server would reject.
     if (result.rejectedIds.isNotEmpty) {
-      await _storage.rebaseFutureStampedRows(serverNow: result.serverNow);
+      await _syncMetadata.rebaseFutureStampedRows(serverNow: result.serverNow);
     }
     await _updateState(
         (s) => s.copyWith(serverClockOffsetMs: Value(offset.inMilliseconds)));
@@ -1445,12 +1453,12 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     SyncTable.dayEntryHistory,
   ];
 
-  /// One [_storage.readSyncState] read, turned into the persisted starting
+  /// One [_syncMetadata.readSyncState] read, turned into the persisted starting
   /// cursor for every [_pullRpcTables] entry (issue #598) — the snapshot
   /// [_primePullCycle] hands the transport before [_pullIncremental]'s own
   /// per-table loop begins reading (and advancing) those same cursors.
   Future<Map<SyncTable, int>> _incrementalCycleCursors() async {
-    final state = await _storage.readSyncState();
+    final state = await _syncMetadata.readSyncState();
     return {
       for (final table in _pullRpcTables) table: _startingCursor(table, state),
     };
@@ -1473,7 +1481,7 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
   /// retryable apply failure. Returns whether it failed (left for the next
   /// cycle by the caller's `retry` flag).
   Future<bool> _pullTable(SyncTable table, String uid, {int? watermark}) async {
-    final state = await _storage.readSyncState();
+    final state = await _syncMetadata.readSyncState();
     var after = _startingCursor(table, state);
     var failed = false;
     while (true) {
@@ -1578,8 +1586,8 @@ class SupabaseSyncEngine with WidgetsBindingObserver implements SyncEngine {
     // not on hitting the cap itself.
     _consecutiveGuardianPullRetries++;
     if (_consecutiveGuardianPullRetries < kMaxConsecutiveReconcileRetries) {
-      final s = await _storage.readSyncState();
-      await _storage.writeSyncState(s.copyWith(cursorProfiles: 0));
+      final s = await _syncMetadata.readSyncState();
+      await _syncMetadata.writeSyncState(s.copyWith(cursorProfiles: 0));
     }
   }
 

@@ -7,7 +7,7 @@ import 'package:lunarlog/domain/repositories/settings_store.dart';
 class DriftSettingsStore implements SettingsStore {
   DriftSettingsStore(this._storage);
 
-  final LunarLogStorage _storage;
+  final AppSettingsStore _storage;
 
   @override
   Future<String?> get(String key) => _storage.getSetting(key);

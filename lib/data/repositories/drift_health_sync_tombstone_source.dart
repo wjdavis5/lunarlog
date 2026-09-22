@@ -13,7 +13,7 @@ import 'mappers.dart';
 class DriftHealthSyncTombstoneSource implements HealthSyncTombstoneSource {
   DriftHealthSyncTombstoneSource(this._storage);
 
-  final LunarLogStorage _storage;
+  final HealthTombstoneSourceStore _storage;
 
   @override
   Stream<List<domain.DayEntry>> watchDayEntries(String profileId) => _storage

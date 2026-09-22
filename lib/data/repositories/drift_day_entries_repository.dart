@@ -16,7 +16,7 @@ import 'mappers.dart';
 class DriftDayEntriesRepository implements DayEntriesRepository {
   DriftDayEntriesRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final DayEntriesRepositoryStore _storage;
 
   /// Persists [entry] as-is, tag codes included. This boundary does **not**
   /// gate on the client's tag taxonomy (`domain.validateTagCodes`,

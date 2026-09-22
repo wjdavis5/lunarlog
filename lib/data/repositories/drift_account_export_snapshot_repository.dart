@@ -33,7 +33,7 @@ class DriftAccountExportSnapshotRepository
     this.guardianNotesRepository,
   });
 
-  final LunarLogStorage storage;
+  final AccountExportSnapshotStore storage;
   final DayEntriesRepository entriesRepository;
   final ObservationsRepository observationsRepository;
   final ProfileModesRepository profileModesRepository;

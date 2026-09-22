@@ -16,7 +16,7 @@ class DriftProfileGuardiansRepository
     implements ProfileGuardiansRepository {
   const DriftProfileGuardiansRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final ProfileGuardianStore _storage;
 
   /// Every guardian row for [profileId], any status, mapped to the domain
   /// model. Callers filter by [ProfileGuardian.status] themselves (e.g. to

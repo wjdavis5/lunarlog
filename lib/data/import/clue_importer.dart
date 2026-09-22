@@ -46,7 +46,7 @@ import 'package:lunarlog/domain/limits.dart';
 class ClueImporter implements ClueImportRunner {
   ClueImporter(this._storage);
 
-  final LunarLogStorage _storage;
+  final ClueImportStore _storage;
 
   /// Writes [parseResult]'s datapoints for [profileId] and returns the
   /// explicit "what did (and did not) come across" summary. [fileChecksum]

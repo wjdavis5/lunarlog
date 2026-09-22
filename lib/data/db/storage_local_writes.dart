@@ -439,6 +439,11 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
   UlidGenerator get _generator;
   DateTime _now();
 
+  /// The extracted sync cursor + dirty-scan store (issue #551 part 1 step
+  /// 2); supplied by the concrete store, used here only by [runMaintenance]
+  /// to sweep tombstones.
+  SyncMetadataStore get syncMetadata;
+
   /// Issue #848: the device's local civil date, supplied by the concrete
   /// store (defaulting to `LocalDate.today`), used only by the day-entry
   /// date-bounds policy — never for sync timestamps, which stay on the
@@ -2292,148 +2297,6 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     );
   }
 
-  /// Flags every row, live and tombstoned, in every synced table for push
-  /// (first sign-in upload, R14). Bumps `local_rev` like any local write.
-  Future<void> markAllDirty() async {
-    await db.transaction(() async {
-      await db.update(db.profiles).write(ProfilesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.profiles.localRev + const Constant(1),
-          ));
-      await db.update(db.dayEntries).write(DayEntriesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.dayEntries.localRev + const Constant(1),
-          ));
-      await db.update(db.observations).write(ObservationsCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.observations.localRev + const Constant(1),
-          ));
-      await db.update(db.profileModes).write(ProfileModesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.profileModes.localRev + const Constant(1),
-          ));
-      await db.update(db.cycleOverrides).write(CycleOverridesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.cycleOverrides.localRev + const Constant(1),
-          ));
-      await db.update(db.careNotes).write(CareNotesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.careNotes.localRev + const Constant(1),
-          ));
-      await db.update(db.visitPrepItems).write(VisitPrepItemsCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.visitPrepItems.localRev + const Constant(1),
-          ));
-      await db.update(db.dayEntryMergeEvents)
-          .write(DayEntryMergeEventsCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.dayEntryMergeEvents.localRev + const Constant(1),
-          ));
-      await db.update(db.profileTagRegistry)
-          .write(ProfileTagRegistryCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.profileTagRegistry.localRev + const Constant(1),
-          ));
-      await db.update(db.guardianNotes)
-          .write(GuardianNotesCompanion.custom(
-            dirty: const Constant(true),
-            localRev: db.guardianNotes.localRev + const Constant(1),
-          ));
-    });
-  }
-
-  /// Issue #641 LLA-042: a dirty row whose `updated_at` is in the future (a
-  /// client clock far ahead) is rejected by the server (`updated_at > now() +
-  /// 5 minutes`), and because [_afterStored] refuses to move a timestamp
-  /// backward, it stays permanently unsyncable until wall-clock time catches
-  /// up — even after the client learns its clock is fast and corrects it
-  /// (editing the row still picks the stored future time + 1ms). Rebase every
-  /// dirty row whose `updated_at` exceeds [serverNow] + 5 minutes (the
-  /// server's own rejection ceiling) to [serverNow] and bump `local_rev`, so
-  /// the row becomes pushable again (the bump also clears any in-memory
-  /// rejection keyed on the old rev) and, once accepted, wins LWW against
-  /// anything genuinely older. Returns how many rows were rebased. Idempotent
-  /// and cheap when nothing is future-stamped — the predicate matches only
-  /// rows the server would reject.
-  Future<int> rebaseFutureStampedRows({required DateTime serverNow}) async {
-    final threshold = serverNow.toUtc().add(const Duration(minutes: 5));
-    var rebased = 0;
-    await db.transaction(() async {
-      rebased += await (db.update(db.profiles)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(ProfilesCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.profiles.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.dayEntries)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(DayEntriesCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.dayEntries.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.observations)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(ObservationsCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.observations.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.profileModes)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(ProfileModesCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.profileModes.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.cycleOverrides)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(CycleOverridesCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.cycleOverrides.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.careNotes)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(CareNotesCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.careNotes.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.visitPrepItems)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(VisitPrepItemsCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.visitPrepItems.localRev + const Constant(1),
-          ));
-      rebased += await (db.update(db.profileTagRegistry)
-            ..where((t) =>
-                t.dirty.equals(true) &
-                t.updatedAt.isBiggerThanValue(threshold)))
-          .write(ProfileTagRegistryCompanion.custom(
-            updatedAt: Constant(serverNow.toUtc()),
-            localRev: db.profileTagRegistry.localRev + const Constant(1),
-          ));
-    });
-    return rebased;
-  }
-
-  /// Replaces the `sync_state` singleton (the id is forced to 1).
-  Future<void> writeSyncState(SyncStateRow state) async {
-    await db
-        .into(db.syncState)
-        .insertOnConflictUpdate(state.copyWith(id: 1).toCompanion(false));
-  }
-
   /// Upserts the device-local `health_sync_state` anchor for its platform
   /// (Issue #186 — never synced to the server; keyed by `platform`).
   Future<void> writeHealthSyncAnchor(HealthSyncStateRow anchor) async {
@@ -2482,113 +2345,14 @@ mixin LunarLogStorageLocalWrites on LunarLogStorageQueries {
     await db.delete(db.healthExportLedger).go();
   }
 
-  /// Sweeps tombstoned rows older than [retentionHorizon] (or [olderThan] if
-  /// specified) whose `dirty` flag is false (Issue #203).
-  ///
-  /// Deletes are performed in referential integrity order (child tables before
-  /// parents). Only clean (already synced or never dirty) tombstones are removed;
-  /// rows pending upload are never swept.
-  /// Returns the total number of swept rows.
-  Future<int> sweepTombstones({
-    Duration retentionHorizon = kTombstoneRetentionHorizon,
-    DateTime? olderThan,
-  }) async {
-    final cutoff = olderThan ?? _now().subtract(retentionHorizon);
-    return await db.transaction(() async {
-      var swept = 0;
-
-      // 1. Observations (references day_entries and profiles)
-      swept += await (db.delete(db.observations)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff)))
-          .go();
-
-      // 2. Visit prep items (references profiles)
-      swept += await (db.delete(db.visitPrepItems)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff)))
-          .go();
-
-      // 3. Care notes (references profiles)
-      swept += await (db.delete(db.careNotes)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff)))
-          .go();
-
-      // 4. Cycle overrides (references profiles)
-      swept += await (db.delete(db.cycleOverrides)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff)))
-          .go();
-
-      // 4b. Profile tag registry (references profiles) — Issue #257.
-      swept += await (db.delete(db.profileTagRegistry)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff)))
-          .go();
-
-      // 5. Day entries (references profiles, referenced by observations)
-      // Only delete day entries that are no longer referenced by any remaining observations.
-      final referencedDayEntryIds = db.selectOnly(db.observations)
-        ..addColumns([db.observations.dayEntryId])
-        ..where(db.observations.dayEntryId.isNotNull());
-
-      swept += await (db.delete(db.dayEntries)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff) &
-                t.id.isNotInQuery(referencedDayEntryIds)))
-          .go();
-
-      // 6. Profiles (root table)
-      // Only delete profiles if no child records remain referencing them.
-      final refObs = db.selectOnly(db.observations)..addColumns([db.observations.profileId]);
-      final refDays = db.selectOnly(db.dayEntries)..addColumns([db.dayEntries.profileId]);
-      final refGuardians = db.selectOnly(db.profileGuardians)..addColumns([db.profileGuardians.profileId]);
-      final refModes = db.selectOnly(db.profileModes)..addColumns([db.profileModes.profileId]);
-      final refOverrides = db.selectOnly(db.cycleOverrides)..addColumns([db.cycleOverrides.profileId]);
-      final refNotes = db.selectOnly(db.careNotes)..addColumns([db.careNotes.profileId]);
-      final refPrep = db.selectOnly(db.visitPrepItems)..addColumns([db.visitPrepItems.profileId]);
-      final refRegistry = db.selectOnly(db.profileTagRegistry)
-        ..addColumns([db.profileTagRegistry.profileId]);
-
-      swept += await (db.delete(db.profiles)
-            ..where((t) =>
-                t.deletedAt.isNotNull() &
-                t.dirty.equals(false) &
-                t.deletedAt.isSmallerOrEqualValue(cutoff) &
-                t.id.isNotInQuery(refObs) &
-                t.id.isNotInQuery(refDays) &
-                t.id.isNotInQuery(refGuardians) &
-                t.id.isNotInQuery(refModes) &
-                t.id.isNotInQuery(refOverrides) &
-                t.id.isNotInQuery(refNotes) &
-                t.id.isNotInQuery(refPrep) &
-                t.id.isNotInQuery(refRegistry)))
-          .go();
-
-      return swept;
-    });
-  }
-
   /// Runs periodic maintenance: sweeps tombstones and reclaims unused storage
-  /// space via VACUUM (Issue #203).
+  /// space via VACUUM (Issue #203). The sweep itself lives in the extracted
+  /// [SyncCursorStorage] (issue #551 part 1 step 2).
   Future<int> runMaintenance({
     Duration retentionHorizon = kTombstoneRetentionHorizon,
     DateTime? olderThan,
   }) async {
-    final swept = await sweepTombstones(
+    final swept = await syncMetadata.sweepTombstones(
       retentionHorizon: retentionHorizon,
       olderThan: olderThan,
     );
