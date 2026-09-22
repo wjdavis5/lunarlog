@@ -107,7 +107,7 @@ import 'package:lunarlog/domain/util/timezone.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
+    show shouldConfirmOfflineSave;
 import 'package:provider/provider.dart';
 
 import 'package:lunarlog/domain/models/profile_guardian.dart';
@@ -1618,9 +1618,9 @@ class _DaySheetState extends State<DaySheet> {
     if (flushPending) unawaited(_performAutosave());
     if (messenger != null) {
       messenger.showSnackBar(
-        const SnackBar(
-          key: ValueKey('offline-save-confirmation'),
-          content: Text(kOfflineSaveConfirmationCopy),
+        SnackBar(
+          key: const ValueKey('offline-save-confirmation'),
+          content: Text(AppLocalizations.of(context).accountSyncStatusOfflineSaved),
         ),
       );
     }

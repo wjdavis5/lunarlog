@@ -56,7 +56,7 @@ import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/account/sync_status_controller.dart';
 import 'package:lunarlog/ui/account/sync_status_tile.dart'
-    show kOfflineSaveConfirmationCopy, shouldConfirmOfflineSave;
+    show shouldConfirmOfflineSave;
 import 'package:lunarlog/ui/logging/day_sheet.dart';
 import 'package:lunarlog/ui/l10n/dates.dart';
 import 'package:lunarlog/ui/profiles/profile_controller.dart';
@@ -3774,7 +3774,7 @@ void main() {
           find.byKey(const ValueKey('offline-save-confirmation')),
           findsOneWidget,
         );
-        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+        expect(find.text(AppLocalizationsEn().accountSyncStatusOfflineSaved), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));
@@ -3807,7 +3807,7 @@ void main() {
 
         await logAutosaveAndDismiss(tester);
 
-        expect(find.text(kOfflineSaveConfirmationCopy), findsOneWidget);
+        expect(find.text(AppLocalizationsEn().accountSyncStatusOfflineSaved), findsOneWidget);
 
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(const Duration(milliseconds: 100));

@@ -11,10 +11,10 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 
 const Color _kGoogleStroke = Color(0xFF747775);
 const Color _kGoogleText = Color(0xFF1F1F1F);
-const String _kGoogleLabel = 'Sign in with Google';
 
 class GoogleSignInButton extends StatelessWidget {
   const GoogleSignInButton({super.key, required this.onPressed});
@@ -25,10 +25,13 @@ class GoogleSignInButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
+    // Google's branding guidelines fix the wording, not the language: the
+    // localized "Sign in with Google" label (issue #1004, tranche 5).
+    final label = AppLocalizations.of(context).accountGoogleButtonLabel;
     return Semantics(
       button: true,
       enabled: enabled,
-      label: _kGoogleLabel,
+      label: label,
       child: ExcludeSemantics(
         child: Opacity(
           opacity: enabled ? 1 : 0.38,
@@ -57,9 +60,9 @@ class GoogleSignInButton extends StatelessWidget {
                         height: 18,
                       ),
                     ),
-                    const Text(
-                      _kGoogleLabel,
-                      style: TextStyle(
+                    Text(
+                      label,
+                      style: const TextStyle(
                         color: _kGoogleText,
                         fontSize: 14,
                         fontWeight: FontWeight.w500,

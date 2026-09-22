@@ -7579,6 +7579,216 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Logged {occurrences} times across {cycles} cycles'**
   String symptomTrendsLogged(int occurrences, int cycles);
+
+  /// Issue #1004 (tranche 5): sync-status copy while a push/pull/restore cycle runs.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing…'**
+  String get accountSyncStatusSyncing;
+
+  /// Issue #1004 (tranche 5): sync-status copy while upload consent is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload pending — tap to review'**
+  String get accountSyncStatusUploadPending;
+
+  /// Issue #1004 (tranche 5): sync-status copy on the web build without the sync define.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is off in this web build'**
+  String get accountSyncStatusWebSyncOff;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an expired session or an auth failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again to sync'**
+  String get accountSyncStatusSignInAgain;
+
+  /// Issue #1004 (tranche 5): sync-status copy when rejected rows exist.
+  ///
+  /// In en, this message translates to:
+  /// **'Some entries could not be uploaded'**
+  String get accountSyncStatusRejected;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a sign-up confirmation email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for email confirmation — open the link on this device'**
+  String get accountSyncStatusAwaitingConfirmation;
+
+  /// Issue #1004 (tranche 5): sync-status copy while a passwordless sign-in email is pending.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign-in email sent — open the link on this device or enter the code'**
+  String get accountSyncStatusAwaitingMagicLink;
+
+  /// Issue #1004 (tranche 5): day-sheet micro-confirmation after an offline save (#182 AC8).
+  ///
+  /// In en, this message translates to:
+  /// **'Saved on this device · will sync'**
+  String get accountSyncStatusOfflineSaved;
+
+  /// Issue #1004 (tranche 5): relative time under a minute.
+  ///
+  /// In en, this message translates to:
+  /// **'just now'**
+  String get accountSyncStatusJustNow;
+
+  /// Issue #1004 (tranche 5): relative time in minutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min ago'**
+  String accountSyncStatusMinutesAgo(int minutes);
+
+  /// Issue #1004 (tranche 5): relative time in hours.
+  ///
+  /// In en, this message translates to:
+  /// **'{hours} h ago'**
+  String accountSyncStatusHoursAgo(int hours);
+
+  /// Issue #1004 (tranche 5): relative time in days.
+  ///
+  /// In en, this message translates to:
+  /// **'{days} d ago'**
+  String accountSyncStatusDaysAgo(int days);
+
+  /// Issue #1004 (tranche 5): sync-status copy when no sync engine is wired.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync is not available in this build'**
+  String get accountSyncStatusUnavailable;
+
+  /// Issue #1004 (tranche 5): sync-status copy for a network failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server — will retry'**
+  String get accountSyncStatusNetworkRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy for an unclassified sync failure.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync failed — will retry'**
+  String get accountSyncStatusFailedRetry;
+
+  /// Issue #1004 (tranche 5): sync-status copy when the server account no longer matches.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as a different account'**
+  String get accountSyncStatusAccountMismatch;
+
+  /// Issue #1004 (tranche 5): live push progress; both counts arrive pre-formatted so the thousands separator stays the app's own.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading {pushed} of {total}'**
+  String accountSyncStatusUploading(String pushed, String total);
+
+  /// Issue #1004 (tranche 5): sync-status copy when signed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Not signed in'**
+  String get accountSyncStatusNotSignedIn;
+
+  /// Issue #1004 (tranche 5): sync-status copy while the device gate pauses sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync paused'**
+  String get accountSyncStatusPaused;
+
+  /// Issue #1004 (tranche 5): sync-status copy before the first completed sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Not synced yet'**
+  String get accountSyncStatusNotSyncedYet;
+
+  /// Issue #1004 (tranche 5): resting sync-status copy; the relative time arrives pre-formatted.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date · {relative}'**
+  String accountSyncStatusUpToDate(String relative);
+
+  /// Issue #1004 (tranche 5): one-line JSON-export failure copy, no exception text (R10).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not export your data. Please try again.'**
+  String get accountExportFailure;
+
+  /// Issue #1004 (tranche 5): branded Google button label per Google's branding guidelines wording.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in with Google'**
+  String get accountGoogleButtonLabel;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (network).
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server. Check your connection and try again. Your account was not deleted.'**
+  String get accountDeletionNetworkFailure;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (missing Apple authorization code).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.'**
+  String get accountDeletionAppleCodeRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (no native Apple ceremony on this device).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.'**
+  String get accountDeletionAppleCeremonyUnavailable;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment cleanup failed closed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.'**
+  String get accountDeletionAttachmentCleanupFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment count unbounded; support needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.'**
+  String get accountDeletionAttachmentCleanupUnbounded;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (AAL2 step-up needed).
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing was deleted. Please confirm your two-factor code and try again.'**
+  String get accountDeletionMfaRequired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (Apple revocation failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.'**
+  String get accountDeletionAppleRevokeFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (revocation marker not persisted).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionRevocationMarkerFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, data already deleted (auth row deletion failed).
+  ///
+  /// In en, this message translates to:
+  /// **'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.'**
+  String get accountDeletionDeleteUserFailed;
+
+  /// Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (unauthorized).
+  ///
+  /// In en, this message translates to:
+  /// **'Your session has expired. Sign in again and retry - your account was not deleted.'**
+  String get accountDeletionSessionExpired;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unknown outcome (timeout).
+  ///
+  /// In en, this message translates to:
+  /// **'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.'**
+  String get accountDeletionTimeout;
+
+  /// Issue #1004 (tranche 5): account-deletion failure with an unclassified error.
+  ///
+  /// In en, this message translates to:
+  /// **'Something went wrong. Your account was not deleted. Please try again.'**
+  String get accountDeletionUnknown;
 }
 
 class _AppLocalizationsDelegate

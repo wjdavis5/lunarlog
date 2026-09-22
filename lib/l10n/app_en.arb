@@ -6160,5 +6160,173 @@
           "type": "int"
         }
       }
+    },
+    "accountSyncStatusSyncing": "Syncing…",
+    "@accountSyncStatusSyncing": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a push/pull/restore cycle runs."
+    },
+    "accountSyncStatusUploadPending": "Upload pending — tap to review",
+    "@accountSyncStatusUploadPending": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while upload consent is pending."
+    },
+    "accountSyncStatusWebSyncOff": "Sync is off in this web build",
+    "@accountSyncStatusWebSyncOff": {
+      "description": "Issue #1004 (tranche 5): sync-status copy on the web build without the sync define."
+    },
+    "accountSyncStatusSignInAgain": "Sign in again to sync",
+    "@accountSyncStatusSignInAgain": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for an expired session or an auth failure."
+    },
+    "accountSyncStatusRejected": "Some entries could not be uploaded",
+    "@accountSyncStatusRejected": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when rejected rows exist."
+    },
+    "accountSyncStatusAwaitingConfirmation": "Waiting for email confirmation — open the link on this device",
+    "@accountSyncStatusAwaitingConfirmation": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a sign-up confirmation email is pending."
+    },
+    "accountSyncStatusAwaitingMagicLink": "Sign-in email sent — open the link on this device or enter the code",
+    "@accountSyncStatusAwaitingMagicLink": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while a passwordless sign-in email is pending."
+    },
+    "accountSyncStatusOfflineSaved": "Saved on this device · will sync",
+    "@accountSyncStatusOfflineSaved": {
+      "description": "Issue #1004 (tranche 5): day-sheet micro-confirmation after an offline save (#182 AC8)."
+    },
+    "accountSyncStatusJustNow": "just now",
+    "@accountSyncStatusJustNow": {
+      "description": "Issue #1004 (tranche 5): relative time under a minute."
+    },
+    "accountSyncStatusMinutesAgo": "{minutes} min ago",
+    "@accountSyncStatusMinutesAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in minutes.",
+      "placeholders": {
+        "minutes": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusHoursAgo": "{hours} h ago",
+    "@accountSyncStatusHoursAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in hours.",
+      "placeholders": {
+        "hours": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusDaysAgo": "{days} d ago",
+    "@accountSyncStatusDaysAgo": {
+      "description": "Issue #1004 (tranche 5): relative time in days.",
+      "placeholders": {
+        "days": {
+          "type": "int"
+        }
+      }
+    },
+    "accountSyncStatusUnavailable": "Sync is not available in this build",
+    "@accountSyncStatusUnavailable": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when no sync engine is wired."
+    },
+    "accountSyncStatusNetworkRetry": "Could not reach the server — will retry",
+    "@accountSyncStatusNetworkRetry": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for a network failure."
+    },
+    "accountSyncStatusFailedRetry": "Sync failed — will retry",
+    "@accountSyncStatusFailedRetry": {
+      "description": "Issue #1004 (tranche 5): sync-status copy for an unclassified sync failure."
+    },
+    "accountSyncStatusAccountMismatch": "Signed in as a different account",
+    "@accountSyncStatusAccountMismatch": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when the server account no longer matches."
+    },
+    "accountSyncStatusUploading": "Uploading {pushed} of {total}",
+    "@accountSyncStatusUploading": {
+      "description": "Issue #1004 (tranche 5): live push progress; both counts arrive pre-formatted so the thousands separator stays the app's own.",
+      "placeholders": {
+        "pushed": {
+          "type": "String"
+        },
+        "total": {
+          "type": "String"
+        }
+      }
+    },
+    "accountSyncStatusNotSignedIn": "Not signed in",
+    "@accountSyncStatusNotSignedIn": {
+      "description": "Issue #1004 (tranche 5): sync-status copy when signed out."
+    },
+    "accountSyncStatusPaused": "Sync paused",
+    "@accountSyncStatusPaused": {
+      "description": "Issue #1004 (tranche 5): sync-status copy while the device gate pauses sync."
+    },
+    "accountSyncStatusNotSyncedYet": "Not synced yet",
+    "@accountSyncStatusNotSyncedYet": {
+      "description": "Issue #1004 (tranche 5): sync-status copy before the first completed sync."
+    },
+    "accountSyncStatusUpToDate": "Up to date · {relative}",
+    "@accountSyncStatusUpToDate": {
+      "description": "Issue #1004 (tranche 5): resting sync-status copy; the relative time arrives pre-formatted.",
+      "placeholders": {
+        "relative": {
+          "type": "String"
+        }
+      }
+    },
+    "accountExportFailure": "Could not export your data. Please try again.",
+    "@accountExportFailure": {
+      "description": "Issue #1004 (tranche 5): one-line JSON-export failure copy, no exception text (R10)."
+    },
+    "accountGoogleButtonLabel": "Sign in with Google",
+    "@accountGoogleButtonLabel": {
+      "description": "Issue #1004 (tranche 5): branded Google button label per Google's branding guidelines wording."
+    },
+    "accountDeletionNetworkFailure": "Could not reach the server. Check your connection and try again. Your account was not deleted.",
+    "@accountDeletionNetworkFailure": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (network)."
+    },
+    "accountDeletionAppleCodeRequired": "Nothing was deleted. We couldn't confirm your Apple sign-in before starting, so the deletion never began - please try again.",
+    "@accountDeletionAppleCodeRequired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (missing Apple authorization code)."
+    },
+    "accountDeletionAppleCeremonyUnavailable": "Nothing was deleted. This account's Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.",
+    "@accountDeletionAppleCeremonyUnavailable": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (no native Apple ceremony on this device)."
+    },
+    "accountDeletionAttachmentCleanupFailed": "Nothing was deleted. We couldn't remove your support attachments, so the deletion never began - please try again.",
+    "@accountDeletionAttachmentCleanupFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment cleanup failed closed)."
+    },
+    "accountDeletionAttachmentCleanupUnbounded": "Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won't help - please contact support so we can finish removing your account.",
+    "@accountDeletionAttachmentCleanupUnbounded": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (attachment count unbounded; support needed)."
+    },
+    "accountDeletionMfaRequired": "Nothing was deleted. Please confirm your two-factor code and try again.",
+    "@accountDeletionMfaRequired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (AAL2 step-up needed)."
+    },
+    "accountDeletionAppleRevokeFailed": "Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you're concerned about the lingering Apple access.",
+    "@accountDeletionAppleRevokeFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (Apple revocation failed)."
+    },
+    "accountDeletionRevocationMarkerFailed": "Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn't safely record that on our end. Please try again in a moment, or contact support if it keeps failing.",
+    "@accountDeletionRevocationMarkerFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (revocation marker not persisted)."
+    },
+    "accountDeletionDeleteUserFailed": "Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.",
+    "@accountDeletionDeleteUserFailed": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, data already deleted (auth row deletion failed)."
+    },
+    "accountDeletionSessionExpired": "Your session has expired. Sign in again and retry - your account was not deleted.",
+    "@accountDeletionSessionExpired": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure, nothing was deleted (unauthorized)."
+    },
+    "accountDeletionTimeout": "This is taking longer than expected and we can't confirm whether your account was deleted. Wait a moment and check whether you're still signed in before retrying - retrying is safe either way.",
+    "@accountDeletionTimeout": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure with an unknown outcome (timeout)."
+    },
+    "accountDeletionUnknown": "Something went wrong. Your account was not deleted. Please try again.",
+    "@accountDeletionUnknown": {
+      "description": "Issue #1004 (tranche 5): account-deletion failure with an unclassified error."
     }
 }

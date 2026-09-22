@@ -4753,4 +4753,138 @@ class AppLocalizationsEn extends AppLocalizations {
   String symptomTrendsLogged(int occurrences, int cycles) {
     return 'Logged $occurrences times across $cycles cycles';
   }
+
+  @override
+  String get accountSyncStatusSyncing => 'Syncing…';
+
+  @override
+  String get accountSyncStatusUploadPending => 'Upload pending — tap to review';
+
+  @override
+  String get accountSyncStatusWebSyncOff => 'Sync is off in this web build';
+
+  @override
+  String get accountSyncStatusSignInAgain => 'Sign in again to sync';
+
+  @override
+  String get accountSyncStatusRejected => 'Some entries could not be uploaded';
+
+  @override
+  String get accountSyncStatusAwaitingConfirmation =>
+      'Waiting for email confirmation — open the link on this device';
+
+  @override
+  String get accountSyncStatusAwaitingMagicLink =>
+      'Sign-in email sent — open the link on this device or enter the code';
+
+  @override
+  String get accountSyncStatusOfflineSaved =>
+      'Saved on this device · will sync';
+
+  @override
+  String get accountSyncStatusJustNow => 'just now';
+
+  @override
+  String accountSyncStatusMinutesAgo(int minutes) {
+    return '$minutes min ago';
+  }
+
+  @override
+  String accountSyncStatusHoursAgo(int hours) {
+    return '$hours h ago';
+  }
+
+  @override
+  String accountSyncStatusDaysAgo(int days) {
+    return '$days d ago';
+  }
+
+  @override
+  String get accountSyncStatusUnavailable =>
+      'Sync is not available in this build';
+
+  @override
+  String get accountSyncStatusNetworkRetry =>
+      'Could not reach the server — will retry';
+
+  @override
+  String get accountSyncStatusFailedRetry => 'Sync failed — will retry';
+
+  @override
+  String get accountSyncStatusAccountMismatch =>
+      'Signed in as a different account';
+
+  @override
+  String accountSyncStatusUploading(String pushed, String total) {
+    return 'Uploading $pushed of $total';
+  }
+
+  @override
+  String get accountSyncStatusNotSignedIn => 'Not signed in';
+
+  @override
+  String get accountSyncStatusPaused => 'Sync paused';
+
+  @override
+  String get accountSyncStatusNotSyncedYet => 'Not synced yet';
+
+  @override
+  String accountSyncStatusUpToDate(String relative) {
+    return 'Up to date · $relative';
+  }
+
+  @override
+  String get accountExportFailure =>
+      'Could not export your data. Please try again.';
+
+  @override
+  String get accountGoogleButtonLabel => 'Sign in with Google';
+
+  @override
+  String get accountDeletionNetworkFailure =>
+      'Could not reach the server. Check your connection and try again. Your account was not deleted.';
+
+  @override
+  String get accountDeletionAppleCodeRequired =>
+      'Nothing was deleted. We couldn\'t confirm your Apple sign-in before starting, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAppleCeremonyUnavailable =>
+      'Nothing was deleted. This account\'s Apple sign-in link can only be removed from a device that supports Sign in with Apple (iPhone or iPad) - please finish deleting your account there, or contact support to remove the Apple link for you.';
+
+  @override
+  String get accountDeletionAttachmentCleanupFailed =>
+      'Nothing was deleted. We couldn\'t remove your support attachments, so the deletion never began - please try again.';
+
+  @override
+  String get accountDeletionAttachmentCleanupUnbounded =>
+      'Nothing was deleted. Your account has more support attachments than we can clean up automatically, so the deletion never began. Retrying won\'t help - please contact support so we can finish removing your account.';
+
+  @override
+  String get accountDeletionMfaRequired =>
+      'Nothing was deleted. Please confirm your two-factor code and try again.';
+
+  @override
+  String get accountDeletionAppleRevokeFailed =>
+      'Your account data was deleted, but Apple could not confirm the sign-in revocation, so your account sign-in itself still exists. Try again to finish removing it, or contact support if you\'re concerned about the lingering Apple access.';
+
+  @override
+  String get accountDeletionRevocationMarkerFailed =>
+      'Your account data was deleted, and Apple confirmed the sign-in revocation, but we couldn\'t safely record that on our end. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionDeleteUserFailed =>
+      'Your account data has already been deleted, but removing the account sign-in itself did not finish. Please try again in a moment, or contact support if it keeps failing.';
+
+  @override
+  String get accountDeletionSessionExpired =>
+      'Your session has expired. Sign in again and retry - your account was not deleted.';
+
+  @override
+  String get accountDeletionTimeout =>
+      'This is taking longer than expected and we can\'t confirm whether your account was deleted. Wait a moment and check whether you\'re still signed in before retrying - retrying is safe either way.';
+
+  @override
+  String get accountDeletionUnknown =>
+      'Something went wrong. Your account was not deleted. Please try again.';
 }
