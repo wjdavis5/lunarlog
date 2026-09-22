@@ -1593,6 +1593,14 @@
   "@firstRunInviteSignInAction": {
     "description": "Button on the invite step opening the embedded sign-in screen; names the outcome the sign-in is for (issue #804; reworded by issue #996)."
   },
+  "pendingInviteBannerTitle": "Sign in to accept your invite",
+  "@pendingInviteBannerTitle": {
+    "description": "Persistent banner shown while a latched invite waits for a signed-out recipient (issue #535 (b)); moved out of lib/app.dart verbatim (issue #1046 follow-up)."
+  },
+  "pendingInviteBannerAction": "Sign In",
+  "@pendingInviteBannerAction": {
+    "description": "Action on the pending-invite banner opening the sign-in screen (issue #535 (b)); moved out of lib/app.dart verbatim, capital I preserved (issue #1046 follow-up)."
+  },
   "firstRunInviteCoParent": "Invite a guardian",
   "@firstRunInviteCoParent": {
     "description": "Per-profile button opening the invite dialog with the guardian presets (issue #804). Issue #1005: 'a guardian' is the umbrella the dialog actually offers — a grandparent inviting is not a co-parent."

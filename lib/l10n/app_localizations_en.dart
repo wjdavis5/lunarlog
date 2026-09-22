@@ -1253,6 +1253,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get firstRunInviteSignInAction => 'Sign in to invite';
 
   @override
+  String get pendingInviteBannerTitle => 'Sign in to accept your invite';
+
+  @override
+  String get pendingInviteBannerAction => 'Sign In';
+
+  @override
   String get firstRunInviteCoParent => 'Invite a guardian';
 
   @override
