@@ -75,6 +75,9 @@ void main() {
             'quiet_hours_start': '22:00:00',
             'quiet_hours_end': '07:00:00',
             'time_zone': 'America/New_York',
+            'alert_on_period_soon': true,
+            'alert_on_restock': false,
+            'alert_on_pms_soon': true,
           }),
           200,
         );
@@ -90,6 +93,9 @@ void main() {
       expect(prefs.highSeverityCadence, AlertCadence.off);
       expect(prefs.digestTimeMinutes, 9 * 60 + 30);
       expect(prefs.missedEntryThreshold, MissedEntryThreshold.twoDays);
+      expect(prefs.aheadOfTimeAlerts.periodSoon, isTrue);
+      expect(prefs.aheadOfTimeAlerts.restock, isFalse);
+      expect(prefs.aheadOfTimeAlerts.pmsSoon, isTrue);
       expect(prefs.quietHours,
           const QuietHours(startMinutes: 22 * 60, endMinutes: 7 * 60));
       expect(prefs.timeZone, 'America/New_York');
@@ -229,6 +235,27 @@ void main() {
           logCadence: AlertCadence.dailyDigest,
           digestTimeMinutes: 0,
           highSeverityCadence: AlertCadence.off,
+        ),
+      );
+    });
+
+    test('persists the ahead-of-time opt-ins (Issue #851)', () async {
+      final client = makeClient((req) async {
+        expect(req.method, 'POST');
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        expect(body['alert_on_period_soon'], true);
+        expect(body['alert_on_restock'], false);
+        expect(body['alert_on_pms_soon'], true);
+        return http.Response('', 201);
+      });
+      await _signIn(client);
+      final service = SupabaseNotificationPreferencesService(client: client);
+
+      await service.save(
+        _profileId,
+        const CaregiverAlertPreferences(
+          aheadOfTimeAlerts:
+              AheadOfTimeAlerts(periodSoon: true, pmsSoon: true),
         ),
       );
     });

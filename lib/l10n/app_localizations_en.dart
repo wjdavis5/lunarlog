@@ -3058,6 +3058,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'Check in when no entry has been logged for a while';
 
   @override
+  String get sharingNotificationPreferencesAheadOfTimeHeader => 'Ahead of time';
+
+  @override
+  String get sharingNotificationPreferencesPeriodSoon => 'Period reminder';
+
+  @override
+  String get sharingNotificationPreferencesPeriodSoonSubtitle =>
+      'A heads-up a few days before the next expected period';
+
+  @override
+  String get sharingNotificationPreferencesRestock => 'Restock reminder';
+
+  @override
+  String get sharingNotificationPreferencesRestockSubtitle =>
+      'Remind me to restock supplies before the next expected period';
+
+  @override
+  String get sharingNotificationPreferencesPmsSoon => 'PMS heads-up';
+
+  @override
+  String get sharingNotificationPreferencesPmsSoonSubtitle =>
+      'A gentle heads-up before a likely PMS window (needs at least three logged PMS intervals)';
+
+  @override
   String get sharingNotificationPreferencesOff => 'Off';
 
   @override
