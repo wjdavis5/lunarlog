@@ -247,12 +247,12 @@ class _ClinicalExportTileState extends State<ClinicalExportTile>
     // Issue #115 G4: resolve the operator's lens and the minor-profile gate
     // before the range picker and the build. A refusal surfaces the honest
     // "not available" copy and never calls the collaborator.
-    final access = await resolveExportAccess(context, profile);
-    if (!mounted) return;
-    if (!access.allowed) {
-      setState(() => _error = l10n.exportMinorGuardianUnavailable);
-      return;
-    }
+    final access = await resolveExportAccessOrRefuse(
+      context,
+      profile,
+      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+    );
+    if (access == null) return;
 
     // Issue #459 review: the range picker is asked *before* `_exporting`
     // flips true, not inside the same try/finally as the actual export

@@ -76,3 +76,24 @@ Future<ExportAccess> resolveExportAccess(
     today: today,
   );
 }
+
+/// [resolveExportAccess] with the refusal handled: returns the [ExportAccess]
+/// when the export may proceed, or `null` after invoking [onRefused] when the
+/// minor-profile guard refuses (or the widget unmounted while resolving).
+///
+/// Every export tile uses this one boundary so the "refuse and show the
+/// not-available copy" branch lives in exactly one place, keeping each
+/// tile's always-growing `_export` method inside the CRAP gate's complexity
+/// budget.
+Future<ExportAccess?> resolveExportAccessOrRefuse(
+  BuildContext context,
+  Profile profile,
+  VoidCallback onRefused, {
+  DateTime? today,
+}) async {
+  final access = await resolveExportAccess(context, profile, today: today);
+  if (!context.mounted) return null;
+  if (access.allowed) return access;
+  onRefused();
+  return null;
+}

@@ -211,12 +211,12 @@ class _ClinicalPdfExportTileState extends State<ClinicalPdfExportTile>
     // Issue #115 G4: resolve the operator's lens and the minor-profile gate
     // before the range picker. A refusal surfaces the honest "not
     // available" copy and never builds or hands off a document.
-    final access = await resolveExportAccess(context, profile);
-    if (!mounted) return;
-    if (!access.allowed) {
-      setState(() => _error = l10n.exportMinorGuardianUnavailable);
-      return;
-    }
+    final access = await resolveExportAccessOrRefuse(
+      context,
+      profile,
+      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+    );
+    if (access == null) return;
 
     final dayEntries = await deps.entries.listForProfile(profile.id);
     if (!context.mounted) return;

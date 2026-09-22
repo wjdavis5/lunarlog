@@ -182,12 +182,12 @@ class _CsvExportTileState extends State<CsvExportTile>
     // Issue #115 G4: resolve the operator's lens and the minor-profile gate
     // before any export work. A refusal surfaces the honest "not available"
     // copy and never touches the writer.
-    final access = await resolveExportAccess(context, profile);
-    if (!mounted) return;
-    if (!access.allowed) {
-      setState(() => _error = l10n.exportMinorGuardianUnavailable);
-      return;
-    }
+    final access = await resolveExportAccessOrRefuse(
+      context,
+      profile,
+      () => setState(() => _error = l10n.exportMinorGuardianUnavailable),
+    );
+    if (access == null) return;
 
     setState(() {
       _exporting = true;
