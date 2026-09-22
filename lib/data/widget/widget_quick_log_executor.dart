@@ -32,6 +32,15 @@
 /// known `viewer`). A stale container value can therefore never widen who
 /// can write. The target profile is also re-resolved live: an intent for a
 /// since-archived or deleted profile is dropped, never silently rerouted.
+///
+/// ## Acknowledgement (issue #1016)
+///
+/// Every materialized write is emitted on [WidgetQuickLogExecutor.outcomes]
+/// so the app shell can land the operator on the logged profile's Today tab
+/// and show the same snackbar + Undo the in-app Today card shows — the
+/// widget path is no longer the one silent write in the app. Drops stay
+/// deliberately silent (see the stream's doc comment for the one line of
+/// #1016's expected behavior that is explicitly out of scope).
 library;
 
 // Named required parameters cannot be initializing formals; the private
@@ -49,6 +58,30 @@ import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/widget/widget_quick_log_intent.dart';
 import 'package:lunarlog/domain/util/timezone.dart';
+
+/// A materialized widget quick-log write (issue #1016): everything the app
+/// shell needs to acknowledge the write the way the in-app Today button
+/// does — jump to the logged profile's Today tab and offer the same Undo.
+class WidgetQuickLogOutcome {
+  const WidgetQuickLogOutcome({
+    required this.profileId,
+    required this.previousEntry,
+    required this.date,
+  });
+
+  /// The profile the write landed on: the widget intent's target,
+  /// re-resolved live at write time (never rerouted).
+  final String profileId;
+
+  /// The day's entry as it stood immediately before the write — the exact
+  /// state the shared [undoQuickLog] helper restores. Null when the tap is
+  /// what created the day (the Undo is then a tombstone through the
+  /// repository's own delete path).
+  final DayEntry? previousEntry;
+
+  /// The civil date the write landed on (the executor's injected "today").
+  final LocalDate date;
+}
 
 /// Executes (or latches) the widget's quick-log intent. Constructed by the
 /// app shell with plain gate closures — this module never names
@@ -88,6 +121,27 @@ class WidgetQuickLogExecutor {
   @visibleForTesting
   bool get hasPending => _pending != null;
   String? _pending;
+
+  /// Every materialized write, emitted once its save has landed (issue
+  /// #1016): the app shell subscribes next to the launch stream and
+  /// acknowledges the write the way the in-app Today button does. The
+  /// broadcast controller means a period with no subscriber drops events
+  /// instead of buffering them — the shell subscribes synchronously in the
+  /// same method that constructs this executor, before any intent can
+  /// arrive, so a write can never outrun its own acknowledgement.
+  final StreamController<WidgetQuickLogOutcome> _outcomes =
+      StreamController<WidgetQuickLogOutcome>.broadcast();
+
+  /// The stream of [WidgetQuickLogOutcome]s, one per materialized write.
+  ///
+  /// Deliberately silent on every non-write resolution — a role-drop, a
+  /// since-archived profile, a relatch behind a relocked gate, a failed
+  /// save, and a day the quick-log rule could not upgrade all stay quiet.
+  /// Issue #1016 asked for a one-line "Already logged for today." on those
+  /// paths; that surfaced-drop line is explicitly out of scope for this
+  /// change (tracked as the issue's dropped line), so #141's silence on
+  /// non-writes is the shipped posture for them.
+  Stream<WidgetQuickLogOutcome> get outcomes => _outcomes.stream;
 
   /// Set by [dispose]: a write queued behind an earlier one must never
   /// land after this executor is torn down (its repositories may close).
@@ -154,7 +208,10 @@ class WidgetQuickLogExecutor {
       // since-archived profile is dropped, never rerouted.
       final profile = await _profiles.findById(profileId);
       if (profile == null || profile.archivedAt != null) return;
-      await _logStartedToday(profileId);
+      // Inside the try: a write landing after dispose() closed the stream
+      // surfaces through the same best-effort catch below rather than
+      // crashing an unawaited future.
+      _outcomes.add(await _logStartedToday(profileId));
     } catch (error) {
       // Best effort by design: the tap has no UI of its own to surface a
       // failure into, and a failed write must never crash an unawaited
@@ -167,8 +224,9 @@ class WidgetQuickLogExecutor {
   /// "Period started today": upserts today's entry with the quick-log flow
   /// rule — the identical write the overview's "Period started today" card
   /// and the reminder action use, including never downgrading a flow the
-  /// operator already recorded.
-  Future<void> _logStartedToday(String profileId) async {
+  /// operator already recorded. Returns the outcome the shell acknowledges
+  /// the write with, carrying the pre-write entry for the shared Undo.
+  Future<WidgetQuickLogOutcome> _logStartedToday(String profileId) async {
     final date = _today();
     final tzName = _timezone();
     final previous = await _dayEntries.find(profileId, date);
@@ -183,15 +241,22 @@ class WidgetQuickLogExecutor {
           updatedAt: DateTime.now().toUtc(),
         );
     await _dayEntries.save(entry);
+    return WidgetQuickLogOutcome(
+      profileId: profileId,
+      previousEntry: previous,
+      date: date,
+    );
   }
 
   /// Detaches the gate listener and stops executing. Call when the owning
   /// widget tears down; a queued-but-not-started write finds itself
-  /// disposed at its turn and never lands.
+  /// disposed at its turn and never lands. Also closes the outcome stream
+  /// (the shell cancels its subscription first, in its own dispose).
   void dispose() {
     _disposed = true;
     _removeUnlockListener?.call(_onGateChanged);
     _removeUnlockListener = null;
     _pending = null;
+    unawaited(_outcomes.close());
   }
 }

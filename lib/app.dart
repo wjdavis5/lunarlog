@@ -45,6 +45,7 @@ import 'package:lunarlog/domain/import/account_import_coordinator.dart';
 import 'package:lunarlog/domain/import/clue/clue_import_run.dart'
     show ClueImportRunner;
 import 'package:lunarlog/domain/import/import_file_reader.dart';
+import 'package:lunarlog/domain/logging/quick_log.dart' show undoQuickLog;
 import 'package:lunarlog/domain/notifications/notification_availability.dart';
 import 'package:lunarlog/domain/onboarding/onboarding_cycle_answers.dart';
 import 'package:lunarlog/domain/repositories/activity_feed_repository.dart';
@@ -337,14 +338,21 @@ class _LunarLogAppState extends State<LunarLogApp>
   ReminderActionExecutor? _actionExecutor;
 
   /// Issue #141: the home-screen widget's gated quick-log executor and
-  /// payload publisher, plus the subscription to the widget's launch URIs.
-  /// All three null unless the bundle carries a widget store (armed only
+  /// payload publisher, plus the subscription to the widget's launch URIs
+  /// (and, issue #1016, to the executor's materialized-write outcomes).
+  /// All null unless the bundle carries a widget store (armed only
   /// by production `main.dart` on a platform with a widget surface),
   /// mirroring how the coordinator above exists only where a scheduler
   /// was provided.
   WidgetQuickLogExecutor? _widgetQuickLogExecutor;
   WidgetStatePublisher? _widgetPublisher;
   StreamSubscription<Uri>? _widgetLaunchSub;
+
+  /// Issue #1016: the subscription to the executor's materialized-write
+  /// outcomes, carrying each widget quick-log back to [_onWidgetQuickLogOutcome]
+  /// for the snackbar + Undo + Today-jump acknowledgement. Null together
+  /// with the executor (no widget surface).
+  StreamSubscription<WidgetQuickLogOutcome>? _widgetOutcomeSub;
 
   /// The per-profile reminder configuration store (Issue #136) backing
   /// the coordinator; provided to the tree for the reminder settings
@@ -615,7 +623,7 @@ class _LunarLogAppState extends State<LunarLogApp>
     final gate = context.read<GateController?>();
     // The gated write path: same closures as the reminder action executor
     // above — latched while the gate is locked, executed on unlock.
-    _widgetQuickLogExecutor = buildWidgetQuickLogExecutor(
+    final executor = buildWidgetQuickLogExecutor(
       dayEntries: _dayEntries,
       profiles: _profiles,
       guardians: _profileGuardians,
@@ -624,6 +632,15 @@ class _LunarLogAppState extends State<LunarLogApp>
       addUnlockListener: gate?.addListener,
       removeUnlockListener: gate?.removeListener,
     );
+    _widgetQuickLogExecutor = executor;
+    // Issue #1016: acknowledge every materialized write the way the
+    // in-app Today card does — Today-tab jump for the logged profile,
+    // then the same snackbar with Undo.
+    _widgetOutcomeSub =
+        executor.outcomes.listen((outcome) => _onWidgetQuickLogOutcome(
+              gate,
+              outcome,
+            ));
     // The payload publisher: derives the discreet render state from the
     // app's own data-change signals and writes the (minimal, documented)
     // boundary payload.
@@ -653,6 +670,53 @@ class _LunarLogAppState extends State<LunarLogApp>
   void _handleWidgetLaunch(Uri uri) {
     if (!mounted) return;
     _widgetQuickLogExecutor?.handle(uri);
+  }
+
+  /// Issue #1016: a widget quick-log write just materialized — right after
+  /// unlock for a latched intent, immediately for a tap on an unlocked app.
+  /// Do what the in-app Today card does ([OverviewPanel]'s logged
+  /// snackbar): land the operator on the logged profile's Today tab and
+  /// show the same `overviewLoggedSnackbar` with Undo, so the home-screen
+  /// pill is no longer the one write in the app that acknowledges itself
+  /// with nothing.
+  ///
+  /// The jump rides the launch-payload seam
+  /// ([GateController.setPendingLaunchProfileId]) instead of reaching into
+  /// the shell: `ProfileHomeGate` consumes the pending id exactly as it
+  /// consumes a notification tap — switching the active profile when it
+  /// differs from the one the write landed on — and `AppShell`'s
+  /// launch-token reset lands on Today (LLA-008 makes a same-profile write
+  /// jump too, the issue's repro). Null when no gate is mounted (test
+  /// harnesses): the snackbar still surfaces, there is just nowhere to
+  /// jump. Dropped intents emit no outcome at all, so they stay silent —
+  /// see the executor's `outcomes` doc for the one line of #1016's
+  /// expected behavior deliberately out of scope.
+  void _onWidgetQuickLogOutcome(
+    GateController? gate,
+    WidgetQuickLogOutcome outcome,
+  ) {
+    if (!mounted) return;
+    gate?.setPendingLaunchProfileId(outcome.profileId);
+    final ctx = _navigatorKey.currentContext;
+    if (ctx == null) return;
+    final l10n = AppLocalizations.of(ctx);
+    ScaffoldMessenger.of(ctx).showSnackBar(
+      SnackBar(
+        content: Text(
+          l10n.overviewLoggedSnackbar,
+          key: const ValueKey('widget-quick-log-snackbar'),
+        ),
+        action: SnackBarAction(
+          label: l10n.overviewUndo,
+          onPressed: () => unawaited(undoQuickLog(
+            _dayEntries,
+            profileId: outcome.profileId,
+            previous: outcome.previousEntry,
+            date: outcome.date,
+          )),
+        ),
+      ),
+    );
   }
 
   /// Issue #373: the sharer's device is the only place a projection can be
@@ -1142,9 +1206,12 @@ class _LunarLogAppState extends State<LunarLogApp>
     _actionExecutor?.dispose();
     _actionExecutor = null;
     // Issue #141: the widget pieces tear down with the same shape as the
-    // reminder executor above.
+    // reminder executor above. Issue #1016: the outcome subscription is
+    // cancelled before the executor's dispose closes the stream.
     unawaited(_widgetLaunchSub?.cancel());
     _widgetLaunchSub = null;
+    unawaited(_widgetOutcomeSub?.cancel());
+    _widgetOutcomeSub = null;
     _widgetQuickLogExecutor?.dispose();
     _widgetQuickLogExecutor = null;
     final widgetPublisherTeardown =
