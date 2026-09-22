@@ -5229,4 +5229,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String profileDialogBirthYearBeforeEntries(int earliestEntryYear) {
     return 'This profile has entries from $earliestEntryYear. Enter $earliestEntryYear or earlier.';
   }
+
+  @override
+  String get careGuardianNoteDisclosure =>
+      'Anyone with access to this profile can read this note — including the person it is about.';
+
+  @override
+  String get careNotesDisclosure =>
+      'Anyone with access to this profile can read these notes — including the person they are about.';
+
+  @override
+  String get helpCardLearnMore => 'Learn more';
+
+  @override
+  String feedbackAttachmentSizeKb(int kilobytes) {
+    return '$kilobytes KB';
+  }
 }

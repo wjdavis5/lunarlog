@@ -6757,5 +6757,27 @@
           "type": "int"
         }
       }
+    },
+
+    "careGuardianNoteDisclosure": "Anyone with access to this profile can read this note \u2014 including the person it is about.",
+    "@careGuardianNoteDisclosure": {
+      "description": "Issue #1004 (tranche 5): the transparency disclosure beside every guardian-note input (#801)."
+    },
+    "careNotesDisclosure": "Anyone with access to this profile can read these notes \u2014 including the person they are about.",
+    "@careNotesDisclosure": {
+      "description": "Issue #1004 (tranche 5): the same transparency rule, worded for the standing care-notes surface."
+    },
+    "helpCardLearnMore": "Learn more",
+    "@helpCardLearnMore": {
+      "description": "Issue #1004 (tranche 5): default label of the contextual help-card entry point."
+    },
+    "feedbackAttachmentSizeKb": "{kilobytes} KB",
+    "@feedbackAttachmentSizeKb": {
+      "description": "Issue #1004 (tranche 5): attachment size label in kilobytes.",
+      "placeholders": {
+        "kilobytes": {
+          "type": "int"
+        }
+      }
     }
 }

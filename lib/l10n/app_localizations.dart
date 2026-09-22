@@ -8198,6 +8198,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This profile has entries from {earliestEntryYear}. Enter {earliestEntryYear} or earlier.'**
   String profileDialogBirthYearBeforeEntries(int earliestEntryYear);
+
+  /// Issue #1004 (tranche 5): the transparency disclosure beside every guardian-note input (#801).
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read this note — including the person it is about.'**
+  String get careGuardianNoteDisclosure;
+
+  /// Issue #1004 (tranche 5): the same transparency rule, worded for the standing care-notes surface.
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with access to this profile can read these notes — including the person they are about.'**
+  String get careNotesDisclosure;
+
+  /// Issue #1004 (tranche 5): default label of the contextual help-card entry point.
+  ///
+  /// In en, this message translates to:
+  /// **'Learn more'**
+  String get helpCardLearnMore;
+
+  /// Issue #1004 (tranche 5): attachment size label in kilobytes.
+  ///
+  /// In en, this message translates to:
+  /// **'{kilobytes} KB'**
+  String feedbackAttachmentSizeKb(int kilobytes);
 }
 
 class _AppLocalizationsDelegate

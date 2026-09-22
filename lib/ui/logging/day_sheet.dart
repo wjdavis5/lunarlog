@@ -1923,7 +1923,7 @@ class _DaySheetState extends State<DaySheet> {
         Padding(
           padding: const EdgeInsets.only(top: LLSpace.space1),
           child: Text(
-            kCareNotesDisclosure,
+            AppLocalizations.of(context).careNotesDisclosure,
             key: const ValueKey('day-note-disclosure'),
             style: Theme.of(context).textTheme.bodySmall,
           ),
