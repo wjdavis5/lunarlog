@@ -40,13 +40,14 @@
 /// be the profile's subject (the person whose cycle is logged) or a guardian
 /// looking at someone else's profile, and
 /// [`voice-and-copy.md`](docs/product/voice-and-copy.md) rule 2 requires the
-/// subject to be "you" only on her own device — on a guardian's device the
-/// subject is named (when the caller supplies the name) or referred to with
-/// the gender-neutral "their". Every second-person string the registry used
-/// to hardcode ("Your record…", "Every entry builds the picture of your
-/// cycle.", "Your next period is estimated around:") is built per lens in
-/// [careModeCopyFor]; the lens defaults to [GuardianLens.subject], so every
-/// pre-#850 caller and its tests read exactly the old subject-voiced copy.
+/// subject to be "you" only on the subject's own device — on a guardian's
+/// device the subject is named (when the caller supplies the name) or
+/// referred to with the gender-neutral "their". Every second-person string
+/// the registry used to hardcode ("Your record…", "Every entry builds the
+/// picture of your cycle.", "Your next period is estimated around:") is
+/// built per lens in [careModeCopyFor]; the lens defaults to
+/// [GuardianLens.subject], so every pre-#850 caller and its tests read
+/// exactly the old subject-voiced copy.
 library;
 
 import 'models/profile_mode.dart';
@@ -515,8 +516,9 @@ _ModeCopy _baseStructureFor(ProfileMode mode) => switch (mode) {
       ProfileMode.irregular => _irregular,
     };
 
-/// Issue #852/#853's un-composed copy — [mode]'s voice, addressed to [ref]'s
-/// reader, with [structure]'s flags/vocabulary untouched.
+/// The un-composed copy (the legacy single-axis lookup) — [mode]'s voice,
+/// addressed to [ref]'s reader, with [structure]'s flags/vocabulary
+/// untouched.
 CareModeCopy _plainCopy(
   ProfileMode mode,
   _ModeCopy structure,
