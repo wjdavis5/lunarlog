@@ -176,6 +176,7 @@ final class RemoteDayEntryRow extends RemoteRow {
     required this.flow,
     required this.tags,
     required this.note,
+    this.notePrivate = false,
     this.pms = false,
     required this.updatedAt,
     required this.deletedAt,
@@ -197,6 +198,12 @@ final class RemoteDayEntryRow extends RemoteRow {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #849: the note is private to the profile subject. Decoded to
+  /// `false` when the key is absent (an old client's payload, or a
+  /// pre-#849 server row). On a guardian's read the server masks [note] to
+  /// null while this stays true.
+  final bool notePrivate;
 
   /// Issue #220: the first-class PMS marker, decoded to `false` when the
   /// key is absent (an old client's payload, or a pre-#220 server row).

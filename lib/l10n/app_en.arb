@@ -452,6 +452,22 @@
   "@daySheetNoteHint": {
     "description": "Hint text in the day sheet's free-text note field (issue #812), in the voice guide's register — an invitation, not an instruction."
   },
+  "daySheetNotePrivateToggle": "Keep this note private",
+  "@daySheetNotePrivateToggle": {
+    "description": "Issue #849 (re-scoped): the subject-only toggle that marks the day note private. Rendered only while the note is being written (the stored note is empty), and disabled once a non-empty note has been saved."
+  },
+  "daySheetNotePrivateHint": "Private notes aren't shared with guardians.",
+  "@daySheetNotePrivateHint": {
+    "description": "Issue #849: the disclosure under the private-note toggle, telling the subject who can and cannot read it."
+  },
+  "daySheetNotePrivateSavedHint": "Privacy is chosen when the note is written, and can't be changed after it's saved.",
+  "@daySheetNotePrivateSavedHint": {
+    "description": "Issue #849: the disclosure shown when the private-note toggle is disabled — the note is already saved (privacy must be chosen when the note is written) or already private (a private flag can never be cleared)."
+  },
+  "daySheetNotePrivateHidden": "Private note",
+  "@daySheetNotePrivateHidden": {
+    "description": "Issue #849: placeholder shown to a guardian in place of a day note the subject marked private. The note's text is never delivered to a non-subject device."
+  },
   "daySheetDoneLabel": "Done",
   "@daySheetDoneLabel": {
     "description": "The day sheet's pinned affirmative control (issue #812). It dismisses the sheet only; autosave has already persisted the edit, so it never means \"save\"."

@@ -77,6 +77,7 @@ DayEntry _entry(
   DayEntrySource source = DayEntrySource.manual,
   String? sourceId,
   String? importId,
+  bool notePrivate = false,
   bool pms = false,
 }) =>
     DayEntry(
@@ -87,6 +88,7 @@ DayEntry _entry(
       flow: flow,
       tags: tags,
       note: note,
+      notePrivate: notePrivate,
       pms: pms,
       updatedAt: DateTime.utc(2026, 1, 2),
       loggedByUserId: loggedByUserId,
@@ -376,6 +378,28 @@ void main() {
     });
   });
 
+  group('per-note privacy flag (Issue #849, export v15)', () {
+    test('the dayEntries[].notePrivate key round-trips, defaulting false', () {
+      final doc = buildAccountExport(
+        profiles: [_profile('p-1')],
+        entriesByProfile: {
+          'p-1': [
+            _entry('e1', 'p-1', '2026-09-01'),
+            _entry('e2', 'p-1', '2026-09-02', notePrivate: true),
+          ],
+        },
+        exportedAt: fixedExportedAt,
+        appVersion: '1.0.0+1',
+      );
+
+      final profile = (doc['profiles'] as List).single as Map;
+      final entries = (profile['dayEntries'] as List).map((e) => e as Map);
+      final byId = {for (final e in entries) e['id'] as String: e};
+      expect(byId['e1']!['notePrivate'], false);
+      expect(byId['e2']!['notePrivate'], true);
+    });
+  });
+
   group('round-tripping unusual content', () {
     test('a note containing quotes, newlines and non-ASCII round-trips '
         'through jsonEncode/jsonDecode unchanged', () {
@@ -472,9 +496,10 @@ void main() {
     test('schema version was bumped to 9 for the new keys (since moved to '
         '10 for profiles[].trackingPreferences, Issue #648, 11 for '
         'profiles[].mergeEvents, Issue #130, 12 for profiles[].customTags, '
-        'Issue #824, 13 for profiles[].guardianNotes, Issue #870, and 14 for '
-        'profiles[].irregularFraming, Issue #853)', () {
-      expect(kAccountExportSchemaVersion, 14);
+        'Issue #824, 13 for profiles[].guardianNotes, Issue #870, 14 for '
+        'profiles[].irregularFraming, Issue #853, and 15 for '
+        'dayEntries[].notePrivate, Issue #849)', () {
+      expect(kAccountExportSchemaVersion, 15);
     });
 
     test('each exported profile carries its subject metadata and '
@@ -689,7 +714,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 14);
+      expect(kAccountExportSchemaVersion, 15);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['mergeEvents'], isEmpty);
       expect((profiles[1] as Map)['mergeEvents'], isEmpty);
@@ -779,7 +804,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 14);
+      expect(kAccountExportSchemaVersion, 15);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['customTags'], isEmpty);
       expect((profiles[1] as Map)['customTags'], isEmpty);
@@ -856,7 +881,7 @@ void main() {
         exportedAt: fixedExportedAt,
         appVersion: '1.0.0+1',
       );
-      expect(kAccountExportSchemaVersion, 14);
+      expect(kAccountExportSchemaVersion, 15);
       final profiles = doc['profiles'] as List;
       expect((profiles[0] as Map)['guardianNotes'], isEmpty);
       expect((profiles[1] as Map)['guardianNotes'], isEmpty);

@@ -55,6 +55,7 @@ class DayEntry {
     required this.flow,
     this.tags = const [],
     this.note,
+    this.notePrivate = false,
     this.pms = false,
     required this.updatedAt,
     this.deletedAt,
@@ -80,6 +81,13 @@ class DayEntry {
   final List<String> tags;
 
   final String? note;
+
+  /// Issue #849 (re-scoped): this day note is private to the profile's
+  /// subject. Chosen when the note is written (a note already shared cannot
+  /// be made private retroactively); the server masks the text to NULL for
+  /// every non-subject guardian. Never a client-side permission — the server
+  /// trigger and the sync RPCs are the enforcement.
+  final bool notePrivate;
 
   /// First-class PMS marker (Issue #220): this day was premenstrual.
   /// Deliberately NOT a tag — a day can be PMS without also being tagged
@@ -126,6 +134,7 @@ class DayEntry {
     FlowLevel? flow,
     List<String>? tags,
     Object? note = _unset,
+    bool? notePrivate,
     bool? pms,
     DateTime? updatedAt,
     Object? deletedAt = _unset,
@@ -143,16 +152,23 @@ class DayEntry {
         flow: flow ?? this.flow,
         tags: tags ?? this.tags,
         note: _resolveNullable(note, this.note),
+        notePrivate: _resolve(notePrivate, this.notePrivate),
         pms: pms ?? this.pms,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: _resolveNullable(deletedAt, this.deletedAt),
         loggedByUserId: _resolveNullable(loggedByUserId, this.loggedByUserId),
         lastModifiedByUserId:
             _resolveNullable(lastModifiedByUserId, this.lastModifiedByUserId),
-        source: source ?? this.source,
+        source: _resolve(source, this.source),
         sourceId: _resolveNullable(sourceId, this.sourceId),
         importId: _resolveNullable(importId, this.importId),
       );
+
+  /// Non-nullable override helper: keeps [copyWith]'s own branch count down
+  /// by moving the `??` out of the method body (the `_unset`-aware
+  /// [_resolveNullable] sibling above, for fields that can be cleared).
+  static T _resolve<T>(T? overrideValue, T currentValue) =>
+      overrideValue ?? currentValue;
 
   static T? _resolveNullable<T>(Object? overrideValue, T? currentValue) =>
       identical(overrideValue, _unset) ? currentValue : overrideValue as T?;
@@ -181,6 +197,7 @@ class DayEntry {
       other.flow == flow &&
       listEquals(other.tags, tags) &&
       other.note == note &&
+      other.notePrivate == notePrivate &&
       other.pms == pms &&
       other.updatedAt == updatedAt &&
       other.deletedAt == deletedAt;
@@ -201,6 +218,7 @@ class DayEntry {
         flow,
         Object.hashAll(tags),
         note,
+        notePrivate,
         pms,
         updatedAt,
         deletedAt,
