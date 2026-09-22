@@ -4801,7 +4801,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get guardianOverviewPredictionsOff =>
-      'Period predictions are off for this profile.';
+      'Period estimates are off for this profile.';
 
   @override
   String guardianOverviewPmsWindow(String name, String range) {

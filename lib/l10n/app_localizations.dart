@@ -7645,7 +7645,7 @@ abstract class AppLocalizations {
   /// Issue #850 U5: guardian-card state when the profile's predictions are suppressed (a continuous birth-control method or a life-stage mode) or disabled per profile.
   ///
   /// In en, this message translates to:
-  /// **'Period predictions are off for this profile.'**
+  /// **'Period estimates are off for this profile.'**
   String get guardianOverviewPredictionsOff;
 
   /// Issue #850 U5: guardian-card predicted PMS band, third-person. range is the localized start–end span; rendered only when the active estimate carries a PMS estimate.

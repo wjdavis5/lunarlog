@@ -2824,8 +2824,8 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('an accepted guardian reads the not-enough card third-person '
-        "with the subject's name", (tester) async {
+    testWidgets('a guardian sees the logistics card, not the subject '
+        "not-enough card, and the card names the subject", (tester) async {
       final auth = FakeAuthService()
         ..emit(
           AuthSessionState.signedIn,
@@ -2844,17 +2844,24 @@ void main() {
         ]),
       );
 
+      // Issue #850 U5/D-2: the guardian lens replaces the subject body with
+      // `GuardianOverviewCard`, so the teen not-enough card never renders
+      // here — U7's third-person care-mode variant is reached on the Analysis
+      // tab instead (`test/ui/analysis_tab_test.dart`). The card carries the
+      // subject's name and its own third-person estimate line.
       expect(
-        find.text("Alice's record is just getting started"),
+        find.byKey(const ValueKey('guardian-overview-card')),
         findsOneWidget,
       );
       expect(
-        find.textContaining("Every entry builds the picture of Alice's cycle."),
+        find.text(
+          "There isn't enough history to estimate Alice's next period yet.",
+        ),
         findsOneWidget,
       );
       expect(find.text('Your record is just getting started'), findsNothing);
       expect(
-        find.textContaining('Every entry builds the picture of your cycle.'),
+        find.text("Alice's record is just getting started"),
         findsNothing,
       );
 
@@ -2863,8 +2870,8 @@ void main() {
       await disposeOverview(tester, h);
     });
 
-    testWidgets('the guardian lens renders the teen estimate label '
-        'third-person', (tester) async {
+    testWidgets('the guardian lens renders the estimate line on the logistics '
+        'card third-person', (tester) async {
       final auth = FakeAuthService()
         ..emit(
           AuthSessionState.signedIn,
@@ -2885,11 +2892,15 @@ void main() {
       );
 
       expect(
-        find.textContaining("Alice's next period is estimated around:"),
+        find.byKey(const ValueKey('guardian-overview-card')),
         findsOneWidget,
       );
       expect(
-        find.textContaining('Your next period is estimated around:'),
+        find.textContaining("Alice's next period is estimated around"),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Your next period is estimated around'),
         findsNothing,
       );
 

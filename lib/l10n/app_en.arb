@@ -6224,7 +6224,7 @@
         }
       }
     },
-    "guardianOverviewPredictionsOff": "Period predictions are off for this profile.",
+    "guardianOverviewPredictionsOff": "Period estimates are off for this profile.",
     "@guardianOverviewPredictionsOff": {
       "description": "Issue #850 U5: guardian-card state when the profile's predictions are suppressed (a continuous birth-control method or a life-stage mode) or disabled per profile."
     },
