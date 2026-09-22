@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/csv_export.dart';
+import 'package:lunarlog/domain/export/fhir_export_range.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -473,6 +474,80 @@ void main() {
         expect(day2[9], '12.3');
         expect(day2[10], 'stone'); // named, not fabricated as kg
       });
+    });
+  });
+
+  group('Issue #115 G3: range window', () {
+    // Four single-day bleeding episodes, 40 days apart — the newest is the
+    // open cycle. A window starting after the first start must drop exactly
+    // that first row from BOTH builders.
+    final starts = [
+      LocalDate(2025, 1, 1),
+      LocalDate(2025, 2, 10),
+      LocalDate(2025, 3, 22),
+      LocalDate(2025, 5, 1),
+    ];
+    List<DayEntry> episodes() => [
+      for (var i = 0; i < starts.length; i++)
+        _entry(id: 'r$i', date: starts[i]),
+    ];
+    final window = customFhirExportRange(
+      start: LocalDate(2025, 2, 1),
+      end: LocalDate(2025, 12, 31),
+    );
+
+    test('buildCyclesCsv keeps only episodes whose start is inside the '
+        'window, renumbers them contiguously, and still resolves each '
+        'included cycle against the full history', () {
+      final csv = buildCyclesCsv(entries: episodes(), range: window);
+      final lines = csv.split('\r\n');
+
+      // header + three included cycles (Feb/Mar/May) + trailing blank line.
+      expect(lines.length, 5);
+      expect(lines[1], '1,2025-02-10,2025-03-21,40,1,false,false');
+      expect(lines[2], '2,2025-03-22,2025-04-30,40,1,false,false');
+      // The newest episode is the open cycle — no end/length.
+      expect(lines[3], '3,2025-05-01,,,1,false,false');
+      expect(csv, isNot(contains('2025-01-01')),
+          reason: 'a start before the window must not be exported');
+    });
+
+    test('buildDailyLogCsv trims the day rows to the same window boundary',
+        () {
+      final csv = buildDailyLogCsv(
+        entries: episodes(),
+        observations: [
+          // A spotting observation on an excluded day must go too: the
+          // window is applied to the merged date set, not only to entries.
+          _observation(
+            id: 'o1',
+            date: LocalDate(2025, 1, 1),
+            category: ObservationCategory.spotting,
+          ),
+        ],
+        range: window,
+      );
+
+      expect(csv, isNot(contains('2025-01-01')));
+      expect(csv, contains('2025-02-10'));
+      expect(csv, contains('2025-05-01'));
+    });
+
+    test('a null range and FhirExportRange.everything are byte-identical and '
+        'still whole-history — the pre-#115 default is unchanged', () {
+      final entries = episodes();
+      expect(
+        buildCyclesCsv(entries: entries, range: FhirExportRange.everything),
+        buildCyclesCsv(entries: entries),
+      );
+      expect(
+        buildDailyLogCsv(
+          entries: entries,
+          range: FhirExportRange.everything,
+        ),
+        buildDailyLogCsv(entries: entries),
+      );
+      expect(buildCyclesCsv(entries: entries), contains('2025-01-01'));
     });
   });
 }
