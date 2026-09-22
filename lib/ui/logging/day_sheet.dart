@@ -693,10 +693,7 @@ class _DaySheetState extends State<DaySheet> {
     _flow = existing?.flow ?? FlowLevel.none;
     _tags = {...?existing?.tags};
     _pms = existing?.pms ?? false;
-    // Issue #849: seed the private flag and lock it when the loaded note is
-    // already non-empty (privacy can't be chosen retroactively).
-    _notePrivate = existing?.notePrivate ?? false;
-    _notePrivacyLocked = (existing?.note?.trim().isNotEmpty ?? false);
+    _initPrivateNoteState(existing);
     _unrecognisedTags = [
       for (final code in existing?.tags ?? const <String>[])
         if (!isValidTagCode(code)) code,
@@ -732,6 +729,16 @@ class _DaySheetState extends State<DaySheet> {
     // Issue #887: the bleed history the cycle-start guard evaluates
     // against (see [_otherBleedDates]).
     unawaited(_loadBleedHistory());
+  }
+
+  /// Issue #849: seeds [_notePrivate] and [_notePrivacyLocked] from the
+  /// loaded entry. Split out of [initState] so that method's branch count
+  /// stays under the CRAP gate; [existing] is [widget.existing], and the
+  /// lock is set when the loaded note already has text (privacy can't be
+  /// chosen retroactively).
+  void _initPrivateNoteState(DayEntry? existing) {
+    _notePrivate = existing?.notePrivate ?? false;
+    _notePrivacyLocked = existing?.note?.trim().isNotEmpty ?? false;
   }
 
   /// Issue #887: loads the profile's bleed dates (excluding this sheet's

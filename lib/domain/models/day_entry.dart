@@ -152,17 +152,23 @@ class DayEntry {
         flow: flow ?? this.flow,
         tags: tags ?? this.tags,
         note: _resolveNullable(note, this.note),
-        notePrivate: notePrivate ?? this.notePrivate,
+        notePrivate: _resolve(notePrivate, this.notePrivate),
         pms: pms ?? this.pms,
         updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: _resolveNullable(deletedAt, this.deletedAt),
         loggedByUserId: _resolveNullable(loggedByUserId, this.loggedByUserId),
         lastModifiedByUserId:
             _resolveNullable(lastModifiedByUserId, this.lastModifiedByUserId),
-        source: source ?? this.source,
+        source: _resolve(source, this.source),
         sourceId: _resolveNullable(sourceId, this.sourceId),
         importId: _resolveNullable(importId, this.importId),
       );
+
+  /// Non-nullable override helper: keeps [copyWith]'s own branch count down
+  /// by moving the `??` out of the method body (the `_unset`-aware
+  /// [_resolveNullable] sibling above, for fields that can be cleared).
+  static T _resolve<T>(T? overrideValue, T currentValue) =>
+      overrideValue ?? currentValue;
 
   static T? _resolveNullable<T>(Object? overrideValue, T? currentValue) =>
       identical(overrideValue, _unset) ? currentValue : overrideValue as T?;
