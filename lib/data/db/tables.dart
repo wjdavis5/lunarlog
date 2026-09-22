@@ -288,6 +288,14 @@ class DayEntries extends Table {
 
   TextColumn get note => text().nullable()();
 
+  /// Issue #849 (re-scoped): the day note is private to the profile's
+  /// subject. Synced like every other day-level column; the server masks
+  /// `note` to NULL for every non-subject guardian (so on a guardian's
+  /// device this reads true while [note] is null). Never cleared on a
+  /// tombstone, so a revived row keeps its flag.
+  BoolColumn get notePrivate =>
+      boolean().named('note_private').withDefault(const Constant(false))();
+
   /// First-class PMS marker (Issue #220): the day was premenstrual,
   /// deliberately distinct from the tag taxonomy (a day can be PMS without
   /// also being tagged for every symptom present). Cleared on a tombstone

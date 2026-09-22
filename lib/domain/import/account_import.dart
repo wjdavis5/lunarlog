@@ -205,6 +205,7 @@ class ImportedDayEntry {
     required this.flow,
     this.tags = const [],
     this.note,
+    this.notePrivate = false,
     this.pms = false,
     required this.updatedAt,
     required this.source,
@@ -232,6 +233,10 @@ class ImportedDayEntry {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #849: the per-note privacy flag. `false` when the key is absent
+  /// (an older export's file), the same default the sync codec decodes with.
+  final bool notePrivate;
 
   /// Issue #220: the first-class PMS marker. `false` when the key is
   /// absent (an older export's file), the same default the sync codec
@@ -1193,6 +1198,7 @@ ImportedDayEntry _parseDayEntry(Object? raw, {required String profileId}) {
     flow: _parseFlow(raw['flow'], context: context),
     tags: _parseTags(raw['tags'], context: context),
     note: note,
+    notePrivate: raw['notePrivate'] == true,
     pms: raw['pms'] == true,
     updatedAt: updatedAt,
     source: provenance.source,
@@ -1516,6 +1522,7 @@ class DayEntryPlan {
     required this.flow,
     required this.tags,
     required this.note,
+    this.notePrivate = false,
     this.pms = false,
     required this.source,
     required this.sourceId,
@@ -1531,6 +1538,12 @@ class DayEntryPlan {
   final FlowLevel flow;
   final List<String> tags;
   final String? note;
+
+  /// Issue #849: the merged privacy flag — true when either the stored day
+  /// or the file's day carried it (privacy is sticky, the boolean analogue
+  /// of the tags union: neither side's fact may be lost, and the server
+  /// never allows true -> false).
+  final bool notePrivate;
 
   /// Issue #220: the merged PMS marker — true when either the stored day
   /// or the file's day carried it (the boolean analogue of the tags
@@ -2047,6 +2060,7 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
       flow: imported.flow,
       tags: imported.tags,
       note: imported.note,
+      notePrivate: imported.notePrivate,
       pms: imported.pms,
       source: imported.source,
       sourceId: imported.sourceId,
@@ -2061,6 +2075,7 @@ DayEntryPlan _planDayEntry(ImportedDayEntry imported, DayEntry? existing) {
     flow: _higherFlow(existing.flow, imported.flow),
     tags: _mergeTags(existing.tags, imported.tags),
     note: _mergedNote(existing.note, imported.note),
+    notePrivate: existing.notePrivate || imported.notePrivate,
     pms: existing.pms || imported.pms,
     source: existing.source.toDb(),
     sourceId: existing.sourceId,
