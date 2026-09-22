@@ -24,6 +24,7 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/models/profile_mode.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
+import 'package:lunarlog/l10n/app_localizations.dart';
 import 'package:lunarlog/observability/route_names.dart';
 import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/logging/day_sheet.dart';
@@ -177,7 +178,7 @@ class _TodayLogFabState extends State<TodayLogFab>
       key: const ValueKey('today-log-fab'),
       onPressed: _openTodaySheet,
       icon: const Icon(Icons.edit_calendar_outlined),
-      label: const Text('Log today'),
+      label: Text(AppLocalizations.of(context).householdLogToday),
     );
   }
 }
