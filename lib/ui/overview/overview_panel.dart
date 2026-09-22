@@ -584,18 +584,19 @@ class _OverviewPanelState extends State<OverviewPanel>
     );
   }
 
-  /// Restores exactly what [_logPeriodStartedToday] overwrote: the prior
-  /// [DayEntry] (flow/tags/note preserved) if today already had one, or a
-  /// tombstone if the quick-log tap is what created it. Goes through
-  /// [DayEntriesRepository] either way -- never a bespoke undo path -- so
-  /// sync dirty-marking applies exactly as it would to any other edit.
+  /// Restores exactly what [_logPeriodStartedToday] overwrote, through the
+  /// shared [undoQuickLog] helper: the prior [DayEntry] (flow/tags/note
+  /// preserved) if today already had one, or a tombstone if the quick-log
+  /// tap is what created it. Issue #1016 lifted this body into the shared
+  /// helper so the widget quick-log's own snackbar Undo (surfaced by the
+  /// app shell) has identical semantics — never a bespoke undo path.
   Future<void> _undoLogToday(DayEntry? previous, LocalDate today) async {
-    final repository = context.read<DayEntriesRepository>();
-    if (previous == null) {
-      await repository.delete(widget.profileId, today);
-    } else {
-      await repository.save(previous);
-    }
+    await undoQuickLog(
+      context.read<DayEntriesRepository>(),
+      profileId: widget.profileId,
+      previous: previous,
+      date: today,
+    );
   }
 
   @override
