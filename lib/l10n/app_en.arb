@@ -76,7 +76,7 @@
   "@calendarLegendToday": {
     "description": "Legend entry for today's ring marker."
   },
-  "calendarLegendPredicted": "Predicted day",
+  "calendarLegendPredicted": "Estimated day",
   "@calendarLegendPredicted": {
     "description": "Legend entry for a predicted (hatched) day band."
   },
@@ -113,7 +113,7 @@
   "@calendarHideSymptomLayers": {
     "description": "Tooltip collapsing the symptom-layers chip panel."
   },
-  "calendarKeepLogging": "Keep logging — predicted bands appear once a few cycles are recorded.",
+  "calendarKeepLogging": "Keep logging — estimated bands appear once a few cycles are recorded.",
   "@calendarKeepLogging": {
     "description": "Strip shown on quiet months while no estimate is active."
   },
@@ -173,7 +173,7 @@
   "@calendarCellReadOnly": {
     "description": "Screen-reader fragment marking a past calendar cell whose day sheet opens read-only (viewer role)."
   },
-  "calendarCellPredictedPeriod": "predicted period day",
+  "calendarCellPredictedPeriod": "estimated period day",
   "@calendarCellPredictedPeriod": {
     "description": "Screen-reader fragment for a forecast bleed day — deliberately distinct from any logged-day fragment so predicted and logged never sound alike."
   },
@@ -186,7 +186,7 @@
       }
     }
   },
-  "calendarCellCycleDayFirstCycle": "cycle day {day} of the first predicted cycle",
+  "calendarCellCycleDayFirstCycle": "cycle day {day} of the first estimated cycle",
   "@calendarCellCycleDayFirstCycle": {
     "description": "Screen-reader fragment for a non-bleed future day counted within the first predicted cycle.",
     "placeholders": {
@@ -195,15 +195,15 @@
       }
     }
   },
-  "calendarCellPmsWindow": "predicted premenstrual window",
+  "calendarCellPmsWindow": "estimated premenstrual window",
   "@calendarCellPmsWindow": {
     "description": "Screen-reader fragment for a day carrying the PMS badge."
   },
-  "calendarCellCrampsWindow": "predicted cramps window",
+  "calendarCellCrampsWindow": "estimated cramps window",
   "@calendarCellCrampsWindow": {
     "description": "Screen-reader fragment for a day carrying the cramps badge."
   },
-  "calendarCellNoPrediction": "no prediction for this date",
+  "calendarCellNoPrediction": "no estimate for this date",
   "@calendarCellNoPrediction": {
     "description": "Screen-reader fragment for a future day whose forecast cell carries no marker."
   },
@@ -336,15 +336,15 @@
   "@monthPickerNextYear": {
     "description": "Tooltip on the month/year picker's forward-year chevron."
   },
-  "futureExplainerNoEstimate": "No estimates yet — keep logging. Predicted bands appear on the calendar once a few cycles are recorded.",
+  "futureExplainerNoEstimate": "No estimates yet — keep logging. Estimated bands appear on the calendar once a few cycles are recorded.",
   "@futureExplainerNoEstimate": {
     "description": "Future-day explainer body when no estimate exists at all."
   },
-  "futureExplainerNone": "No prediction for this date. Days can be logged once they arrive.",
+  "futureExplainerNone": "No estimate for this date. Days can be logged once they arrive.",
   "@futureExplainerNone": {
     "description": "Future-day explainer body when nothing is predicted for the date."
   },
-  "futureExplainerBand": "Predicted period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "futureExplainerBand": "Estimated period day. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
   "@futureExplainerBand": {
     "description": "Future-day explainer body for a predicted bleed day with no cycle-day numeral.",
     "placeholders": {
@@ -353,7 +353,7 @@
       }
     }
   },
-  "futureExplainerBandWithCycleDay": "Predicted period day — cycle day {day} of the first predicted cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
+  "futureExplainerBandWithCycleDay": "Estimated period day — cycle day {day} of the first estimated cycle. The date may shift by about {count} {count, plural, =1{day} other{days}} either way as new periods are logged.",
   "@futureExplainerBandWithCycleDay": {
     "description": "Future-day explainer body for a predicted bleed day inside the first predicted cycle.",
     "placeholders": {
@@ -365,15 +365,15 @@
       }
     }
   },
-  "futureExplainerPms": "Inside the predicted premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.",
+  "futureExplainerPms": "Inside the estimated premenstrual window — symptoms like mood shifts and bloating often show up in the week before a period.",
   "@futureExplainerPms": {
     "description": "Future-day explainer body for a day in the predicted PMS window."
   },
-  "futureExplainerCramps": "Inside the predicted cramps window — cramps commonly occur within two days of a period start.",
+  "futureExplainerCramps": "Inside the estimated cramps window — cramps commonly occur within two days of a period start.",
   "@futureExplainerCramps": {
     "description": "Future-day explainer body for a day in the predicted cramps window."
   },
-  "futureExplainerNumeral": "Cycle day {day} of the first predicted cycle. Only the first predicted cycle is counted day by day — estimates compound too much further out.",
+  "futureExplainerNumeral": "Cycle day {day} of the first estimated cycle. Only the first estimated cycle is counted day by day — estimates compound too much further out.",
   "@futureExplainerNumeral": {
     "description": "Future-day explainer body for a counted future cycle day that is not a predicted bleed day.",
     "placeholders": {
@@ -749,7 +749,7 @@
   "@overviewLongCycleTitle": {
     "description": "Title of the overview's unusually-long-cycle prompt."
   },
-  "overviewLongCycleBody": "It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off predictions if long cycles are common for this profile.",
+  "overviewLongCycleBody": "It has run well past a typical cycle for this profile. You can exclude it from future averages, or turn off estimates if long cycles are common for this profile.",
   "@overviewLongCycleBody": {
     "description": "Body of the overview's unusually-long-cycle prompt."
   },
@@ -757,7 +757,7 @@
   "@overviewLongCycleExclude": {
     "description": "Action excluding the open cycle from future averages."
   },
-  "overviewLongCyclePredictionsOff": "Turn off predictions",
+  "overviewLongCyclePredictionsOff": "Turn off estimates",
   "@overviewLongCyclePredictionsOff": {
     "description": "Action navigating to Settings to manage or turn off predictions (issue #225)."
   },
@@ -765,7 +765,7 @@
   "@overviewStaleHistoryTitle": {
     "description": "Issue #859: title of the overview card shown when the last logged period is far too old for predictions to mean anything."
   },
-  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick predictions back up. You can also turn predictions off.",
+  "overviewStaleHistoryBody": "It has been a long time since you logged a period, so cycle estimates would not be reliable. Log a period when it starts to pick estimates back up. You can also turn estimates off.",
   "@overviewStaleHistoryBody": {
     "description": "Issue #859: calm, non-alarming body of the stale-history overview card."
   },
@@ -1003,13 +1003,23 @@
   "@settingsHealthHeader": {
     "description": "Section header above the health-sync settings tile."
   },
-  "settingsHealthSyncTitle": "Health app sync",
+  "settingsHealthSyncTitle": "{source} sync",
   "@settingsHealthSyncTitle": {
-    "description": "Settings tile opening per-profile Health app sync."
+    "description": "Settings tile opening per-profile health sync.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
-  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to this phone's Health app",
+  "settingsHealthSyncSubtitle": "Choose which profile's data may sync to {source}",
   "@settingsHealthSyncSubtitle": {
-    "description": "Subtitle of the health-sync tile."
+    "description": "Subtitle of the health-sync tile.",
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
   },
   "settingsHealthSyncSymptomsAndroidLimitation": "Symptoms (cramps, headaches, mood, and more) can't be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.",
   "@settingsHealthSyncSymptomsAndroidLimitation": {
@@ -1017,7 +1027,7 @@
   },
   "healthSyncPermissionGranted": "{source} access: granted",
   "@healthSyncPermissionGranted": {
-    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.",
+    "description": "Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.",
     "placeholders": {
       "source": {
         "type": "String"
@@ -1097,27 +1107,27 @@
       }
     }
   },
-  "healthSyncImportPlacedDeviceZone": "Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.",
+  "healthSyncImportPlacedDeviceZone": "Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.",
   "@healthSyncImportPlacedDeviceZone": {
-    "description": "Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.",
+    "description": "Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.",
+  "healthSyncImportSkippedNoZone": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.",
   "@healthSyncImportSkippedNoZone": {
-    "description": "Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).",
+    "description": "Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
   },
-  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.",
+  "healthSyncImportSkippedUnsupported": "Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.",
   "@healthSyncImportSkippedUnsupported": {
-    "description": "Health import summary: samples whose flow value has no lunarlog equivalent.",
+    "description": "Health import summary: entries whose flow value has no lunarlog equivalent.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -1175,20 +1185,26 @@
       }
     }
   },
-  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.",
+  "healthSyncUnbindDialogWriteBody": "This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.",
   "@healthSyncUnbindDialogWriteBody": {
     "description": "Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).",
     "placeholders": {
       "name": {
         "type": "String"
+      },
+      "source": {
+        "type": "String"
       }
     }
   },
-  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.",
+  "healthSyncUnbindDialogImportBody": "This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.",
   "@healthSyncUnbindDialogImportBody": {
     "description": "Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).",
     "placeholders": {
       "name": {
+        "type": "String"
+      },
+      "source": {
         "type": "String"
       }
     }
@@ -1213,7 +1229,7 @@
   "@settingsPrivacyDialogTitle": {
     "description": "Title of the in-app privacy policy dialog."
   },
-  "settingsPrivacyDialogBody": "lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind your device's passcode or biometrics.\n• Works Offline: Logging, viewing, and predictions keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
+  "settingsPrivacyDialogBody": "lunarlog is a family cycle tracker built for sync and sharing.\n\n• Sync & Family Sharing: An account (Supabase) syncs a profile across your devices and lets it be shared with other guardians, each with their own role. No data is uploaded without your explicit consent.\n• Protected at Rest: Cycle data is protected at rest by your device's own operating system encryption and shown only behind your device's passcode or biometrics.\n• Works Offline: Logging, viewing, and estimates keep working without a network; sharing a profile with another guardian does require signing in.\n• Zero Ads & Tracking: We do not track you, sell data, or use ads.\n• Privacy-Scrubbed Telemetry: Crash reports (Sentry) strip all health and personal details on-device.\n• Family Custodianship: Minor profiles are managed directly by adult guardians with identical privacy protections.\n• Minimum-Age Policy: Licensed for ages 13 and older; household profiles managed by adult guardians (18+).\n• Guardian Alerts: Optional push notifications to another guardian never carry what was logged - only a generic reminder, via Firebase Cloud Messaging.\n\nCanonical policy: https://github.com/wjdavis5/lunarlog/blob/main/PRIVACY.md",
   "@settingsPrivacyDialogBody": {
     "description": "Body of the in-app privacy policy dialog; mirrors PRIVACY.md's summary."
   },
@@ -1368,7 +1384,7 @@
   "@firstRunValueHeadline": {
     "description": "Headline of the first onboarding card (identity/value)."
   },
-  "firstRunValueBody": "Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and predictions are never paywalled.",
+  "firstRunValueBody": "Guardians can share a profile and log it together. Everything works offline. No ads, no data selling, no behavioral tracking — and estimates are never paywalled.",
   "@firstRunValueBody": {
     "description": "Body of the identity/value card: the differentiators stated plainly (family co-management, offline-first, no ads/tracking, no paywalled predictions)."
   },
@@ -1657,7 +1673,7 @@
   "@daySheetIntensityClear": {
     "description": "The clear affordance on a pain-code intensity selector (Issue #256): removes the recorded intensity, leaving the row ungraded ('no severity recorded'), never 'low'."
   },
-  "overviewPmsBandLabel": "Predicted PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
+  "overviewPmsBandLabel": "Estimated PMS: {range} — usually starts about {days} {days, plural, =1{day} other{days}} before your period and lasts about {length} {length, plural, =1{day} other{days}}.",
   "@overviewPmsBandLabel": {
     "description": "Overview line naming the predicted PMS band and the 6-cycle averages behind it as one sentence (Issue #220, #1000; merged into one line by Issue #874). range is the localized start-end date span. Only rendered once at least three PMS intervals have been logged.",
     "placeholders": {
@@ -1681,11 +1697,11 @@
       }
     }
   },
-  "predictionsSuppressedTitle": "Predictions are suppressed",
+  "predictionsSuppressedTitle": "Estimates paused",
   "@predictionsSuppressedTitle": {
     "description": "Title of the overview/Analysis state shown when a profile's in-effect birth-control method is a continuous one (IUD, implant, shot, continuous pill): period prediction is deliberately off (Issue #233)."
   },
-  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period predictions are turned off while it is active. The method will resume ordinary prediction once it is switched or cleared.",
+  "predictionsSuppressedBody": "Because {method} typically stops or irregularly affects periods, period estimates are paused while it is active. The method will resume ordinary estimates once it is switched or cleared.",
   "@predictionsSuppressedBody": {
     "description": "Body of the suppressed-prediction state naming the recorded continuous method ({method}) and explaining why predictions are off (Issue #233).",
     "placeholders": {
@@ -1694,7 +1710,7 @@
       }
     }
   },
-  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period predictions are turned off — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary prediction.",
+  "predictionsSuppressedByModeBody": "Because this profile is set to {mode} mode, period estimates are paused — the ordinary cycle averages this app estimates from don't apply right now. Switch back to Period Tracking mode from Edit profile to resume ordinary estimates.",
   "@predictionsSuppressedByModeBody": {
     "description": "Body of the suppressed-prediction state naming the profile's current life-stage mode ({mode}: Pregnancy, Postpartum, or Perimenopause) and explaining why period predictions are off (Issue #528). Shares predictionsSuppressedTitle with the birth-control reason.",
     "placeholders": {
@@ -1703,11 +1719,11 @@
       }
     }
   },
-  "predictionsDisabledTitle": "Predictions turned off",
+  "predictionsDisabledTitle": "Estimates off",
   "@predictionsDisabledTitle": {
     "description": "Title of the card displayed when predictions are disabled for the profile (issue #225)."
   },
-  "predictionsDisabledBody": "Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
+  "predictionsDisabledBody": "Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.",
   "@predictionsDisabledBody": {
     "description": "Body of the card explaining that predictions are disabled while tracking remains active (issue #225)."
   },
@@ -1715,11 +1731,11 @@
   "@predictionsDisabledAction": {
     "description": "Button on predictions-disabled card opening Settings (issue #225)."
   },
-  "settingsPredictionsTitle": "Show predictions",
+  "settingsPredictionsTitle": "Show estimates",
   "@settingsPredictionsTitle": {
     "description": "Title of the prediction toggle in Settings when only one profile exists (issue #225)."
   },
-  "settingsPredictionsProfileTitle": "Show predictions ({profileName})",
+  "settingsPredictionsProfileTitle": "Show estimates ({profileName})",
   "@settingsPredictionsProfileTitle": {
     "description": "Title of the prediction toggle in Settings for a specific profile (issue #225).",
     "placeholders": {
@@ -1728,7 +1744,7 @@
       }
     }
   },
-  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and prediction reminders",
+  "settingsPredictionsSubtitle": "Show cycle estimates, fertile window, and estimate reminders",
   "@settingsPredictionsSubtitle": {
     "description": "Subtitle describing the predictions toggle in Settings (issue #225)."
   },
@@ -1754,7 +1770,7 @@
   "@overviewIrregularSuggestionTitle": {
     "description": "Title of the suggestion banner offered when cycle variation is irregular (issue #225)."
   },
-  "overviewIrregularSuggestionBody": "Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
+  "overviewIrregularSuggestionBody": "Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.",
   "@overviewIrregularSuggestionBody": {
     "description": "Body of the dismissible suggestion banner for irregular cycles (issue #225)."
   },
@@ -1790,7 +1806,7 @@
   "@reminderKindPeriodDue": {
     "description": "The period-due reminder's settings row title (the existing upcoming kind, now localized; Issue #178)."
   },
-  "reminderKindPeriodDueSubtitle": "A heads-up before the predicted period starts",
+  "reminderKindPeriodDueSubtitle": "A heads-up before the estimated period starts",
   "@reminderKindPeriodDueSubtitle": {
     "description": "The period-due reminder's settings row subtitle (Issue #178 localization of the existing copy)."
   },
@@ -1814,7 +1830,7 @@
   "@reminderKindFertileWindowSoon": {
     "description": "The fertile-window-soon reminder's settings row title (Issue #178; Clue catalogue item 4)."
   },
-  "reminderKindFertileWindowSoonSubtitle": "A heads-up before the predicted fertile window",
+  "reminderKindFertileWindowSoonSubtitle": "A heads-up before the estimated fertile window",
   "@reminderKindFertileWindowSoonSubtitle": {
     "description": "The fertile-window-soon reminder's settings row subtitle (Issue #178)."
   },
@@ -1834,15 +1850,15 @@
   "@reminderKindLogNudgeSubtitle": {
     "description": "The daily log nudge's settings row subtitle (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforeStart": "Days before predicted start",
+  "reminderLeadDaysBeforeStart": "Days before estimated start",
   "@reminderLeadDaysBeforeStart": {
     "description": "Lead-days row title for the period-anchored reminder types (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforePms": "Days before predicted PMS window",
+  "reminderLeadDaysBeforePms": "Days before estimated PMS window",
   "@reminderLeadDaysBeforePms": {
     "description": "Lead-days row title for the PMS-watch reminder (Issue #178 localization of the existing copy)."
   },
-  "reminderLeadDaysBeforeFertileWindow": "Days before predicted fertile window",
+  "reminderLeadDaysBeforeFertileWindow": "Days before estimated fertile window",
   "@reminderLeadDaysBeforeFertileWindow": {
     "description": "Lead-days row title for the fertile-window-soon reminder (Issue #178)."
   },
@@ -2339,7 +2355,7 @@
   "@profileStatusPredictionsSuppressed": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose predictions are suppressed (a continuous birth-control method in effect, or a pregnancy/postpartum/perimenopause life-stage mode). Issue #1005: 'paused', not 'off' — nothing was toggled off and the mode pauses it."
   },
-  "profileStatusPredictionsOff": "Period predictions off",
+  "profileStatusPredictionsOff": "Period estimates off",
   "@profileStatusPredictionsOff": {
     "description": "Issue #241: the one-line cycle status on a ProfileCard row for a profile whose operator turned predictions off in settings (issue #225's PredictionsDisabled state)."
   },
@@ -2707,7 +2723,7 @@
   "@pregnancyExitExclusionTitle": {
     "description": "Title of the dialog offered when leaving Pregnancy mode (Issue #192)."
   },
-  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future predictions use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.",
+  "pregnancyExitExclusionBody": "Cycles logged during the pregnancy can distort the averages future estimates use. Excluding them keeps the cycle history intact — the pregnancy span is just left out of the math. Individual cycles can also be excluded later from cycle history.",
   "@pregnancyExitExclusionBody": {
     "description": "Body of the pregnancy-exit exclusion dialog (Issue #192); deliberately states data is kept, only the average skips it."
   },
@@ -2757,7 +2773,7 @@
   "@postpartumReturnTitle": {
     "description": "Title of the postpartum overview offer shown once a bleed has been logged during Postpartum mode (Issue #455)."
   },
-  "postpartumReturnBody": "You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary predictions and lets the app start rebuilding cycle averages from your new cycles.",
+  "postpartumReturnBody": "You logged a period during Postpartum mode. Switching to Period Tracking resumes ordinary estimates and lets the app start rebuilding cycle averages from your new cycles.",
   "@postpartumReturnBody": {
     "description": "Body of the postpartum cycles-have-returned offer: explains the switch, and that leaving the mode offers to exclude the postpartum interval (Issue #455)."
   },
@@ -2769,7 +2785,7 @@
   "@postpartumExitExclusionTitle": {
     "description": "Title of the dialog offered when leaving Postpartum mode (Issue #455)."
   },
-  "postpartumExitExclusionBody": "Bleeding logged during the postpartum interval can distort the averages future predictions use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.",
+  "postpartumExitExclusionBody": "Bleeding logged during the postpartum interval can distort the averages future estimates use. Excluding it keeps your cycle history intact — the postpartum span is just left out of the math. You can also exclude individual cycles later from cycle history.",
   "@postpartumExitExclusionBody": {
     "description": "Body of the postpartum-exit exclusion dialog (Issue #455); deliberately states data is kept, only the average skips it."
   },
@@ -3183,7 +3199,7 @@
   "@healthDeviationCardTitle": {
     "description": "Issue #799: title of the overview's read-only, dismissible card surfacing Apple's four computed cycle-deviation types. Deliberately soft ('noticed…'), never alarming."
   },
-  "healthDeviationCardSubtitle": "These are Apple's own estimates from your Health data — separate from lunarlog's prediction.",
+  "healthDeviationCardSubtitle": "These are Apple's own estimates from your Health data — separate from lunarlog's own estimate.",
   "@healthDeviationCardSubtitle": {
     "description": "Issue #799: the second-opinion label. Apple computes its deviations from whatever was logged in Apple Health, which can differ from lunarlog's history, so the two can legitimately disagree and are never merged."
   },
@@ -5096,6 +5112,14 @@
     "@accountSignInEmailLabel": {
       "description": "Issue #1004 (tranche 2): sign-in screen email field label."
     },
+    "accountSignInEmailRequired": "Enter your email address.",
+    "@accountSignInEmailRequired": {
+      "description": "Issue #1030: sign-in screen local error when the email field is empty and the action would otherwise send an empty address."
+    },
+    "accountSignInEmailInvalid": "That doesn't look like an email address.",
+    "@accountSignInEmailInvalid": {
+      "description": "Issue #1030: sign-in screen local error when the email field is non-empty but not shaped like an address."
+    },
     "accountSignInPasswordLabel": "Password",
     "@accountSignInPasswordLabel": {
       "description": "Issue #1004 (tranche 2): sign-in screen password field label."
@@ -5445,20 +5469,26 @@
         }
       }
     },
-    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "healthSyncBindWriteBody": "Only {name}'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
     "@healthSyncBindWriteBody": {
-      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.",
+      "description": "health-sync bind confirmation body for a write direction.",
       "placeholders": {
         "name": {
+          "type": "String"
+        },
+        "source": {
           "type": "String"
         }
       }
     },
-    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from this phone's Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
+    "healthSyncBindImportBody": "Only {name}'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.",
     "@healthSyncBindImportBody": {
-      "description": "Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.",
+      "description": "health-sync bind confirmation body for an import-only direction.",
       "placeholders": {
         "name": {
+          "type": "String"
+        },
+        "source": {
           "type": "String"
         }
       }
@@ -5724,7 +5754,7 @@
   "@daySheetDiscardFailedBody": {
     "description": "Issue #1004 (tranche 4b): body of the day sheet's discard-after-failed-save confirmation."
   },
-  "monthCalendarFertileWindowExplainer": "{label} — the days around estimated ovulation, back-calculated from the predicted period date.",
+  "monthCalendarFertileWindowExplainer": "{label} — the days around estimated ovulation, back-calculated from the estimated period date.",
   "@monthCalendarFertileWindowExplainer": {
     "description": "Issue #1004 (tranche 4b): fertile-window explainer body on a future calendar day, prefixed by the mode's own fertile-window label.",
     "placeholders": {
