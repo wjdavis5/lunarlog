@@ -1617,66 +1617,115 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteObservationRow remote, {
     required bool onlyExisting,
     _PageLookup? cache,
-  }) async {
-    final local = await _lookupCached(
-      cache,
-      (c) => c.observations,
-      remote.id,
-      _observationOrNull,
-    );
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return false;
-    }
-    // Referential integrity up front, mirroring [_ensureDayEntryProfileExists]:
-    // a typed, retryable failure rather than a raw constraint exception.
-    await _ensureObservationDayEntryExists(remote, cache: cache);
+  }) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     final payload = _observationPayload(remote, tombstone);
-    if (local == null) {
-      final written = await db
-          .into(db.observations)
-          .insertReturning(
-            ObservationsCompanion.insert(
-              id: remote.id,
-              dayEntryId: remote.dayEntryId,
-              profileId: remote.profileId,
-              localDate: remote.localDate,
-              observedAt: Value(payload.observedAt),
-              tz: remote.tz,
-              category: Value(payload.category),
-              code: Value(payload.code),
-              valueNum: Value(payload.valueNum),
-              valueText: Value(payload.valueText),
-              unit: Value(payload.unit),
-              intensity: Value(payload.intensity),
-              excluded: Value(payload.excluded),
-              source: Value(remote.source),
-              // Issue #159: sourceId/importId are never cleared for a
-              // tombstone (unlike every column in `payload` above) --
-              // written from `remote` directly regardless of tombstone.
-              sourceId: Value(remote.sourceId),
-              importId: Value(remote.importId),
-              // Issue #186: the round-trip marker rides with the other
-              // provenance columns (never cleared on a tombstone).
-              exportedToPlatformAt: Value(remote.exportedToPlatformAt?.toUtc()),
-              raw: Value(payload.raw),
-              updatedAt: updatedAt,
-              deletedAt: Value(deletedAt),
-              dirty: const Value(false),
-              localRev: const Value(0),
-              loggedByUserId: Value(remote.loggedByUserId),
-              lastModifiedByUserId: Value(remote.lastModifiedByUserId),
-            ),
-          );
-      cache?.observations[written.id] = written;
-      return true;
-    }
+    return _applyRemoteRow<RemoteObservationRow, Observation>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+        cache,
+        (c) => c.observations,
+        remote.id,
+        _observationOrNull,
+      ),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      // Referential integrity up front, mirroring
+      // [_ensureDayEntryProfileExists]: a typed, retryable failure rather
+      // than a raw constraint exception.
+      checkParent: (r) => _ensureObservationDayEntryExists(r, cache: cache),
+      insert: (r, dirty, localRev) =>
+          _insertObservation(r, payload, updatedAt, deletedAt, dirty, localRev,
+              cache),
+      update: (r, local, dirty, _) =>
+          _updateObservation(r, local, payload, updatedAt, deletedAt, dirty,
+              cache),
+    );
+  }
+
+  /// The insert half of [_applyObservation], split out so neither method
+  /// exceeds the CRAP-gate complexity budget on its own.
+  Future<void> _insertObservation(
+    RemoteObservationRow remote,
+    ({
+      DateTime? observedAt,
+      String? category,
+      String? code,
+      double? valueNum,
+      String? valueText,
+      String? unit,
+      int? intensity,
+      bool excluded,
+      String? raw,
+    }) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
+    _PageLookup? cache,
+  ) async {
+    final written = await db
+        .into(db.observations)
+        .insertReturning(
+          ObservationsCompanion.insert(
+            id: remote.id,
+            dayEntryId: remote.dayEntryId,
+            profileId: remote.profileId,
+            localDate: remote.localDate,
+            observedAt: Value(payload.observedAt),
+            tz: remote.tz,
+            category: Value(payload.category),
+            code: Value(payload.code),
+            valueNum: Value(payload.valueNum),
+            valueText: Value(payload.valueText),
+            unit: Value(payload.unit),
+            intensity: Value(payload.intensity),
+            excluded: Value(payload.excluded),
+            source: Value(remote.source),
+            // Issue #159: sourceId/importId are never cleared for a
+            // tombstone (unlike every column in `payload` above) --
+            // written from `remote` directly regardless of tombstone.
+            sourceId: Value(remote.sourceId),
+            importId: Value(remote.importId),
+            // Issue #186: the round-trip marker rides with the other
+            // provenance columns (never cleared on a tombstone).
+            exportedToPlatformAt: Value(remote.exportedToPlatformAt?.toUtc()),
+            raw: Value(payload.raw),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: dirty,
+            localRev: localRev,
+            loggedByUserId: Value(remote.loggedByUserId),
+            lastModifiedByUserId: Value(remote.lastModifiedByUserId),
+          ),
+        );
+    cache?.observations[written.id] = written;
+  }
+
+  /// The update half of [_applyObservation], split out for the same reason.
+  /// A null remote `exported_to_platform_at` never wipes a known local one.
+  Future<void> _updateObservation(
+    RemoteObservationRow remote,
+    Observation local,
+    ({
+      DateTime? observedAt,
+      String? category,
+      String? code,
+      double? valueNum,
+      String? valueText,
+      String? unit,
+      int? intensity,
+      bool excluded,
+      String? raw,
+    }) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    Value<bool> dirty,
+    _PageLookup? cache,
+  ) async {
     final written =
         await (db.update(
           db.observations,
@@ -1704,7 +1753,7 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             raw: Value(payload.raw),
             updatedAt: Value(updatedAt),
             deletedAt: Value(deletedAt),
-            dirty: const Value(false),
+            dirty: dirty,
             loggedByUserId: Value(
               remote.loggedByUserId ?? local.loggedByUserId,
             ),
@@ -1714,7 +1763,6 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
           ),
         );
     cache?.observations[written.first.id] = written.first;
-    return true;
   }
 
   /// Issue #188: applies a server copy of a profile mode row keyed by
@@ -1727,53 +1775,69 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteProfileModeRow remote, {
     required bool onlyExisting,
     _PageLookup? cache,
-  }) async {
-    final local = await _lookupCached(
-      cache,
-      (c) => c.profileModes,
-      remote.profileId,
-      _profileModeOrNull,
-    );
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return false;
-    }
-    if (await _lookupCached(
-          cache,
-          (c) => c.profiles,
-          remote.profileId,
-          _profileOrNull,
-        ) ==
-        null) {
-      throw RetryableSyncApplyError(
-          'profile mode ${remote.profileId} references a profile not held locally');
-    }
+  }) {
     final updatedAt = remote.updatedAt.toUtc();
-    if (local == null) {
-      final written = await db
-          .into(db.profileModes)
-          .insertReturning(
-            ProfileModesCompanion.insert(
-              profileId: remote.profileId,
-              mode: Value(remote.mode),
-              modeStartedOn: Value(remote.modeStartedOn),
-              estimatedDueDate: Value(remote.estimatedDueDate),
-              postpartumBirthDate: Value(remote.postpartumBirthDate),
-              birthControlMethod: Value(remote.birthControlMethod),
-              birthControlStartedOn: Value(remote.birthControlStartedOn),
-              birthControlStoppedOn: Value(remote.birthControlStoppedOn),
-              healthSyncConsent: Value(remote.healthSyncConsent),
-              updatedAt: updatedAt,
-              dirty: const Value(false),
-              localRev: const Value(0),
-            ),
-          );
-      cache?.profileModes[written.profileId] = written;
-      return true;
-    }
+    return _applyRemoteRow<RemoteProfileModeRow, ProfileModeData>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+        cache,
+        (c) => c.profileModes,
+        remote.profileId,
+        _profileModeOrNull,
+      ),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'profile mode',
+        remoteId: r.profileId,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) =>
+          _insertProfileMode(r, updatedAt, dirty, localRev, cache),
+      update: (r, _, dirty, _) =>
+          _updateProfileMode(r, updatedAt, dirty, cache),
+    );
+  }
+
+  /// The insert half of [_applyProfileMode], split out so neither method
+  /// exceeds the CRAP-gate complexity budget on its own.
+  Future<void> _insertProfileMode(
+    RemoteProfileModeRow remote,
+    DateTime updatedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
+    _PageLookup? cache,
+  ) async {
+    final written = await db
+        .into(db.profileModes)
+        .insertReturning(
+          ProfileModesCompanion.insert(
+            profileId: remote.profileId,
+            mode: Value(remote.mode),
+            modeStartedOn: Value(remote.modeStartedOn),
+            estimatedDueDate: Value(remote.estimatedDueDate),
+            postpartumBirthDate: Value(remote.postpartumBirthDate),
+            birthControlMethod: Value(remote.birthControlMethod),
+            birthControlStartedOn: Value(remote.birthControlStartedOn),
+            birthControlStoppedOn: Value(remote.birthControlStoppedOn),
+            healthSyncConsent: Value(remote.healthSyncConsent),
+            updatedAt: updatedAt,
+            dirty: dirty,
+            localRev: localRev,
+          ),
+        );
+    cache?.profileModes[written.profileId] = written;
+  }
+
+  /// The update half of [_applyProfileMode], split out for the same reason.
+  Future<void> _updateProfileMode(
+    RemoteProfileModeRow remote,
+    DateTime updatedAt,
+    Value<bool> dirty,
+    _PageLookup? cache,
+  ) async {
     final written =
         await (db.update(
           db.profileModes,
@@ -1788,11 +1852,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
             birthControlStoppedOn: Value(remote.birthControlStoppedOn),
             healthSyncConsent: Value(remote.healthSyncConsent),
             updatedAt: Value(updatedAt),
-            dirty: const Value(false),
+            dirty: dirty,
           ),
         );
     cache?.profileModes[written.first.profileId] = written.first;
-    return true;
   }
 
   /// The redacted payload columns for a cycle override row: the remote
@@ -1819,54 +1882,75 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
     RemoteCycleOverrideRow remote, {
     required bool onlyExisting,
     _PageLookup? cache,
-  }) async {
-    final local = await _lookupCached(
-      cache,
-      (c) => c.cycleOverrides,
-      remote.id,
-      _cycleOverrideOrNullById,
-    );
-    if (local == null && onlyExisting) return false;
-    if (local != null &&
-        !remoteWinsById(
-            localUpdatedAt: local.updatedAt,
-            remoteUpdatedAt: remote.updatedAt)) {
-      return false;
-    }
-    if (await _lookupCached(
-          cache,
-          (c) => c.profiles,
-          remote.profileId,
-          _profileOrNull,
-        ) ==
-        null) {
-      throw RetryableSyncApplyError(
-          'cycle override ${remote.id} references a profile not held locally');
-    }
+  }) {
     final tombstone = remote.isTombstone;
     final updatedAt = remote.updatedAt.toUtc();
     final deletedAt = remote.deletedAt?.toUtc();
     final payload = _cycleOverridePayload(remote, tombstone);
-    if (local == null) {
-      final written = await db
-          .into(db.cycleOverrides)
-          .insertReturning(
-            CycleOverridesCompanion.insert(
-              id: remote.id,
-              profileId: remote.profileId,
-              cycleStartDate: remote.cycleStartDate,
-              excludedFromAverage: Value(payload.excludedFromAverage),
-              manualStart: Value(payload.manualStart),
-              noteId: Value(payload.noteId),
-              updatedAt: updatedAt,
-              deletedAt: Value(deletedAt),
-              dirty: const Value(false),
-              localRev: const Value(0),
-            ),
-          );
-      cache?.cycleOverrides[written.id] = written;
-      return true;
-    }
+    return _applyRemoteRow<RemoteCycleOverrideRow, CycleOverrideData>(
+      remote: remote,
+      readLocal: () => _lookupCached(
+        cache,
+        (c) => c.cycleOverrides,
+        remote.id,
+        _cycleOverrideOrNullById,
+      ),
+      onlyExisting: onlyExisting,
+      remoteUpdatedAt: (r) => r.updatedAt,
+      localUpdatedAt: (l) => l.updatedAt,
+      checkParent: (r) => _ensureProfileHeldLocally(
+        r.profileId,
+        entityLabel: 'cycle override',
+        remoteId: r.id,
+        cache: cache,
+      ),
+      insert: (r, dirty, localRev) => _insertCycleOverride(
+          r, payload, updatedAt, deletedAt, dirty, localRev, cache),
+      update: (r, _, dirty, _) => _updateCycleOverride(
+          r, payload, updatedAt, deletedAt, dirty, cache),
+    );
+  }
+
+  /// The insert half of [_applyCycleOverride], split out so neither method
+  /// exceeds the CRAP-gate complexity budget on its own.
+  Future<void> _insertCycleOverride(
+    RemoteCycleOverrideRow remote,
+    ({bool excludedFromAverage, bool manualStart, String? noteId}) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    Value<bool> dirty,
+    Value<int> localRev,
+    _PageLookup? cache,
+  ) async {
+    final written = await db
+        .into(db.cycleOverrides)
+        .insertReturning(
+          CycleOverridesCompanion.insert(
+            id: remote.id,
+            profileId: remote.profileId,
+            cycleStartDate: remote.cycleStartDate,
+            excludedFromAverage: Value(payload.excludedFromAverage),
+            manualStart: Value(payload.manualStart),
+            noteId: Value(payload.noteId),
+            updatedAt: updatedAt,
+            deletedAt: Value(deletedAt),
+            dirty: dirty,
+            localRev: localRev,
+          ),
+        );
+    cache?.cycleOverrides[written.id] = written;
+  }
+
+  /// The update half of [_applyCycleOverride], split out for the same
+  /// reason.
+  Future<void> _updateCycleOverride(
+    RemoteCycleOverrideRow remote,
+    ({bool excludedFromAverage, bool manualStart, String? noteId}) payload,
+    DateTime updatedAt,
+    DateTime? deletedAt,
+    Value<bool> dirty,
+    _PageLookup? cache,
+  ) async {
     final written =
         await (db.update(db.cycleOverrides)..where(
               (t) =>
@@ -1880,11 +1964,10 @@ mixin LunarLogStorageRemoteApply on LunarLogStorageQueries, LunarLogStorageLocal
                 noteId: Value(payload.noteId),
                 updatedAt: Value(updatedAt),
                 deletedAt: Value(deletedAt),
-                dirty: const Value(false),
+                dirty: dirty,
               ),
             );
     cache?.cycleOverrides[written.first.id] = written.first;
-    return true;
   }
 
   /// Issue #551 part 2: the one remote-apply skeleton every per-id-LWW
