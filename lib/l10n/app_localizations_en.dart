@@ -332,6 +332,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get daySheetNoteHint => 'Anything worth remembering about today?';
 
   @override
+  String get daySheetNotePrivateToggle => 'Keep this note private';
+
+  @override
+  String get daySheetNotePrivateHint =>
+      'Private notes aren\'t shared with your guardians.';
+
+  @override
+  String get daySheetNotePrivateSavedHint =>
+      'Privacy is chosen when the note is written, and can\'t be changed after it\'s saved.';
+
+  @override
+  String get daySheetNotePrivateHidden => 'Private note';
+
+  @override
   String get daySheetDoneLabel => 'Done';
 
   @override

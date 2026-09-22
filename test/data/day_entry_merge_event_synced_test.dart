@@ -40,6 +40,7 @@ void main() {
     FlowLevel flow = FlowLevel.medium,
     List<String> tags = const ['remote'],
     String? note = 'from remote',
+    bool notePrivate = false,
     required DateTime updatedAt,
     String? loggedByUserId,
     String? lastModifiedByUserId,
@@ -53,6 +54,7 @@ void main() {
         flow: flow,
         tags: tags,
         note: note,
+        notePrivate: notePrivate,
         updatedAt: updatedAt,
         deletedAt: deletedAt,
         loggedByUserId: loggedByUserId,
@@ -105,6 +107,35 @@ void main() {
       // Dirty so the disclosure rides the next push to the server.
       expect(rows.every((r) => r.dirty), isTrue,
           reason: 'synced merge events must be marked dirty for push');
+    });
+
+    test('a private losing note is redacted to empty text in the synced '
+        'disclosure (Issue #849)', () async {
+      final profileId = await seedProfile('A');
+      final local = await storage.upsertDayEntry(
+        profileId: profileId,
+        localDate: '2026-01-15',
+        tz: 'UTC',
+        flow: FlowLevel.heavy,
+        note: 'private local note',
+        notePrivate: true,
+      );
+      await storage.applyRemoteDayEntry(remoteRow(
+        '01JREMOTE00000000000000000A',
+        profileId,
+        flow: FlowLevel.light,
+        note: 'remote note',
+        updatedAt: DateTime.utc(2026, 1, 16),
+      ));
+      final rows = await mergeRows(profileId);
+      final note = rows.singleWhere((r) => r.field == 'note');
+      // The discard is still disclosed, but the private text is never
+      // synced to any guardian's device.
+      expect(note.losingValueText, isEmpty);
+      expect(note.losingRowId, local.id);
+      // The flow disclosure still carries its (non-private) value.
+      final flow = rows.singleWhere((r) => r.field == 'flow');
+      expect(flow.losingValueText, 'heavy');
     });
 
     test('identical payload records nothing (nothing was discarded)',
