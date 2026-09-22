@@ -24,6 +24,30 @@ abstract interface class LatestDayEntryReader {
   Future<DayEntry?> latestEntryFor(String profileId);
 }
 
+/// Issue #1071 follow-up: the per-row sync-state capability the day sheet
+/// needs to decide whether a note's privacy choice is still open — whether
+/// the note has actually been shared with the server at least once.
+///
+/// Deliberately a separate interface from [DayEntriesRepository] rather than
+/// an added method on it, copying the narrow-seam pattern issue #850 U5 used
+/// for its bounded latest-entry read: an abstract member there would force
+/// every one of the repository's test doubles to grow a stub for a read only
+/// the note toggle performs. [DriftDayEntriesRepository] implements both, and
+/// the day sheet resolves it with an `is` check, so a tree whose entries
+/// repository cannot answer it (a hand-rolled fake) simply treats the note as
+/// never shared rather than reaching for a second store.
+abstract interface class DayEntrySyncStateReader {
+  /// Whether (profileId, date) holds a live row with a non-empty note whose
+  /// `dirty` flag is clear — i.e. the note has been pushed to the server at
+  /// least once, so it is now visible to guardians and can never be made
+  /// private again (the server's `enforce_day_entry_note_private` rule).
+  ///
+  /// `false` for a local-only row (it never pushes, so it stays `dirty`), a
+  /// note written but not yet pushed (offline), an empty note, a tombstone, or
+  /// no row at all — every case where the choice is still legal.
+  Future<bool> hasBeenShared(String profileId, LocalDate date);
+}
+
 abstract interface class DayEntriesRepository {
   /// Upserts the live entry for (profileId, localDate). Tag codes are
   /// validated against the domain taxonomy. The returned model carries the
