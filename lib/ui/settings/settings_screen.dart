@@ -258,31 +258,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Issue #153's health-sync section (iOS-only, gated at the call site by
+  /// Issue #153's health-sync section (gated at the call site by
   /// [AppConfig.hasHealthSync] plus non-null repositories).
   Widget _healthSection(
     AppLocalizations l10n,
     ProfilesRepository profilesRepository,
     ProfileGuardiansRepository guardiansRepository,
-  ) =>
-      SettingsSection(
-        id: 'health',
-        title: l10n.settingsHealthHeader,
-        children: [
-          ListTile(
-            key: const ValueKey('health-sync-tile'),
-            leading: const Icon(Icons.favorite_outline),
-            title: Text(l10n.settingsHealthSyncTitle),
-            subtitle: Text(l10n.settingsHealthSyncSubtitle),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openHealthSync(
-              context,
-              profilesRepository,
-              guardiansRepository,
-            ),
+  ) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final sourceTitle = isAndroid ? 'Health Connect' : 'Health app';
+    final source = isAndroid ? 'Health Connect' : 'the Health app';
+    return SettingsSection(
+      id: 'health',
+      title: l10n.settingsHealthHeader,
+      children: [
+        ListTile(
+          key: const ValueKey('health-sync-tile'),
+          leading: const Icon(Icons.favorite_outline),
+          title: Text(l10n.settingsHealthSyncTitle(sourceTitle)),
+          subtitle: Text(l10n.settingsHealthSyncSubtitle(source)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openHealthSync(
+            context,
+            profilesRepository,
+            guardiansRepository,
           ),
-        ],
-      );
+        ),
+      ],
+    );
+  }
 
   /// The Reminders section's children (gated at the call site on either
   /// half of the section existing): the per-profile reminder configuration

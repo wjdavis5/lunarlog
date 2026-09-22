@@ -227,7 +227,7 @@ void main() {
     // The cycle group lists its kinds; the fertile-window kind carries a
     // lead row (it is window-anchored), the statistic kind does not.
     await _scrollTo(tester, const ValueKey('reminder-fertileWindowSoon-lead'));
-    expect(find.text('Days before predicted fertile window'), findsOneWidget);
+    expect(find.text('Days before estimated fertile window'), findsOneWidget);
 
     // No birth-control method recorded: the group renders its explainer
     // row, not a toggle for a reminder that could never plan.
