@@ -1338,17 +1338,17 @@ abstract class AppLocalizations {
   /// **'Health'**
   String get settingsHealthHeader;
 
-  /// Settings tile opening per-profile Health app sync.
+  /// Settings tile opening per-profile health sync.
   ///
   /// In en, this message translates to:
-  /// **'Health app sync'**
-  String get settingsHealthSyncTitle;
+  /// **'{source} sync'**
+  String settingsHealthSyncTitle(String source);
 
   /// Subtitle of the health-sync tile.
   ///
   /// In en, this message translates to:
-  /// **'Choose which profile\'s data may sync to this phone\'s Health app'**
-  String get settingsHealthSyncSubtitle;
+  /// **'Choose which profile\'s data may sync to {source}'**
+  String settingsHealthSyncSubtitle(String source);
 
   /// Android-only health-sync copy (Issue #238): Health Connect has no symptom category types, so symptom tags are never exported there. This documents the permanent platform limitation rather than hiding it.
   ///
@@ -1356,7 +1356,7 @@ abstract class AppLocalizations {
   /// **'Symptoms (cramps, headaches, mood, and more) can\'t be written to Health Connect — it has no symptom categories. Days logged with symptoms still sync their flow and spotting; the symptoms themselves stay in lunarlog.'**
   String get settingsHealthSyncSymptomsAndroidLimitation;
 
-  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'Apple Health' or 'Health Connect'.
+  /// Health sync screen OS-permission status line (Issue #959): the OS write permission for the platform's health store is granted. {source} is 'the Health app' or 'Health Connect'.
   ///
   /// In en, this message translates to:
   /// **'{source} access: granted'**
@@ -1410,22 +1410,22 @@ abstract class AppLocalizations {
   /// **'Kept your own logged value on {count, plural, =1{1 day} other{{count} days}}.'**
   String healthSyncImportKeptManual(int count);
 
-  /// Health import summary (Issue #902): samples the source recorded no zone for, placed on a civil date from this phone's own offset. Deliberately says placed, never skipped, so an inferred date is not reported as one the source recorded.
+  /// Health import summary (Issue #902): entries the source recorded no zone for, dated on a civil date from this phone's own offset. Deliberately says dated, never skipped, so an inferred date is not reported as one the source recorded.
   ///
   /// In en, this message translates to:
-  /// **'Placed {count, plural, =1{1 sample} other{{count} samples}} using the time zone of this phone.'**
+  /// **'Dated {count, plural, =1{1 entry} other{{count} entries}} using the time zone of this phone.'**
   String healthSyncImportPlacedDeviceZone(int count);
 
-  /// Health import summary: samples that could not be placed at all (no zone and no device-zone fallback).
+  /// Health import summary: entries that could not be placed at all (no zone and no device-zone fallback).
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no recorded time zone.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no recorded time zone.'**
   String healthSyncImportSkippedNoZone(int count);
 
-  /// Health import summary: samples whose flow value has no lunarlog equivalent.
+  /// Health import summary: entries whose flow value has no lunarlog equivalent.
   ///
   /// In en, this message translates to:
-  /// **'Skipped {count, plural, =1{1 sample} other{{count} samples}} with no matching flow level.'**
+  /// **'Skipped {count, plural, =1{1 entry} other{{count} entries}} with no matching flow level.'**
   String healthSyncImportSkippedUnsupported(int count);
 
   /// Health import completion summary headline (Issue #992): {imported} days gained or refreshed an imported value, {skipped} days were left alone because a value was already there (hand-logged or already imported).
@@ -1473,14 +1473,14 @@ abstract class AppLocalizations {
   /// Confirm dialog body for unbinding on a platform where both write and import are wired (iOS, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop writing data for {name} to its Health app and stop importing from it. Nothing already logged in lunarlog, or already written to the Health app, is deleted.'**
-  String healthSyncUnbindDialogWriteBody(String name);
+  /// **'This phone will stop writing data for {name} to {source} and stop importing from it. Nothing already logged in lunarlog, or already written to {source}, is deleted.'**
+  String healthSyncUnbindDialogWriteBody(String name, String source);
 
   /// Confirm dialog body for unbinding on an import-only platform (Android, Issue #893).
   ///
   /// In en, this message translates to:
-  /// **'This phone will stop importing data for {name} from its Health app. Nothing already logged is deleted.'**
-  String healthSyncUnbindDialogImportBody(String name);
+  /// **'This phone will stop importing data for {name} from {source}. Nothing already logged is deleted.'**
+  String healthSyncUnbindDialogImportBody(String name, String source);
 
   /// Confirm action of the health-sync unbind dialog (Issue #893).
   ///
@@ -6788,17 +6788,17 @@ abstract class AppLocalizations {
   /// **'Sync {name} to this phone?'**
   String healthSyncBindTitle(String name);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for a write direction.
+  /// health-sync bind confirmation body for a write direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be written to this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindWriteBody(String name);
+  /// **'Only {name}\'s data will ever be written to {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindWriteBody(String name, String source);
 
-  /// Issue #1004 (tranche 2): health-sync bind confirmation body for an import-only direction.
+  /// health-sync bind confirmation body for an import-only direction.
   ///
   /// In en, this message translates to:
-  /// **'Only {name}\'s data will ever be imported from this phone\'s Health app. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
-  String healthSyncBindImportBody(String name);
+  /// **'Only {name}\'s data will ever be imported from {source}. This phone can sync one profile at a time — choosing a different profile later replaces this one.'**
+  String healthSyncBindImportBody(String name, String source);
 
   /// Issue #1004 (tranche 2): health-sync bind confirmation cancel button.
   ///

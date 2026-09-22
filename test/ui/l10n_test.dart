@@ -325,10 +325,15 @@ void main() {
         'Show predictions (Alice)',
       );
       expect(l10n.settingsHealthHeader, 'Health');
-      expect(l10n.settingsHealthSyncTitle, 'Health app sync');
+      expect(l10n.settingsHealthSyncTitle('Health app'), 'Health app sync');
+      expect(l10n.settingsHealthSyncTitle('Health Connect'), 'Health Connect sync');
       expect(
-        l10n.settingsHealthSyncSubtitle,
-        "Choose which profile's data may sync to this phone's Health app",
+        l10n.settingsHealthSyncSubtitle('the Health app'),
+        "Choose which profile's data may sync to the Health app",
+      );
+      expect(
+        l10n.settingsHealthSyncSubtitle('Health Connect'),
+        "Choose which profile's data may sync to Health Connect",
       );
       expect(l10n.settingsPrivacyTitle, 'Privacy policy');
       expect(
