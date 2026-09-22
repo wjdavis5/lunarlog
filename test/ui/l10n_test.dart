@@ -86,7 +86,7 @@ void main() {
       expect(l10n.calendarLegendSuperHeavy, 'Super heavy flow (5 marks)');
       expect(l10n.calendarLegendSymptom, 'Symptom day');
       expect(l10n.calendarLegendToday, 'Today');
-      expect(l10n.calendarLegendPredicted, 'Predicted day');
+      expect(l10n.calendarLegendPredicted, 'Estimated day');
       expect(l10n.calendarLegendPms, 'PMS window');
       expect(l10n.calendarLegendCramps, 'Cramps window');
       expect(l10n.calendarLegendLayerDots, 'Symptom layer dots');
@@ -99,7 +99,7 @@ void main() {
       expect(l10n.calendarHideSymptomLayers, 'Hide symptom layers');
       expect(
         l10n.calendarKeepLogging,
-        'Keep logging — predicted bands appear once a few cycles are '
+        'Keep logging — estimated bands appear once a few cycles are '
         'recorded.',
       );
       expect(l10n.monthPickerPreviousYear, 'Previous year');
@@ -110,43 +110,43 @@ void main() {
       final l10n = await pumpL10n(tester);
       expect(
         l10n.futureExplainerNoEstimate,
-        'No estimates yet — keep logging. Predicted bands appear on the '
+        'No estimates yet — keep logging. Estimated bands appear on the '
         'calendar once a few cycles are recorded.',
       );
       expect(
         l10n.futureExplainerNone,
-        'No prediction for this date. Days can be logged once they arrive.',
+        'No estimate for this date. Days can be logged once they arrive.',
       );
       expect(
         l10n.futureExplainerBand(1),
-        'Predicted period day. The date may shift by about 1 day either '
+        'Estimated period day. The date may shift by about 1 day either '
         'way as new periods are logged.',
       );
       expect(
         l10n.futureExplainerBand(3),
-        'Predicted period day. The date may shift by about 3 days either '
+        'Estimated period day. The date may shift by about 3 days either '
         'way as new periods are logged.',
       );
       expect(
         l10n.futureExplainerBandWithCycleDay(5, 2),
-        'Predicted period day — cycle day 5 of the first predicted cycle. '
+        'Estimated period day — cycle day 5 of the first estimated cycle. '
         'The date may shift by about 2 days either way as new periods are '
         'logged.',
       );
       expect(
         l10n.futureExplainerPms,
-        'Inside the predicted premenstrual window — symptoms like mood '
+        'Inside the estimated premenstrual window — symptoms like mood '
         'shifts and bloating often show up in the week before a period.',
       );
       expect(
         l10n.futureExplainerCramps,
-        'Inside the predicted cramps window — cramps commonly occur within '
+        'Inside the estimated cramps window — cramps commonly occur within '
         'two days of a period start.',
       );
       expect(
         l10n.futureExplainerNumeral(17),
-        'Cycle day 17 of the first predicted cycle. Only the first '
-        'predicted cycle is counted day by day — estimates compound too '
+        'Cycle day 17 of the first estimated cycle. Only the first '
+        'estimated cycle is counted day by day — estimates compound too '
         'much further out.',
       );
       expect(
@@ -238,21 +238,21 @@ void main() {
       expect(
         l10n.overviewLongCycleBody,
         'It has run well past a typical cycle for this profile. You can '
-        'exclude it from future averages, or turn off predictions if long '
+        'exclude it from future averages, or turn off estimates if long '
         'cycles are common for this profile.',
       );
-      expect(l10n.overviewLongCyclePredictionsOff, 'Turn off predictions');
+      expect(l10n.overviewLongCyclePredictionsOff, 'Turn off estimates');
       expect(l10n.overviewIrregularSuggestionTitle, 'Cycles vary a lot');
       expect(
         l10n.overviewIrregularSuggestionBody,
-        'Predictions may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.',
+        'Estimates may be less useful when cycles vary widely. You can turn off cycle estimates while continuing to track normally.',
       );
       expect(l10n.overviewIrregularSuggestionSettings, 'Manage in Settings');
       expect(l10n.overviewIrregularSuggestionDismiss, 'Dismiss');
-      expect(l10n.predictionsDisabledTitle, 'Predictions turned off');
+      expect(l10n.predictionsDisabledTitle, 'Estimates off');
       expect(
         l10n.predictionsDisabledBody,
-        'Estimates, calendar prediction bands, and prediction reminders are paused for this profile. Your cycle history and tracking continue unchanged.',
+        'Estimates, calendar estimate bands, and estimate reminders are paused for this profile. Your cycle history and tracking continue unchanged.',
       );
       expect(l10n.predictionsDisabledAction, 'Manage in Settings');
       expect(
@@ -262,11 +262,11 @@ void main() {
       expect(l10n.overviewTurnOnReminders, 'Turn on reminders');
       expect(
         l10n.overviewPmsBandLabel('May 1 – May 2', 1, 1),
-        'Predicted PMS: May 1 – May 2 — usually starts about 1 day before your period and lasts about 1 day.',
+        'Estimated PMS: May 1 – May 2 — usually starts about 1 day before your period and lasts about 1 day.',
       );
       expect(
         l10n.overviewPmsBandLabel('May 1 – May 4', 4, 3),
-        'Predicted PMS: May 1 – May 4 — usually starts about 4 days before your period and lasts about 3 days.',
+        'Estimated PMS: May 1 – May 4 — usually starts about 4 days before your period and lasts about 3 days.',
       );
       expect(l10n.householdTimingPastEstimate(1), '1 day past the estimate');
       expect(l10n.householdTimingPastEstimate(4), '4 days past the estimate');
@@ -315,20 +315,25 @@ void main() {
       expect(l10n.settingsRelockTimeout2Minutes, '2 minutes');
       expect(l10n.settingsRelockTimeout15Minutes, '15 minutes');
       expect(l10n.settingsRelockTimeout1Hour, '1 hour');
-      expect(l10n.settingsPredictionsTitle, 'Show predictions');
+      expect(l10n.settingsPredictionsTitle, 'Show estimates');
       expect(
         l10n.settingsPredictionsSubtitle,
-        'Show cycle estimates, fertile window, and prediction reminders',
+        'Show cycle estimates, fertile window, and estimate reminders',
       );
       expect(
         l10n.settingsPredictionsProfileTitle('Alice'),
-        'Show predictions (Alice)',
+        'Show estimates (Alice)',
       );
       expect(l10n.settingsHealthHeader, 'Health');
-      expect(l10n.settingsHealthSyncTitle, 'Health app sync');
+      expect(l10n.settingsHealthSyncTitle('Health app'), 'Health app sync');
+      expect(l10n.settingsHealthSyncTitle('Health Connect'), 'Health Connect sync');
       expect(
-        l10n.settingsHealthSyncSubtitle,
-        "Choose which profile's data may sync to this phone's Health app",
+        l10n.settingsHealthSyncSubtitle('the Health app'),
+        "Choose which profile's data may sync to the Health app",
+      );
+      expect(
+        l10n.settingsHealthSyncSubtitle('Health Connect'),
+        "Choose which profile's data may sync to Health Connect",
       );
       expect(l10n.settingsPrivacyTitle, 'Privacy policy');
       expect(
@@ -403,7 +408,7 @@ void main() {
         l10n.firstRunValueBody,
         'Guardians can share a profile and log it together. Everything '
         'works offline. No ads, no data selling, no behavioral tracking — '
-        'and predictions are never paywalled.',
+        'and estimates are never paywalled.',
       );
       expect(l10n.firstRunGuardiansTitle, 'Profiles and guardians');
       expect(
