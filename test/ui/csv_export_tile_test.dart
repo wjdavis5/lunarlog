@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lunarlog/domain/export/csv_export_writer.dart';
+import 'package:lunarlog/domain/auth/auth_service.dart';
 import 'package:lunarlog/domain/models/day_entry.dart';
 import 'package:lunarlog/domain/models/flow_level.dart';
 import 'package:lunarlog/domain/models/local_date.dart';
@@ -13,14 +14,19 @@ import 'package:lunarlog/domain/models/measurement_unit.dart';
 import 'package:lunarlog/domain/models/observation.dart';
 import 'package:lunarlog/domain/models/observation_category.dart';
 import 'package:lunarlog/domain/models/profile.dart';
+import 'package:lunarlog/domain/models/profile_guardian.dart';
 import 'package:lunarlog/domain/repositories/day_entries_repository.dart';
 import 'package:lunarlog/domain/repositories/observations_repository.dart';
+import 'package:lunarlog/domain/repositories/profile_guardians_repository.dart';
 import 'package:lunarlog/domain/repositories/profiles_repository.dart';
 import 'package:lunarlog/domain/repositories/settings_store.dart';
 import 'package:lunarlog/l10n/app_localizations.dart';
+import 'package:lunarlog/ui/account/auth_controller.dart';
 import 'package:lunarlog/ui/components/inline_error.dart';
 import 'package:lunarlog/ui/settings/csv_export_tile.dart';
 import 'package:provider/provider.dart';
+
+import '../support/fake_auth_service.dart';
 
 Finder key(String value) => find.byKey(ValueKey(value));
 
@@ -30,11 +36,12 @@ Profile _profile(
   DateTime? archivedAt,
   BbtUnit bbtUnit = BbtUnit.celsius,
   WeightUnit weightUnit = WeightUnit.kg,
+  bool isMinor = false,
 }) =>
     Profile(
       id: id,
       displayName: displayName,
-      isMinor: false,
+      isMinor: isMinor,
       archivedAt: archivedAt,
       bbtUnit: bbtUnit,
       weightUnit: weightUnit,
@@ -42,14 +49,64 @@ Profile _profile(
       updatedAt: DateTime.utc(2026, 1, 1),
     );
 
-DayEntry _entry(String id, String profileId, {LocalDate? date}) => DayEntry(
+DayEntry _entry(
+  String id,
+  String profileId, {
+  LocalDate? date,
+  String? note,
+  bool notePrivate = false,
+}) =>
+    DayEntry(
       id: id,
       profileId: profileId,
       localDate: date ?? LocalDate(2026, 4, 1),
       tz: 'UTC',
       flow: FlowLevel.medium,
+      note: note,
+      notePrivate: notePrivate,
       updatedAt: DateTime.utc(2026, 4, 1),
     );
+
+ProfileGuardian _guardian(
+  String userId, {
+  bool isSubject = false,
+  GuardianStatus status = GuardianStatus.accepted,
+}) =>
+    ProfileGuardian(
+      id: 'g-$userId',
+      profileId: 'p1',
+      userId: userId,
+      role: GuardianRole.caregiver,
+      status: status,
+      isSubject: isSubject,
+      createdAt: DateTime.utc(2026, 1, 1),
+      updatedAt: DateTime.utc(2026, 1, 1),
+    );
+
+class FakeProfileGuardiansRepository implements ProfileGuardiansRepository {
+  FakeProfileGuardiansRepository(this._byProfile);
+
+  final Map<String, List<ProfileGuardian>> _byProfile;
+
+  @override
+  Future<List<ProfileGuardian>> getForProfile(String profileId) async =>
+      _byProfile[profileId] ?? const [];
+
+  @override
+  Stream<List<ProfileGuardian>> watchForProfile(String profileId) =>
+      Stream.value(_byProfile[profileId] ?? const []);
+}
+
+/// A signed-in [AuthController] whose [AuthController.currentUserId] is
+/// [userId], so the tile resolves a real viewer.
+AuthController _signedInAs(String userId) {
+  final service = FakeAuthService()
+    ..emit(AuthSessionState.signedIn, user: AuthUser(id: userId));
+  addTearDown(service.dispose);
+  final controller = AuthController(authService: service);
+  addTearDown(controller.dispose);
+  return controller;
+}
 
 class FakeProfilesRepository implements ProfilesRepository {
   FakeProfilesRepository([List<Profile> initial = const []]) : _profiles = initial;
@@ -170,6 +227,8 @@ Future<void> _pump(
   FakeSettingsStore? settingsStore,
   CsvExportCollaborator? exportCsv,
   CsvExportWriter? csvWriter,
+  ProfileGuardiansRepository? guardians,
+  AuthController? auth,
 }) async {
   addTearDown(profiles.dispose);
   await tester.pumpWidget(
@@ -188,6 +247,10 @@ Future<void> _pump(
           Provider<SettingsStore>.value(
             value: settingsStore ?? FakeSettingsStore(),
           ),
+          if (guardians != null)
+            Provider<ProfileGuardiansRepository>.value(value: guardians),
+          if (auth != null)
+            ChangeNotifierProvider<AuthController>.value(value: auth),
           if (csvWriter != null) Provider<CsvExportWriter>.value(value: csvWriter),
         ],
         child: Scaffold(
@@ -506,6 +569,142 @@ void main() {
       expect(key('csv-export-error'), findsOneWidget);
       expect(find.byType(InlineError), findsOneWidget);
       expect(find.text(kCsvExportFailureCopy), findsOneWidget);
+    });
+  });
+
+  group('guardian lens & minor gate (Issue #115 G4)', () {
+    const privateNote = 'PRIVATE-NOTE-MARKER-9f3a';
+
+    FakeDayEntriesRepository entriesFor(String profileId, {String? note}) =>
+        FakeDayEntriesRepository()
+          ..entriesByProfile = {
+            profileId: [
+              _entry('e1', profileId, note: note, notePrivate: note != null),
+            ],
+          };
+
+    testWidgets(
+        'guardian lens: a private note never reaches the CSV builder',
+        (tester) async {
+      String? capturedDailyLog;
+      final profiles =
+          FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final guardians = FakeProfileGuardiansRepository({
+        'p1': [
+          _guardian('subject-user', isSubject: true),
+          _guardian('helper-user'),
+        ],
+      });
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: entriesFor('p1', note: privateNote),
+        guardians: guardians,
+        auth: _signedInAs('helper-user'),
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          capturedDailyLog = dailyLogCsv;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      expect(capturedDailyLog, isNotNull);
+      expect(capturedDailyLog, isNot(contains(privateNote)));
+    });
+
+    testWidgets('subject lens: the same private note is exported in full',
+        (tester) async {
+      String? capturedDailyLog;
+      final profiles =
+          FakeProfilesRepository([_profile('p1', displayName: 'Riley')]);
+      final guardians = FakeProfileGuardiansRepository({
+        'p1': [
+          _guardian('subject-user', isSubject: true),
+          _guardian('helper-user'),
+        ],
+      });
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: entriesFor('p1', note: privateNote),
+        guardians: guardians,
+        auth: _signedInAs('subject-user'),
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          capturedDailyLog = dailyLogCsv;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      expect(capturedDailyLog, contains(privateNote));
+    });
+
+    testWidgets(
+        'minor gate: a non-member operator is refused with the not-available '
+        'copy and the writer is never called', (tester) async {
+      var called = false;
+      final profiles = FakeProfilesRepository(
+          [_profile('p1', displayName: 'Riley', isMinor: true)]);
+      final guardians = FakeProfileGuardiansRepository({
+        'p1': [_guardian('parent-user')],
+      });
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: entriesFor('p1'),
+        guardians: guardians,
+        auth: _signedInAs('intruder-user'),
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          called = true;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      expect(called, isFalse);
+      expect(
+        find.text(
+          "Export is not available for a minor's profile without guardian access.",
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('minor gate: an accepted guardian may export', (tester) async {
+      var called = false;
+      final profiles = FakeProfilesRepository(
+          [_profile('p1', displayName: 'Riley', isMinor: true)]);
+      final guardians = FakeProfileGuardiansRepository({
+        'p1': [_guardian('parent-user')],
+      });
+
+      await _pump(
+        tester,
+        profiles: profiles,
+        dayEntries: entriesFor('p1'),
+        guardians: guardians,
+        auth: _signedInAs('parent-user'),
+        exportCsv: ({required cyclesCsv, required dailyLogCsv, required exportedAt}) async {
+          called = true;
+        },
+      );
+
+      await tester.tap(key('csv-export-tile'));
+      await tester.pumpAndSettle();
+
+      expect(called, isTrue);
+      expect(
+        find.text(
+          "Export is not available for a minor's profile without guardian access.",
+        ),
+        findsNothing,
+      );
     });
   });
 }
