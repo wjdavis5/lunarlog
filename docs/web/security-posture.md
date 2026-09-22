@@ -255,8 +255,12 @@ never permanently separated from the disclosure that real data is present.
   The cleanup also assumes the `/auth/callback` path reaches the app at all
   (the SPA-fallback dependency above) — if the host 404s the path, the code
   never reaches `Uri.base` and there is nothing to clean.
-- **A dedicated XSS/penetration review of the Flutter engine and every web
-  dependency.** The strict CSP is the first layer; a review is a follow-up.
+- **A penetration test of the Flutter engine and every web dependency.**
+  The app's own XSS surface — every user-authored text render site and every
+  raw-DOM touch point — is reviewed in
+  [`xss-surface-review.md`](xss-surface-review.md) (slice 5), so that is no
+  longer deferred; what remains is a tooling-driven test of the engine and
+  the third-party packages themselves. The strict CSP is the first layer.
 
 ## 7. References
 
@@ -274,6 +278,9 @@ never permanently separated from the disclosure that real data is present.
 - `lib/data/db/web_db.dart` — web drift/WASM/IndexedDB wiring.
 - `lib/ui/web/dev_banner.dart` — the banner and first-run acknowledgement.
 - `web/_headers` — the deployed policy.
+- [`xss-surface-review.md`](xss-surface-review.md) — the slice-5 review of
+  every user-authored text render site and raw-DOM touch point, and the
+  residuals it leaves open.
 - `test/architecture/web_auth_seam_test.dart` — the web-storage and
   redirect pin.
 - `test/data/web_url_cleaner_test.dart` /
