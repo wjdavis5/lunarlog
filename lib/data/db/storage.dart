@@ -104,6 +104,7 @@ export '../sync/remote_rows.dart'
 part 'storage_local_writes.dart';
 part 'storage_queries.dart';
 part 'storage_remote_apply.dart';
+part 'storage_roles.dart';
 
 /// Retention horizon for local tombstones (Issue #203):
 /// The sync engine's full-reconcile interval (`kSyncFullPullInterval`, 24h) plus
@@ -152,7 +153,31 @@ class LunarLogStorage
     with
         LunarLogStorageQueries,
         LunarLogStorageLocalWrites,
-        LunarLogStorageRemoteApply {
+        LunarLogStorageRemoteApply
+    implements
+        ProfileStore,
+        DayEntryStore,
+        ObservationStore,
+        CycleStore,
+        CareContentStore,
+        GuardianNoteStore,
+        TagRegistryStore,
+        AppSettingsStore,
+        MergeEventStore,
+        ProfileGuardianStore,
+        SyncCursorStore,
+        SyncDirtyStore,
+        SyncApplyStore,
+        HealthDeviceStore,
+        ImportedDataPurgeStore,
+        DayEntriesRepositoryStore,
+        ObservationsRepositoryStore,
+        ActivityFeedStore,
+        HealthTombstoneSourceStore,
+        AccountExportSnapshotStore,
+        AccountImportStore,
+        ClueImportStore,
+        SyncEngineStore {
   LunarLogStorage(
     this.db, {
     DateTime Function()? clock,
@@ -179,6 +204,7 @@ class LunarLogStorage
 
   /// Sets [clockOffset]. In-memory only; the engine persists the learned
   /// value in `sync_state.server_clock_offset_ms` and restores it on open.
+  @override
   void setClockOffset(Duration offset) {
     _clockOffset = offset;
   }

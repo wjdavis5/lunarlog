@@ -12,7 +12,7 @@ import 'mappers.dart';
 class DriftTagRegistryRepository implements TagRegistryRepository {
   DriftTagRegistryRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final TagRegistryStore _storage;
 
   @override
   Future<List<domain.CustomTag>> listForProfile(String profileId) async => [

@@ -15,7 +15,7 @@ import 'mappers.dart';
 class DriftCycleOverridesRepository implements CycleOverridesRepository {
   DriftCycleOverridesRepository(this._storage);
 
-  final LunarLogStorage _storage;
+  final CycleStore _storage;
 
   @override
   Future<List<domain.CycleOverride>> listForProfile(String profileId) async => [

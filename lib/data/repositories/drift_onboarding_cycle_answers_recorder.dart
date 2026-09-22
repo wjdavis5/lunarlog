@@ -37,7 +37,7 @@ class DriftOnboardingCycleAnswersRecorder
       {LocalDate Function()? todayProvider})
       : _today = todayProvider ?? LocalDate.today;
 
-  final LunarLogStorage _storage;
+  final CycleStore _storage;
   final LocalDate Function() _today;
 
   @override
